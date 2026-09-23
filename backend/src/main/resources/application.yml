@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: vidsage
+  threads:
+    virtual:
+      enabled: true
+
+vidsage:
+  asr:
+    # 本地 FunASR 供应商为规划项；当前默认走云端
+    provider: cloud
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}
+      model: qwen-audio-3.1-asr-flash-filetrans
