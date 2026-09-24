@@ -28,13 +28,17 @@
    `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`
    归档完成后停止提醒
 8. **发布**：`dev → master` 仅在用户明确要求发布时执行，AI 不得自行发布合并
-9. **归档后收尾会话归档**：`/trellis:finish-work` 归档任务后，**同一次执行内**继续做会话归档，不必再等一道门——它只写 `session-archives/` 下已 gitignore 的本地文件，不碰 git 历史、不推送、不合并。命令固定（Claude Code 侧）：
+9. **归档后收尾会话归档**：`/trellis:finish-work` 归档任务后，**同一次执行内**继续做会话归档，不必再等一道门——它只写 `.trellis/workspace/HeQiu/traces/` 下已 gitignore 的本地文件，不碰 git 历史、不推送、不合并。命令固定（Claude Code 侧）：
 
    ```bash
-   python ~/.agents/skills/session-archive/scripts/archive_session.py --platform claude --cwd f:/personal_project/vidSage --out f:/personal_project/vidSage/session-archives
+   python ~/.agents/skills/session-archive/scripts/archive_session.py \
+     --platform claude \
+     --slug <本次会话的英文短名> \
+     --cwd f:/personal_project/vidSage \
+     --out f:/personal_project/vidSage/.trellis/workspace/HeQiu/traces
    ```
 
-   Codex 侧把 `--platform claude` 换成 `--platform codex`。随后用会话内记忆 + 脚本统计写 `summary.md`（两段式：`## 用户摘要` / `## AI 检索段`，格式见 session-archive skill），**不重读 `transcript.jsonl`**。目录固定在 `session-archives/`，流程中不得再询问用户选目录。
+   Codex 侧把 `--platform claude` 换成 `--platform codex`。随后用会话内记忆 + 脚本统计写 `summary.md`（两段式：`## 用户摘要` / `## AI 检索段`，格式见 session-archive skill），**不重读 `transcript.jsonl`**。目录固定在 `.trellis/workspace/HeQiu/traces/`，流程中不得再询问用户选目录。`--slug` 必须与本次会话的任务/主题相关：有 Trellis 任务时直接用任务 slug，否则从用户请求提炼 2–5 个英文词——归档目录名是检索时辨认归档的入口，不得省略或填无意义串。另外，`--out` 指向的 `.trellis/workspace/HeQiu/traces` 正是 session-archive 脚本自己认的 Trellis「项目内」候选（见脚本 `find_trellis_traces_dir()`），与 `AGENTS.md` 中 `.trellis/workspace/` 存放 session traces 的说明一致；不要改回仓库根的 `session-archives/`。
 
 ## 收尾门的顺序
 
@@ -44,7 +48,7 @@
        └─ 用户批准提交 → git commit + git push -u origin feature/<短名>
             └─ 门 2：用户审查分支 + 明确批准合并 → git merge --no-ff 到 dev + 删分支
                  └─ 门 3：用户主动归档 → /trellis:finish-work
-                      └─ 归档提交 + journal 提交落地后 → 会话归档（写 session-archives/，不等门）
+                      └─ 归档提交 + journal 提交落地后 → 会话归档（写 .trellis/workspace/<dev>/traces/，不等门）
 ```
 
 一次执行只推进一道门。任何一道门没等到用户明确表态，就停在原地，并在汇报里写清「当前卡在哪道门、等什么」。

@@ -72,11 +72,12 @@ This is part of finishing the session, not a new gate — it writes only gitigno
 ```bash
 python ~/.agents/skills/session-archive/scripts/archive_session.py \
   --platform claude \
+  --slug <this session's topical short name> \
   --cwd f:/personal_project/vidSage \
-  --out f:/personal_project/vidSage/session-archives
+  --out f:/personal_project/vidSage/.trellis/workspace/HeQiu/traces
 ```
 
-The output directory is fixed by project rule — do **not** prompt the user to choose one. The script prints the archive directory and its cleaning stats.
+The output directory is fixed by project rule — do **not** prompt the user to choose one. `--slug` must be topical: use this session's Trellis task slug when there is one, otherwise 2–5 English words drawn from the user's request. The directory name is how you tell archives apart without opening them, so never omit it or pass a meaningless string. The script prints the archive directory and its cleaning stats.
 
 Then write `summary.md` into that directory yourself, from what you already know of this session plus the script's stats. Do **not** re-read `transcript.jsonl` — this is the same session that just ran, so re-reading only burns context. Two sections, in the user's language:
 

@@ -678,7 +678,7 @@ Once the work commits have landed, stop and hand control back to the user for re
 
 Archive only when the user asks for it (`/trellis:finish-work` or an explicit "归档") — never self-archive, never run `task.py archive` on your own, and never read silence as approval. The reminder stops once the task is archived or the user says to drop it.
 
-Once the task is archived, the same `/trellis:finish-work` run continues into **session archive** (its Step 5): it cleans this session into `session-archives/` and writes a `summary.md`. That step is not a gate — it writes only gitignored local files, no git history, no push — so it runs without waiting for a separate approval. Fixed command and summary format: rule 9 of `.trellis/spec/guides/git-workflow.md`.
+Once the task is archived, the same `/trellis:finish-work` run continues into **session archive** (its Step 5): it cleans this session into `.trellis/workspace/<developer>/traces/`, naming the archive directory with a topical `--slug`, and writes a `summary.md`. That step is not a gate — it writes only gitignored local files, no git history, no push — so it runs without waiting for a separate approval. Fixed command and summary format: rule 9 of `.trellis/spec/guides/git-workflow.md`.
 
 **SYNC MARKER**: the reminder wording here is mirrored in `[workflow-state:in_progress]` / `[workflow-state:in_progress-inline]` and mirrors rule 7 of `.trellis/spec/guides/git-workflow.md` (canonical). Change all copies in the same edit. Rule 9's session-archive paragraph above is mirrored in `.claude/commands/trellis/finish-work.md` Step 5 and `.agents/skills/trellis-finish-work/SKILL.md` Step 5 (canonical: rule 9 of `.trellis/spec/guides/git-workflow.md`).
 
