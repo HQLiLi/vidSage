@@ -45,6 +45,7 @@
 - `dashscope-sdk-java:2.20.6` —— 已排除 `slf4j-simple`，理由见 pom 内注释（与 Spring Boot 的 Logback 冲突）
 - `lombok`（`optional`，且已从 boot jar 打包中排除）
 - `spring-boot-starter-test`（test scope）
+- `spring-boot-starter-webmvc-test`（test scope）—— Boot 4 把 `@WebMvcTest` 从 starter-test 拆分到该独立模块，写切片测试必须单独引入
 
 ---
 

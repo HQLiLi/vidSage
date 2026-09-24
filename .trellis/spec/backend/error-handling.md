@@ -102,9 +102,17 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 | 为"以后可能用到"预先造自定义异常体系 | 当前代码没有，属于过度设计 |
 | 在 Provider 里做重试/降级逻辑 | 重试属于管线编排层，不属于 Provider（现阶段也无此实现） |
 
+## REST 层错误映射（已建立）
+
+第一个 Controller（`asr/web/AsrController.java`）确立了如下模式，后续 Controller 照此办理：
+
+- **入参校验用卫语句**：Controller 层判 `audioUrl` 空白抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
+- **局部 `@ExceptionHandler`**：Controller 内定义 `@ExceptionHandler(IllegalArgumentException.class)` + `@ResponseStatus(BAD_REQUEST)`，响应体 `{ "error": message }`（错误信息含「缺什么、怎么补」）
+- **暂不建全局 `@ControllerAdvice`**：等出现第二个 Controller、局部处理开始重复时再提取
+
 ## 尚未建立的约定
 
-- **全局异常处理**：无 `@ControllerAdvice`，因为目前还没有 Controller。新增 REST 接口时再定这一层。
+- **全局异常处理**：无 `@ControllerAdvice`；当前用 Controller 局部 `@ExceptionHandler`（见上节），重复后再提取。
 - **错误码体系**：未定义。
 - **日志**：见 [index.md](./index.md) 说明，当前无日志语句。
 
