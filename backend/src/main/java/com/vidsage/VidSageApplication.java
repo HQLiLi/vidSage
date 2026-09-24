@@ -2,9 +2,10 @@ package com.vidsage;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @SpringBootApplication
-@org.springframework.boot.context.properties.ConfigurationPropertiesScan
+@ConfigurationPropertiesScan
 public class VidSageApplication {
 
     public static void main(String[] args) {
