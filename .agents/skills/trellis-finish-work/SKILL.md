@@ -69,3 +69,25 @@ python ./.trellis/scripts/add_session.py \
 Use the work-commit hashes produced in Phase 3.4 (visible in Step 1's `Recent commits` list, or via `git log --oneline`) for `--commit`. Do not include the archive commit hashes from Step 3. This produces a `chore: record journal` commit.
 
 Final git log order: `<work commits from 3.4>` → `chore(task): archive ...` (one or more) → `chore: record journal`.
+
+## Step 5: Archive this session
+
+This is part of finishing the session, not a new gate — it writes only gitignored local files, so it runs in the same pass as Steps 3 and 4.
+
+```bash
+python ~/.agents/skills/session-archive/scripts/archive_session.py \
+  --platform codex \
+  --cwd f:/personal_project/vidSage \
+  --out f:/personal_project/vidSage/session-archives
+```
+
+The output directory is fixed by project rule — do **not** prompt the user to choose one. The script prints the archive directory and its cleaning stats.
+
+Then write `summary.md` into that directory yourself, from what you already know of this session plus the script's stats. Do **not** re-read `transcript.jsonl` — this is the same session that just ran, so re-reading only burns context. Two sections, in the user's language:
+
+- `## 用户摘要` — three to five plain sentences: what this session did and how it turned out.
+- `## AI 检索段` — factual and dense, no rhetoric. First line: date + session id + one-line title (the title may quote the user's original request). Then short lines: user request points (keep the user's own keywords), absolute paths of files touched, commands run and their verification results, key decisions and why, and anything failed or left unfinished. No secrets or credentials.
+
+Report the full archive directory path at the end.
+
+Canonical rule: rule 9 of `.trellis/spec/guides/git-workflow.md`.
