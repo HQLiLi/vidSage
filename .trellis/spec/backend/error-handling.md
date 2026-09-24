@@ -9,14 +9,17 @@
 
 在方法开头集中校验所有前置条件，**先失败再干活**，不要在业务流程中间零散判空。
 
-参照：`asr/DashScopeAsrProvider.java` 的 `transcribe()` —— 四个校验连续排在最前面，之后才是 SDK 调用。
+参照：`asr/provider/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` —— 前置校验（API key、来源类型、URL 非空）连续排在最前面，之后才是 SDK 调用。
 
 ```java
 if (!StringUtils.hasText(properties.apiKey())) {
     throw new IllegalStateException("Missing DashScope API key: set vidsage.asr.dashscope.api-key or DASHSCOPE_API_KEY");
 }
-if (!StringUtils.hasText(command.audioUrl())) {
-    throw new IllegalArgumentException("audioUrl is required for cloud transcription");
+if (!(command.source() instanceof AudioSource.AudioUrl audioUrl)) {
+    throw new IllegalArgumentException(
+            "DashScope cloud transcription requires a publicly accessible audio URL (AudioUrl); "
+                    + "for local files upload them first or pass an AudioUrl. Got: "
+                    + (command.source() == null ? "null" : command.source().getClass().getSimpleName()));
 }
 ```
 
@@ -24,7 +27,7 @@ if (!StringUtils.hasText(command.audioUrl())) {
 
 | 情况 | 异常 | 现有例子 |
 |---|---|---|
-| 调用方传参不合法 | `IllegalArgumentException` | `audioUrl` 为空 |
+| 调用方传参不合法 | `IllegalArgumentException` | 来源类型不支持（本地路径传给云端实现）、URL 为空 |
 | 配置缺失/环境不对 | `IllegalStateException` | API key 未配置 |
 | 外部服务未按预期返回 | `IllegalStateException` | DashScope 未返回 task id、子任务失败、成功但无下载地址 |
 
@@ -44,7 +47,7 @@ if (!StringUtils.hasText(command.language())) {
 }
 ```
 
-参照：`asr/DashScopeAsrProvider.java`
+参照：`asr/provider/dashscope/DashScopeAsrProvider.java`
 
 ## 错误信息写法
 
@@ -55,7 +58,7 @@ if (!StringUtils.hasText(command.language())) {
 "Missing DashScope API key: set vidsage.asr.dashscope.api-key or DASHSCOPE_API_KEY"
 
 // 好：说清了触发条件与解决办法
-"audioUrl is required for cloud transcription"
+"DashScope cloud transcription requires a publicly accessible audio URL (AudioUrl); for local files upload them first or pass an AudioUrl. Got: AudioFilePath"
 
 // 坏：只陈述现象，调用方不知道下一步做什么
 "Invalid parameter"
@@ -104,3 +107,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 - **全局异常处理**：无 `@ControllerAdvice`，因为目前还没有 Controller。新增 REST 接口时再定这一层。
 - **错误码体系**：未定义。
 - **日志**：见 [index.md](./index.md) 说明，当前无日志语句。
+
+
+
+

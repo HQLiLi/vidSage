@@ -10,12 +10,16 @@
 com.vidsage
 ├── VidSageApplication.java        # 唯一的启动类，放在根包
 └── asr/                           # 「语音识别」这个功能包
-    ├── ASRProvider.java           # 接口（对外契约）
-    ├── DashScopeAsrProvider.java  # 云端实现
-    ├── DashScopeProperties.java   # 该实现专用的配置属性
-    ├── TranscriptionCommand.java  # 入参契约
-    ├── TranscriptionResult.java   # 出参契约
-    └── TranscriptionSegment.java  # 出参契约的子结构
+    ├── ASRProvider.java           # 接口（对外契约），留在功能包根
+    ├── model/                     # 实现方中立的数据契约
+    │   ├── AudioSource.java       # sealed：AudioUrl / AudioFilePath
+    │   ├── TranscriptionCommand.java
+    │   ├── TranscriptionResult.java
+    │   └── TranscriptionSegment.java
+    └── provider/                  # 一个实现一个子包，新增实现开新子包
+        └── dashscope/
+            ├── DashScopeAsrProvider.java
+            └── DashScopeProperties.java
 ```
 
 参照文件：`backend/src/main/java/com/vidsage/asr/`
@@ -46,13 +50,13 @@ com.vidsage
 
 ## 契约类的位置
 
-对外契约（`Command` / `Result` / `Segment`）放在**功能包根下**，与接口同层，不单独建 `dto/` 或 `model/` 子包。
+功能包内部按职责分子包：**对外接口（`XxxProvider`）留在功能包根**；数据契约（`Command` / `Result` / 子结构）放 `model/`；**实现类与该实现专用的 `*Properties` 放 `provider/<实现短名>/` 子包**（如 `provider/dashscope/`），新增实现开新子包、不重排已有代码。不建 `dto/`、`util/`、`config/` 这类按技术命名的顶层分包。
 
-参照：`backend/src/main/java/com/vidsage/asr/` 下六个文件平铺，无子目录。
+参照：`backend/src/main/java/com/vidsage/asr/`（接口在包根，`model/` 中立契约，`provider/dashscope/` 云端实现与配置）。
 
 ## 测试包结构
 
-测试包与主包**镜像对应**：`backend/src/test/java/com/vidsage/asr/DashScopeAsrProviderTest.java` 对应 `.../main/java/com/vidsage/asr/DashScopeAsrProvider.java`。
+测试包与主包**镜像对应**：`backend/src/test/java/com/vidsage/asr/provider/dashscope/DashScopeAsrProviderTest.java` 对应 `.../main/java/com/vidsage/asr/provider/dashscope/DashScopeAsrProvider.java`。
 
 - 测试类名 = 被测类名 + `Test`
 - 另有 `VidSageApplicationTests` 作为上下文加载冒烟测试
@@ -60,3 +64,7 @@ com.vidsage
 ## 不适用
 
 `database-guidelines.md` 与 `logging-guidelines.md` 已删除，原因见 [index.md](./index.md)。
+
+
+
+

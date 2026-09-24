@@ -11,7 +11,7 @@
 - **转写任务提交与轮询**：直接用官方 `dashscope-sdk-java` 的 `Transcription` 类（`asyncCall` + `wait`），没有手写 HTTP 轮询循环。
 
   ```java
-  // asr/DashScopeAsrProvider.java
+  // asr/provider/dashscope/DashScopeAsrProvider.java
   var submitted = transcription.asyncCall(param);
   var finished = transcription.wait(
           TranscriptionQueryParam.FromTranscriptionParam(param, submitted.getTaskId()));
@@ -57,10 +57,10 @@ public record TranscriptionSegment(long beginTimeMs, long endTimeMs, String text
 
 ```java
 /**
- * @param audioUrl 公网可访问的音频文件 URL（DashScope 异步转写接口的要求）
+ * @param source   音频来源（URL 或本地路径，由各实现校验自己支持的类型）
  * @param language 可选的语种提示，如 "zh"；语种不确定或多语种混合时不要传
  */
-public record TranscriptionCommand(String audioUrl, String language) {
+public record TranscriptionCommand(AudioSource source, String language) {
 }
 ```
 
@@ -71,7 +71,7 @@ public record TranscriptionCommand(String audioUrl, String language) {
 - 私有方法：可用行注释说明**为什么**这样做，而不是做了什么
 - 解释**原因和约束**，不解释显而易见的代码
 
-参照：`asr/ASRProvider.java`、`asr/TranscriptionCommand.java`、`asr/TranscriptionSegment.java`、`asr/DashScopeProperties.java`
+参照：`asr/ASRProvider.java`、`asr/model/TranscriptionCommand.java`、`asr/model/AudioSource.java`、`asr/provider/dashscope/DashScopeProperties.java`
 
 > 注：现有代码的私有方法（如 `buildParam`）**尚未**加注释。本规范生效后新增的私有方法要补上——不要因为旧代码没写就跟着不写。
 
@@ -111,7 +111,7 @@ public record TranscriptionCommand(String audioUrl, String language) {
   void mapsSentencesToSegments() { ... }
   void throwsWhenTranscriptsMissing() { ... }
   void requiresApiKey() { ... }
-  void requiresAudioUrl() { ... }
+  void rejectsLocalFilePath() { ... }
   ```
 
   命名模式：正常路径用陈述句（`mapsSentencesToSegments`），异常路径用 `throwsWhen...` / `requires...`。
@@ -144,7 +144,7 @@ TranscriptionResult result = DashScopeAsrProvider.toResult(file);
 3. 配置缺失时抛异常
 4. 入参不合法时抛异常
 
-参照：`backend/src/test/java/com/vidsage/asr/DashScopeAsrProviderTest.java`
+参照：`backend/src/test/java/com/vidsage/asr/provider/dashscope/DashScopeAsrProviderTest.java`
 
 ### 测试数据
 
@@ -183,3 +183,6 @@ var file = new DashScopeAsrProvider.TranscriptionFile(
 | 测试方法命名为 `testXxx` | 现有命名为行为描述式 |
 | Provider 构造函数里 `new` 出依赖 | 必须构造函数注入，否则不可测 |
 | 引入依赖时不排除冲突的日志实现 | pom 已有先例注释 |
+
+
+

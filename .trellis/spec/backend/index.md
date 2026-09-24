@@ -41,7 +41,7 @@
 现有依赖（`pom.xml`）：
 
 - `spring-boot-starter-web`
-- `spring-ai-starter-model-ollama`
+- `spring-ai-starter-model-deepseek`
 - `dashscope-sdk-java:2.20.6` —— 已排除 `slf4j-simple`，理由见 pom 内注释（与 Spring Boot 的 Logback 冲突）
 - `lombok`（`optional`，且已从 boot jar 打包中排除）
 - `spring-boot-starter-test`（test scope）
@@ -59,3 +59,5 @@ mvn -q compile        # 仅编译
 ```
 
 前端命令见 [../frontend/index.md](../frontend/index.md)。
+
+

@@ -21,8 +21,8 @@
 | 部件 | 职责 | 参照文件 |
 |---|---|---|
 | 接口 | 定义对外契约，不含任何实现细节或框架注解 | `asr/ASRProvider.java` |
-| 实现类 | 一个来源一个类，用 `@Component` + `@ConditionalOnProperty` 装配 | `asr/DashScopeAsrProvider.java` |
-| 配置属性 | 该实现专用的配置，`record` + `@DefaultValue` | `asr/DashScopeProperties.java` |
+| 实现类 | 一个来源一个类，用 `@Component` + `@ConditionalOnProperty` 装配 | `asr/provider/dashscope/DashScopeAsrProvider.java` |
+| 配置属性 | 该实现专用的配置，`record` + `@DefaultValue` | `asr/provider/dashscope/DashScopeProperties.java` |
 | 契约 | 入参 `Command` / 出参 `Result`，全部 `record` | `asr/Transcription*` |
 
 ### 1. 接口保持纯净
@@ -68,7 +68,7 @@ public record DashScopeProperties(
 ### 4. 契约全部 record
 
 ```java
-public record TranscriptionCommand(String audioUrl, String language) {
+public record TranscriptionCommand(AudioSource source, String language) {
 }
 
 public record TranscriptionResult(List<TranscriptionSegment> segments, String language) {
@@ -85,6 +85,22 @@ public record TranscriptionSegment(long beginTimeMs, long endTimeMs, String text
 
 ---
 
+### 5. 契约必须实现方中立
+
+契约描述「做什么」，不描述「某个实现怎么吃」。**契约类中禁止出现任何实现方专属的字段名、约束或注释**——第一次写实现时最容易把该实现的输入要求直接固化成契约字段（如 `audioUrl` 来自 DashScope 的接口限制），导致第二个实现（如本地文件输入）出现时契约必须重改。
+
+实现相关的输入差异用中立抽象表达（sealed 接口 + 子类型，各实现自行校验支持的类型）：
+
+```java
+public sealed interface AudioSource {
+    record AudioUrl(String value) implements AudioSource { }
+    record AudioFilePath(String value) implements AudioSource { }
+}
+```
+
+- 不支持的子类型：抛 `IllegalArgumentException`，错误信息说明该实现的输入要求与替代做法（如「先上传生成外链」）
+- 参照：`asr/model/AudioSource.java`、`asr/provider/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` 卫语句
+
 ## 第三方 SDK 只在实现类内出现
 
 **这是 Provider 模式的核心价值，也是新实现最容易破的规矩。**
@@ -93,7 +109,7 @@ public record TranscriptionSegment(long beginTimeMs, long endTimeMs, String text
 
 新增本地实现时（例如 `LocalFunAsrProvider`），只要同样只吐 `TranscriptionResult`，上层管线一行都不用改。
 
-参照：`asr/DashScopeAsrProvider.java` —— `buildParam()` 是 `private`，SDK 类型不外泄。
+参照：`asr/provider/dashscope/DashScopeAsrProvider.java` —— `buildParam()` 是 `private`，SDK 类型不外泄。
 
 ---
 
@@ -116,7 +132,7 @@ record TranscriptionFile(
 - snake_case 字段用 `@JsonProperty` 显式映射
 - 映射逻辑抽成 **`static` 方法**（`toResult`），包级可见（**不带 `private`**），这样单元测试可以直接调用而不必起 Spring 容器
 
-参照：`asr/DashScopeAsrProvider.java` 与 `asr/DashScopeAsrProviderTest.java`
+参照：`asr/provider/dashscope/DashScopeAsrProvider.java` 与 `asr/provider/dashscope/DashScopeAsrProviderTest.java`
 
 ---
 
@@ -150,6 +166,7 @@ vidsage:
 | 契约类用 Lombok `@Data` | 契约必须不可变，用 record |
 | 返回 `null` 集合 | 用 `List.of()`，调用方无需判空 |
 | 映射逻辑写成非静态的私有方法 | 测试被迫起 Spring 上下文 |
+| 契约字段绑定某个实现的输入形状（如 `audioUrl`） | 换实现就要改契约，抽象失效 |
 | 为第二个实现复制一份契约类 | 契约属于环节，不属于实现 |
 
 ---
@@ -163,3 +180,6 @@ vidsage:
 5. 映射抽成包级 `static` 方法
 6. 在 `application.yml` 补配置块，密钥用 `${ENV}` 插值
 7. 写单元测试覆盖映射与参数校验失败路径（见 [quality-guidelines.md](./quality-guidelines.md)）
+
+
+
