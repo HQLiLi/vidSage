@@ -226,3 +226,26 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: 收尾门接入会话归档（规则 9）
+<!-- trellis-session: v=2 fp=08904092e03d3fda -->
+
+**Date**: 2026-09-24
+**Task**: 收尾门接入会话归档（规则 9）
+**Branch**: `dev`
+
+### Summary
+
+把 session-archive 会话归档接进 Trellis 收尾门：finish-work 新增 Step 5，固定输出到 session-archives/，每次必写 summary.md 且不重读 transcript；规则正本落 .trellis/spec/guides/git-workflow.md 规则 9，两处平台入口与 workflow.md 镜像同步。trellis-implement + trellis-check 双代理验证，镜像一致性与命令可用性均 PASS。特性分支已合入 dev，并同步发布至 master。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `df3878e` | docs(spec): 分支工作流新增规则 9 —— 归档后同一次执行内做会话归档 |
+| `671ed95` | chore(task): session-archive-on-finish 任务记录 |
+
+### Status
+
+[OK] **Completed**
