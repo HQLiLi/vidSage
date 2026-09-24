@@ -40,7 +40,7 @@ For each remaining dirty path, decide whether it belongs to **the current task**
 Then route:
 
 - **Any remaining path looks like current-task work** — bail out with:
-  > "Working tree has uncommitted code changes from this task: `<list>`. Return to workflow Phase 3.4 to commit them before running ``finish-work` (Trellis command)`."
+  > "Working tree has uncommitted code changes from this task: `<list>`. Return to workflow Phase 3.4 to commit them before running `/trellis:finish-work`."
 
   Do NOT run `git commit` here. Do NOT prompt the user to commit. The user goes back to Phase 3.4 and the AI drives the batched commit there.
 - **All remaining paths look unrelated** (other parallel-window work) — report them once and continue to Step 3:
@@ -72,7 +72,14 @@ Final git log order: `<work commits from 3.4>` → `chore(task): archive ...` (o
 
 ## Step 5: Archive this session
 
-This is part of finishing the session, not a new gate — it writes only gitignored local files, so it runs in the same pass as Steps 3 and 4.
+Ask the user first — this step has two outcomes and the choice is theirs:
+
+- **Full trace** — run the archiver below, then write `summary.md` as described further down.
+- **Summary only** — do not touch the traces directory. This session's record is the journal entry Step 4 already wrote; that is finish-work's original behaviour.
+
+If the user does not answer (silence, or they skip the question), take **summary only** and stop here — never run the archiver on your own initiative.
+
+This step is not a gate: it touches no git history, no push, no merge, and writes only local files inside the gitignored traces directory.
 
 ```bash
 python ~/.agents/skills/session-archive/scripts/archive_session.py \
@@ -82,13 +89,13 @@ python ~/.agents/skills/session-archive/scripts/archive_session.py \
   --out f:/personal_project/vidSage/.trellis/workspace/HeQiu/traces
 ```
 
-The output directory is fixed by project rule — do **not** prompt the user to choose one. `--slug` must be topical: use this session's Trellis task slug when there is one, otherwise 2–5 English words drawn from the user's request. The directory name is how you tell archives apart without opening them, so never omit it or pass a meaningless string. The script prints the archive directory and its cleaning stats.
+The output directory is fixed by project rule — do **not** prompt the user to choose one (the question you ask is *whether* to generate, not *where*). `--slug` must be topical: use this session's Trellis task slug when there is one, otherwise 2–5 English words drawn from the user's request. The directory name is how you tell archives apart without opening them, so never omit it or pass a meaningless string. The script prints the archive directory and its cleaning stats.
 
 Then write `summary.md` into that directory yourself, from what you already know of this session plus the script's stats. Do **not** re-read `transcript.jsonl` — this is the same session that just ran, so re-reading only burns context. Two sections, in the user's language:
 
 - `## 用户摘要` — three to five plain sentences: what this session did and how it turned out.
 - `## AI 检索段` — factual and dense, no rhetoric. First line: date + session id + one-line title (the title may quote the user's original request). Then short lines: user request points (keep the user's own keywords), absolute paths of files touched, commands run and their verification results, key decisions and why, and anything failed or left unfinished. No secrets or credentials.
 
-Report the full archive directory path at the end.
+Report the full archive directory path at the end (full-trace branch only; under summary only, say the traces directory was left untouched by the user's choice).
 
 Canonical rule: rule 9 of `.trellis/spec/guides/git-workflow.md`.
