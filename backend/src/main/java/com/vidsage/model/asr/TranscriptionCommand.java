@@ -1,4 +1,4 @@
-package com.vidsage.asr.model;
+package com.vidsage.model.asr;
 
 /**
  * 转写请求命令。

@@ -1,7 +1,7 @@
-package com.vidsage.asr;
+package com.vidsage.provider.asr;
 
-import com.vidsage.asr.model.TranscriptionCommand;
-import com.vidsage.asr.model.TranscriptionResult;
+import com.vidsage.model.asr.TranscriptionCommand;
+import com.vidsage.model.asr.TranscriptionResult;
 
 /**
  * 语音识别供应商抽象：本地 FunASR 与云端 DashScope 各提供一个实现，

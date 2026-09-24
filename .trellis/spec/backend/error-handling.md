@@ -9,7 +9,7 @@
 
 在方法开头集中校验所有前置条件，**先失败再干活**，不要在业务流程中间零散判空。
 
-参照：`asr/provider/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` —— 前置校验（API key、来源非空、URL/路径合法性）连续排在最前面，之后才是 SDK 调用。
+参照：`provider/asr/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` —— 前置校验（API key、来源非空、URL/路径合法性）连续排在最前面，之后才是 SDK 调用。
 
 ```java
 if (!StringUtils.hasText(properties.apiKey())) {
@@ -50,7 +50,7 @@ if (!StringUtils.hasText(command.language())) {
 }
 ```
 
-参照：`asr/provider/dashscope/DashScopeAsrProvider.java`
+参照：`provider/asr/dashscope/DashScopeAsrProvider.java`
 
 ## 错误信息写法
 
@@ -107,7 +107,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 
 ## REST 层错误映射（已建立）
 
-第一个 Controller（`asr/web/AsrController.java`）确立了如下模式，后续 Controller 照此办理：
+第一个 Controller（`controller/AsrController.java`）确立了如下模式，后续 Controller 照此办理：
 
 - **入参校验用卫语句**：Controller 层判 `audioUrl` 空白抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
 - **局部 `@ExceptionHandler`**：Controller 内定义 `@ExceptionHandler(IllegalArgumentException.class)` + `@ResponseStatus(BAD_REQUEST)`，响应体 `{ "error": message }`（错误信息含「缺什么、怎么补」）

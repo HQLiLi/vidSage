@@ -1,4 +1,4 @@
-package com.vidsage.asr.web;
+package com.vidsage.controller;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -6,10 +6,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.vidsage.asr.TranscriptionService;
-import com.vidsage.asr.model.AudioSource;
-import com.vidsage.asr.model.TranscriptionResult;
-import com.vidsage.asr.model.TranscriptionSegment;
+import com.vidsage.service.TranscriptionService;
+import com.vidsage.model.asr.AudioSource;
+import com.vidsage.model.asr.TranscriptionResult;
+import com.vidsage.model.asr.TranscriptionSegment;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

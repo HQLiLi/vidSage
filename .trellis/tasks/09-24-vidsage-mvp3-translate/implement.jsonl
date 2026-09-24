@@ -1,5 +1,5 @@
 {"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线与常用命令"}
 {"file": ".trellis/spec/backend/provider-pattern.md", "reason": "LLMProvider 必须遵循 Provider 四件套模式"}
-{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新包 com.vidsage.llm 按功能分包约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "包结构已改为技术分层：契约进 model/llm/、LLMProvider 进 provider/llm/、服务加进 service/、HTTP 入口加进 controller/"}
 {"file": ".trellis/spec/backend/error-handling.md", "reason": "卫语句与异常类型选择"}
 {"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "契约设计/注释/测试写法"}

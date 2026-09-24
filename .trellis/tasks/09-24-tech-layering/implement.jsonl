@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "本任务要重写的目标文档；新结构规则与命名判据以 design.md 第 3、4 节为准"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "Provider 四件套与契约实现方中立规则必须保留，同时修 7 行失效路径引用"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "注释/测试/契约规范必须保留，同时修 3 行失效路径引用"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Controller 局部 @ExceptionHandler 模式必须保留，同时修 3 行失效路径引用"}
+{"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线、构建命令、索引描述需同步改写"}

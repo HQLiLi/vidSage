@@ -11,7 +11,7 @@
 - **转写任务提交与轮询**：直接用官方 `dashscope-sdk-java` 的 `Transcription` 类（`asyncCall` + `wait`），没有手写 HTTP 轮询循环。
 
   ```java
-  // asr/provider/dashscope/DashScopeAsrProvider.java
+  // provider/asr/dashscope/DashScopeAsrProvider.java
   var submitted = transcription.asyncCall(param);
   var finished = transcription.wait(
           TranscriptionQueryParam.FromTranscriptionParam(param, submitted.getTaskId()));
@@ -71,7 +71,7 @@ public record TranscriptionCommand(AudioSource source, String language) {
 - 私有方法：可用行注释说明**为什么**这样做，而不是做了什么
 - 解释**原因和约束**，不解释显而易见的代码
 
-参照：`asr/ASRProvider.java`、`asr/model/TranscriptionCommand.java`、`asr/model/AudioSource.java`、`asr/provider/dashscope/DashScopeProperties.java`
+参照：`provider/asr/ASRProvider.java`、`model/asr/TranscriptionCommand.java`、`model/asr/AudioSource.java`、`provider/asr/dashscope/DashScopeProperties.java`
 
 > 注：现有代码的私有方法（如 `buildParam`）**尚未**加注释。本规范生效后新增的私有方法要补上——不要因为旧代码没写就跟着不写。
 
@@ -144,7 +144,7 @@ TranscriptionResult result = DashScopeAsrProvider.toResult(file);
 3. 配置缺失时抛异常
 4. 入参不合法时抛异常
 
-参照：`backend/src/test/java/com/vidsage/asr/provider/dashscope/DashScopeAsrProviderTest.java`
+参照：`backend/src/test/java/com/vidsage/provider/asr/dashscope/DashScopeAsrProviderTest.java`
 
 ### 测试数据
 

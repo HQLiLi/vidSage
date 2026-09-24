@@ -1,8 +1,8 @@
-package com.vidsage.asr.web;
+package com.vidsage.controller;
 
-import com.vidsage.asr.TranscriptionService;
-import com.vidsage.asr.model.AudioSource;
-import com.vidsage.asr.model.TranscriptionResult;
+import com.vidsage.service.TranscriptionService;
+import com.vidsage.model.asr.AudioSource;
+import com.vidsage.model.asr.TranscriptionResult;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;

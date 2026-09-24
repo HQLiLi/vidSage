@@ -20,10 +20,10 @@
 
 | 部件 | 职责 | 参照文件 |
 |---|---|---|
-| 接口 | 定义对外契约，不含任何实现细节或框架注解 | `asr/ASRProvider.java` |
-| 实现类 | 一个来源一个类，用 `@Component` + `@ConditionalOnProperty` 装配 | `asr/provider/dashscope/DashScopeAsrProvider.java` |
-| 配置属性 | 该实现专用的配置，`record` + `@DefaultValue` | `asr/provider/dashscope/DashScopeProperties.java` |
-| 契约 | 入参 `Command` / 出参 `Result`，全部 `record` | `asr/Transcription*` |
+| 接口 | 定义对外契约，不含任何实现细节或框架注解 | `provider/asr/ASRProvider.java` |
+| 实现类 | 一个来源一个类，用 `@Component` + `@ConditionalOnProperty` 装配 | `provider/asr/dashscope/DashScopeAsrProvider.java` |
+| 配置属性 | 该实现专用的配置，`record` + `@DefaultValue` | `provider/asr/dashscope/DashScopeProperties.java` |
+| 契约 | 入参 `Command` / 出参 `Result`，全部 `record` | `model/asr/Transcription*` |
 
 ### 1. 接口保持纯净
 
@@ -99,7 +99,7 @@ public sealed interface AudioSource {
 ```
 
 - 不支持的子类型：抛 `IllegalArgumentException`，错误信息说明该实现的输入要求与替代做法（如「先上传生成外链」）
-- 参照：`asr/model/AudioSource.java`、`asr/provider/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` 卫语句
+- 参照：`model/asr/AudioSource.java`、`provider/asr/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` 卫语句
 
 ## 第三方 SDK 只在实现类内出现
 
@@ -109,7 +109,7 @@ public sealed interface AudioSource {
 
 新增本地实现时（例如 `LocalFunAsrProvider`），只要同样只吐 `TranscriptionResult`，上层管线一行都不用改。
 
-参照：`asr/provider/dashscope/DashScopeAsrProvider.java` —— `buildParam()` 是 `private`，SDK 类型不外泄。
+参照：`provider/asr/dashscope/DashScopeAsrProvider.java` —— `buildParam()` 是 `private`，SDK 类型不外泄。
 
 ---
 
@@ -132,7 +132,7 @@ record TranscriptionFile(
 - snake_case 字段用 `@JsonProperty` 显式映射
 - 映射逻辑抽成 **`static` 方法**（`toResult`），包级可见（**不带 `private`**），这样单元测试可以直接调用而不必起 Spring 容器
 
-参照：`asr/provider/dashscope/DashScopeAsrProvider.java` 与 `asr/provider/dashscope/DashScopeAsrProviderTest.java`
+参照：`provider/asr/dashscope/DashScopeAsrProvider.java` 与 `provider/asr/dashscope/DashScopeAsrProviderTest.java`
 
 ---
 

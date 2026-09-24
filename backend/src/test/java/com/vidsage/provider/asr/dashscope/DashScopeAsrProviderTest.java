@@ -1,14 +1,14 @@
-package com.vidsage.asr.provider.dashscope;
+package com.vidsage.provider.asr.dashscope;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.alibaba.dashscope.exception.ApiException;
-import com.vidsage.asr.model.AudioSource;
-import com.vidsage.asr.model.TranscriptionCommand;
-import com.vidsage.asr.model.TranscriptionResult;
-import com.vidsage.asr.model.TranscriptionSegment;
+import com.vidsage.model.asr.AudioSource;
+import com.vidsage.model.asr.TranscriptionCommand;
+import com.vidsage.model.asr.TranscriptionResult;
+import com.vidsage.model.asr.TranscriptionSegment;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

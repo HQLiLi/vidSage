@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "检查 package-by-feature 表述是否清除干净、顶层分包判据与 model/domain/persistence 判据是否完整、参照路径是否全部指向新结构"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查测试包镜像对应规则是否仍成立、契约类是否被夹带改动、路径引用是否修完"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "检查 Controller 错误映射约定是否原样保留、路径引用是否修完"}
+{"file": ".trellis/spec/backend/index.md", "reason": "检查 directory-structure.md 的索引描述是否已去掉「按功能分包」"}

@@ -1,4 +1,4 @@
-package com.vidsage.asr.model;
+package com.vidsage.model.asr;
 
 /**
  * 音频来源抽象：契约只描述「音频从哪里来」，不绑定任何实现方的获取方式。

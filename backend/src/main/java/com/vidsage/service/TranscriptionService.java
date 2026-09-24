@@ -1,8 +1,9 @@
-package com.vidsage.asr;
+package com.vidsage.service;
 
-import com.vidsage.asr.model.AudioSource;
-import com.vidsage.asr.model.TranscriptionCommand;
-import com.vidsage.asr.model.TranscriptionResult;
+import com.vidsage.model.asr.AudioSource;
+import com.vidsage.model.asr.TranscriptionCommand;
+import com.vidsage.model.asr.TranscriptionResult;
+import com.vidsage.provider.asr.ASRProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 

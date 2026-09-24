@@ -1,4 +1,4 @@
-package com.vidsage.asr.model;
+package com.vidsage.model.asr;
 
 import java.util.List;
 

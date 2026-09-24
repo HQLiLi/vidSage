@@ -28,9 +28,11 @@
 ## 待用户确认的事项（下一步）
 
 1. **LLMProvider 最小设计**（草案已提出，用户未确认）：
-   - `com.vidsage.llm`：`LLMProvider` / `LLMCommand(systemPrompt 可空, userPrompt)` / `LLMResult(content)` + `provider/deepseek/DeepSeekLLMProvider`
+   - **落点（后端包结构已改为技术分层，见 `directory-structure.md`）**：契约 `model/llm/LLMCommand(systemPrompt 可空, userPrompt)` 与 `model/llm/LLMResult(content)`；接口 `provider/llm/LLMProvider`；实现 `provider/llm/deepseek/DeepSeekLLMProvider`；应用服务加进 `service/`；HTTP 入口加进 `controller/`
    - 注入 Spring AI `ChatModel`（deepseek starter 自动装配，读 `spring.ai.deepseek.*`），SDK 类型不外泄
    - 卫语句：`userPrompt` 空 → IAE；返回内容空 → ISE；单测 mock `ChatModel` 不起容器；真调用测试用 `@EnabledIfEnvironmentVariable` 门控
+
+   > 说明：本条草案原文写作 `com.vidsage.llm` 按功能分包，该约定已被任务 `09-24-tech-layering` 取代，上面已改写为新结构落点；「本会话已完成」一节是当时的历史记录，不改写。
 2. **ASR 真调用**需要一个公网音频 URL（DashScope filetrans 只收 URL；B站页面链接不行）：等用户给直链，或自找稳定的公共样本音频
 
 ## 环境备忘

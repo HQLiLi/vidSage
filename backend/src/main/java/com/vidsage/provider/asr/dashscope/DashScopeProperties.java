@@ -1,4 +1,4 @@
-package com.vidsage.asr.provider.dashscope;
+package com.vidsage.provider.asr.dashscope;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;

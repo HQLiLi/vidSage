@@ -1,4 +1,4 @@
-package com.vidsage.asr.provider.dashscope;
+package com.vidsage.provider.asr.dashscope;
 
 import com.alibaba.dashscope.audio.asr.transcription.Transcription;
 import com.alibaba.dashscope.audio.asr.transcription.TranscriptionParam;
@@ -9,11 +9,11 @@ import com.alibaba.dashscope.exception.NoApiKeyException;
 import com.alibaba.dashscope.utils.OSSUtils;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.vidsage.asr.ASRProvider;
-import com.vidsage.asr.model.AudioSource;
-import com.vidsage.asr.model.TranscriptionCommand;
-import com.vidsage.asr.model.TranscriptionResult;
-import com.vidsage.asr.model.TranscriptionSegment;
+import com.vidsage.provider.asr.ASRProvider;
+import com.vidsage.model.asr.AudioSource;
+import com.vidsage.model.asr.TranscriptionCommand;
+import com.vidsage.model.asr.TranscriptionResult;
+import com.vidsage.model.asr.TranscriptionSegment;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;

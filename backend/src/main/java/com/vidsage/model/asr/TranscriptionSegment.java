@@ -1,4 +1,4 @@
-package com.vidsage.asr.model;
+package com.vidsage.model.asr;
 
 /**
  * 一句转写结果，时间戳用于前端点击引用跳转。
