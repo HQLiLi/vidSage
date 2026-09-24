@@ -27,6 +27,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!-- Boot 4（Framework 7）必须用 springdoc 3.x，2.x 启动报错；knife4j 尚未适配 Boot 4 故不引入 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.1.1</version>
+        </dependency>
         <!-- DeepSeek 官方 starter：翻译走 LLM 唯一路线（DeepSeek，OpenAI 兼容） -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
