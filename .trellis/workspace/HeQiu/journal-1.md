@@ -262,6 +262,8 @@
 
 把会话归档根目录从仓库根的 session-archives/ 改到 .trellis/workspace/HeQiu/traces——正是 session-archive 脚本 find_trellis_traces_dir() 认的 Trellis 项目内候选，也与 AGENTS.md 中 workspace 存放 session traces 的说明一致。归档目录名新增任务短名（<时间戳>-<英文短名>），由脚本新增的 --slug 传入并做 ASCII 安全化；同时修好标题启发式，使它跳过命令展开与框架噪音、取用户真实首句。4 份旧归档连同 index.jsonl 迁移并重写绝对路径，3 份历史遗留的嵌套布局（summary/summary.md）全部平铺——其 meta.json/index 引用本就是断链。trellis-implement + trellis-check 双代理，检查抓出的 2 个缺陷已修并复验。特性分支已合入 dev。
 
+**补记（2026-09-24，任务归档后）**：上面写的"检查抓出的 2 个缺陷"不完整。`/trellis:finish-work` 的 Step 5 实跑时暴露了第 3 个缺陷——`archive_session.py` 里 `info["slug"] = suffix or None` 写在 `main()` 中归档函数返回之后，而 `meta.json` 已在归档函数内部写完，该赋值是死代码，归档产物的 `meta.json` 不含 slug。已改为赋值后显式重写 `meta.json`，重跑验证 `slug = "session-archive-traces-slug"`。该修复改的是不在版本控制内的全局 skill（`C:\Users\14683\.agents\skills\session-archive`），完成于任务归档之后，不在任何提交内；完整经过见本会话归档 `traces/20260924-204921-session-archive-traces-slug/summary.md`。
+
 ### Git Commits
 
 | Hash | Message |
