@@ -1,24 +1,23 @@
 # 目录结构
 
-## 当前结构
+## 结构示意
 
 ```
 frontend/
 ├── src/
-│   ├── assets/
-│   │   ├── logo.svg
-│   │   ├── main.scss      # 全局 SCSS
-│   │   └── tailwind.css   # Tailwind 入口
-│   ├── stores/
-│   │   └── counter.ts
+│   ├── assets/            # 静态资源与全局样式入口
+│   ├── stores/            # Pinia store，一个 store 一个文件
 │   ├── App.vue            # 根组件
 │   └── main.ts            # 应用入口
-├── public/
+├── public/                # 原样拷贝的公开资源
+├── index.html             # Vite 入口 HTML
 ├── env.d.ts
 ├── eslint.config.ts
 ├── vite.config.ts
 └── tsconfig.json / tsconfig.app.json / tsconfig.node.json
 ```
+
+> **这是示意，不是文件清单。** 树只列到目录与入口文件这一级，不逐个登记资源文件；**新增文件不需要回头改这份文档**。各目录放什么见下方[目录职责](#目录职责)。
 
 ## 路径别名
 
