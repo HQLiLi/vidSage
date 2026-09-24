@@ -11,8 +11,9 @@
 |------|------|--------|
 | [directory-structure.md](./directory-structure.md) | 包结构、按技术分层、类与文件命名 | 新增模块或类时 |
 | [provider-pattern.md](./provider-pattern.md) | Provider 抽象 + 条件装配 + record 配置属性 | 新增或切换本地/云端实现时 |
-| [error-handling.md](./error-handling.md) | 卫语句、异常类型选择、错误信息写法 | 写任何校验与失败路径时 |
-| [quality-guidelines.md](./quality-guidelines.md) | 契约设计、注释要求、测试写法、依赖原则 | 写任何代码前 |
+| [error-handling.md](./error-handling.md) | 卫语句、异常类型选择、错误信息写法与语言 | 写任何校验与失败路径时 |
+| [quality-guidelines.md](./quality-guidelines.md) | 契约设计、注释要求、测试写法、依赖原则、主流选型 | 写任何代码前 |
+| [logging-guidelines.md](./logging-guidelines.md) | 日志选型、级别分层、脱敏红线 | 写任何日志语句前 |
 
 ---
 
@@ -21,7 +22,8 @@
 以下模板文件**已删除**，因为代码库中还没有对应实现。相应功能落地后再重建：
 
 - **`database-guidelines.md`** —— `backend/pom.xml` 目前没有任何持久化依赖（无 MyBatis-Plus、无 JPA、无 Redis starter），也不存在实体或 Repository 代码。主 PRD 规划的 MyBatis-Plus + Redis/pgvector 尚未动工。
-- **`logging-guidelines.md`** —— 现有全部源码中没有一条日志语句，尚未形成可依据的约定。
+
+`logging-guidelines.md` 已于 2026-09-24 随日志功能落地而重建。
 
 > 不要在功能落地前凭空补这些规范。子 agent 会照着规范写代码，写了不存在的模式比不写更糟。
 

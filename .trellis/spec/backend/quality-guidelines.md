@@ -33,7 +33,29 @@
 
 ---
 
-## 二、注释要求（项目级硬性要求）
+## 二、实现方式选当前主流（项目级硬性要求）
+
+「一」解决**要不要造轮子**，本条解决**走哪条路线**：实现任何功能，先确认**当前**的主流做法并跟随它，不用已经过时的旧主流。项目所有者的明确规定。
+
+已有代码的体现：
+
+- **结构化日志用 Spring Boot 内核内置的 structured logging**，不引 `logstash-logback-encoder`（Boot 3.4 起内核吸收了该能力，见 [logging-guidelines.md](./logging-guidelines.md)）
+- **OpenAPI 文档引入时用 `springdoc-openapi`**，不用已停更的 `springfox`
+- **Java 21 现代写法优先**（record / sealed / 模式匹配 / `getFirst()`），不沿用旧惯用（见下文 Java 21 节）
+
+### 判断标准
+
+| 场景 | 做法 |
+|---|---|
+| 框架内核已内置同类能力 | 用内置，不引第三方插件 |
+| 旧方案已停更、官方有新替代 | 用新替代，即使旧方案「还能用」 |
+| 新旧都在维护、新方案尚不稳定 | 用旧主流，在注释或 PRD 里记录评估结论 |
+
+> 与「一」的组合判断顺序：先问有没有现成轮子（没有→才允许自己写，注释说明理由）；有轮子→再选当前主流的那个、按当前主流的用法用。
+
+---
+
+## 三、注释要求（项目级硬性要求）
 
 **每个函数/方法都要写注释。**
 
@@ -77,21 +99,22 @@ public record TranscriptionCommand(AudioSource source, String language) {
 
 ---
 
-## 三、契约设计
+## 四、契约设计
 
 - 对外契约（`Command` / `Result` / 子结构）**一律 `record`**，见 [provider-pattern.md](./provider-pattern.md)
 - 时间字段带单位后缀（`beginTimeMs`），用 `long`
 - 集合字段不返回 `null`，用 `List.of()`
 
-## 四、Lombok 的使用边界
+## 五、Lombok 的使用边界
 
 `pom.xml` 引入了 Lombok（`optional`，已从 boot jar 排除），但**现有契约类一个都没用**。
 
 - 契约类（`record`）：**不用 Lombok**
 - 未来的实体类：主 PRD 规定用普通类 + `@Getter` / `@Setter`
+- 日志字段：用 `@Slf4j` 生成 `log`，当前唯一在用的注解（见 [logging-guidelines.md](./logging-guidelines.md)）
 - `@Data` 慎用——它会生成 `equals`/`hashCode`/`toString`，对可变实体往往不是想要的语义
 
-## 五、Java 21 语言特性
+## 六、Java 21 语言特性
 
 `pom.xml` 设 `java.version=21`，可以用现代 API：
 
@@ -99,7 +122,7 @@ public record TranscriptionCommand(AudioSource source, String language) {
 - `record`、`sealed`、模式匹配、文本块
 - **虚拟线程已全局开启**：`application.yml` 里 `spring.threads.virtual.enabled: true`。写阻塞式 IO 时不需要自己搞线程池。
 
-## 六、测试
+## 七、测试
 
 ### 工具与风格
 
@@ -157,7 +180,7 @@ var file = new DashScopeAsrProvider.TranscriptionFile(
         List.of(...));
 ```
 
-## 七、依赖管理
+## 八、依赖管理
 
 - 版本号统一在 `pom.xml`；Spring AI 通过 `spring-ai-bom` 在 `dependencyManagement` 里导入，**单个依赖不写版本**
 - 引入会传递冲突依赖的 SDK 时，**显式 `<exclusion>` 并在注释里写明原因**：
@@ -172,7 +195,7 @@ var file = new DashScopeAsrProvider.TranscriptionFile(
 
 - 仅编译期使用的工具（Lombok）标 `optional` 并从 boot jar 排除
 
-## 八、反模式清单
+## 九、反模式清单
 
 | 不要做 | 依据 |
 |---|---|
@@ -183,6 +206,7 @@ var file = new DashScopeAsrProvider.TranscriptionFile(
 | 测试方法命名为 `testXxx` | 现有命名为行为描述式 |
 | Provider 构造函数里 `new` 出依赖 | 必须构造函数注入，否则不可测 |
 | 引入依赖时不排除冲突的日志实现 | pom 已有先例注释 |
+| 用已停更的旧方案实现新功能 | 「实现方式选当前主流」要求 |
 
 
 
