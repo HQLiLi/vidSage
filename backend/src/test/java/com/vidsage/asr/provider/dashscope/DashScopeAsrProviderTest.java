@@ -1,12 +1,20 @@
-package com.vidsage.asr;
+package com.vidsage.asr.provider.dashscope;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.vidsage.asr.model.AudioSource;
+import com.vidsage.asr.model.TranscriptionCommand;
+import com.vidsage.asr.model.TranscriptionResult;
+import com.vidsage.asr.model.TranscriptionSegment;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
+/**
+ * DashScopeAsrProvider 的纯单元测试：不起 Spring 容器，
+ * 映射逻辑直接调包级 static 方法，校验路径直接 new 被测对象。
+ */
 class DashScopeAsrProviderTest {
 
     private static final String MODEL = "qwen-audio-3.1-asr-flash-filetrans";
@@ -43,14 +51,29 @@ class DashScopeAsrProviderTest {
         var provider = new DashScopeAsrProvider(
                 RestClient.builder(), new DashScopeProperties("", MODEL));
         assertThrows(IllegalStateException.class,
-                () -> provider.transcribe(new TranscriptionCommand("https://example.com/audio.mp3", null)));
+                () -> provider.transcribe(command(new AudioSource.AudioUrl("https://example.com/audio.mp3"))));
     }
 
     @Test
-    void requiresAudioUrl() {
+    void rejectsLocalFilePath() {
         var provider = new DashScopeAsrProvider(
                 RestClient.builder(), new DashScopeProperties("test-key", MODEL));
         assertThrows(IllegalArgumentException.class,
-                () -> provider.transcribe(new TranscriptionCommand("", null)));
+                () -> provider.transcribe(command(new AudioSource.AudioFilePath("F:/audio/sample.mp3"))));
+    }
+
+    @Test
+    void requiresAudioUrlValue() {
+        var provider = new DashScopeAsrProvider(
+                RestClient.builder(), new DashScopeProperties("test-key", MODEL));
+        assertThrows(IllegalArgumentException.class,
+                () -> provider.transcribe(command(new AudioSource.AudioUrl(""))));
+    }
+
+    /**
+     * 组装最小合法命令，避免每个用例重复构造。
+     */
+    private static TranscriptionCommand command(AudioSource source) {
+        return new TranscriptionCommand(source, null);
     }
 }
