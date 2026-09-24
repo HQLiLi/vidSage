@@ -3,6 +3,13 @@ package com.vidsage.controller;
 import com.vidsage.service.TranscriptionService;
 import com.vidsage.model.asr.AudioSource;
 import com.vidsage.model.asr.TranscriptionResult;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.media.SchemaProperty;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -19,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  * （虚拟线程已全局开启，同步阻塞等待不占用平台线程）。
  */
 @Slf4j
+@Tag(name = "ASR 语音转写", description = "音频 URL 或本地文件 → 句级转写结果（同步返回）")
 @RestController
 @RequestMapping("/api/asr")
 public class AsrController {
@@ -39,8 +47,27 @@ public class AsrController {
      * @return 句级分段与识别出的语种
      * @throws IllegalArgumentException audioUrl 与 audioFilePath 都传、都不传或为空白（映射为 400）
      */
+    @Operation(summary = "发起一次转写",
+            description = "同步执行：audioUrl 与 audioFilePath 恰好传一个，返回句级分段与识别出的语种")
+    @ApiResponse(
+            responseCode = "400",
+            description = "参数不合法：audioUrl 与 audioFilePath 都传、都不传或为空白",
+            content = @Content(
+                    mediaType = "application/json",
+                    schemaProperties = @SchemaProperty(
+                            name = "error",
+                            schema = @Schema(
+                                    type = "string",
+                                    description = "中文错误信息：说明缺了什么、怎么补")),
+                    examples = @ExampleObject(
+                            value = "{\"error\": \"缺少音频来源：请传 audioUrl（公网可访问的音频 URL）"
+                                    + "或 audioFilePath（服务端可读的本地音频文件路径）\"}")))
     @PostMapping("/transcriptions")
-    public TranscriptionResult transcribe(@RequestBody TranscriptionRequest request) {
+    public TranscriptionResult transcribe(
+            @RequestBody
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "转写请求体：audioUrl 与 audioFilePath 恰好传一个，language 可选")
+            TranscriptionRequest request) {
         boolean hasUrl = StringUtils.hasText(request.audioUrl());
         boolean hasPath = StringUtils.hasText(request.audioFilePath());
         if (hasUrl && hasPath) {
@@ -82,6 +109,15 @@ public class AsrController {
      * @param audioFilePath 服务端可读的本地音频文件路径（云端实现会先上传到临时存储）；与 audioUrl 恰好传一个
      * @param language      可选语种提示（如 "zh"）
      */
-    record TranscriptionRequest(String audioUrl, String audioFilePath, String language) {
+    @Schema(description = "转写请求体：audioUrl 与 audioFilePath 恰好传一个")
+    record TranscriptionRequest(
+            @Schema(description = "公网可访问的音频 URL；与 audioFilePath 恰好传一个",
+                    example = "https://example.com/audio/sample.mp3")
+            String audioUrl,
+            @Schema(description = "服务端可读的本地音频文件路径（云端实现会先上传到临时存储）；与 audioUrl 恰好传一个",
+                    example = "/data/audio/sample.mp3")
+            String audioFilePath,
+            @Schema(description = "可选语种提示（如 \"zh\"）", example = "zh")
+            String language) {
     }
 }
