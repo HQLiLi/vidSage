@@ -116,3 +116,25 @@
 - 部署 Qwen3-ASR-0.6B 与 MOSS-Transcribe-Diarize 0.9B，做三模型对比实测
 - 删除冗余 conda 环境 vidsage-asr（约 3.5GB）
 - 创建 start-asr.bat 一键启动脚本（待用户确认）
+
+
+## Session 2: ASR 本地文件上传修复与手动测试
+<!-- trellis-session: v=2 fp=e6a2a8d1319501f4 -->
+
+**Date**: 2026-09-24
+**Task**: ASR 本地文件上传修复与手动测试
+**Branch**: `master`
+
+### Summary
+
+修复 DashScope 云端 ASR 本地文件链路：OSSUtils 上传成功但提交 filetrans 缺少 X-DashScope-OssResourceResolve: enable 头导致 REQUEST_INVALID_FILE_URL_VALUE；buildParam 对 oss:// 来源加头并补单测。实测 sample.wav/sample.m4a/aac 均可本地路径转写，m4a/aac 无需 ffmpeg 预抽 wav（该约束仅适用于本地 funasr-server）。文档同步至 docs/prd/local-model-deployment.md。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8367b36` | feat: ASR 支持本地文件路径上传临时存储转写并修复 oss 解析头 |
+
+### Status
+
+[OK] **Completed**
