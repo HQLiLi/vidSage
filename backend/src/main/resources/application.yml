@@ -24,3 +24,10 @@ vidsage:
   llm:
     # DeepSeek 为首个 LLM 实现；后续如加本地模型，增加对应实现后在此切换
     provider: deepseek
+
+logging:
+  level:
+    root: INFO
+    # 业务包开 DEBUG：转写是秒级外部调用，服务层与 Provider 的中间节点日志
+    # 是定位「卡在哪一步」的关键；线上若嫌吵可单独下调到 INFO
+    com.vidsage: DEBUG

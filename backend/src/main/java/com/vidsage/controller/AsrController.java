@@ -4,6 +4,7 @@ import com.vidsage.service.TranscriptionService;
 import com.vidsage.model.asr.AudioSource;
 import com.vidsage.model.asr.TranscriptionResult;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 语音识别 HTTP 入口：接收音频 URL 或本地文件路径发起同步转写并直接返回结果
  * （虚拟线程已全局开启，同步阻塞等待不占用平台线程）。
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/asr")
 public class AsrController {
@@ -43,16 +45,24 @@ public class AsrController {
         boolean hasPath = StringUtils.hasText(request.audioFilePath());
         if (hasUrl && hasPath) {
             throw new IllegalArgumentException(
-                    "audioUrl and audioFilePath are mutually exclusive: pass exactly one of them");
+                    "audioUrl 与 audioFilePath 不能同时传：请恰好传其中一个");
         }
         if (!hasUrl && !hasPath) {
             throw new IllegalArgumentException(
-                    "audio source is required: pass audioUrl (publicly accessible URL) or audioFilePath (local file readable by the server)");
+                    "缺少音频来源：请传 audioUrl（公网可访问的音频 URL）或 audioFilePath（服务端可读的本地音频文件路径）");
         }
         AudioSource source = hasUrl
                 ? new AudioSource.AudioUrl(request.audioUrl())
                 : new AudioSource.AudioFilePath(request.audioFilePath());
-        return transcriptionService.transcribe(source, request.language());
+        // 入口日志只记「请求形态」：URL 可能带签名查询参数、路径指向用户文件，原值一律不落日志；
+        // 实际使用的音频地址由 Provider 层脱敏后记录
+        log.info("收到转写请求: sourceType={}, language={}",
+                source.getClass().getSimpleName(), request.language());
+        long start = System.currentTimeMillis();
+        TranscriptionResult result = transcriptionService.transcribe(source, request.language());
+        log.info("转写请求完成: segments={}, language={}, cost={}ms",
+                result.segments().size(), result.language(), System.currentTimeMillis() - start);
+        return result;
     }
 
     /**
@@ -61,6 +71,7 @@ public class AsrController {
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleIllegalArgument(IllegalArgumentException e) {
+        log.warn("转写请求参数不合法: {}", e.getMessage());
         return Map.of("error", e.getMessage());
     }
 
