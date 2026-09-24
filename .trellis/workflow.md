@@ -138,6 +138,12 @@ python ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed g
   Editing checklist:
     - When you change a [workflow-state:STATUS] block, also check the
       matching phase's `[required · once]` walkthrough steps for sync
+    - SYNC MARKER: the wrap-up gate text (stop-for-review, per-gate
+      approval, unarchived reminder) in [workflow-state:in_progress],
+      [workflow-state:in_progress-inline], Phase 3.4 and Phase 3.5 is a
+      MIRROR of rules 2 / 3 / 7 in .trellis/spec/guides/git-workflow.md.
+      Change one side, change the other in the same edit. On disagreement
+      the spec file is canonical — fix the mirror here to match it
     - Run `trellis update` after editing to push the new bodies to
       downstream user projects (block-level managed replacement)
     - Full runtime contract:
@@ -229,13 +235,19 @@ Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-bef
      Scope: all of Phase 2 + Phase 3.2-3.4 (status stays 'in_progress' from
      task.py start until task.py archive; only archive flips it). The body
      therefore must cover every required step from implementation through
-     commit, including Phase 3.3 spec update and Phase 3.4 commit. -->
+     commit, including Phase 3.3 spec update and Phase 3.4 commit.
+
+     SYNC MARKER: the "Wrap-up gates (hard)" line below mirrors rules 2/3/7
+     of .trellis/spec/guides/git-workflow.md (改完即停 / 审查期间继续改 /
+     归档由用户发起 + 未归档每轮提醒). The spec is canonical — edit both
+     sides together, never just one. -->
 
 Sub-agent dispatch protocol applies to all platforms and all sub-agents, including native Codex `SubagentStart` context injection with child-side pull fallback, class-2 Gemini/Qoder/Copilot/Reasonix/Trae/Grok/Kimi Code, hook-backed ZCode/Snow, and `trellis-research`: every dispatch prompt starts with `Active task: <task path from task.py current>` before role-specific instructions. On Grok Build, use `spawn_subagent` with `subagent_type` set to the Trellis agent name (e.g. `trellis-implement`). On Kimi Code, dispatch the built-in `coder` / `explore` sub-agent with the matching `.kimi-code/skills/trellis-<role>/SKILL.md` instructions.
 
 [workflow-state:in_progress]
 Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
-Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> STOP for user review (Phase 3.4 gate) -> commit after approval -> `/trellis:finish-work` only when the user asks.
+Wrap-up gates (hard): once the work is done and tests pass, stop and hand it to the user for review; never chain commit -> push -> merge -> archive in one run, and never treat silence as approval. While the task is not archived, end every reply with one line: `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`. Full rules: `.trellis/spec/guides/git-workflow.md`.
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
 Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
 [/workflow-state:in_progress]
@@ -243,10 +255,16 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
 <!-- Per-turn breadcrumb: shown while status='in_progress' when
      codex.dispatch_mode=inline. Codex-only opt-in alternate to
      [workflow-state:in_progress]. The main session edits code directly
-     instead of dispatching sub-agents. -->
+     instead of dispatching sub-agents.
+
+     SYNC MARKER: "Wrap-up gates (hard)" below mirrors the same rules 2/3/7
+     of .trellis/spec/guides/git-workflow.md as the in_progress block above
+     — all three copies (spec, in_progress, in_progress-inline) move
+     together. -->
 
 [workflow-state:in_progress-inline]
-Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> STOP for user review (Phase 3.4 gate) -> commit after approval -> `/trellis:finish-work` only when the user asks.
+Wrap-up gates (hard): once the work is done and tests pass, stop and hand it to the user for review; never chain commit -> push -> merge -> archive in one run, and never treat silence as approval. While the task is not archived, end every reply with one line: `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`. Full rules: `.trellis/spec/guides/git-workflow.md`.
 Do not dispatch implement/check sub-agents in inline mode.
 Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
 [/workflow-state:in_progress-inline]
@@ -601,6 +619,9 @@ Update the docs under `.trellis/spec/` accordingly. Even if the conclusion is "n
 
 **Spec-sync preamble**: before drafting commits, ask: did this task fix a bug or surface non-obvious knowledge that should land in `.trellis/spec/` so future-you (or future-AI) doesn't repeat the mistake? If yes, return to Phase 3.3 first — spec writes belong in the same task's commit batch, not as a forgotten follow-up.
 
+**Review gate (hard)**: this step does not start on its own. When the work is done and tests pass, STOP and report what changed + how it was verified; wait for the user's explicit approval before running any commit. After the commits land, stop again — do not continue into push / merge / archive in the same run. Review feedback loops back to Phase 2.1/2.2, then a fresh 3.4 batch, then stop again. Silence is not approval. Full gates: `.trellis/spec/guides/git-workflow.md`.
+**SYNC MARKER**: this gate paragraph is mirrored in `[workflow-state:in_progress]` and `[workflow-state:in_progress-inline]`, and mirrors rules 2/3/7 of `.trellis/spec/guides/git-workflow.md` (canonical). Change all copies in the same edit.
+
 The AI drives a batched commit of this task's code changes so `/finish-work` can run cleanly afterwards. Goal: produce work commits FIRST, then bookkeeping (archive + journal) commits land after — never interleaved.
 
 **Step-by-step**:
@@ -651,7 +672,13 @@ The AI drives a batched commit of this task's code changes so `/finish-work` can
 
 #### 3.5 Wrap-up reminder
 
-After the above, remind the user they can run `/finish-work` to wrap up (archive the task, record the session).
+Once the work commits have landed, stop and hand control back to the user for review. While the task is not archived, end **every** reply with one short line:
+
+`任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`
+
+Archive only when the user asks for it (`/trellis:finish-work` or an explicit "归档") — never self-archive, never run `task.py archive` on your own, and never read silence as approval. The reminder stops once the task is archived or the user says to drop it.
+
+**SYNC MARKER**: the reminder wording here is mirrored in `[workflow-state:in_progress]` / `[workflow-state:in_progress-inline]` and mirrors rule 7 of `.trellis/spec/guides/git-workflow.md` (canonical). Change all copies in the same edit.
 
 ---
 

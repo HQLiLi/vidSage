@@ -23,7 +23,7 @@ These guides help you **ask the right questions before coding**.
 |-------|---------|-------------|
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
-| [Git Workflow Guide](./git-workflow.md) | 分支工作流硬规则：开分支 → 修改 → 推送 → 审查 → 批准 → 合并 → 删分支 | 任何代码/规范修改动手前 |
+| [Git Workflow Guide](./git-workflow.md) | 分支工作流硬规则：开分支 → 修改 → **停下等审查** → 批准后提交/推送 → 批准后合并 → 删分支；归档由用户发起，未归档期间每轮回复结尾提醒 | 任何代码/规范修改动手前 |
 
 ---
 

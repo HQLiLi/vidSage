@@ -43,12 +43,12 @@ public class AsrController {
     /**
      * 发起一次转写。
      *
-     * @param request 音频来源（audioUrl 与 audioFilePath 恰好传一个）与可选语种提示
+     * @param request 音频来源（audioUrl 与 audioFilePath 只能传一个）与可选语种提示
      * @return 句级分段与识别出的语种
      * @throws IllegalArgumentException audioUrl 与 audioFilePath 都传、都不传或为空白（映射为 400）
      */
     @Operation(summary = "发起一次转写",
-            description = "同步执行：audioUrl 与 audioFilePath 恰好传一个，返回句级分段与识别出的语种")
+            description = "同步执行：audioUrl 与 audioFilePath 只能传一个，返回句级分段与识别出的语种")
     @ApiResponse(
             responseCode = "400",
             description = "参数不合法：audioUrl 与 audioFilePath 都传、都不传或为空白",
@@ -66,7 +66,7 @@ public class AsrController {
     public TranscriptionResult transcribe(
             @RequestBody
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "转写请求体：audioUrl 与 audioFilePath 恰好传一个，language 可选")
+                    description = "转写请求体：audioUrl 与 audioFilePath 只能传一个，language 可选")
             TranscriptionRequest request) {
         boolean hasUrl = StringUtils.hasText(request.audioUrl());
         boolean hasPath = StringUtils.hasText(request.audioFilePath());
@@ -105,16 +105,16 @@ public class AsrController {
     /**
      * 转写请求体。
      *
-     * @param audioUrl      公网可访问的音频 URL；与 audioFilePath 恰好传一个
-     * @param audioFilePath 服务端可读的本地音频文件路径（云端实现会先上传到临时存储）；与 audioUrl 恰好传一个
+     * @param audioUrl      公网可访问的音频 URL；与 audioFilePath 只能传一个
+     * @param audioFilePath 服务端可读的本地音频文件路径（云端实现会先上传到临时存储）；与 audioUrl 只能传一个
      * @param language      可选语种提示（如 "zh"）
      */
-    @Schema(description = "转写请求体：audioUrl 与 audioFilePath 恰好传一个")
+    @Schema(description = "转写请求体：audioUrl 与 audioFilePath 只能传一个")
     record TranscriptionRequest(
-            @Schema(description = "公网可访问的音频 URL；与 audioFilePath 恰好传一个",
+            @Schema(description = "公网可访问的音频 URL；与 audioFilePath 只能传一个",
                     example = "https://example.com/audio/sample.mp3")
             String audioUrl,
-            @Schema(description = "服务端可读的本地音频文件路径（云端实现会先上传到临时存储）；与 audioUrl 恰好传一个",
+            @Schema(description = "服务端可读的本地音频文件路径（云端实现会先上传到临时存储）；与 audioUrl 只能传一个",
                     example = "/data/audio/sample.mp3")
             String audioFilePath,
             @Schema(description = "可选语种提示（如 \"zh\"）", example = "zh")
