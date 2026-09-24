@@ -160,3 +160,25 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: service 层注解回归 @Service
+<!-- trellis-session: v=2 fp=c91230b1aafaab97 -->
+
+**Date**: 2026-09-24
+**Task**: service 层注解回归 @Service
+**Branch**: `refactor/service-annotation`
+
+### Summary
+
+同一会话的第二个任务（承接 09-24-tech-layering）。先把 refactor/tech-layering fast-forward 合入 master（master 前进到 48ae51c），再从 master 开 refactor/service-annotation 做本任务。改动：TranscriptionService 的 @Component → @Service（仅注解+import 两行，零行为改动，mvn test 16/16 绿）。规则由『所有 Spring 组件统一用 @Component』改为『按包选 stereotype』——controller/→@RestController、service/→@Service、provider/→@Component、persistence/→@Repository；DashScopeAsrProvider 保持 @Component 不是遗漏（它不在 service/ 包、不是应用服务）。spec 同步 5 处，并补上原规范缺失的理由（此前 provider-pattern.md 说『见 directory-structure.md』而后者只列规则无解释，是悬空引用）。两处如实标注：@Component 与 @Service 在 Spring 中行为完全等价（javap spring-context:7.0.9 核实，@Service 只是 @AliasFor 特化），故这是可读性选择而非功能差异；@Repository 仅为社区惯例，MyBatis-Plus 下是否触发异常转换未核实，禁止写成收益。另补切面定位提示：用包定位而非注解定位（注解定位漏标时静默失效且不报错）。踩坑记录：task.py create 在已切到特性分支后执行，会把 base_branch 戳成该特性分支本身，导致 archive 因『PR 不能指向自己的分支』被拒；需 task.py set-base-branch <task> master 修正，或在 master 上先建任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bbd27b7` | refactor: service 层注解从 @Component 改为 @Service |
+
+### Status
+
+[OK] **Completed**

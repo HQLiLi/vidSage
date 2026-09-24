@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
+- **Total Sessions**: 4
 - **Last Active**: 2026-09-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~162 | Active |
+| `journal-1.md` | ~184 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-09-24 | service 层注解回归 @Service | `bbd27b7` | `refactor/service-annotation` |
 | 3 | 2026-09-24 | 后端包结构改为技术分层 | `32a9ac5` | `refactor/tech-layering` |
 | 2 | 2026-09-24 | ASR 本地文件上传修复与手动测试 | `8367b36` | `master` |
 | 1 | 2026-09-23 | 本地 ASR 部署与 funasr-server 实测 | - | `master` |
