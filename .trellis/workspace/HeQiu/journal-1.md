@@ -182,3 +182,25 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: 后端接入 springdoc-openapi 接口文档
+<!-- trellis-session: v=2 fp=dcf93692f8ae7ea0 -->
+
+**Date**: 2026-09-24
+**Task**: 后端接入 springdoc-openapi 接口文档
+**Branch**: `dev`
+
+### Summary
+
+调研确认 springdoc-openapi 为 Spring Boot 4 下的主流接口文档方案（knife4j 尚未适配 Boot 4）；引入 springdoc-openapi-starter-webmvc-ui 3.1.1，零配置生成 OpenAPI 3 JSON 与 Swagger UI；16/16 测试全绿，运行时验收 /v3/api-docs 与 /swagger-ui/index.html 均通过；同步更新后端规范技术栈基线。特性分支 feature/springdoc-api-docs 已合入 dev。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8155e31` | feat: 后端接入 springdoc-openapi 接口文档 |
+
+### Status
+
+[OK] **Completed**
