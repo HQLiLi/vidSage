@@ -43,6 +43,7 @@
 现有依赖（`pom.xml`）：
 
 - `spring-boot-starter-web`
+- `springdoc-openapi-starter-webmvc-ui:3.1.1` —— 接口文档（OpenAPI 3 + Swagger UI，零配置）。Boot 4（Framework 7）必须用 springdoc **3.x**，2.x 启动报错；knife4j 尚未适配 Boot 4，故未引入
 - `spring-ai-starter-model-deepseek`
 - `dashscope-sdk-java:2.20.6` —— 已排除 `slf4j-simple`，理由见 pom 内注释（与 Spring Boot 的 Logback 冲突）
 - `lombok`（`optional`，且已从 boot jar 打包中排除）
@@ -60,6 +61,8 @@ mvn test              # 跑测试
 mvn spring-boot:run   # 本地启动
 mvn -q compile        # 仅编译
 ```
+
+本地启动后接口文档：Swagger UI 在 `http://localhost:8080/swagger-ui/index.html`（JSON 在 `/v3/api-docs`）。生产环境若不对外开放文档，需显式关闭 `springdoc.api-docs.enabled` / `springdoc.swagger-ui.enabled`（启动时有 WARN 提示）。
 
 前端命令见 [../frontend/index.md](../frontend/index.md)。
 

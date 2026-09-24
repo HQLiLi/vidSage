@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线与常用命令；新增依赖需同步更新此文档"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "写任何代码前必读：依赖原则与主流选型约定"}
