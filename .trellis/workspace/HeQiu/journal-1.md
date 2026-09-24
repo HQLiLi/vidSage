@@ -226,3 +226,51 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: 收尾门接入会话归档（规则 9）
+<!-- trellis-session: v=2 fp=08904092e03d3fda -->
+
+**Date**: 2026-09-24
+**Task**: 收尾门接入会话归档（规则 9）
+**Branch**: `dev`
+
+### Summary
+
+把 session-archive 会话归档接进 Trellis 收尾门：finish-work 新增 Step 5，固定输出到 session-archives/，每次必写 summary.md 且不重读 transcript；规则正本落 .trellis/spec/guides/git-workflow.md 规则 9，两处平台入口与 workflow.md 镜像同步。trellis-implement + trellis-check 双代理验证，镜像一致性与命令可用性均 PASS。特性分支已合入 dev，并同步发布至 master。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `df3878e` | docs(spec): 分支工作流新增规则 9 —— 归档后同一次执行内做会话归档 |
+| `671ed95` | chore(task): session-archive-on-finish 任务记录 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 8: 归档目录对齐 Trellis traces 约定并给文件夹名加任务短名
+<!-- trellis-session: v=2 fp=bebb41721334c8ff -->
+
+**Date**: 2026-09-24
+**Task**: 归档目录对齐 Trellis traces 约定并给文件夹名加任务短名
+**Branch**: `dev`
+
+### Summary
+
+把会话归档根目录从仓库根的 session-archives/ 改到 .trellis/workspace/HeQiu/traces——正是 session-archive 脚本 find_trellis_traces_dir() 认的 Trellis 项目内候选，也与 AGENTS.md 中 workspace 存放 session traces 的说明一致。归档目录名新增任务短名（<时间戳>-<英文短名>），由脚本新增的 --slug 传入并做 ASCII 安全化；同时修好标题启发式，使它跳过命令展开与框架噪音、取用户真实首句。4 份旧归档连同 index.jsonl 迁移并重写绝对路径，3 份历史遗留的嵌套布局（summary/summary.md）全部平铺——其 meta.json/index 引用本就是断链。trellis-implement + trellis-check 双代理，检查抓出的 2 个缺陷已修并复验。特性分支已合入 dev。
+
+**补记（2026-09-24，任务归档后）**：上面写的"检查抓出的 2 个缺陷"不完整。`/trellis:finish-work` 的 Step 5 实跑时暴露了第 3 个缺陷——`archive_session.py` 里 `info["slug"] = suffix or None` 写在 `main()` 中归档函数返回之后，而 `meta.json` 已在归档函数内部写完，该赋值是死代码，归档产物的 `meta.json` 不含 slug。已改为赋值后显式重写 `meta.json`，重跑验证 `slug = "session-archive-traces-slug"`。该修复改的是不在版本控制内的全局 skill（`C:\Users\14683\.agents\skills\session-archive`），完成于任务归档之后，不在任何提交内；完整经过见本会话归档 `traces/20260924-204921-session-archive-traces-slug/summary.md`。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1335a1f` | docs(spec): 归档目录改到 .trellis/workspace/<dev>/traces，目录名带任务短名 |
+| `4991a8e` | chore(task): session-archive-traces-slug 任务记录 |
+
+### Status
+
+[OK] **Completed**

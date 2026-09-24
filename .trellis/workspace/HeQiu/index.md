@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 8
 - **Last Active**: 2026-09-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~228 | Active |
+| `journal-1.md` | ~274 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-09-24 | 归档目录对齐 Trellis traces 约定并给文件夹名加任务短名 | `1335a1f`, `4991a8e` | `dev` |
+| 7 | 2026-09-24 | 收尾门接入会话归档（规则 9） | `df3878e`, `671ed95` | `dev` |
 | 6 | 2026-09-24 | ASR 接口补 Swagger 中文注解文档 | `45e9686` | `dev` |
 | 5 | 2026-09-24 | 后端接入 springdoc-openapi 接口文档 | `8155e31` | `dev` |
 | 4 | 2026-09-24 | service 层注解回归 @Service | `bbd27b7` | `refactor/service-annotation` |
