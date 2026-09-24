@@ -9,25 +9,28 @@
 
 在方法开头集中校验所有前置条件，**先失败再干活**，不要在业务流程中间零散判空。
 
-参照：`asr/provider/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` —— 前置校验（API key、来源类型、URL 非空）连续排在最前面，之后才是 SDK 调用。
+参照：`asr/provider/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` —— 前置校验（API key、来源非空、URL/路径合法性）连续排在最前面，之后才是 SDK 调用。
 
 ```java
 if (!StringUtils.hasText(properties.apiKey())) {
     throw new IllegalStateException("Missing DashScope API key: set vidsage.asr.dashscope.api-key or DASHSCOPE_API_KEY");
 }
-if (!(command.source() instanceof AudioSource.AudioUrl audioUrl)) {
+if (source == null) {
     throw new IllegalArgumentException(
-            "DashScope cloud transcription requires a publicly accessible audio URL (AudioUrl); "
-                    + "for local files upload them first or pass an AudioUrl. Got: "
-                    + (command.source() == null ? "null" : command.source().getClass().getSimpleName()));
+            "audio source must not be null: pass AudioUrl (public URL) or AudioFilePath (local file)");
 }
+// AudioSource 是 sealed 接口，switch 穷尽分派；各分支再校验该来源取值本身的合法性
+return switch (source) {
+    case AudioSource.AudioUrl url -> requirePublicUrl(url);                  // URL 为空 -> IAE
+    case AudioSource.AudioFilePath local -> uploadToTemporaryStorage(local); // 文件不存在/不可读 -> IAE
+};
 ```
 
 ## 异常类型选择
 
 | 情况 | 异常 | 现有例子 |
 |---|---|---|
-| 调用方传参不合法 | `IllegalArgumentException` | 来源类型不支持（本地路径传给云端实现）、URL 为空 |
+| 调用方传参不合法 | `IllegalArgumentException` | URL 为空、本地文件不存在或不可读、Controller 卫语句（audioUrl 与 audioFilePath 都传/都不传） |
 | 配置缺失/环境不对 | `IllegalStateException` | API key 未配置 |
 | 外部服务未按预期返回 | `IllegalStateException` | DashScope 未返回 task id、子任务失败、成功但无下载地址 |
 
@@ -58,7 +61,7 @@ if (!StringUtils.hasText(command.language())) {
 "Missing DashScope API key: set vidsage.asr.dashscope.api-key or DASHSCOPE_API_KEY"
 
 // 好：说清了触发条件与解决办法
-"DashScope cloud transcription requires a publicly accessible audio URL (AudioUrl); for local files upload them first or pass an AudioUrl. Got: AudioFilePath"
+"Local audio file does not exist: " + path.toAbsolutePath() + "; check the path or pass an audioUrl instead"
 
 // 坏：只陈述现象，调用方不知道下一步做什么
 "Invalid parameter"

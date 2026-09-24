@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.vidsage.asr.TranscriptionService;
+import com.vidsage.asr.model.AudioSource;
 import com.vidsage.asr.model.TranscriptionResult;
 import com.vidsage.asr.model.TranscriptionSegment;
 import java.util.List;
@@ -31,10 +32,10 @@ class AsrControllerTest {
     private TranscriptionService transcriptionService;
 
     @Test
-    void returnsTranscriptionResult() throws Exception {
+    void returnsTranscriptionResultForAudioUrl() throws Exception {
         var result = new TranscriptionResult(
                 List.of(new TranscriptionSegment(0, 1440, "欢迎使用阿里云。")), "zh");
-        when(transcriptionService.transcribe("https://example.com/audio.mp3", "zh"))
+        when(transcriptionService.transcribe(new AudioSource.AudioUrl("https://example.com/audio.mp3"), "zh"))
                 .thenReturn(result);
 
         mockMvc.perform(post("/api/asr/transcriptions")
@@ -50,12 +51,40 @@ class AsrControllerTest {
     }
 
     @Test
-    void returnsBadRequestWhenAudioUrlMissing() throws Exception {
+    void returnsTranscriptionResultForLocalFilePath() throws Exception {
+        var result = new TranscriptionResult(
+                List.of(new TranscriptionSegment(0, 1440, "欢迎使用阿里云。")), "zh");
+        when(transcriptionService.transcribe(new AudioSource.AudioFilePath("F:/audio/sample.mp3"), null))
+                .thenReturn(result);
+
+        mockMvc.perform(post("/api/asr/transcriptions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"audioFilePath":"F:/audio/sample.mp3"}"""))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.language").value("zh"))
+                .andExpect(jsonPath("$.segments[0].text").value("欢迎使用阿里云。"));
+    }
+
+    @Test
+    void returnsBadRequestWhenBothSourcesGiven() throws Exception {
+        mockMvc.perform(post("/api/asr/transcriptions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"audioUrl":"https://example.com/audio.mp3","audioFilePath":"F:/audio/sample.mp3"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(
+                        "audioUrl and audioFilePath are mutually exclusive: pass exactly one of them"));
+    }
+
+    @Test
+    void returnsBadRequestWhenNoSourceGiven() throws Exception {
         mockMvc.perform(post("/api/asr/transcriptions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"language\":\"zh\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(
-                        "audioUrl must not be blank: pass a publicly accessible audio URL for cloud transcription"));
+                        "audio source is required: pass audioUrl (publicly accessible URL) or audioFilePath (local file readable by the server)"));
     }
 }

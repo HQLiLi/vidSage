@@ -54,6 +54,7 @@ VidSage 管线里 ASR、翻译、向量化都要调模型。云端 API 按量计
 
 ## 实测约束（2026-09-23）
 
+- **云端 DashScope 本地文件上传：oss:// 临时地址必须带 Header X-DashScope-OssResourceResolve: enable**（2026-09-24 实测，缺失时 filetrans 报 REQUEST_INVALID_FILE_URL_VALUE FAILED；已在 DashScopeAsrProvider.buildParam 对 oss:// 来源加头修复）。百炼临时存储免费、48 小时自动清理；sample.wav / sample.m4a 本地路径转写均通过。
 - **ffmpeg 兜底解码路径会丢失时间戳**（`duration` / `end` 返回 0.0）→ Java 侧必须抽 16k wav 再上传，不能直接送原始 m4a。
 - 已就位模型：SenseVoice-Small（936 MB）、Fun-ASR-Nano-2512（2.13 GB），均在 `F:\app_soft\ai-cache\modelscope`。
 - 环境：`asr-service/.venv`（uv 管理，Python 3.12.14）+ 系统级 ffmpeg（`F:\app_soft\ffmpeg\bin`）。

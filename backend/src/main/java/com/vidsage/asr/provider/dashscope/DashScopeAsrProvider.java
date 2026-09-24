@@ -4,6 +4,9 @@ import com.alibaba.dashscope.audio.asr.transcription.Transcription;
 import com.alibaba.dashscope.audio.asr.transcription.TranscriptionParam;
 import com.alibaba.dashscope.audio.asr.transcription.TranscriptionQueryParam;
 import com.alibaba.dashscope.common.TaskStatus;
+import com.alibaba.dashscope.exception.ApiException;
+import com.alibaba.dashscope.exception.NoApiKeyException;
+import com.alibaba.dashscope.utils.OSSUtils;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.vidsage.asr.ASRProvider;
@@ -12,7 +15,11 @@ import com.vidsage.asr.model.TranscriptionCommand;
 import com.vidsage.asr.model.TranscriptionResult;
 import com.vidsage.asr.model.TranscriptionSegment;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -26,8 +33,15 @@ import org.springframework.web.client.RestClient;
  * 类完成；任务成功后 SDK 返回结果 JSON 的下载地址（24 小时有效），
  * 本类再下载该 JSON 并映射为统一的转写结果契约（句级毫秒时间戳）。
  *
+ * <p>音频来源两种都支持：
+ * <ul>
+ *   <li>{@link AudioSource.AudioUrl}：公网可访问地址，直接提交；</li>
+ *   <li>{@link AudioSource.AudioFilePath}：本地文件，先经 SDK 的
+ *       {@link OSSUtils#upload} 上传到百炼临时存储得到 oss:// 地址再提交
+ *       （该地址可直接填入 fileUrls）。</li>
+ * </ul>
+ *
  * <p>SDK 类型只出现在本类内部，对外签名仅使用 asr 包的契约 record。
- * 输入仅支持 {@link AudioSource.AudioUrl}（异步转写接口要求公网可访问地址）。
  */
 @Component
 @ConditionalOnProperty(name = "vidsage.asr.provider", havingValue = "cloud")
@@ -37,39 +51,45 @@ public class DashScopeAsrProvider implements ASRProvider {
     private final RestClient restClient;
     private final DashScopeProperties properties;
     private final Transcription transcription;
+    private final TemporaryFileUploader pathUploader;
 
     /**
      * 依赖全部走构造函数注入，保证可测试性（见 quality-guidelines）。
+     * 本地文件上传默认使用 SDK 内置的 {@link OSSUtils}。
      */
+    @Autowired
     public DashScopeAsrProvider(RestClient.Builder restClientBuilder, DashScopeProperties properties) {
-        this.restClient = restClientBuilder.build();
-        this.properties = properties;
-        this.transcription = new Transcription();
+        this(restClientBuilder, properties, OSSUtils::upload);
     }
 
     /**
-     * 执行一次云端异步转写：提交 DashScope 任务并阻塞等待完成
-     * （虚拟线程已全局开启，阻塞轮询不占用平台线程），
-     * 随后下载结果 JSON 并映射为统一契约。
+     * 包级可见：测试注入假的 {@link TemporaryFileUploader}，单测不依赖网络与真实 key。
+     */
+    DashScopeAsrProvider(RestClient.Builder restClientBuilder, DashScopeProperties properties,
+            TemporaryFileUploader pathUploader) {
+        this.restClient = restClientBuilder.build();
+        this.properties = properties;
+        this.transcription = new Transcription();
+        this.pathUploader = pathUploader;
+    }
+
+    /**
+     * 执行一次云端异步转写：把音频来源解析为 filetrans 可接受的地址
+     * （URL 直接用；本地文件先上传到百炼临时存储），随后提交 DashScope
+     * 任务并阻塞等待完成（虚拟线程已全局开启，阻塞轮询不占用平台线程），
+     * 最后下载结果 JSON 并映射为统一契约。
      *
-     * @throws IllegalArgumentException 来源不是 {@link AudioSource.AudioUrl} 或 URL 为空
+     * @throws IllegalArgumentException URL/路径为空或本地文件不存在、不可读
+     * @throws IllegalStateException 配置缺失、上传失败或外部服务未按预期返回
      */
     @Override
     public TranscriptionResult transcribe(TranscriptionCommand command) {
         if (!StringUtils.hasText(properties.apiKey())) {
             throw new IllegalStateException("Missing DashScope API key: set vidsage.asr.dashscope.api-key or DASHSCOPE_API_KEY");
         }
-        if (!(command.source() instanceof AudioSource.AudioUrl audioUrl)) {
-            throw new IllegalArgumentException(
-                    "DashScope cloud transcription requires a publicly accessible audio URL (AudioUrl); "
-                            + "for local files upload them first or pass an AudioUrl. Got: "
-                            + (command.source() == null ? "null" : command.source().getClass().getSimpleName()));
-        }
-        if (!StringUtils.hasText(audioUrl.value())) {
-            throw new IllegalArgumentException("audioUrl value must not be blank");
-        }
+        String fileUrl = resolveCloudAudioUrl(command.source());
 
-        TranscriptionParam param = buildParam(command, audioUrl.value());
+        TranscriptionParam param = buildParam(command, properties, fileUrl);
         var submitted = transcription.asyncCall(param);
         if (submitted.getTaskId() == null) {
             throw new IllegalStateException("DashScope did not return a task id");
@@ -79,7 +99,14 @@ public class DashScopeAsrProvider implements ASRProvider {
 
         var taskResults = finished.getResults();
         if (!TaskStatus.SUCCEEDED.equals(finished.getTaskStatus()) || taskResults.isEmpty()) {
-            throw new IllegalStateException("DashScope task did not succeed: " + finished.getTaskStatus());
+            String reason = taskResults.stream()
+                    .map(result -> result.getMessage())
+                    .filter(StringUtils::hasText)
+                    .findFirst()
+                    .orElse("");
+            String output = finished.getOutput() == null ? "" : finished.getOutput().toString();
+            throw new IllegalStateException("DashScope task did not succeed: " + finished.getTaskStatus()
+                    + (StringUtils.hasText(output) ? ", output: " + output : ""));
         }
         var taskResult = taskResults.getFirst();
         if (!TaskStatus.SUCCEEDED.equals(taskResult.getSubTaskStatus())) {
@@ -97,15 +124,83 @@ public class DashScopeAsrProvider implements ASRProvider {
     }
 
     /**
+     * 把统一的音频来源解析为 DashScope filetrans 接口可接受的音频地址：
+     * URL 原样返回；本地文件先上传到百炼临时存储，换成返回的 oss:// 地址。
+     *
+     * <p>包级可见：单元测试可直接调用，无需走网络提交。
+     *
+     * @throws IllegalArgumentException 来源为 null、URL/路径为空或本地文件不存在、不可读
+     * @throws IllegalStateException 上传到临时存储失败
+     */
+    String resolveCloudAudioUrl(AudioSource source) {
+        if (source == null) {
+            throw new IllegalArgumentException(
+                    "audio source must not be null: pass AudioUrl (public URL) or AudioFilePath (local file)");
+        }
+        return switch (source) {
+            case AudioSource.AudioUrl url -> requirePublicUrl(url);
+            case AudioSource.AudioFilePath local -> uploadToTemporaryStorage(local);
+        };
+    }
+
+    /**
+     * 校验 URL 来源非空后原样返回；空值时说明「缺什么、怎么补」。
+     */
+    private String requirePublicUrl(AudioSource.AudioUrl url) {
+        if (!StringUtils.hasText(url.value())) {
+            throw new IllegalArgumentException(
+                    "audioUrl value must not be blank: pass a publicly accessible audio URL");
+        }
+        return url.value();
+    }
+
+    /**
+     * 校验本地文件存在且可读后，经 SDK 的 {@link OSSUtils} 上传到百炼临时存储，
+     * 返回可填入 fileUrls 的 oss:// 地址。上传失败统一包装为 {@link IllegalStateException}。
+     */
+    private String uploadToTemporaryStorage(AudioSource.AudioFilePath local) {
+        if (!StringUtils.hasText(local.value())) {
+            throw new IllegalArgumentException(
+                    "audioFilePath value must not be blank: pass an absolute or relative path to a local audio file");
+        }
+        Path path = Path.of(local.value());
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalArgumentException("Local audio file does not exist: " + path.toAbsolutePath()
+                    + "; check the path or pass an audioUrl instead");
+        }
+        if (!Files.isReadable(path)) {
+            throw new IllegalArgumentException("Local audio file is not readable: " + path.toAbsolutePath()
+                    + "; grant read permission to the service account or pass an audioUrl instead");
+        }
+        try {
+            String ossUrl = pathUploader.upload(
+                    properties.model(), path.toAbsolutePath().toString(), properties.apiKey());
+            if (!StringUtils.hasText(ossUrl)) {
+                throw new IllegalStateException(
+                        "DashScope upload returned no oss:// url for file: " + path.toAbsolutePath());
+            }
+            return ossUrl;
+        } catch (NoApiKeyException | ApiException e) {
+            throw new IllegalStateException(
+                    "Failed to upload local audio file to DashScope temporary storage: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * 组装提交参数；language_hints 仅在显式指定语种时传递，
      * 语种不确定或多语种混合时留空由模型自动判断。
      */
-    private TranscriptionParam buildParam(TranscriptionCommand command, String audioUrl) {
+    static TranscriptionParam buildParam(TranscriptionCommand command, DashScopeProperties properties, String audioUrl) {
         var builder = TranscriptionParam.builder()
                 .model(properties.model())
                 .apiKey(properties.apiKey())
                 .fileUrls(List.of(audioUrl))
                 .channelId(List.of(0));
+        if (audioUrl.startsWith("oss://")) {
+            // 百炼临时存储的 oss:// 地址必须显式开启解析开关，
+            // 否则 filetrans 服务端报 REQUEST_INVALID_FILE_URL_VALUE（见 docs/prd/local-model-deployment.md）。
+            builder.headers(Map.of("X-DashScope-OssResourceResolve", "enable"));
+        }
         if (StringUtils.hasText(command.language())) {
             builder.parameter("language_hints", List.of(command.language()));
         }
@@ -159,5 +254,26 @@ public class DashScopeAsrProvider implements ASRProvider {
                 @JsonProperty("end_time") Long endTime,
                 String text) {
         }
+    }
+
+    /**
+     * 本地文件上传策略：与 {@link OSSUtils#upload} 的方法签名对齐
+     * （model, filePath, apiKey -> oss:// 地址），独立成函数式接口以便
+     * 单元测试注入假实现，不发起真实网络请求。
+     */
+    @FunctionalInterface
+    interface TemporaryFileUploader {
+
+        /**
+         * 上传本地文件到百炼临时存储。
+         *
+         * @param model    目标模型名（getPolicy 请求需要）
+         * @param filePath 本地文件绝对路径
+         * @param apiKey   DashScope API key
+         * @return oss:// 临时地址
+         * @throws NoApiKeyException API key 缺失
+         * @throws ApiException      上传接口调用失败（RuntimeException）
+         */
+        String upload(String model, String filePath, String apiKey) throws NoApiKeyException;
     }
 }
