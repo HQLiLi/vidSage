@@ -138,3 +138,25 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: 后端包结构改为技术分层
+<!-- trellis-session: v=2 fp=502d5d72f73593a8 -->
+
+**Date**: 2026-09-24
+**Task**: 后端包结构改为技术分层
+**Branch**: `refactor/tech-layering`
+
+### Summary
+
+把后端包结构从 package-by-feature 改为扁平技术分层（controller/service/model/provider）。9 个主文件 + 2 个测试文件搬包，git 全部识别为 rename；零逻辑改动——.java diff 只含 package/import 行，mvn test 16/16 绿，契约字段/sealed 层次/类名(ASRProvider 全大写)/配置键/REST 路径均未变。重写 directory-structure.md（新增顶层分包判据、model/domain/persistence 选择标准、持久化三层职责与可见性规则、不预建空目录硬规则），并修 provider-pattern/quality-guidelines/error-handling 三份 spec 的 13 行失效路径 + index.md 索引描述；同步 MVP-3 的 implement.jsonl 与 handoff.md 落点，避免子 agent 按旧约定建 com.vidsage.llm。两条贯穿本会话的纠正值得留意：(1) 我曾断言『禁用 repository』『Mapper 与 Repository 二选一』，均错误——MP 自己就用 CrudRepository；正确口径是三层共存、受限的是可见性（service/ 不许直接依赖 Mapper）。(2) 我写的 Gate A 检查命令 -v 模式漏了 diff 的 +/- 前缀，导致一条都滤不掉、检查静默失效。另：.codex/config.toml 是会话前就存在的非本任务改动（codex 沙箱放开网络访问），经用户确认未随本次提交带入。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `32a9ac5` | refactor: 后端包结构改为技术分层（controller/service/model/provider） |
+
+### Status
+
+[OK] **Completed**
