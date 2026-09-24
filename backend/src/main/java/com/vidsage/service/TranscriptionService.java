@@ -4,6 +4,7 @@ import com.vidsage.model.asr.AudioSource;
 import com.vidsage.model.asr.TranscriptionCommand;
 import com.vidsage.model.asr.TranscriptionResult;
 import com.vidsage.provider.asr.ASRProvider;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -12,6 +13,7 @@ import org.springframework.util.StringUtils;
  * 把「音频来源 + 可选语种」组装为统一转写命令后委托当前配置的 Provider
  * （Spring 按 vidsage.asr.provider 自动装配唯一的实现 Bean）。
  */
+@Slf4j
 @Service
 public class TranscriptionService {
 
@@ -40,8 +42,15 @@ public class TranscriptionService {
     public TranscriptionResult transcribe(AudioSource source, String language) {
         if (source == null) {
             throw new IllegalArgumentException(
-                    "audio source must not be null: pass either audioUrl or audioFilePath");
+                    "音频来源不能为空：请传 audioUrl 或 audioFilePath");
         }
-        return asrProvider.transcribe(new TranscriptionCommand(source, language));
+        // 服务层节点用 DEBUG：与 Controller 的 INFO 分层，用于区分「框架/编排耗时」与「Provider 实际耗时」
+        log.debug("委托转写: provider={}, language={}", asrProvider.getClass().getSimpleName(), language);
+        long start = System.currentTimeMillis();
+        TranscriptionResult result = asrProvider.transcribe(new TranscriptionCommand(source, language));
+        log.debug("转写返回: provider={}, segments={}, cost={}ms",
+                asrProvider.getClass().getSimpleName(), result.segments().size(),
+                System.currentTimeMillis() - start);
+        return result;
     }
 }

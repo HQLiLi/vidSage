@@ -75,7 +75,7 @@ class AsrControllerTest {
                                 {"audioUrl":"https://example.com/audio.mp3","audioFilePath":"F:/audio/sample.mp3"}"""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(
-                        "audioUrl and audioFilePath are mutually exclusive: pass exactly one of them"));
+                        "audioUrl 与 audioFilePath 不能同时传：请恰好传其中一个"));
     }
 
     @Test
@@ -85,6 +85,6 @@ class AsrControllerTest {
                         .content("{\"language\":\"zh\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(
-                        "audio source is required: pass audioUrl (publicly accessible URL) or audioFilePath (local file readable by the server)"));
+                        "缺少音频来源：请传 audioUrl（公网可访问的音频 URL）或 audioFilePath（服务端可读的本地音频文件路径）"));
     }
 }

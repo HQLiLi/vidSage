@@ -13,11 +13,11 @@
 
 ```java
 if (!StringUtils.hasText(properties.apiKey())) {
-    throw new IllegalStateException("Missing DashScope API key: set vidsage.asr.dashscope.api-key or DASHSCOPE_API_KEY");
+    throw new IllegalStateException("缺少 DashScope API key：请设置 vidsage.asr.dashscope.api-key 或环境变量 DASHSCOPE_API_KEY");
 }
 if (source == null) {
     throw new IllegalArgumentException(
-            "audio source must not be null: pass AudioUrl (public URL) or AudioFilePath (local file)");
+            "音频来源不能为空：请传 AudioUrl（公网 URL）或 AudioFilePath（本地文件）");
 }
 // AudioSource 是 sealed 接口，switch 穷尽分派；各分支再校验该来源取值本身的合法性
 return switch (source) {
@@ -32,7 +32,7 @@ return switch (source) {
 |---|---|---|
 | 调用方传参不合法 | `IllegalArgumentException` | URL 为空、本地文件不存在或不可读、Controller 卫语句（audioUrl 与 audioFilePath 都传/都不传） |
 | 配置缺失/环境不对 | `IllegalStateException` | API key 未配置 |
-| 外部服务未按预期返回 | `IllegalStateException` | DashScope 未返回 task id、子任务失败、成功但无下载地址 |
+| 外部服务未按预期返回 | `IllegalStateException` | DashScope 未返回 taskId、子任务失败、成功但无 transcriptionUrl |
 
 **判定标准：错在调用方 → `IllegalArgumentException`；错在环境或外部系统 → `IllegalStateException`。**
 
@@ -58,21 +58,47 @@ if (!StringUtils.hasText(command.language())) {
 
 ```java
 // 好：说清了配置项名和环境变量名
-"Missing DashScope API key: set vidsage.asr.dashscope.api-key or DASHSCOPE_API_KEY"
+"缺少 DashScope API key：请设置 vidsage.asr.dashscope.api-key 或环境变量 DASHSCOPE_API_KEY"
 
 // 好：说清了触发条件与解决办法
-"Local audio file does not exist: " + path.toAbsolutePath() + "; check the path or pass an audioUrl instead"
+"本地音频文件不存在：" + path.toAbsolutePath() + "；请检查路径，或改传 audioUrl"
 
 // 坏：只陈述现象，调用方不知道下一步做什么
-"Invalid parameter"
+"参数不合法"
 ```
 
 对外部系统失败，**把实际状态附上**：
 
 ```java
-throw new IllegalStateException("DashScope task did not succeed: " + finished.getTaskStatus());
-throw new IllegalStateException("DashScope subtask failed: " + taskResult.getMessage());
+throw new IllegalStateException("DashScope 任务未成功：" + finished.getTaskStatus());
+throw new IllegalStateException("DashScope 子任务失败：" + taskResult.getMessage());
 ```
+
+## 错误信息语言：中文为主，专有名词保留原文
+
+**项目级硬性要求**：异常消息与日志消息一律用中文书写，以下「专有名词」保留英文原样、不翻译：
+
+| 类别 | 例子 |
+|---|---|
+| 配置键 | `vidsage.asr.dashscope.api-key` |
+| 环境变量名 | `DASHSCOPE_API_KEY` |
+| 请求/契约字段名 | `audioUrl`、`audioFilePath`、`transcriptionUrl`、`transcripts` |
+| 类名 / 类型名 | `AudioUrl`、`AudioFilePath` |
+| 外部系统与产品名 | `DashScope`、`OSS`、`DeepSeek` |
+| 外部返回的状态值与错误码 | `taskId`、`output`、`REQUEST_INVALID_FILE_URL_VALUE` |
+
+```java
+// 好：中文说明 + 保留配置键与环境变量名
+"缺少 DashScope API key：请设置 vidsage.asr.dashscope.api-key 或环境变量 DASHSCOPE_API_KEY"
+
+// 好：中文说明 + 保留字段名
+"本地音频文件不存在：" + path.toAbsolutePath() + "；请检查路径，或改传 audioUrl"
+
+// 坏：整句英文（违背本条）
+"Local audio file does not exist: ..."
+```
+
+理由：这些消息经 Controller 的 `{ "error": message }` 直接返回给前端展示，中文面向用户；保留专有名词是为了让使用者能把报错里的名字原样复制到配置或代码里检索。
 
 ## 空集合与空值
 
@@ -89,7 +115,7 @@ List<TranscriptionSegment> segments = transcript.sentences() == null ? List.of()
 
 ```java
 if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) {
-    throw new IllegalStateException("DashScope transcription file has no transcripts");
+    throw new IllegalStateException("DashScope 转写结果文件中没有任何 transcripts");
 }
 ```
 
@@ -117,7 +143,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 
 - **全局异常处理**：无 `@ControllerAdvice`；当前用 Controller 局部 `@ExceptionHandler`（见上节），重复后再提取。
 - **错误码体系**：未定义。
-- **日志**：见 [index.md](./index.md) 说明，当前无日志语句。
+- **日志**：已落地，规范见 [logging-guidelines.md](./logging-guidelines.md)。
 
 
 

@@ -92,7 +92,7 @@ class DashScopeAsrProviderTest {
         String missing = Path.of("definitely-missing-" + UUID.randomUUID() + ".mp3").toString();
         var e = assertThrows(IllegalArgumentException.class,
                 () -> provider.resolveCloudAudioUrl(new AudioSource.AudioFilePath(missing)));
-        assertTrue(e.getMessage().contains("does not exist"),
+        assertTrue(e.getMessage().contains("不存在"),
                 "error should explain what is missing: " + e.getMessage());
     }
 
