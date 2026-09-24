@@ -249,3 +249,26 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: 归档目录对齐 Trellis traces 约定并给文件夹名加任务短名
+<!-- trellis-session: v=2 fp=bebb41721334c8ff -->
+
+**Date**: 2026-09-24
+**Task**: 归档目录对齐 Trellis traces 约定并给文件夹名加任务短名
+**Branch**: `dev`
+
+### Summary
+
+把会话归档根目录从仓库根的 session-archives/ 改到 .trellis/workspace/HeQiu/traces——正是 session-archive 脚本 find_trellis_traces_dir() 认的 Trellis 项目内候选，也与 AGENTS.md 中 workspace 存放 session traces 的说明一致。归档目录名新增任务短名（<时间戳>-<英文短名>），由脚本新增的 --slug 传入并做 ASCII 安全化；同时修好标题启发式，使它跳过命令展开与框架噪音、取用户真实首句。4 份旧归档连同 index.jsonl 迁移并重写绝对路径，3 份历史遗留的嵌套布局（summary/summary.md）全部平铺——其 meta.json/index 引用本就是断链。trellis-implement + trellis-check 双代理，检查抓出的 2 个缺陷已修并复验。特性分支已合入 dev。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1335a1f` | docs(spec): 归档目录改到 .trellis/workspace/<dev>/traces，目录名带任务短名 |
+| `4991a8e` | chore(task): session-archive-traces-slug 任务记录 |
+
+### Status
+
+[OK] **Completed**
