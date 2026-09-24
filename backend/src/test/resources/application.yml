@@ -1,0 +1,14 @@
+# 测试专用配置：覆盖主配置，避免上下文加载依赖真实外部密钥
+spring:
+  ai:
+    deepseek:
+      api-key: test-key
+      chat:
+        options:
+          model: deepseek-chat
+
+vidsage:
+  asr:
+    provider: cloud
+    dashscope:
+      api-key: test-key
