@@ -30,3 +30,6 @@
 # Python cache
 **/__pycache__/
 **/*.pyc
+
+# Session archives (local-only: full conversation transcripts)
+workspace/*/traces/
