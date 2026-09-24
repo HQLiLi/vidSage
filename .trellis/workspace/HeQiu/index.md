@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
+- **Total Sessions**: 6
 - **Last Active**: 2026-09-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~206 | Active |
+| `journal-1.md` | ~228 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-09-24 | ASR 接口补 Swagger 中文注解文档 | `45e9686` | `dev` |
 | 5 | 2026-09-24 | 后端接入 springdoc-openapi 接口文档 | `8155e31` | `dev` |
 | 4 | 2026-09-24 | service 层注解回归 @Service | `bbd27b7` | `refactor/service-annotation` |
 | 3 | 2026-09-24 | 后端包结构改为技术分层 | `32a9ac5` | `refactor/tech-layering` |

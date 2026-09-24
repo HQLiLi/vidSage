@@ -204,3 +204,25 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: ASR 接口补 Swagger 中文注解文档
+<!-- trellis-session: v=2 fp=d22a669edbf8ca8e -->
+
+**Date**: 2026-09-24
+**Task**: ASR 接口补 Swagger 中文注解文档
+**Branch**: `dev`
+
+### Summary
+
+选定方案 A（Swagger 注解）为 AsrController 与 TranscriptionResult/TranscriptionSegment 补 @Tag/@Operation/@Schema/@ApiResponse 中文文档描述，零业务逻辑改动；16/16 测试全绿，运行时验收 api-docs 中文描述与 Swagger UI 200；规范补注解约定（HTTP 契约模型字段必须有 @Schema）。特性分支已合入 dev。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `45e9686` | feat: ASR 接口与模型补 Swagger 中文注解文档 |
+
+### Status
+
+[OK] **Completed**
