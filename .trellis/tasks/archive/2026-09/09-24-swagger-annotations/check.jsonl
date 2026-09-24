@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量检查依据：注释与契约约定"}
+{"file": ".trellis/spec/backend/index.md", "reason": "常用命令与 16 测试基线，回归验证用"}
