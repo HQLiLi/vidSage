@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "验证「统一用 @Component」表述是否清除、新规则是否按包列出四种 stereotype、@Repository 行是否未写成「有异常转换收益」"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "验证 Provider 的 @Component 理由自身成立、不再出现「见 directory-structure.md」式悬空引用"}

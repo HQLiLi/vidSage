@@ -4,7 +4,7 @@ import com.vidsage.model.asr.AudioSource;
 import com.vidsage.model.asr.TranscriptionCommand;
 import com.vidsage.model.asr.TranscriptionResult;
 import com.vidsage.provider.asr.ASRProvider;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /**
@@ -12,7 +12,7 @@ import org.springframework.util.StringUtils;
  * 把「音频来源 + 可选语种」组装为统一转写命令后委托当前配置的 Provider
  * （Spring 按 vidsage.asr.provider 自动装配唯一的实现 Bean）。
  */
-@Component
+@Service
 public class TranscriptionService {
 
     private final ASRProvider asrProvider;

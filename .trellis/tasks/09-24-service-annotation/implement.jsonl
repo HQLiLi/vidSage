@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "规则改动目标：命名约定表的 stereotype 行、service/ 包的允许列、XxxRepository 注解行、TranscriptionService 示例行"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "Provider 实现类继续用 @Component（它不是应用服务），需重写第 51 行指向别处的悬空理由"}

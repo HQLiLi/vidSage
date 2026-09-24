@@ -48,7 +48,7 @@ public class DashScopeAsrProvider implements ASRProvider {
 
 - 属性名格式：`vidsage.<环节>.provider`，值是该实现的短名（`cloud` / `local`）
 - **用 `@ConditionalOnProperty` 而不是 `@Primary` / `@Qualifier`** —— 同一时刻容器里只有一个实现 Bean
-- `@Component` 而非 `@Service`（见 [directory-structure.md](./directory-structure.md)）
+- **`@Component` 而非 `@Service`**：Provider 是出站实现，不是应用服务，标 `@Service` 会误导；它也不在 `service/` 包下。`service/` 包下的应用服务才用 `@Service`（见 [directory-structure.md](./directory-structure.md)）
 
 ### 3. 配置属性用 record
 

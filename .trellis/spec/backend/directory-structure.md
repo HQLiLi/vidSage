@@ -49,7 +49,7 @@ com.vidsage
 | 包 | 职责 | 允许出现 | 禁止出现 |
 |---|---|---|---|
 | `controller/` | HTTP 入站适配 | `@RestController`、请求体 record、局部 `@ExceptionHandler` | 业务逻辑、直接依赖 `provider/`、SDK 类型 |
-| `service/` | 应用逻辑编排 | `@Component`、组装契约、委托 Provider 接口 | 实现类、SDK 类型、HTTP 类型 |
+| `service/` | 应用逻辑编排 | `@Service`、组装契约、委托 Provider 接口 | 实现类、SDK 类型、HTTP 类型 |
 | `model/` | 进程内数据契约 | `record`、sealed 接口、Javadoc 约束 | 框架注解（Jackson 除外）、行为方法、SDK 类型 |
 | `provider/` | 出站实现（外部 API / 模型服务） | 接口 + 实现类 + 专用 `*Properties` | SDK 类型外泄到公开签名 |
 | `config/` | 跨领域装配（**未来落点，当前未创建**） | `@Configuration`、跨领域 Bean | 某一实现专用的配置（那属于 `provider/<领域>/<实现>/`） |
@@ -88,11 +88,12 @@ com.vidsage
 |---|---|---|---|
 | 表映射 | `XxxEntity` | 数据库行结构，`@TableName`，普通类 + `@Getter`/`@Setter` | 仅 `persistence/` 内部 |
 | 数据访问 | `XxxMapper` | `interface extends BaseMapper<XxxEntity>`，拼查询条件 | **仅 `Repository`**；`service/` 不可见 |
-| 对上契约 | `XxxRepository` | 具体类（`@Component`），包装 Mapper，**实体 ↔ record 契约转换**，暴露领域语义方法 | `service/` 唯一可见的持久化入口 |
+| 对上契约 | `XxxRepository` | 具体类（`@Repository`），包装 Mapper，**实体 ↔ record 契约转换**，暴露领域语义方法 | `service/` 唯一可见的持久化入口 |
 
 - **共存，不是二选一**：三层同时存在，职责不同。`Repository` 要转换，就必须包着 `Mapper`。
 - **受限的是可见性，不是存在性**：`Mapper` 必须存在（`Repository` 要用），但**不许出现在 `service/` 里**。规则是「`service/` 不许直接依赖 `Mapper`」，不是「不许同时存在 `Mapper` 和 `Repository`」。
 - **不预先抽接口**：`XxxRepository` 直接是**具体类**，不写 `interface` + `Impl`。单一存储实现下抽接口属于「为以后可能用到」的过度设计（与 [quality-guidelines.md](./quality-guidelines.md) 反模式清单同一条精神）。
+- **`@Repository` 只是跟随社区惯例**：不要写成「白拿异常转换收益」—— `PersistenceExceptionTranslationPostProcessor` 的异常转换主要针对 JPA/Hibernate 原生异常，**MyBatis-Plus 下是否触发未经核实**，别把它当成立即收益。
 - `mapper` / `repository` 是**类名**（`XxxMapper`、`XxxRepository`），不是顶层包名。
 
 ### 反模式
@@ -144,10 +145,14 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | 配置属性 | 实现方名 + `Properties` | `DashScopeProperties` |
 | 契约 | 动作名 + `Command` / `Result` | `TranscriptionCommand` / `TranscriptionResult` |
 | 契约子结构 | 语义名，不叫 `DTO` / `VO` | `TranscriptionSegment` |
-| Spring 组件 | 实现类用 `@Component`，**不用 `@Service`** | `DashScopeAsrProvider`、`TranscriptionService` |
+| Spring 组件 | **按包选 stereotype**：`controller/`→`@RestController`、`service/`→`@Service`、`provider/`→`@Component`、`persistence/`→`@Repository` | `AsrController`、`TranscriptionService`、`DashScopeAsrProvider` |
 | Controller | 业务名 + `Controller`，平铺在 `controller/` | `AsrController` |
 
 > `ASRProvider` 是全大写缩写开头，与 Spring 常见的 `AsrProvider` 写法不同。**跟随现有代码**，不要"顺手改正"。
+
+> **按包选 stereotype 的理由**：跟随 Spring 社区惯例，让 `service/` 下的类一眼可辨层次。注意 `@Component` 与 `@Service` 在 Spring 中**行为完全等价**（`@Service` 只是 `@Component` 的 `@AliasFor` 特化、无额外行为），这是可读性选择而非功能差异。
+>
+> **写切面时用包定位**（`within(com.vidsage.service..*)`），不要用注解定位（`@within(org.springframework.stereotype.Service)`）—— 后者在有人漏标注解时会**静默失效且不报错**。
 
 ## 契约类的位置
 
@@ -161,7 +166,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 - **服务层（`XxxService`）放 `service/`**：对上屏蔽 Provider 装配细节，组装契约后委托接口，不出现实现类与 SDK 类型
 - **Controller 放 `controller/`**：依赖服务层，不直接依赖 Provider；请求体 record 定义在 Controller 内部
-- `TranscriptionService` 用 `@Component`，Controller 只做「接收 → 校验 → 委托 → 返回」，不写业务逻辑
+- `TranscriptionService` 用 `@Service`，Controller 只做「接收 → 校验 → 委托 → 返回」，不写业务逻辑
 
 ## 测试包结构
 
