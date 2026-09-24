@@ -6,41 +6,24 @@
 
 **不要**按功能建顶层包（如 `asr/`），功能语义体现在类名与二级包上。
 
-当前结构（`backend/src/main/java/com/vidsage/`）：
+结构示意（`backend/src/main/java/com/vidsage/`）：
 
 ```
 com.vidsage
 ├── VidSageApplication.java        # 唯一的启动类，放在根包
 ├── controller/                    # 全部 HTTP 入口平铺于此
-│   └── AsrController.java
 ├── service/                       # 全部应用服务平铺于此
-│   └── TranscriptionService.java
 ├── model/                         # 进程内数据契约，按领域二级分包
-│   └── asr/
-│       ├── AudioSource.java       # sealed：AudioUrl / AudioFilePath
-│       ├── TranscriptionCommand.java
-│       ├── TranscriptionResult.java
-│       └── TranscriptionSegment.java
+│   └── <领域>/                    # 如 asr/：AudioSource、TranscriptionCommand 等
 └── provider/                      # 全部出站实现，按领域二级分包
-    └── asr/
-        ├── ASRProvider.java       # 接口留在领域包根
-        └── dashscope/             # 一个实现一个子包
-            ├── DashScopeAsrProvider.java
-            └── DashScopeProperties.java
+    └── <领域>/                    # 如 asr/
+        ├── XxxProvider.java       # 接口留在领域包根
+        └── <实现短名>/             # 如 dashscope/：实现类 + 该实现专用的 *Properties
 ```
 
-测试包与主包**镜像对应**（`backend/src/test/java/com/vidsage/`）：
+> **这是示意，不是文件清单。** 树只列到「层 → 领域 → 实现」这一级，不逐类登记；**新增类不需要回头改这份文档**。`<...>` 是占位符，`asr/`、`dashscope/` 是当前的示例值。判断一个新东西该放哪，看下面的[顶层分包判据](#顶层分包判据)与[契约类的位置](#契约类的位置)。
 
-```
-com.vidsage
-├── VidSageApplicationTests.java
-├── controller/
-│   └── AsrControllerTest.java
-└── provider/
-    └── asr/
-        └── dashscope/
-            └── DashScopeAsrProviderTest.java
-```
+测试包与主包**镜像对应**（`backend/src/test/java/com/vidsage/`），规则见下方[测试包结构](#测试包结构)。
 
 ## 顶层分包判据
 
