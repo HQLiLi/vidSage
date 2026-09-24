@@ -177,4 +177,4 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 ## 不适用
 
-`database-guidelines.md` 与 `logging-guidelines.md` 已删除（原因见 [index.md](./index.md)）：前者因目前没有任何持久化依赖与代码，后者因全部源码中没有一条日志语句。落库与日志功能落地后再重建。
+`database-guidelines.md` 已删除（原因见 [index.md](./index.md)）：目前没有任何持久化依赖与代码，落库后再重建。`logging-guidelines.md` 已于 2026-09-24 随日志功能落地而重建。

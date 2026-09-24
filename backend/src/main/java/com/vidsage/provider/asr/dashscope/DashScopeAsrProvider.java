@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -43,6 +44,7 @@ import org.springframework.web.client.RestClient;
  *
  * <p>SDK 类型只出现在本类内部，对外签名仅使用 asr 包的契约 record。
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "vidsage.asr.provider", havingValue = "cloud")
 @EnableConfigurationProperties(DashScopeProperties.class)
@@ -85,17 +87,23 @@ public class DashScopeAsrProvider implements ASRProvider {
     @Override
     public TranscriptionResult transcribe(TranscriptionCommand command) {
         if (!StringUtils.hasText(properties.apiKey())) {
-            throw new IllegalStateException("Missing DashScope API key: set vidsage.asr.dashscope.api-key or DASHSCOPE_API_KEY");
+            throw new IllegalStateException("缺少 DashScope API key：请设置 vidsage.asr.dashscope.api-key 或环境变量 DASHSCOPE_API_KEY");
         }
         String fileUrl = resolveCloudAudioUrl(command.source());
+        log.debug("音频地址已解析: {}", describeAddress(fileUrl));
 
         TranscriptionParam param = buildParam(command, properties, fileUrl);
+        long start = System.currentTimeMillis();
         var submitted = transcription.asyncCall(param);
         if (submitted.getTaskId() == null) {
-            throw new IllegalStateException("DashScope did not return a task id");
+            throw new IllegalStateException("DashScope 未返回 taskId");
         }
+        // taskId 是外部系统侧的排障锚点，凭它可在百炼控制台核对任务，必须 INFO 落日志
+        log.info("DashScope 转写任务已提交: taskId={}, model={}", submitted.getTaskId(), properties.model());
         var finished = transcription.wait(
                 TranscriptionQueryParam.FromTranscriptionParam(param, submitted.getTaskId()));
+        log.info("DashScope 转写任务已结束: taskId={}, status={}, cost={}ms",
+                submitted.getTaskId(), finished.getTaskStatus(), System.currentTimeMillis() - start);
 
         var taskResults = finished.getResults();
         if (!TaskStatus.SUCCEEDED.equals(finished.getTaskStatus()) || taskResults.isEmpty()) {
@@ -105,17 +113,18 @@ public class DashScopeAsrProvider implements ASRProvider {
                     .findFirst()
                     .orElse("");
             String output = finished.getOutput() == null ? "" : finished.getOutput().toString();
-            throw new IllegalStateException("DashScope task did not succeed: " + finished.getTaskStatus()
-                    + (StringUtils.hasText(output) ? ", output: " + output : ""));
+            throw new IllegalStateException("DashScope 任务未成功：" + finished.getTaskStatus()
+                    + (StringUtils.hasText(output) ? "，output：" + output : ""));
         }
         var taskResult = taskResults.getFirst();
         if (!TaskStatus.SUCCEEDED.equals(taskResult.getSubTaskStatus())) {
-            throw new IllegalStateException("DashScope subtask failed: " + taskResult.getMessage());
+            throw new IllegalStateException("DashScope 子任务失败：" + taskResult.getMessage());
         }
         if (!StringUtils.hasText(taskResult.getTranscriptionUrl())) {
-            throw new IllegalStateException("DashScope task succeeded without a transcription url");
+            throw new IllegalStateException("DashScope 任务成功但未返回 transcriptionUrl");
         }
 
+        log.debug("下载转写结果 JSON: taskId={}", submitted.getTaskId());
         TranscriptionFile file = restClient.get()
                 .uri(URI.create(taskResult.getTranscriptionUrl()))
                 .retrieve()
@@ -135,7 +144,7 @@ public class DashScopeAsrProvider implements ASRProvider {
     String resolveCloudAudioUrl(AudioSource source) {
         if (source == null) {
             throw new IllegalArgumentException(
-                    "audio source must not be null: pass AudioUrl (public URL) or AudioFilePath (local file)");
+                    "音频来源不能为空：请传 AudioUrl（公网 URL）或 AudioFilePath（本地文件）");
         }
         return switch (source) {
             case AudioSource.AudioUrl url -> requirePublicUrl(url);
@@ -149,7 +158,7 @@ public class DashScopeAsrProvider implements ASRProvider {
     private String requirePublicUrl(AudioSource.AudioUrl url) {
         if (!StringUtils.hasText(url.value())) {
             throw new IllegalArgumentException(
-                    "audioUrl value must not be blank: pass a publicly accessible audio URL");
+                    "audioUrl 取值不能为空白：请传公网可访问的音频 URL");
         }
         return url.value();
     }
@@ -161,28 +170,46 @@ public class DashScopeAsrProvider implements ASRProvider {
     private String uploadToTemporaryStorage(AudioSource.AudioFilePath local) {
         if (!StringUtils.hasText(local.value())) {
             throw new IllegalArgumentException(
-                    "audioFilePath value must not be blank: pass an absolute or relative path to a local audio file");
+                    "audioFilePath 取值不能为空白：请传本地音频文件的绝对或相对路径");
         }
         Path path = Path.of(local.value());
         if (!Files.isRegularFile(path)) {
-            throw new IllegalArgumentException("Local audio file does not exist: " + path.toAbsolutePath()
-                    + "; check the path or pass an audioUrl instead");
+            throw new IllegalArgumentException("本地音频文件不存在：" + path.toAbsolutePath()
+                    + "；请检查路径，或改传 audioUrl");
         }
         if (!Files.isReadable(path)) {
-            throw new IllegalArgumentException("Local audio file is not readable: " + path.toAbsolutePath()
-                    + "; grant read permission to the service account or pass an audioUrl instead");
+            throw new IllegalArgumentException("本地音频文件不可读：" + path.toAbsolutePath()
+                    + "；请给服务运行账号授予读权限，或改传 audioUrl");
         }
+        // 本地路径在异常信息里已可见，这里打 INFO 是把「上传」与后续「提交/轮询」在时间线上分开
+        log.info("上传本地音频到百炼临时存储: file={}", path.toAbsolutePath());
         try {
             String ossUrl = pathUploader.upload(
                     properties.model(), path.toAbsolutePath().toString(), properties.apiKey());
             if (!StringUtils.hasText(ossUrl)) {
                 throw new IllegalStateException(
-                        "DashScope upload returned no oss:// url for file: " + path.toAbsolutePath());
+                        "DashScope 上传后未返回 oss:// 地址，文件：" + path.toAbsolutePath());
             }
             return ossUrl;
         } catch (NoApiKeyException | ApiException e) {
             throw new IllegalStateException(
-                    "Failed to upload local audio file to DashScope temporary storage: " + e.getMessage(), e);
+                    "本地音频文件上传到 DashScope 临时存储失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 日志用的音频地址描述：只记录形态与主机名，不记录完整地址——
+     * 公网音频 URL 常带签名查询参数（如 OSS 的 Signature），整条打印等于把临时凭证写进日志。
+     */
+    private static String describeAddress(String audioUrl) {
+        if (audioUrl.startsWith("oss://")) {
+            return "oss-temporary-storage";
+        }
+        try {
+            URI uri = URI.create(audioUrl);
+            return uri.getHost() == null ? "unknown-host" : uri.getHost();
+        } catch (IllegalArgumentException e) {
+            return "unparsable-url";
         }
     }
 
@@ -215,7 +242,7 @@ public class DashScopeAsrProvider implements ASRProvider {
      */
     static TranscriptionResult toResult(TranscriptionFile file) {
         if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) {
-            throw new IllegalStateException("DashScope transcription file has no transcripts");
+            throw new IllegalStateException("DashScope 转写结果文件中没有任何 transcripts");
         }
         TranscriptionFile.Transcript transcript = file.transcripts().getFirst();
         List<TranscriptionSegment> segments = transcript.sentences() == null ? List.of()
