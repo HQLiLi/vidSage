@@ -274,3 +274,50 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: MVP-2 路线敲定：yt-dlp 直调 + ffmpeg 抽音频（含外部进程实测）
+<!-- trellis-session: v=2 fp=ccd7fd13040d3dc6 -->
+
+**Date**: 2026-09-25
+**Task**: MVP-2 路线敲定：yt-dlp 直调 + ffmpeg 抽音频（含外部进程实测）
+**Branch**: `feature/gitignore-tools`
+
+### Summary
+
+从任务盘点开始，先决定 MVP-2 先行（目标是把视频到字幕跑通），再对 yt-dlp 的集成路线做了一轮深度调研与实测。关键结论：Java 侧只能 shell out 调 yt-dlp（无可用纯 Java 替代，NewPipeExtractor 官方不支持 B站），但不需要把 yt-dlp 挪到 Python 侧——那个方案唯一的支柱是 asr-service 常驻，而 ASR 走云端后不成立。最终定为两条输入路线收敛到同一个抽音频步骤：链接走 yt-dlp 下载，本地文件直接用，两者都由 Java 调 ffmpeg 抽音频。yt-dlp 已装为 standalone exe，全部所需 flag 与自更新能力均实测确认。
+
+### Main Changes
+
+- 任务盘点：确认 4 个 MVP 子任务状态；MVP-3 退回 planning（实测其无任何 LLM 代码，09-24 的前置成果已在 dev 上）
+- 集成路线调研：VideoLingo / VideoCaptioner 均 import yt_dlp 当库用；Java 无法复用，且无可用纯 Java 替代库
+- 否决方案 B（yt-dlp 放 Python 侧 + Java 发 HTTP）：前提「asr-service 必常驻」在云端 ASR 下不成立
+- 装 yt-dlp standalone exe 到 tools/（2026.08.19，当前最新稳定版），逐 flag 实测核实
+- 实测四个坑：输出编码 GBK、退出码语义极弱、yt-dlp 不接受本地文件、ffmpeg/ffprobe 是外部依赖
+- 音频格式决策：本地 FunASR 用 wav，云端 DashScope 用 m4a（官方支持，体积小 4-8 倍）
+- 新增 research/external-process-integration.md；epic design.md 增「输入路线与外部工具」一节；MVP-2 prd 范围细化
+- .gitignore 加根锚定 /tools/（在 feature/gitignore-tools 分支上，尚未提交）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] yt-dlp --help 逐个核实所需 flag：-J/-j/--write-subs/--write-auto-subs/--sub-langs/--convert-subs/--cookies/--skip-download/--no-playlist/-P/--progress-template/--ignore-config/-U/--update-to
+- [OK] yt-dlp -U 自更新实测通过（退出码 0，报告 stable@2026.08.19 为最新）
+- [OK] 编码字节级验证：yt-dlp 输出中文为 d6 d0 ce c4（GBK）；PYTHONIOENCODING=utf-8 无效
+- [OK] java -XshowSettings:properties 实测：file.encoding=UTF-8，native.encoding=GBK
+- [OK] yt-dlp 传本地文件实测：ERROR not a valid URL，退出码 1
+- [OK] 未跑 mvn test；未做端到端下载冒烟
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- git 收尾：.gitignore 改动待批准 commit；research / design / prd 改动待定提交路径
+- MVP-2 现属复杂任务，task.py start 前需补 design.md 与 implement.md
+- 待定：是否做 yt-dlp 端到端冒烟（-J 取元数据，零副作用）
+- 未决：并发限流值、asr-service 是否保留、产物清理策略（本会话明确推迟）
