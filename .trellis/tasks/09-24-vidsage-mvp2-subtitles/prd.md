@@ -1,6 +1,7 @@
 # MVP-2 下载与字幕获取 — PRD
 
 > Epic 路线图见 `../09-24-vidsage/prd.md`，ASR 双路方案见 `../09-24-vidsage/design.md`，ASR 模型调研见 `../09-24-vidsage/research/competitive-and-asr.md`。
+> 实现参考（本地开源项目源码索引）见 `../09-24-vidsage/research/oss-references.md` 第三节 MVP2 小节；规划期（Phase 1.3）应把它挂入本任务的 `implement.jsonl` 与 `check.jsonl`。
 
 ## 范围
 
