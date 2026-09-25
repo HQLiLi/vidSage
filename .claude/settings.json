@@ -8,8 +8,9 @@
       "Bash(python ./.trellis/scripts/task.py set-meta --help)",
       "Read(//c/Users/14683/.claude/**)",
       "Bash(ls \"C:/Users/14683/.claude/skills\" \"C:/Users/14683/.claude/commands\" \"C:/Users/14683/.claude/plugins\" 2>/dev/null; echo \"=== vidsage .agents ===\"; ls -R f:/personal_project/vidSage/.agents 2>/dev/null | head -40)",
-      "Read(//c/Users/14683/.claude/skills/**)",
-      "Bash(git ls-remote *)"
+      "Bash(git ls-remote *)",
+      "Read(//f/learning_projects/asr_references/**)",
+      "Bash(cd \"F:/learning_projects/asr_references/AI-Media2Doc\" && find frontend -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/dist/*' | sort)"
     ]
   },
   "hooks": {
