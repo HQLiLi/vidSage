@@ -10,3 +10,4 @@ dist/
 .env
 model-cache/
 asr-service/
+/tools/
