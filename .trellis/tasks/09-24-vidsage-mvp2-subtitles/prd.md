@@ -1,17 +1,24 @@
 # MVP-2 下载与字幕获取 — PRD
 
-> Epic 路线图见 `../09-24-vidsage/prd.md`，ASR 双路方案见 `../09-24-vidsage/design.md`，ASR 模型调研见 `../09-24-vidsage/research/competitive-and-asr.md`。
-> 实现参考（本地开源项目源码索引）见 `../09-24-vidsage/research/oss-references.md` 第三节 MVP2 小节；规划期（Phase 1.3）应把它挂入本任务的 `implement.jsonl` 与 `check.jsonl`。
+> Epic 路线图见 `../09-24-vidsage/prd.md`，ASR 双路方案与**输入路线/外部工具决策**见 `../09-24-vidsage/design.md`，ASR 模型调研见 `../09-24-vidsage/research/competitive-and-asr.md`。
+> 实现参考（本地开源项目源码索引）见 `../09-24-vidsage/research/oss-references.md` 第三节 MVP2 小节。
+> **外部进程实测笔记见 `../09-24-vidsage/research/external-process-integration.md`**（编码坑、退出码、yt-dlp 不接受本地文件、音频格式）。
+> 规划期（Phase 1.3）应把上述两份 research 都挂入本任务的 `implement.jsonl` 与 `check.jsonl`。
 
 ## 范围
 
 1. 下载源适配器接口 + yt-dlp 命令行实现（B站 / YouTube；抖音仅留接口标记实验性，不实现）。
-2. 音频抽取：ffmpeg 命令行调用。
+   - **只负责「拿到视频文件」**，不承担音频抽取（理由见 epic design.md「输入路线与外部工具」）。
+   - 版本钉死；提供版本探测与新鲜度告警，**不做自动更新**。
+2. 音频抽取：ffmpeg 命令行调用，**两条输入路线（URL / 本地文件）共用同一段逻辑**。
+   - 输出格式随 ASR 路径：本地 FunASR → wav；云端 DashScope → m4a。
 3. 字幕获取双路：
-   - 优先平台已有字幕（yt-dlp --write-subs）。
+   - 优先平台已有字幕：**人工字幕优先（`--write-subs`），自动字幕兜底（`--write-auto-subs`）**。
+     参考项目只实现了自动字幕，人工字幕是缺口，见 `research/oss-references.md` 第 14 条。
    - 无字幕走 ASR：`ASRProvider` 抽象（`vidsage.asr.provider` 配置切换），本地 FunASR 微服务为默认（开发/演示替身），云端 `DashScopeAsrProvider` 为兜底（已落地，提交+轮询）。
 4. 阶段产物落盘、可断点复用（管线约定见 epic design.md）。
 5. 任务进度接入 MVP-1 的 SSE 推送。
+6. **外部工具可用性检查**：yt-dlp / ffmpeg / ffprobe 存在性与版本探测，缺任一即给出「缺什么、怎么补」的明确报错。
 
 ## 不做
 
