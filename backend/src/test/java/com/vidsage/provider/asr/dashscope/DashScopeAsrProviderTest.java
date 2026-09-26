@@ -1,14 +1,18 @@
 package com.vidsage.provider.asr.dashscope;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.alibaba.dashscope.exception.ApiException;
+import com.google.gson.JsonObject;
 import com.vidsage.model.asr.AudioSource;
 import com.vidsage.model.asr.TranscriptionCommand;
 import com.vidsage.model.asr.TranscriptionResult;
 import com.vidsage.model.asr.TranscriptionSegment;
+import com.vidsage.model.media.AudioSpec;
+import com.vidsage.model.subtitle.SubtitleRoute;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -163,6 +167,41 @@ class DashScopeAsrProviderTest {
         assertTrue(param.getHeaders() == null || param.getHeaders().isEmpty(),
                 "public urls must not carry the oss resolve header");
     }
+
+    @Test
+    void recognizesNoWordsFailureByErrorCode() {
+        var output = new JsonObject();
+        output.addProperty("code", "ASR_RESPONSE_HAVE_NO_WORDS");
+        assertTrue(DashScopeAsrProvider.isNoWordsFailure(output),
+                "output.code == ASR_RESPONSE_HAVE_NO_WORDS must be recognized as empty-worthy failure");
+    }
+
+    @Test
+    void doesNotTreatOtherFailuresAsNoWords() {
+        var otherCode = new JsonObject();
+        otherCode.addProperty("code", "SOME_OTHER_ERROR");
+        assertFalse(DashScopeAsrProvider.isNoWordsFailure(otherCode));
+
+        var noCode = new JsonObject();
+        assertFalse(DashScopeAsrProvider.isNoWordsFailure(noCode));
+
+        assertFalse(DashScopeAsrProvider.isNoWordsFailure(null));
+    }
+
+    @Test
+    void requiredAudioSpecIsM4a48KMonochannel() {
+        var provider = new DashScopeAsrProvider(
+                RestClient.builder(), new DashScopeProperties("test-key", MODEL));
+        assertEquals(AudioSpec.M4A_AAC_48K_MONO, provider.requiredAudioSpec());
+    }
+
+    @Test
+    void routeIsAsrCloud() {
+        var provider = new DashScopeAsrProvider(
+                RestClient.builder(), new DashScopeProperties("test-key", MODEL));
+        assertEquals(SubtitleRoute.ASR_CLOUD, provider.route());
+    }
+
     /**
      * 组装最小合法命令，避免每个用例重复构造。
      */

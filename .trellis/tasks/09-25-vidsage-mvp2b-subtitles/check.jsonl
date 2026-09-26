@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量核查基准：注释、契约、Java 21、测试写法、反模式清单"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误路径核查：异常类型选择、错误信息「缺什么+怎么补」、边界卫语句是否早于一切 I/O"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "包归属与 stereotype 核查、service 不得依赖实现类、model/ 是否混入行为方法"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "契约中立性与 SDK 类型不外泄核查；ASRProvider 新增方法的返回类型是否含实现方专属词汇"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志级别与脱敏核查（SubtitleTrack 含用户内容，不得整体进日志）"}
+{"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线核查（版本号与依赖以 pom 为准）"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "分支工作流硬规则：改完即停、逐门批准"}
+{"file": ".trellis/tasks/09-25-vidsage-mvp2b-subtitles/design.md", "reason": "核查实现是否偏离 7 条关键决策，尤其是：检查点必须是 segments JSON 而非 SRT、产物名必须带路线指纹、空转写是合法产出不抛异常"}
+{"file": ".trellis/tasks/09-25-vidsage-mvp2b-subtitles/prd.md", "reason": "验收标准逐条核对。特别注意「local / cloud 一致」一条已标注延后，不构成本轮缺口"}

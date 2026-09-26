@@ -9,11 +9,14 @@ import com.alibaba.dashscope.exception.NoApiKeyException;
 import com.alibaba.dashscope.utils.OSSUtils;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.vidsage.provider.asr.ASRProvider;
+import com.google.gson.JsonObject;
 import com.vidsage.model.asr.AudioSource;
 import com.vidsage.model.asr.TranscriptionCommand;
 import com.vidsage.model.asr.TranscriptionResult;
 import com.vidsage.model.asr.TranscriptionSegment;
+import com.vidsage.model.media.AudioSpec;
+import com.vidsage.model.subtitle.SubtitleRoute;
+import com.vidsage.provider.asr.ASRProvider;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -106,6 +109,16 @@ public class DashScopeAsrProvider implements ASRProvider {
                 submitted.getTaskId(), finished.getTaskStatus(), System.currentTimeMillis() - start);
 
         var taskResults = finished.getResults();
+        // 无语音 / 静音音频：DashScope 返回任务失败（code=ASR_RESPONSE_HAVE_NO_WORDS），
+        // 而不是空 segments。对用户来说「这段内容没有语音」是合法输入，不是服务故障——
+        // 把它降级成空结果，让设计决策 5（空转写是合法产出）在云端可达。
+        // 错误码从 output 的 gson JsonObject 结构化取，不用 toString 字符串匹配。
+        if (!TaskStatus.SUCCEEDED.equals(finished.getTaskStatus())
+                && isNoWordsFailure(finished.getOutput())) {
+            log.warn("DashScope 未识别出任何语音（code=ASR_RESPONSE_HAVE_NO_WORDS），"
+                    + "返回空转写结果: taskId={}", submitted.getTaskId());
+            return new TranscriptionResult(List.of(), null);
+        }
         if (!TaskStatus.SUCCEEDED.equals(finished.getTaskStatus()) || taskResults.isEmpty()) {
             String reason = taskResults.stream()
                     .map(result -> result.getMessage())
@@ -130,6 +143,44 @@ public class DashScopeAsrProvider implements ASRProvider {
                 .retrieve()
                 .body(TranscriptionFile.class);
         return toResult(file);
+    }
+
+    /**
+     * 判定 DashScope 的 output 是否为「没有识别出任何语音」失败。
+     *
+     * <p>实测（research/asr-cloud-behavior.md §四）：静音音频返回 {@code FAILED} 且
+     * output 里 {@code code=ASR_RESPONSE_HAVE_NO_WORDS}。这是「内容合法但无语音」，不是服务故障，
+     * 需要降级为空结果而非抛异常。output 是 gson {@link JsonObject}，用 {@code get("code")}
+     * 结构化取值，避免 toString 字符串匹配。
+     *
+     * @param output DashScope 任务的 output 对象，可能为 {@code null}
+     * @return 是否为 HAVE_NO_WORDS 失败
+     */
+    static boolean isNoWordsFailure(JsonObject output) {
+        if (output == null) {
+            return false;
+        }
+        var code = output.get("code");
+        if (code == null || code.isJsonNull() || !code.isJsonPrimitive()) {
+            return false;
+        }
+        return "ASR_RESPONSE_HAVE_NO_WORDS".equals(code.getAsString());
+    }
+
+    /**
+     * 本实现要求 16k 单声道 M4A：体积优先（wav 的 1/4～1/8），走上传到百炼临时存储的带宽。
+     */
+    @Override
+    public AudioSpec requiredAudioSpec() {
+        return AudioSpec.M4A_AAC_48K_MONO;
+    }
+
+    /**
+     * 本实现产出云端 DashScope 转写字幕。
+     */
+    @Override
+    public SubtitleRoute route() {
+        return SubtitleRoute.ASR_CLOUD;
     }
 
     /**
