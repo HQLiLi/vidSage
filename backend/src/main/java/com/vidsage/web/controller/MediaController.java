@@ -142,7 +142,7 @@ public class MediaController {
      *
      * @param request 抽音频请求体
      * @return 音频输出规格
-     * @throws IllegalArgumentException audioContainer 缺失或不是 WAV / M4A
+     * @throws IllegalArgumentException audioContainer 缺失或不是 WAV / M4A；audioTrackIndex 为负
      */
     private static AudioSpec toAudioSpec(PrepareAudioRequest request) {
         if (!StringUtils.hasText(request.audioContainer())) {
@@ -162,6 +162,14 @@ public class MediaController {
         int trackIndex = request.audioTrackIndex() == null
                 ? preset.audioTrackIndex()
                 : request.audioTrackIndex();
+        // 5 个实参里只有 trackIndex 是客户端可达的（其余 4 个来自预置常量，恒定合法），
+        // 故边界只需这一条卫语句。audioTrackIndex 因此被检查两次：此处问「调用方给的合法吗」
+        // （IAE → 400），AudioSpec 构造器问「我们内部造出来的符合不变量吗」（ISE → 500）。
+        // 同一谓词、不同失败含义，含义决定状态码，不是冗余。
+        if (trackIndex < 0) {
+            throw new IllegalArgumentException("音频轨序号不能为负：当前为 " + trackIndex
+                    + "；序号从 0 起计");
+        }
         return new AudioSpec(preset.container(), preset.sampleRateHz(), preset.channels(),
                 preset.bitrateKbps(), trackIndex);
     }
