@@ -345,3 +345,31 @@ MVP-2a（输入获取与音频抽取）完成收尾：提交实现（4bd3574）�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: HTTP 契约归位与包结构规范修订（含一处顺带修复的校验顺序缺陷）
+<!-- trellis-session: v=2 fp=90f9a0cf6584c641 -->
+
+**Date**: 2026-09-26
+**Task**: HTTP 契约归位与包结构规范修订（含一处顺带修复的校验顺序缺陷）
+**Branch**: `dev`
+
+### Summary
+
+完成「HTTP 契约归位与包结构规范修订」（任务 09-26-http-contract-layout）。包结构：`controller/` → `web/controller/`（5 文件，纯改名）、三个嵌套 HTTP 契约 record 提升为 `web/dto/` 顶层 record（`PrepareAudioRequest` / `PreparedAudioResponse` / `TranscriptionRequest`，`@Schema` 一字未动）、`AudioSpec` 的 5 条字段校验由「服务层与抽取实现各写一遍」收敛进紧凑构造器（异常类型 IAE → ISE）、`MediaController` 补 `audioTrackIndex` 边界卫语句。规范侧：改写 `directory-structure.md`（含修复「按技术分层」与「不建按技术命名的顶层分包」的字面矛盾、写入 `model/` 两处例外、补契约归属判据 1）、`error-handling.md`（补「谁之过」判据）、`index.md`、`logging-guidelines.md`；另修正归档任务 mvp2a implement.md 的规范出处误引（经所有者批准，唯一跨任务边界改动）。验证：全量测试 14 类 / 164 用例全绿；运行时与基线 f210fe6 逐字节对照一致（三个端点 + /v3/api-docs，唯一差异是两实例端口不同）。**顺带修复（非本任务目标，design 未记载）**：`POST /api/media/audio` 原先对非法参数会先完整获取一遍媒体再拒绝——`requireValidSpec` 排在 acquire 阶段之后，故既不必要地下载，又在环境也坏时把参数错误掩盖成 500「未找到 yt-dlp」；卫语句前移到 HTTP 边界后，边界可判定的参数错误一律在零 I/O 下返回 400。已实测对照：基线 500 / 改后 400（同一环境、同一请求）。分支已 --no-ff 合并回 dev（03950db）并归档（d95bcbc）。dev 领先 origin/dev，未推送。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `045b89a` | refactor(web): controller/ 改名为 web/controller/ |
+| `6f52b67` | refactor(web): 提取嵌套 HTTP 契约到 web/dto/ |
+| `9878df3` | refactor(model): AudioSpec 校验移入紧凑构造器，异常改 ISE |
+| `79d6e85` | fix(web): MediaController 补 audioTrackIndex 边界卫语句 |
+| `affdd81` | docs(spec): 包结构与错误处理规范修订 |
+| `c1e1f6a` | docs(spec): 补边界卫语句须早于 I/O 的实测依据 |
+| `fceb609` | docs(task): 修正 mvp2a implement.md 的规范出处误引 |
+
+### Status
+
+[OK] **Completed**
