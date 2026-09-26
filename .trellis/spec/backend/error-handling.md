@@ -1,6 +1,6 @@
 # 错误处理
 
-> 当前项目**没有全局异常处理器**（无 `@ControllerAdvice`、无自定义异常类）。
+> 项目已有**全局异常处理器**：`controller/ApiExceptionHandler`（`@RestControllerAdvice`）。它的提取条件是原规范预告的「第二个 Controller 落地、局部处理开始重复」——`MediaController` 落地时触发，见下方「REST 层错误映射」。
 > 现有约定是：**在 Provider 内部用卫语句尽早失败，抛 JDK 标准异常并带可操作的信息。**
 
 ---
@@ -131,18 +131,19 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 | 为"以后可能用到"预先造自定义异常体系 | 当前代码没有，属于过度设计 |
 | 在 Provider 里做重试/降级逻辑 | 重试属于管线编排层，不属于 Provider（现阶段也无此实现） |
 
-## REST 层错误映射（已建立）
+## REST 层错误映射（已建立，且已提取为全局）
 
-第一个 Controller（`controller/AsrController.java`）确立了如下模式，后续 Controller 照此办理：
+第一个 Controller（`controller/AsrController.java`）确立了模式；第二个 Controller（`controller/MediaController.java`）落地时局部处理开始重复，**按原规范预告的条件提取成了全局处理器** `controller/ApiExceptionHandler`（`@RestControllerAdvice`）。后续 Controller **不必再写局部 `@ExceptionHandler`**。
 
-- **入参校验用卫语句**：Controller 层判 `audioUrl` 空白抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
-- **局部 `@ExceptionHandler`**：Controller 内定义 `@ExceptionHandler(IllegalArgumentException.class)` + `@ResponseStatus(BAD_REQUEST)`，响应体 `{ "error": message }`（错误信息含「缺什么、怎么补」）
-- **暂不建全局 `@ControllerAdvice`**：等出现第二个 Controller、局部处理开始重复时再提取
+- **入参校验用卫语句**：Controller 层判空白/越界即抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
+- **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）
+- **日志级别按「谁之过」分**：调用方输入问题（400）记 **WARN**——不该触发 ERROR 告警；服务端或环境故障（500）记 **ERROR** 并**带上异常对象**（保留调用栈供定位）
+- **响应体形状只有一处定义**：`{ "error": message }` 由 `ApiExceptionHandler` 统一产出，接口文档也不逐接口重复声明
 
 ## 尚未建立的约定
 
-- **全局异常处理**：无 `@ControllerAdvice`；当前用 Controller 局部 `@ExceptionHandler`（见上节），重复后再提取。
 - **错误码体系**：未定义。
+- **自定义异常类**：未定义——等到需要跨层区分错误类型（例如给前端不同错误码）时再引入，不要提前造。
 - **日志**：已落地，规范见 [logging-guidelines.md](./logging-guidelines.md)。
 
 

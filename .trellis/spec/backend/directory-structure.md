@@ -35,7 +35,11 @@ com.vidsage
 | `service/` | 应用逻辑编排 | `@Service`、组装契约、委托 Provider 接口 | 实现类、SDK 类型、HTTP 类型 |
 | `model/` | 进程内数据契约 | `record`、sealed 接口、Javadoc 约束 | 框架注解（Jackson 除外）、行为方法、SDK 类型 |
 | `provider/` | 出站实现（外部 API / 模型服务） | 接口 + 实现类 + 专用 `*Properties` | SDK 类型外泄到公开签名 |
+| `provider/tool/` | 调外部程序的**通用机制** | 进程执行器、外部工具路径解析与诊断等**不面向业务契约**的机制类 | 接口 + 多实现的 Provider 四件套（那属于 `provider/<领域>/`）；直接依赖 SDK |
 | `config/` | 跨领域装配（**未来落点，当前未创建**） | `@Configuration`、跨领域 Bean | 某一实现专用的配置（那属于 `provider/<领域>/<实现>/`） |
+
+> **`provider/tool/` 是「单一实现的基础设施」形态，不是 Provider 四件套。** 该机制只有一种实现方式（在本机调用外部程序），不存在「同一能力、多种来源、配置二选一」的前提，因此**不抽接口**——与 [quality-guidelines.md](./quality-guidelines.md) 反模式清单同一条精神。测试的可替换点应落在更小的地方（如外部命令的测试替身），而不是为单一实现预先造接口。
+> 详见 [provider-pattern.md](./provider-pattern.md) 的「同能力多实现共存」一节。
 
 ### `controller/`、`service/` 平铺，`model/`、`provider/` 要领域二级包
 

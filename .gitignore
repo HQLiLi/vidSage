@@ -11,3 +11,4 @@ dist/
 model-cache/
 asr-service/
 /tools/
+/backend/data/

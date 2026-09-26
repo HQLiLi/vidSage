@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量核查基准：注释、契约、Java 21、测试写法、反模式清单"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误路径核查：异常类型选择与错误信息「缺什么+怎么补」"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "包归属与 stereotype 核查、service 不得依赖实现类"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "契约中立性与 SDK 类型不外泄核查"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志级别与脱敏核查"}
+{"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线核查（版本号以 pom 为准）"}
+{"file": ".trellis/tasks/09-24-vidsage/research/external-process-integration.md", "reason": "核查实现是否踩了已记录的坑（编码、退出码、本地文件、超时）"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "分支工作流硬规则：改完即停、逐门批准"}
+{"file": ".trellis/tasks/09-24-vidsage/research/oss-references.md", "reason": "许可证红线核查：VideoCaptioner 为 GPL-3.0，实现不得复制其源码（只能读思路重写）；并对照第 15 条核查抽音频参数（-map 多音轨、编码器降级）"}
