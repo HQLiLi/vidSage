@@ -1,4 +1,4 @@
-package com.vidsage.controller;
+package com.vidsage.web.controller;
 
 import com.vidsage.service.TranscriptionService;
 import com.vidsage.model.asr.AudioSource;

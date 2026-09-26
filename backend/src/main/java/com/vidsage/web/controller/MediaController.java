@@ -1,4 +1,4 @@
-package com.vidsage.controller;
+package com.vidsage.web.controller;
 
 import com.vidsage.model.media.AudioArtifact;
 import com.vidsage.model.media.AudioContainer;

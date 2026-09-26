@@ -1,4 +1,4 @@
-package com.vidsage.controller;
+package com.vidsage.web.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
