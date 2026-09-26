@@ -81,7 +81,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         if (spec == null) {
             throw new IllegalArgumentException("音频规格不能为空：请传 AudioSpec（如 AudioSpec.WAV_PCM_16K_MONO）");
         }
-        requireValidSpec(spec);
+        // 不必再校验 spec 字段：其合法性由 AudioSpec 的紧凑构造器结构性保证
 
         Path media = mediaPath.toAbsolutePath();
         if (!Files.isRegularFile(media) || !Files.isReadable(media)) {
@@ -207,34 +207,6 @@ public class FfmpegAudioExtractor implements AudioExtractor {
             case WAV -> "wav";
             case M4A -> "ipod";
         };
-    }
-
-    /**
-     * 按容器/采样率/声道/轨序校验规格字段；违反 {@link AudioSpec} 契约的取值一律当调用方错误处理，
-     * 不留给 ffmpeg 去报「参数非法」（那会把调用方错误误报成外部系统失败）。
-     */
-    private static void requireValidSpec(AudioSpec spec) {
-        if (spec.container() == null) {
-            throw new IllegalArgumentException("音频容器不能为空：请传 AudioContainer.WAV 或 AudioContainer.M4A");
-        }
-        if (spec.container() == AudioContainer.M4A && spec.bitrateKbps() <= 0) {
-            // 契约（design §三 决策 4）：bitrateKbps 对无损容器传 0 表示不适用；M4A 是有损容器，
-            // 传 0 会让 ffmpeg 拿到 -b:a 0k，属调用方错误，必须前置拦下
-            throw new IllegalArgumentException("M4A 是有损容器，码率必须为正数：当前为 " + spec.bitrateKbps()
-                    + "；请传 AudioSpec.M4A_AAC_48K_MONO，或指定明确码率（如 48）");
-        }
-        if (spec.sampleRateHz() <= 0) {
-            throw new IllegalArgumentException("采样率必须为正数：当前为 " + spec.sampleRateHz()
-                    + "；请传明确采样率，如 16000");
-        }
-        if (spec.channels() <= 0) {
-            throw new IllegalArgumentException("声道数必须为正数：当前为 " + spec.channels()
-                    + "；单声道请传 1");
-        }
-        if (spec.audioTrackIndex() < 0) {
-            throw new IllegalArgumentException("音频轨序号不能为负：当前为 " + spec.audioTrackIndex()
-                    + "；序号从 0 起计");
-        }
     }
 
     /**
