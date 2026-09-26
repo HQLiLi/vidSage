@@ -1,6 +1,11 @@
 spring:
   application:
     name: vidsage
+  profiles:
+    # 本机无显式 profile 时激活 application-local.yml（存本机密钥与工具绝对路径）。
+    # 用 default 而非 active：容器/CI 只要显式给 SPRING_PROFILES_ACTIVE=prod，本项自动失效。
+    # 注意本项只设 default，不设 active——active 会让其它 profile 无法再被命令行覆盖。
+    default: local
   threads:
     virtual:
       enabled: true
