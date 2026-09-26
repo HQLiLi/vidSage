@@ -1,0 +1,28 @@
+{
+  "id": "media-acquirer-explicit-wiring",
+  "name": "media-acquirer-explicit-wiring",
+  "title": "媒体获取装配改为显式 @Bean 注册",
+  "description": "MediaAcquirer 两个实现摘掉 @Component，改由 config/MediaAcquisitionConfiguration 显式 @Bean 注册；同步消除 provider-pattern.md 与 directory-structure.md 的两条硬冲突，并补单领域装配类落点判据",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "HeQiu",
+  "assignee": "HeQiu",
+  "createdAt": "2026-09-26",
+  "completedAt": "2026-09-26",
+  "branch": "feature/media-acquirer-explicit-wiring",
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "disposition": "废弃：未实施，代码与规范已回滚到 44ea3ec（详见 rollback-notes.md）"
+  }
+}
