@@ -76,6 +76,27 @@ public interface MediaAcquirer {
 
 参照：`provider/download/MediaAcquirer.java` 与它的两个实现（`YtDlpMediaAcquirer` / `LocalFileMediaAcquirer`）
 
+#### 想要一份"写死的清单"：`@Bean List<T>` 能否生效，取决于容器里有没有 `T` 的 bean
+
+容器解析 `List<T>` 依赖时**只看元素类型 `T` 的候选**（`resolveMultipleBeanCollection`；`spring-beans-7.0.9` / Boot 4.1.1 反编译核实）：
+
+| 容器里 `T` 类型的 bean | 该注入点实际来源 | 同类型的 `@Bean List<T>` |
+|---|---|---|
+| 0 个 | 落回单 bean 匹配 → **用它** | ✅ 生效 |
+| ≥1 个 | 容器按类型收集并返回 | ❌ **被完全无视**（成死代码） |
+
+因此有两种走法，按"实现要不要是 bean"选：
+
+- **实现不进容器**（不标 `@Component`、也不各自声明 `@Bean`）→ `@Bean List<T>` 直接生效
+- **实现是 bean**（要能单独注入 / 加切面）→ 在注入点加 `@Qualifier("<那个 List bean 的名字>")`，即可锁定到显式清单
+
+> **`@Qualifier` 锁定的实测结论（2026-09-26）**：元素候选 **1 个**和 **2 个**两种情形下都锁定成功——qualifier 把元素候选过滤为空（实现 bean 的名字与 qualifier 不匹配）→ 落回单 bean 匹配 → 按 bean 名命中那份显式清单。**因此"`@Bean List` 必然被无视"是错的**，前提是注入点带了 qualifier。
+
+两点注意：
+
+- **顺序**：容器收集的顺序 **≠** 你书写的顺序（实测 `List.of(a, b)` 被反成 `[b, a]`）。要顺序确定，就用显式清单
+- **qualifier 里写的是 bean 名** → 改名会让注入失败（**响亮**，不是静默）
+
 ### 3. 配置属性用 record
 
 ```java
@@ -193,7 +214,7 @@ vidsage:
 | 不要做 | 原因 |
 |---|---|
 | 在接口上写 `@Component` / `@Conditional` | 接口必须与框架解耦 |
-| 用 `@Primary` + `@Qualifier` 选实现 | 同时刻存在多个实现 Bean，配置切换不直观 |
+| 用 `@Primary` + `@Qualifier` 选实现 | 同时刻存在多个实现 Bean，配置切换不直观。（**不适用于**「用 `@Qualifier` 锁定显式清单 Bean」——那条钦定的是清单，不是在实现之间挑，见 §2b） |
 | 让 SDK 类型出现在接口签名里 | 换实现时要改上层，Provider 模式失效 |
 | 契约类用 Lombok `@Data` | 契约必须不可变，用 record |
 | 返回 `null` 集合 | 用 `List.of()`，调用方无需判空 |
