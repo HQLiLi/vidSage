@@ -6,7 +6,6 @@ import com.vidsage.model.asr.TranscriptionResult;
 import com.vidsage.provider.asr.ASRProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 /**
  * 语音识别服务层：对上屏蔽 {@link ASRProvider} 的装配细节，

@@ -182,3 +182,184 @@ ffmpeg -i <video> -vn -ac 1 -ar 16000 -c:a aac -b:a 48k <out>.m4a
 - `-U` 自更新**可用**（实测通过），但**需要能访问 GitHub**（本机依赖代理）
 - yt-dlp 的版本号是日期式 `YYYY.MM.DD`，便于用发布距今多久做新鲜度启发式判断
 - `tools/` 已在 `.gitignore` 中（根锚定 `/tools/`），不进仓库
+
+---
+
+## 八、2026-09-25 补记：MVP-2a 步骤 0 实测
+
+> 本节由 MVP-2a 的实现期「步骤 0：先拿实测事实再写代码」产出。
+> 工具版本同 §七（yt-dlp 2026.08.19 / ffmpeg 9.0.2 / Java 21.0.8）。
+
+### 8.1 YouTube：无 JS 运行时已被官方弃用，且被 bot 检测拦截（实测）
+
+```bash
+$ ./tools/yt-dlp.exe --simulate --print "%(title)s" "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+WARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default;
+         to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config.
+         YouTube extraction without a JS runtime has been deprecated, and some formats may be missing.
+         See https://github.com/yt-dlp/yt-dlp/wiki/EJS for details on installing one
+[youtube] aqz-KE-bpKQ: Downloading visionos player API JSON
+WARNING: [youtube] No title found in player responses; falling back to title from initial data.
+         Other metadata may also be missing
+ERROR: [youtube] aqz-KE-bpKQ: Sign in to confirm you��re not a bot. Use --cookies-from-browser
+       or --cookies for the authentication.
+```
+
+（`you��re` 的乱码就是 §一 那条编码坑在本机终端里的复现。）
+
+**结论（比 §六-1 的推断严重两级）**：
+
+1. §六-1 猜的是「JS 运行时缺失**可能**影响下载」——实际是**官方已弃用无 JS 的 YouTube 提取**，并明确「some formats may be missing」。
+2. 更硬的拦路是 **bot 检测**：`Sign in to confirm you're not a bot`，直接 `ERROR` 退出。
+3. 连元数据都拿不全（`No title found in player responses`）。
+
+**所以 YouTube 路线在本机当前状态下不可用**，需要 cookies（`--cookies-from-browser <浏览器>` 或 `--cookies <文件>`）。
+**是否读取用户浏览器 cookies 属隐私决策，待用户定**；在定之前，YouTube 相关验收项按「未通过 + 有实测依据的降级说法」记录，不假装通过。
+
+### 8.2 多音轨：ffmpeg 的默认音轨选择跟随 `default` disposition（实测，决定性）
+
+合成两份多音轨文件（无版权问题，纯 lavfi），对比「不写 `-map`」与「显式 `-map`」的产物指纹：
+
+```bash
+# 两轨参数相同（都是 aac 单声道），均无 default 标记
+$ ffmpeg -f lavfi -i "sine=frequency=440:duration=3" -f lavfi -i "sine=frequency=880:duration=3" \
+    -f lavfi -i "testsrc=size=320x240:rate=10:duration=3" -map 2:v -map 0:a -map 1:a \
+    -c:v mpeg4 -c:a aac -shortest multitrack.mp4
+$ ffmpeg -i multitrack.mp4 -vn -ac 1 -ar 16000 -c:a aac -b:a 48k default.m4a   # 不写 -map
+$ ffmpeg -i multitrack.mp4 -vn -map 0:a:0 ... t0.m4a
+$ ffmpeg -i multitrack.mp4 -vn -map 0:a:1 ... t1.m4a
+$ md5sum default.m4a t0.m4a t1.m4a
+f8b1f5b1969b55554857f831deef6cff *default.m4a
+f8b1f5b1969b55554857f831deef6cff *t0.m4a      ← 默认 = a:0（两轨平手时取第一条）
+49ba338ca48bb9567abed9b21d7dbcd4 *t1.m4a
+```
+
+```bash
+# 两轨参数不同（a:0 单声道 32k / a:1 立体声 192k）——默认**仍然**取 a:0
+$ md5sum d2.m4a e0.m4a e1.m4a
+8865884b45ef715cbd501bdbf9e234ee *d2.m4a      ← 默认 = a:0
+8865884b45ef715cbd501bdbf9e234ee *e0.m4a
+2a437fede29493048b9c98fdb505c6cc *e1.m4a      ← 立体声 192k 没抢过第一条
+```
+
+```bash
+# 关键一步：把第 2 轨标为 default（真实站点多轨文件的常见做法）
+$ ffmpeg -i multi2.mp4 -map 0 -c copy -disposition:a:0 0 -disposition:a:1 default multi3.mp4
+$ ffprobe -select_streams a -show_entries stream=index:stream_disposition=default -of json multi3.mp4
+    { "index": 1, "disposition": { "default": 0 } },
+    { "index": 2, "disposition": { "default": 1 } }
+$ ffmpeg -i multi3.mp4 -vn -ac 1 -ar 16000 -c:a aac -b:a 48k d3.m4a   # 仍然不写 -map
+$ md5sum d3.m4a e0.m4a e1.m4a
+2a437fede29493048b9c98fdb505c6cc *d3.m4a      ← 默认 = a:1！与显式 -map 0:a:1 完全一致
+8865884b45ef715cbd501bdbf9e234ee *e0.m4a
+2a437fede29493048b9c98fdb505c6cc *e1.m4a
+```
+
+**结论**：**ffmpeg 9.0.2 的默认音频流选择跟随 `default` disposition 标记**，不是「取第一条」，也不是「取参数最好的」。
+
+- 两轨都无标记 → 取第一条（前两组实测）
+- 第 2 轨标了 `default` → 取第 2 轨（第三组实测，md5 与 `-map 0:a:1` 相同）
+- 立体声/高码率**不影响**选择（第二组实测推翻了「best 流」的直觉）
+
+→ **必须显式 `-map 0:a:<index>`**。B站 这类源的多音轨文件带 `default` 标记时，不写 `-map` 会静默抽到非预期的轨，而且产物完全合法、不报错。
+
+### 8.3 越界音轨的报错文案（实测）
+
+```bash
+$ ffmpeg -hide_banner -i multitrack.mp4 -map 0:a:9 -f null -
+Failed to set value '0:a:9' for option 'map': Invalid argument
+Error parsing options for output file -.
+Error opening output files: Invalid argument
+```
+
+**报错里没有总轨数**。所以 Java 侧的错误消息**不能**写「该媒体没有第 N 条音轨（共 M 条）」——那个 M 拿不到，除非额外跑一次 ffprobe 数轨。结论：**透传 ffmpeg 原文 + 一句中文说明**，不假装知道轨数。
+
+### 8.4 编码器存在性（实测）
+
+```bash
+$ ffmpeg -hide_banner -encoders | grep -E " (aac|pcm_s16le) "
+ A....D aac                  AAC (Advanced Audio Coding)
+ A....D pcm_s16le            PCM signed 16-bit little-endian
+```
+
+本机 build（gyan.dev essentials）**两者都有**。研究 §五「m4a 用 ffmpeg 原生编码器，普遍存在」在本机成立；但容器里的精简构建仍可能缺，`OpenSource` 标记为 `A`（音频）而非 `A....D` 的差异说明**动态加载**选项存在，不能外推到别的构建。
+
+### 8.5 仍未验（缺一条真实 B站 链接）
+
+| 项 | 内容 |
+|---|---|
+| 待验 1 | info json 里定位下载产物的字段（`filepath` / `_filename` / `requested_downloads[0].filepath`） |
+| 待验 2 | `--ffmpeg-location` 传目录还是二进制路径 |
+| 待验 6 | `--write-info-json` 的默认文件名与实际 `-o` 模板的组合结果 |
+| 新增 | 真实 B站 多音轨文件的轨数与 `default` 标记情况（8.2 是合成文件上的结论） |
+
+**这四项都卡在同一个前置上：需要一条可下载的真实 B站 链接。** YouTube 因 8.1 不可用，不能替代。
+
+> **2026-09-25 已全部结清** —— B站 通路跑通，结论见下面 §8.6。
+
+### 8.6 续：B站 通路全流程实测（待验 1 / 2 / 6 / 9 结清）
+
+```bash
+$ ./tools/yt-dlp.exe --no-playlist --write-info-json --ffmpeg-location "F:/app_soft/ffmpeg/bin" \
+    -o "%(id)s.%(ext)s" -P <dir> "http://www.bilibili.com/video/av117317904177698"
+[BiliBili] BV1LLhW6uE12: Downloading video formats for cid 42124577069
+[BiliBili] Format(s) 1080P 高码率 are missing; you have to become a premium member to download them.
+           Use --cookies-from-browser or --cookies for the authentication.
+[info] BV1LLhW6uE12: Downloading 1 format(s): 100026+30280
+[info] Writing video metadata as JSON to: <dir>\BV1LLhW6uE12.info.json
+[download] Destination: <dir>\BV1LLhW6uE12.f100026.mp4
+[download] Destination: <dir>\BV1LLhW6uE12.f30280.m4a
+[Merger] Merging formats into "<dir>\BV1LLhW6uE12.mp4"
+Deleting original file <dir>\BV1LLhW6uE12.f30280.m4a (pass -k to keep)
+Deleting original file <dir>\BV1LLhW6uE12.f100026.mp4 (pass -k to keep)
+```
+
+**1. B站 可用，无需 cookies**（与 8.1 的 YouTube 形成鲜明对比）。这条是 epic「未决问题」里 B站 边界的**第一份实测数据**：
+
+- 未登录**可以下载**，拿到普通清晰度
+- `1080P 高码率 are missing; you have to become a premium member` —— 高码率要**会员**，不是「登录」就有
+- 字幕部分（2b 的平台字幕路径）仍待实测
+
+**2. 待验 2 结清**：`--ffmpeg-location` **传目录与传二进制路径都可以**——两种形式各跑一次，`[Merger]` 均成功。
+
+**3. 待验 6 结清**：`--write-info-json` 产出 `<id>.info.json`，`<id>` 是 **bvid**（`BV1LLhW6uE12`，不是 aid）；info json 的文件名由 `-o` 模板派生（模板里的 `%(ext)s` 位置变成 `info.json`）。中间产物 `.<format_id>.mp4/.m4a` 在合并后被删除，**目录最终只剩最终产物 + info json**。
+
+**4. 待验 1 结清——结论是负面的，改了设计**：info json **不含任何产物路径字段**：
+
+```python
+# parse BV1LLhW6uE12.info.json
+id -> 'BV1LLhW6uE12'    ext -> 'mp4'    duration -> 47.717
+filepath            -> None   ← 字段缺失
+_filename           -> None   ← 字段缺失
+requested_downloads -> None   ← 字段缺失
+subtitles -> []        automatic_captions -> None
+```
+
+→ **定位产物不能靠 info json**。改为靠**我们自己的输出模板**（模板固定 → 文件名可预测）+ info json 的 `ext`（合并后的最终扩展名），再留一层目录扫描兜底。
+为此把 `-o` 模板从 `%(id)s.%(ext)s` 改为 **`source.%(ext)s`**，工作目录因此固定为 `source.<ext>` + `source.info.json`，与设计 §六 的文件名表一致。
+
+**5. 待验 9 结清**：这条真实 B站 文件**只有 1 条音轨**（aac 立体声，`default=1`）。
+
+```json
+{"index": 1, "codec_name": "aac", "channels": 2, "disposition": {"default": 1}}
+```
+
+多音轨是常见但非必然。§8.2 的合成文件结论仍是显式 `-map` 的唯一硬依据；本例 `default=1` 出现在唯一一轨上，正好印证「disposition 驱动选择」的机制——**若哪天有第二轨也带 `default`，默认选择就会漂移**。
+
+**6. 这条视频没有 CC 字幕**（`subtitles: []`，字段存在但为空）。→ 2b「平台字幕优先」路径需要另找一条**真有 CC 字幕**的 B站 视频作素材。
+
+**7. 编码坑再次现场复现**：未加 `iconv -f GBK -t UTF-8` 时，yt-dlp 输出的中文标题在本机终端里是一片乱码——与 §一 同源，Java 侧必须按 `native.encoding` 解码。
+（另注：Python 是 Windows 原生的，不认 Git Bash 的 `/tmp` 映射；`ls /tmp/x` 通不代表 `python open('/tmp/x')` 通。）
+
+**8. 退出码可以是负值（对 §二 的补充）**：`-map` 越界时 ffmpeg 的真实退出码是 **`-22`**，不是 `1`：
+
+```
+Failed to set value '0:a:9' for option 'map': Invalid argument
+→ Java Process.exitValue() = -22
+```
+
+原因是 Windows 的退出码是无符号 DWORD，而 ffmpeg 用 `AVERROR(EINVAL) = -22` 这类**负值**返回参数错误；`ExitProcess` 之后 Java 读回来就是一个负 int。所以：
+
+- §二「退出码语义极弱」再添一例——连**符号**都可能与直觉相反，别指望用退出码判类别
+- 消息里应**原样透出**这个负值（对懂 ffmpeg 的人 `-22 == EINVAL` 是有信息量的），**不要**做无符号归一化
+- 这也说明「断言 exitCode == 1」这类测试假设是错的：断言应针对「非零」而非某个具体值

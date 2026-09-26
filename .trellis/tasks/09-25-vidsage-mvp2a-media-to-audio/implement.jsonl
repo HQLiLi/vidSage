@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端技术栈基线与常用命令（Maven 无 wrapper、Boot 4 约束）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "包结构判据：provider/tool 与 config/ 的落点、service 禁止依赖实现类、测试包镜像"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "Provider 四件套、契约中立、static 映射方法、配置装配规则"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "卫语句、异常类型选择、错误信息必须含「缺什么+怎么补」、中文为主"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "契约设计、Javadoc 要求、Java 21 写法、测试命名与不起 Spring 容器、依赖原则"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志级别分层与脱敏红线（外部命令日志要照此写）"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用思考：参数与路径只定义一处（ffmpeg 路径一处配置两处使用）"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流检查（契约 → 服务 → Provider → HTTP）"}
+{"file": ".trellis/tasks/09-24-vidsage/research/external-process-integration.md", "reason": "本任务最重要的实测依据：GBK 编码坑、退出码语义、yt-dlp 不吃本地文件、wav/m4a 取舍、未验事项清单"}
+{"file": ".trellis/tasks/09-24-vidsage/research/oss-references.md", "reason": "开源实现索引（看第 15 条 ffmpeg 抽音频参数与编码器降级）。⚠️ 开篇即声明这是索引不是实现说明——必须先按条目给出的路径打开源码读原文；VideoCaptioner 为 GPL-3.0，一行源码都不得抄"}
+{"file": ".trellis/tasks/09-25-vidsage-mvp2a-media-to-audio/design.md", "reason": "本任务技术方案：包结构、决策与理由、进程执行器要点、待实测清单"}
+{"file": ".trellis/tasks/09-25-vidsage-mvp2a-media-to-audio/implement.md", "reason": "执行顺序、每步验证命令、审查门与 Phase 3.3 要回写的规范"}

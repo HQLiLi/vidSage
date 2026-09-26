@@ -18,7 +18,10 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "09-25-vidsage-mvp2a-media-to-audio",
+    "09-25-vidsage-mvp2b-subtitles"
+  ],
   "parent": "09-24-vidsage",
   "relatedFiles": [],
   "notes": "",
