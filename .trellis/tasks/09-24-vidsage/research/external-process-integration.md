@@ -163,10 +163,13 @@ ffmpeg -i <video> -vn -ac 1 -ar 16000 -c:a aac -b:a 48k <out>.m4a
 
 ## 六、未验事项（用前自测）
 
-1. **`JS runtimes: none`** —— `-v` 显示本机无独立 JS 运行时（库 `yt_dlp_ejs-0.8.0` 已加载）。
-   YouTube 近期反爬需要 JS 运行时，**可能影响 YouTube 下载**。B站 不受影响。**未实测。**
+1. ~~**`JS runtimes: none`**~~ —— **已实测结清，且结论比下面的原推断严重两级 → 见 §8.1。**
+   原推断：「YouTube 近期反爬需要 JS 运行时，**可能影响** YouTube 下载。B站 不受影响。**未实测。**」
+   实测：不是「可能影响」，而是**官方已弃用无 JS 运行时的 YouTube 提取**（`YouTube extraction without a JS runtime has been deprecated`），且叠加 **bot 检测**（`Sign in to confirm you're not a bot`）直接 `ERROR` 退出；连元数据都拿不全。**本机当前状态下 YouTube 路线不可用**，需 cookies（是否读取用户浏览器 cookies 属隐私决策，待定）。
+   「B站 不受影响」这一半**成立**——§8.6 实测 B站 无需 cookies 即可下载。
 2. **文件占用与 `-U`** —— Windows 上正在运行的 exe 被文件锁占用，`-U` 能否与并发下载共存**未实测**（当时已是最新版，`-U` 走 up-to-date 分支不写文件）。设计上先按「不能并发」假设。
-3. **`--postprocessor-args NAME:ARGS` 的冒号语法** —— help 确认后处理器名含 `ExtractAudio`，但实际传参行为**未实测**。（若采纳「Java 统一调 ffmpeg 抽音频」，则不需要它。）
+3. **`--postprocessor-args NAME:ARGS` 的冒号语法** —— help 确认后处理器名含 `ExtractAudio`，但实际传参行为**未实测**。
+   **已作废**：MVP-2a 落地时采纳了 §三 的推论「Java 统一调 ffmpeg 抽音频」，本项不再需要。
 4. **重定向 stdout 的编码** —— 上面所有实测都是在**管道/重定向**场景下做的（`| od`）。yt-dlp 在管道下可能走了与「直接写控制台」不同的分支。**Java 走 ProcessBuilder 属于管道场景**，与实测一致；但若将来用别的方式调用，须重新验。
 
 ---

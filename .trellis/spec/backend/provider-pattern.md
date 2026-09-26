@@ -50,6 +50,32 @@ public class DashScopeAsrProvider implements ASRProvider {
 - **用 `@ConditionalOnProperty` 而不是 `@Primary` / `@Qualifier`** —— 同一时刻容器里只有一个实现 Bean
 - **`@Component` 而非 `@Service`**：Provider 是出站实现，不是应用服务，标 `@Service` 会误导；它也不在 `service/` 包下。`service/` 包下的应用服务才用 `@Service`（见 [directory-structure.md](./directory-structure.md)）
 
+### 2b. 同能力多实现共存：由配置选择 vs 由输入类型选择
+
+`@ConditionalOnProperty` 的**前提**是「同一能力、多种来源、由配置二选一」——同一时刻容器里只有一个实现 Bean。
+
+**当选择依据是输入类型而非配置时，不要加 `@ConditionalOnProperty`**：多个实现同时驻留，各自由输入类型自荐。
+
+```java
+public interface MediaAcquirer {
+    /** 由输入子类型决定是否支持，不由配置决定。 */
+    boolean supports(MediaInput input);
+
+    Optional<AcquiredMedia> reuseExisting(MediaInput input, Path workDir);
+
+    AcquiredMedia acquire(MediaInput input, Path workDir);
+}
+```
+
+| 情形 | 装配方式 |
+|---|---|
+| 同一进程内**只要一个**实现，由 `application.yml` 决定 | 加 `@ConditionalOnProperty`（见本节 §2） |
+| 同一进程内**同时需要多个**实现，由**输入类型**决定用哪个 | **不加** `@ConditionalOnProperty`，用 `supports(input)` 自荐 |
+
+反例：一个进程既要能下载 URL、又要能读本地文件，两条路线**在同一次运行里都要在**——用 `@ConditionalOnProperty` 二选一会让另一条路线直接不可用。
+
+参照：`provider/download/MediaAcquirer.java` 与它的两个实现（`YtDlpMediaAcquirer` / `LocalFileMediaAcquirer`）
+
 ### 3. 配置属性用 record
 
 ```java
@@ -130,7 +156,13 @@ record TranscriptionFile(
 - 嵌套 record 定义在实现类**内部**（`DashScopeAsrProvider.TranscriptionFile`），不单独建文件
 - 必须加 `@JsonIgnoreProperties(ignoreUnknown = true)`，防止上游加字段导致反序列化失败
 - snake_case 字段用 `@JsonProperty` 显式映射
-- 映射逻辑抽成 **`static` 方法**（`toResult`），包级可见（**不带 `private`**），这样单元测试可以直接调用而不必起 Spring 容器
+- **Boot 4 用 Jackson 3，但只有一半搬了家**——别照旧文档的包名写：
+  - `ObjectMapper` 与异常在 **`tools.jackson.*`**：`tools.jackson.databind.ObjectMapper`、`tools.jackson.core.JacksonException`
+  - **注解仍在 `com.fasterxml.jackson.annotation.*`**：`@JsonProperty`、`@JsonIgnoreProperties`，包名**未变**
+  - 后果：Jackson 2 的 `com.fasterxml.jackson.databind.ObjectMapper` 在 Boot 4 里**没有 bean**，`@Autowired` 它会直接注入失败
+- 映射逻辑抽成**包级可见**的方法，使单元测试无需 Spring 容器即可直接调用。**`static` 只是达成该判据的常见形态之一，不是目的**：
+  - 解析本身不需要注入依赖 → 用 `static`（如 `DashScopeAsrProvider.toResult`）
+  - 解析需要注入的依赖（如 `ObjectMapper`）→ **instance 方法即可**，把依赖降成参数反而别扭（如 `YtDlpMediaAcquirer.parseInfoJson`：instance、包级可见、持有注入的 `ObjectMapper`）
 
 参照：`provider/asr/dashscope/DashScopeAsrProvider.java` 与 `provider/asr/dashscope/DashScopeAsrProviderTest.java`
 
@@ -165,7 +197,7 @@ vidsage:
 | 让 SDK 类型出现在接口签名里 | 换实现时要改上层，Provider 模式失效 |
 | 契约类用 Lombok `@Data` | 契约必须不可变，用 record |
 | 返回 `null` 集合 | 用 `List.of()`，调用方无需判空 |
-| 映射逻辑写成非静态的私有方法 | 测试被迫起 Spring 上下文 |
+| 映射逻辑写成 `private` | 测试被迫起 Spring 上下文或走完整流程。判据是**包级可见**，不是「必须 `static`」 |
 | 契约字段绑定某个实现的输入形状（如 `audioUrl`） | 换实现就要改契约，抽象失效 |
 | 为第二个实现复制一份契约类 | 契约属于环节，不属于实现 |
 
@@ -177,7 +209,7 @@ vidsage:
 2. 加 `@Component` + `@ConditionalOnProperty(name = "vidsage.<环节>.provider", havingValue = "<短名>")`
 3. 需要配置就建 `<实现名>Properties` record，加 `@EnableConfigurationProperties`
 4. 第三方响应在类内建嵌套 record，加 `@JsonIgnoreProperties(ignoreUnknown = true)`
-5. 映射抽成包级 `static` 方法
+5. 映射抽成**包级可见**的方法（不需注入依赖用 `static`；需注入依赖用 instance 方法）
 6. 在 `application.yml` 补配置块，密钥用 `${ENV}` 插值
 7. 写单元测试覆盖映射与参数校验失败路径（见 [quality-guidelines.md](./quality-guidelines.md)）
 
