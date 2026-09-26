@@ -321,3 +321,27 @@
 - MVP-2 现属复杂任务，task.py start 前需补 design.md 与 implement.md
 - 待定：是否做 yt-dlp 端到端冒烟（-J 取元数据，零副作用）
 - 未决：并发限流值、asr-service 是否保留、产物清理策略（本会话明确推迟）
+
+
+## Session 10: MVP-2a 收尾并归档；HTTP 契约归位任务完成规划
+<!-- trellis-session: v=2 fp=b74a387ede15b0ca -->
+
+**Date**: 2026-09-26
+**Task**: MVP-2a 收尾并归档；HTTP 契约归位任务完成规划
+**Branch**: `dev`
+
+### Summary
+
+MVP-2a（输入获取与音频抽取）完成收尾：提交实现（4bd3574）与 Phase 3.3 规范回写（8a05a75）、以 --no-ff 合并回 dev（cc111b8）、并归档任务。同期完成新任务「HTTP 契约归位与包结构规范修订」的完整规划（prd/design/implement 三件套 + 两个 jsonl 清单），该任务尚未开工，基线为 cc111b8、target 为 dev。dev 领先 origin/dev 若干提交，未推送。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4bd3574` | feat(mvp2a): 输入获取与音频抽取 |
+| `8a05a75` | docs(spec): MVP-2a Phase 3.3 规范回写 |
+| `cc111b8` | Merge branch 'feature/mvp2a-media-to-audio' into dev |
+
+### Status
+
+[OK] **Completed**

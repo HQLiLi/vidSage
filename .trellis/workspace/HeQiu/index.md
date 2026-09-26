@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
-- **Last Active**: 2026-09-25
+- **Total Sessions**: 10
+- **Last Active**: 2026-09-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~323 | Active |
+| `journal-1.md` | ~347 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-09-26 | MVP-2a 收尾并归档；HTTP 契约归位任务完成规划 | `4bd3574`, `8a05a75`, `cc111b8` | `dev` |
 | 9 | 2026-09-25 | MVP-2 路线敲定：yt-dlp 直调 + ffmpeg 抽音频（含外部进程实测） | - | `feature/gitignore-tools` |
 | 8 | 2026-09-24 | 归档目录对齐 Trellis traces 约定并给文件夹名加任务短名 | `1335a1f`, `4991a8e` | `dev` |
 | 7 | 2026-09-24 | 收尾门接入会话归档（规则 9） | `df3878e`, `671ed95` | `dev` |
