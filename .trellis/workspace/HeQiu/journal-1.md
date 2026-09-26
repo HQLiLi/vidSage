@@ -274,3 +274,102 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: MVP-2 路线敲定：yt-dlp 直调 + ffmpeg 抽音频（含外部进程实测）
+<!-- trellis-session: v=2 fp=ccd7fd13040d3dc6 -->
+
+**Date**: 2026-09-25
+**Task**: MVP-2 路线敲定：yt-dlp 直调 + ffmpeg 抽音频（含外部进程实测）
+**Branch**: `feature/gitignore-tools`
+
+### Summary
+
+从任务盘点开始，先决定 MVP-2 先行（目标是把视频到字幕跑通），再对 yt-dlp 的集成路线做了一轮深度调研与实测。关键结论：Java 侧只能 shell out 调 yt-dlp（无可用纯 Java 替代，NewPipeExtractor 官方不支持 B站），但不需要把 yt-dlp 挪到 Python 侧——那个方案唯一的支柱是 asr-service 常驻，而 ASR 走云端后不成立。最终定为两条输入路线收敛到同一个抽音频步骤：链接走 yt-dlp 下载，本地文件直接用，两者都由 Java 调 ffmpeg 抽音频。yt-dlp 已装为 standalone exe，全部所需 flag 与自更新能力均实测确认。
+
+### Main Changes
+
+- 任务盘点：确认 4 个 MVP 子任务状态；MVP-3 退回 planning（实测其无任何 LLM 代码，09-24 的前置成果已在 dev 上）
+- 集成路线调研：VideoLingo / VideoCaptioner 均 import yt_dlp 当库用；Java 无法复用，且无可用纯 Java 替代库
+- 否决方案 B（yt-dlp 放 Python 侧 + Java 发 HTTP）：前提「asr-service 必常驻」在云端 ASR 下不成立
+- 装 yt-dlp standalone exe 到 tools/（2026.08.19，当前最新稳定版），逐 flag 实测核实
+- 实测四个坑：输出编码 GBK、退出码语义极弱、yt-dlp 不接受本地文件、ffmpeg/ffprobe 是外部依赖
+- 音频格式决策：本地 FunASR 用 wav，云端 DashScope 用 m4a（官方支持，体积小 4-8 倍）
+- 新增 research/external-process-integration.md；epic design.md 增「输入路线与外部工具」一节；MVP-2 prd 范围细化
+- .gitignore 加根锚定 /tools/（在 feature/gitignore-tools 分支上，尚未提交）
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] yt-dlp --help 逐个核实所需 flag：-J/-j/--write-subs/--write-auto-subs/--sub-langs/--convert-subs/--cookies/--skip-download/--no-playlist/-P/--progress-template/--ignore-config/-U/--update-to
+- [OK] yt-dlp -U 自更新实测通过（退出码 0，报告 stable@2026.08.19 为最新）
+- [OK] 编码字节级验证：yt-dlp 输出中文为 d6 d0 ce c4（GBK）；PYTHONIOENCODING=utf-8 无效
+- [OK] java -XshowSettings:properties 实测：file.encoding=UTF-8，native.encoding=GBK
+- [OK] yt-dlp 传本地文件实测：ERROR not a valid URL，退出码 1
+- [OK] 未跑 mvn test；未做端到端下载冒烟
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- git 收尾：.gitignore 改动待批准 commit；research / design / prd 改动待定提交路径
+- MVP-2 现属复杂任务，task.py start 前需补 design.md 与 implement.md
+- 待定：是否做 yt-dlp 端到端冒烟（-J 取元数据，零副作用）
+- 未决：并发限流值、asr-service 是否保留、产物清理策略（本会话明确推迟）
+
+
+## Session 10: MVP-2a 收尾并归档；HTTP 契约归位任务完成规划
+<!-- trellis-session: v=2 fp=b74a387ede15b0ca -->
+
+**Date**: 2026-09-26
+**Task**: MVP-2a 收尾并归档；HTTP 契约归位任务完成规划
+**Branch**: `dev`
+
+### Summary
+
+MVP-2a（输入获取与音频抽取）完成收尾：提交实现（4bd3574）与 Phase 3.3 规范回写（8a05a75）、以 --no-ff 合并回 dev（cc111b8）、并归档任务。同期完成新任务「HTTP 契约归位与包结构规范修订」的完整规划（prd/design/implement 三件套 + 两个 jsonl 清单），该任务尚未开工，基线为 cc111b8、target 为 dev。dev 领先 origin/dev 若干提交，未推送。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4bd3574` | feat(mvp2a): 输入获取与音频抽取 |
+| `8a05a75` | docs(spec): MVP-2a Phase 3.3 规范回写 |
+| `cc111b8` | Merge branch 'feature/mvp2a-media-to-audio' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 11: HTTP 契约归位与包结构规范修订（含一处顺带修复的校验顺序缺陷）
+<!-- trellis-session: v=2 fp=90f9a0cf6584c641 -->
+
+**Date**: 2026-09-26
+**Task**: HTTP 契约归位与包结构规范修订（含一处顺带修复的校验顺序缺陷）
+**Branch**: `dev`
+
+### Summary
+
+完成「HTTP 契约归位与包结构规范修订」（任务 09-26-http-contract-layout）。包结构：`controller/` → `web/controller/`（5 文件，纯改名）、三个嵌套 HTTP 契约 record 提升为 `web/dto/` 顶层 record（`PrepareAudioRequest` / `PreparedAudioResponse` / `TranscriptionRequest`，`@Schema` 一字未动）、`AudioSpec` 的 5 条字段校验由「服务层与抽取实现各写一遍」收敛进紧凑构造器（异常类型 IAE → ISE）、`MediaController` 补 `audioTrackIndex` 边界卫语句。规范侧：改写 `directory-structure.md`（含修复「按技术分层」与「不建按技术命名的顶层分包」的字面矛盾、写入 `model/` 两处例外、补契约归属判据 1）、`error-handling.md`（补「谁之过」判据）、`index.md`、`logging-guidelines.md`；另修正归档任务 mvp2a implement.md 的规范出处误引（经所有者批准，唯一跨任务边界改动）。验证：全量测试 14 类 / 164 用例全绿；运行时与基线 f210fe6 逐字节对照一致（三个端点 + /v3/api-docs，唯一差异是两实例端口不同）。**顺带修复（非本任务目标，design 未记载）**：`POST /api/media/audio` 原先对非法参数会先完整获取一遍媒体再拒绝——`requireValidSpec` 排在 acquire 阶段之后，故既不必要地下载，又在环境也坏时把参数错误掩盖成 500「未找到 yt-dlp」；卫语句前移到 HTTP 边界后，边界可判定的参数错误一律在零 I/O 下返回 400。已实测对照：基线 500 / 改后 400（同一环境、同一请求）。分支已 --no-ff 合并回 dev（03950db）并归档（d95bcbc）。dev 领先 origin/dev，未推送。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `045b89a` | refactor(web): controller/ 改名为 web/controller/ |
+| `6f52b67` | refactor(web): 提取嵌套 HTTP 契约到 web/dto/ |
+| `9878df3` | refactor(model): AudioSpec 校验移入紧凑构造器，异常改 ISE |
+| `79d6e85` | fix(web): MediaController 补 audioTrackIndex 边界卫语句 |
+| `affdd81` | docs(spec): 包结构与错误处理规范修订 |
+| `c1e1f6a` | docs(spec): 补边界卫语句须早于 I/O 的实测依据 |
+| `fceb609` | docs(task): 修正 mvp2a implement.md 的规范出处误引 |
+
+### Status
+
+[OK] **Completed**

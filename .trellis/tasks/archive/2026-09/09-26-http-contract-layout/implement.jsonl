@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/09-26-http-contract-layout/handoff.md", "reason": "接手本任务的起点（新会话先读这条）：批准状态、当前分支与 dev 位置、可接受的脏路径、上一会话的关键上下文与三个已留档的错误。"}
+{"file": ".trellis/tasks/09-26-http-contract-layout/design.md", "reason": "本任务的技术设计与全部已定判据（三条归属判据、规范改写清单、取舍记录）。动手前必读。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "待改写 12 处的主文档：尤其 :44「controller/ 平铺」判据、:144「不建按技术命名的顶层分包」的措辞矛盾、:151 响应体归属留白。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "异常类型判据（:37 调用方之过→IAE、环境/外部→ISE）与 REST 层错误映射段。判据 3「谁之过」的落点。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "契约设计与测试写法规范；新增 AudioSpecTest / MediaControllerTest 用例须遵循。"}

@@ -1,6 +1,6 @@
 # 错误处理
 
-> 当前项目**没有全局异常处理器**（无 `@ControllerAdvice`、无自定义异常类）。
+> 项目已有**全局异常处理器**：`web/controller/ApiExceptionHandler`（`@RestControllerAdvice`）。它的提取条件是原规范预告的「第二个 Controller 落地、局部处理开始重复」——`MediaController` 落地时触发，见下方「REST 层错误映射」。
 > 现有约定是：**在 Provider 内部用卫语句尽早失败，抛 JDK 标准异常并带可操作的信息。**
 
 ---
@@ -36,7 +36,30 @@ return switch (source) {
 
 **判定标准：错在调用方 → `IllegalArgumentException`；错在环境或外部系统 → `IllegalStateException`。**
 
-项目当前**不定义自定义异常类**。等到需要跨层区分错误类型（例如给前端不同错误码）时再引入，不要提前造。
+### 补充判据：非法值是「谁产生的」决定异常类型
+
+上一张表回答「种类」，这条回答「**归属**」——同一个非法值，来源不同就该是不同的异常：
+
+- **调用方产生**（请求体 / URL / 路径）→ 在 **HTTP 边界卫语句**里拦下，抛 `IllegalArgumentException` → **400 + WARN**
+- **服务端自己算出** → 在 `model/` 类型的**紧凑构造器不变量**里拦下，抛 `IllegalStateException` → **500 + ERROR**
+
+**落地规则：任何「拿调用方的值构造 `model/` 类型」的代码，必须先有一个边界卫语句。** 构造器那层是**最后防线**——它触发即意味着边界漏了。
+
+**为何必须分两处**：`AudioSpec` 的构造器只看得到「`audioTrackIndex` 是负的」，**看不到这个负值是客户端传的还是服务端算的**。「谁之过」只能在知道来源的地方决定。
+
+**卫语句的位置同样重要：必须早于一切 I/O。** 若校验排在服务层的获取 / 抽取之后，客户端参数错误会被**前面 I/O 的失败掩盖**。实测对照（2026-09-26，传 `audioTrackIndex: -1` 且媒体源不可获取）：
+
+| | 旧结构（校验在服务层、排在 acquire 之后） | 现结构（卫语句在 HTTP 边界） |
+|---|---|---|
+| 返回 | **500**「未找到 yt-dlp」——参数错误根本没被看见 | **400**「音频轨序号不能为负」 |
+
+源**可**获取时两者才同为 400。故守卫的**位置**（边界，早于任何服务调用）与守卫的**存在**同等重要：把卫语句「整理」进服务层，会让客户端错误重新变得**取决于环境是否就绪**。
+
+**同一个值被检查两次不是冗余**：「调用方给的合法吗？」（边界）与「我们内部造出来的符合不变量吗？」（构造器）是**两问两答**——同一谓词、不同失败含义，而**含义决定状态码**。本项目实例：`MediaController.toAudioSpec` 与 `AudioSpec` 紧凑构造器各查一次 `audioTrackIndex < 0`，消息文本一致，异常类型分别是 IAE / ISE。
+
+**残留风险（有意接受）**：边界卫语句若漏写，客户端错误会被构造器报成 **500**。取舍理由是**失败方向反转**——旧形态是服务端 bug **伪装成 400 / WARN 静默存活**，新形态把服务端疏漏**喊成 500 / ERROR，可见**。宁可大声暴露服务端缺陷，也不要藏进「用户错误」里。
+
+项目当前**不定义自定义异常类**。上表与本判据以**语义**表达、不绑类型——将来引入自定义异常体系时，只需补类型映射，判据不动。等到需要跨层区分错误类型（例如给前端不同错误码）时再引入，不要提前造。
 
 ## 字符串判空
 
@@ -131,18 +154,19 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 | 为"以后可能用到"预先造自定义异常体系 | 当前代码没有，属于过度设计 |
 | 在 Provider 里做重试/降级逻辑 | 重试属于管线编排层，不属于 Provider（现阶段也无此实现） |
 
-## REST 层错误映射（已建立）
+## REST 层错误映射（已建立，且已提取为全局）
 
-第一个 Controller（`controller/AsrController.java`）确立了如下模式，后续 Controller 照此办理：
+第一个 Controller（`web/controller/AsrController.java`）确立了模式；第二个 Controller（`web/controller/MediaController.java`）落地时局部处理开始重复，**按原规范预告的条件提取成了全局处理器** `web/controller/ApiExceptionHandler`（`@RestControllerAdvice`）。后续 Controller **不必再写局部 `@ExceptionHandler`**。
 
-- **入参校验用卫语句**：Controller 层判 `audioUrl` 空白抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
-- **局部 `@ExceptionHandler`**：Controller 内定义 `@ExceptionHandler(IllegalArgumentException.class)` + `@ResponseStatus(BAD_REQUEST)`，响应体 `{ "error": message }`（错误信息含「缺什么、怎么补」）
-- **暂不建全局 `@ControllerAdvice`**：等出现第二个 Controller、局部处理开始重复时再提取
+- **入参校验用卫语句**：Controller 层判空白/越界即抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
+- **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）
+- **日志级别按「谁之过」分**：调用方输入问题（400）记 **WARN**——不该触发 ERROR 告警；服务端或环境故障（500）记 **ERROR** 并**带上异常对象**（保留调用栈供定位）
+- **响应体形状只有一处定义**：`{ "error": message }` 由 `ApiExceptionHandler` 统一产出，接口文档也不逐接口重复声明
 
 ## 尚未建立的约定
 
-- **全局异常处理**：无 `@ControllerAdvice`；当前用 Controller 局部 `@ExceptionHandler`（见上节），重复后再提取。
 - **错误码体系**：未定义。
+- **自定义异常类**：未定义——等到需要跨层区分错误类型（例如给前端不同错误码）时再引入，不要提前造。
 - **日志**：已落地，规范见 [logging-guidelines.md](./logging-guidelines.md)。
 
 

@@ -139,6 +139,15 @@ public record TranscriptionCommand(AudioSource source, String language) {
 
   命名模式：正常路径用陈述句（`mapsSentencesToSegments`），异常路径用 `throwsWhen...` / `requires...`。
 
+### 会写文件的测试与 `@TempDir`
+
+Windows 上 `@TempDir` 的清理**偶发失败**：`JUnitException: Failed to delete temp directory`。已在 `FfmpegAudioExtractorTest` 与 `LocalFileMediaAcquirerTest` **两次独立复现**，都是**真写文件**的用例；不写文件的用例未观察到。成因是环境性句柄占用，**不是实现缺陷**——别为它去改实现。
+
+- 凡**会写文件**又用 `@TempDir` 的测试类，用 `@TempDir(cleanup = CleanupMode.NEVER)`（import `org.junit.jupiter.api.io.CleanupMode`），别让环境问题把测试判红
+- **不要**以「顺手统一」为由修改范围外、且无 flake 证据的既有测试类——那会给审查凭空增加噪音
+
+参照：`provider/audio/ffmpeg/FfmpegAudioExtractorTest.java`
+
 ### 不要为单元测试起 Spring 容器
 
 `DashScopeAsrProviderTest` **没有** `@SpringBootTest`，而是直接 `new` 出被测对象，把依赖手动传进去：

@@ -1,22 +1,26 @@
 spring:
   application:
     name: vidsage
+  profiles:
+    # 本机无显式 profile 时激活 application-local.yml（存本机密钥与工具绝对路径）。
+    # 用 default 而非 active：容器/CI 只要显式给 SPRING_PROFILES_ACTIVE=prod，本项自动失效。
+    # 注意本项只设 default，不设 active——active 会让其它 profile 无法再被命令行覆盖。
+    default: local
   threads:
     virtual:
       enabled: true
   ai:
     deepseek:
-      # 翻译走 LLM 唯一路线（DeepSeek，OpenAI 兼容）；key 一律走环境变量，不写真实密钥
+      # 翻译走 LLM
       api-key: ${DEEPSEEK_API_KEY}
       chat:
-        options:
-          model: deepseek-chat
-          # 翻译要求术语与称谓稳定，温度不宜过高
-          temperature: 0.3
+        model: deepseek-chat
+        # 翻译要求术语与称谓稳定，温度不宜过高
+        temperature: 0.3
 
 vidsage:
   asr:
-    # 本地 FunASR 供应商为规划项；当前默认走云端
+    # ASR提供者：本地或云端
     provider: cloud
     dashscope:
       api-key: ${DASHSCOPE_API_KEY}
@@ -24,10 +28,28 @@ vidsage:
   llm:
     # DeepSeek 为首个 LLM 实现；后续如加本地模型，增加对应实现后在此切换
     provider: deepseek
+  tools:
+    # 外部工具（yt-dlp / ffmpeg / ffprobe）；留空则从 PATH 解析。
+    # 容器里 ffmpeg 未必在 PATH，交付时必须显式配置，不要把本机绝对路径写进仓库
+    yt-dlp-path: ${YT_DLP_PATH:}
+    # 一处配置、两处使用：既供 Java 抽音频，也作为 yt-dlp 的 --ffmpeg-location
+    ffmpeg-path: ${FFMPEG_PATH:}
+    ffprobe-path: ${FFPROBE_PATH:}
+    # 外部命令默认超时（秒），调用方未显式指定时使用
+    default-timeout-seconds: 300
+    # yt-dlp 版本距今超过该天数即告警（不自动更新）
+    yt-dlp-freshness-warn-days: 90
+  workspace:
+    # 任务工作目录根；单任务子目录按内容寻址生成，目录可删
+    root: ${VIDSAGE_WORKSPACE_ROOT:./data/works}
+  download:
+    yt-dlp:
+      # B站未登录时的风控边界未实测；部分站点需登录态时，指定导出的 Netscape 格式 cookies 文件
+      cookies-file: ${YT_DLP_COOKIES_FILE:}
 
 logging:
   level:
     root: INFO
     # 业务包开 DEBUG：转写是秒级外部调用，服务层与 Provider 的中间节点日志
-    # 是定位「卡在哪一步」的关键；线上若嫌吵可单独下调到 INFO
+    # 是定位「卡在哪一步」的关键；线上单独下调到 INFO
     com.vidsage: DEBUG

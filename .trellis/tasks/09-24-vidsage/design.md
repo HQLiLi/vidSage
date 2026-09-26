@@ -26,6 +26,29 @@
 
 任务管线 download -> extract audio -> transcribe -> translate -> summarize -> index -> QA。每个阶段的产物落盘、可断点复用（借鉴 KlicStudio 分阶段 CLI 的思路，核实于 2026-09-22 README）。
 
+## 输入路线与外部工具（2026-09-25 定）
+
+两条输入路线，收敛到同一个抽取步骤：
+
+```text
+URL 输入     → yt-dlp 下载视频（内部用 ffmpeg 合并音视频）→ 视频文件 ┐
+本地文件输入 →                                                原文件 ┴→ Java 调 ffmpeg 抽音频 → ASR
+```
+
+- **下载只由 yt-dlp 承担；抽音频一律由 Java `ProcessBuilder` 调 ffmpeg。** 两条路线的抽音频参数因此只有一份定义。
+  **不给 yt-dlp 用 `-x`**：yt-dlp 不接受本地文件（实测，见 `research/external-process-integration.md` 第三节），
+  让它处理 URL 路线会把抽音频参数分裂成两份、并多依赖一层 yt-dlp 内部语法。
+  两个外部程序**共用同一个进程执行器**（拼参数、并发读双流防死锁、超时、编码、退出码）。
+- **ffmpeg 路径：一处配置、两处使用。** Java 的抽音频调用与 yt-dlp 的 `--ffmpeg-location` 必须指向同一个二进制。
+  容器里 ffmpeg 未必在 PATH，交付时必须显式配置。
+- **音频格式随 ASR 路径**：本地 FunASR 用 wav（零解码），云端 DashScope 用 m4a（体积小 4–8 倍，官方支持）。
+  建议由 ASR provider 声明所需格式，而非把判断散在管线里。
+- **yt-dlp 版本策略**：钉死版本 + 诊断端点报新鲜度，**不自动更新**。`-U` 自更新实测可用，但依赖能访问 GitHub。
+  升级的兜底通道是「手工替换 `tools/yt-dlp.exe`」，离线可用。
+- **子进程输出必须按 `native.encoding` 解码** —— 本机 yt-dlp 吐 GBK，而 Java 21 默认按 UTF-8 解，中文会**静默乱码**。
+
+详见 `research/external-process-integration.md`（实测数据、命令与四个未验事项都在那里）。
+
 ## 部署形态
 
 - 开发与演示阶段本地起服务（localhost）。

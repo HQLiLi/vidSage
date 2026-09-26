@@ -1,6 +1,7 @@
 # VidSage 视频知识助手 — PRD
 
 > 竞品调研与 ASR 模型选型调研见 `research/competitive-and-asr.md`，技术方案见 `design.md`。
+> 本地已下载的开源参考项目（VideoLingo / VideoCaptioner / AI-Media2Doc）「哪个环节抄哪个」见 `research/oss-references.md`。
 
 ## 背景与目标
 

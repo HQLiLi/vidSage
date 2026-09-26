@@ -1,6 +1,7 @@
 # MVP-4 结构化总结 — PRD
 
 > Epic 路线图见 `../09-24-vidsage/prd.md`，分段压缩思路见主项目 0007 上下文工程。
+> 实现参考（本地开源项目源码索引）见 `../09-24-vidsage/research/oss-references.md` 第三节 MVP4 小节；规划期（Phase 1.3）应把它挂入本任务的 `implement.jsonl` 与 `check.jsonl`。
 
 ## 范围
 

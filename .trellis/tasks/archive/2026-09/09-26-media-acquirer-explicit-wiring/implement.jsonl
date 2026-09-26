@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "本次要改写的规范本体（§2 配置二选一装配、§2b 输入类型分派、四件套表）；也是『两个实现为何同时驻留容器』的唯一书面出处"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "config/ 落点判据（:42/:74/:128）与 provider/→@Component 的 stereotype 表（:149），本任务改动清单的另一半"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "注释要求（公共类型与公共方法须 Javadoc，:60/:92）、构造函数注入可测性、『单元测试不起 @SpringBootTest』反模式（:214）——决定装配断言放哪、以及配置类 Javadoc 怎么写"}
