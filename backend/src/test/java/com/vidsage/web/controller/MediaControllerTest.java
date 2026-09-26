@@ -1,7 +1,9 @@
-package com.vidsage.controller;
+package com.vidsage.web.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -155,6 +157,21 @@ class MediaControllerTest {
         assertEquals(AudioContainer.WAV, spec.container());
         assertEquals(16000, spec.sampleRateHz());
         assertEquals(1, spec.channels());
+    }
+
+    @Test
+    void returnsBadRequestWhenAudioTrackIndexNegative() throws Exception {
+        // 这一条精确区分两处检查：边界卫语句（IAE → 400）vs AudioSpec 构造器（ISE → 500）。
+        // 若 toAudioSpec 的卫语句漏写，负轨号会落到构造器、以 500 告终，本用例即失败。
+        // 故断言的是 400（而非仅「非 200」）——它是判别式的。
+        mockMvc.perform(post("/api/media/audio")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"url":"https://example.com/v","audioContainer":"WAV","audioTrackIndex":-1}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("音频轨序号不能为负：当前为 -1；序号从 0 起计"));
+
+        verify(audioPreparationService, never()).prepare(any(MediaInput.class), any(AudioSpec.class));
     }
 
     @Test

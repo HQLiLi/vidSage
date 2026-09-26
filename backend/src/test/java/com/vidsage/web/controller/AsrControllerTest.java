@@ -1,4 +1,4 @@
-package com.vidsage.controller;
+package com.vidsage.web.controller;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;

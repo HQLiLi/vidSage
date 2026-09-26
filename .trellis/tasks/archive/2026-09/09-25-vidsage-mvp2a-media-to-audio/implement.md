@@ -191,6 +191,13 @@ grep -h -o 'tests="[0-9]*" errors="[0-9]*" skipped="[0-9]*" failures="[0-9]*"' b
 ### 需项目所有者拍板的两处规范冲突（实现过程中暴露，非本任务范围）
 
 8. **`model/` 到底能不能带 `@Schema`** —— `provider-pattern.md` 写「`model/` 禁止框架注解（Jackson 除外）」，但**已落地的实践相反**：2026-09-24 的 Swagger 任务给 `TranscriptionResult` / `TranscriptionSegment`（都在 `model/asr/`）加了 `@Schema`，而 PRD 要求「HTTP 契约模型字段都要有 `@Schema`」。**规范与代码现在打架**，两条出路：在规范里为「HTTP 对外模型」写明 `@Schema` 例外，或改由 `controller/` 自持响应 record + 映射。步骤 7 暂按**既有实践**（沿用 `AsrController` 先例）实现，请定夺。
+
+> **勘误（2026-09-26 补注，出处误引）**：本条把该规则的出处写成了 `provider-pattern.md`，**这是引错了文件**。全仓 grep `框架注解` 只命中两处：
+> - `directory-structure.md` 的「顶层分包判据」职责表 **`model/` 行** —— **规则实际住在那里**
+> - `provider-pattern.md` 的「Provider 接口」行 —— 它说的是 **Provider 接口**不含框架注解，与 `model/` 无关
+>
+> **别去 `provider-pattern.md` 找一条不存在的规则。**（此处刻意只按章节名引用、不写行号：该文档行号已多次随改写漂移。）
+
 9. **`model/` 是否允许 record 的紧凑构造器做字段不变量校验** —— 现在 `AudioSpec` 的 5 条字段校验（`container` 非空、采样率/声道为正、M4A 码率为正、轨号非负）在 `AudioPreparationService` 与 `FfmpegAudioExtractor` **各写一份**。原因：`model/` 禁止行为方法，而「包级可见的静态方法放 `AudioSpec`」在包布局下**技术上行不通**（`com.vidsage.service` 与 `com.vidsage.model.media` 不同包，包级可见跨不过去，只能 `public`，更破规矩）。若能允许紧凑构造器承担不变量，即可收敛成一处。属架构取向，需定夺。
 
 ## 交给 2b 的接口面（本任务完成即冻结）

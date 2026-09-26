@@ -1,10 +1,10 @@
-package com.vidsage.controller;
+package com.vidsage.web.controller;
 
 import com.vidsage.service.TranscriptionService;
 import com.vidsage.model.asr.AudioSource;
 import com.vidsage.model.asr.TranscriptionResult;
+import com.vidsage.web.dto.TranscriptionRequest;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
@@ -69,24 +69,5 @@ public class AsrController {
         log.info("转写请求完成: segments={}, language={}, cost={}ms",
                 result.segments().size(), result.language(), System.currentTimeMillis() - start);
         return result;
-    }
-
-    /**
-     * 转写请求体。
-     *
-     * @param audioUrl      公网可访问的音频 URL；与 audioFilePath 只能传一个
-     * @param audioFilePath 服务端可读的本地音频文件路径（云端实现会先上传到临时存储）；与 audioUrl 只能传一个
-     * @param language      可选语种提示（如 "zh"）
-     */
-    @Schema(description = "转写请求体：audioUrl 与 audioFilePath 只能传一个")
-    record TranscriptionRequest(
-            @Schema(description = "公网可访问的音频 URL；与 audioFilePath 只能传一个",
-                    example = "https://example.com/audio/sample.mp3")
-            String audioUrl,
-            @Schema(description = "服务端可读的本地音频文件路径（云端实现会先上传到临时存储）；与 audioUrl 只能传一个",
-                    example = "/data/audio/sample.mp3")
-            String audioFilePath,
-            @Schema(description = "可选语种提示（如 \"zh\"）", example = "zh")
-            String language) {
     }
 }

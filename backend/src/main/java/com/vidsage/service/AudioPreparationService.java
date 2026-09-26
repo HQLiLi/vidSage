@@ -93,11 +93,11 @@ public class AudioPreparationService {
      * 准备音频：获取媒体（必要时下载）后按规格抽取音频，两阶段均支持断点复用。
      *
      * @param input    媒体输入；不可为空
-     * @param spec     音频输出规格；不可为空，字段合法性在本方法内前置校验（见 {@code requireValidSpec}）
+     * @param spec     音频输出规格；不可为空（字段合法性由其构造器保证，见 {@link AudioSpec}）
      * @param listener 阶段进度监听；<b>不可为 {@code null}</b>——不关心进度请改用两参重载
      *                 {@link #prepare(MediaInput, AudioSpec)}（内部走 {@link ProgressListener#noop()}）
      * @return 音频产物（路径 + 规格 + 字节数）
-     * @throws IllegalArgumentException 输入或规格为空、规格字段非法、{@code listener} 为 {@code null}，
+     * @throws IllegalArgumentException 输入或规格为空、{@code listener} 为 {@code null}，
      *                                  或输入内容不合法（文件不存在、路径非法等）
      * @throws IllegalStateException    外部工具缺失，或外部命令未按预期完成（非零退出、超时、产物为空）
      */
@@ -145,16 +145,19 @@ public class AudioPreparationService {
     }
 
     /**
-     * extract-audio 阶段：先校验 spec，再判是否有非空音频产物——有则跳过，否则委托抽取。
+     * extract-audio 阶段：判是否有非空音频产物——有则跳过，否则委托抽取。
      */
     private AudioArtifact runExtractStage(AcquiredMedia media, Path workDir, AudioSpec spec,
                                           ProgressListener listener) {
         try {
-            // 改 2：spec 校验必须前置到断点判断之前。断点分支会直接返回产物、不经过抽取实现，
-            // 若不先校验，「传了非法 spec 而对应文件恰好存在」会返回一个未经校验的产物。
-            // 校验放在 try 内：与 acquire 阶段一致，调用方错误（IAE）同样发 FAILED 事件，保证失败可观测。
-            requireValidSpec(spec);
-
+            // spec 字段合法性已由 AudioSpec 的紧凑构造器结构性保证（见 model/media/AudioSpec.java），
+            // 故此处不再前置校验。
+            //
+            // 历史：本处原有一次 requireValidSpec 调用（当时注释为「改 2：spec 校验必须前置到断点判断
+            // 之前」），理由是断点分支会直接返回产物、不经过抽取实现，若不先校验，「传了非法 spec 而
+            // 对应文件恰好存在」会返回一个未经校验的产物。该防御意图仍然成立——非法 spec 不得被断点
+            // 分支放过；但场景本身在紧凑构造器落地后已不可能构造（非法 AudioSpec 不存在），故本服务
+            // 与 FfmpegAudioExtractor 两处 requireValidSpec 一并移除，由构造器单点保证。
             Path audioPath = workDir.resolve(audioFileName(spec));
             long existingSize = nonEmptySize(audioPath);
             if (existingSize > 0) {
@@ -185,8 +188,8 @@ public class AudioPreparationService {
      *
      * <p><b>不做省略特例</b>：轨号为 0 也照写 {@code -t0}，不为它开分支——特例就是漏判的入口。
      *
-     * <p>包级 static：可直测。<b>调用前 spec 必须已通过 {@link #requireValidSpec}</b>（本方法假定
-     * 容器非空、各数值已合法）；这些名字<b>只有本服务知道</b>（见 design §六 文件表）。
+     * <p>包级 static：可直测。<b>spec 的容器非空、各数值已合法由 {@link AudioSpec} 的紧凑构造器
+     * 保证</b>；这些名字<b>只有本服务知道</b>（见 design §六 文件表）。
      *
      * @param spec 已校验的音频规格
      * @return 音频产物文件名（不含目录）
@@ -215,40 +218,6 @@ public class AudioPreparationService {
             return (sampleRateHz / 1000) + "k";
         }
         return (sampleRateHz / 1000.0) + "k";
-    }
-
-    /**
-     * 校验 {@link AudioSpec} 字段的合法性（契约级约束，与 ffmpeg 无关）：{@code container} 非空、
-     * {@code sampleRateHz > 0}、{@code channels > 0}、M4A 的 {@code bitrateKbps > 0}、
-     * {@code audioTrackIndex >= 0}。违反即抛 {@link IllegalArgumentException}。
-     *
-     * <p><b>为何在服务层也校验一遍</b>：extract 阶段的断点分支会绕过抽取实现，本服务必须自己守住
-     * 「断点之前先校验」这条路径。
-     *
-     * <p><b>与 {@code FfmpegAudioExtractor.requireValidSpec} 的重复是有意为之</b>：判据相同、但归属不同
-     * （本服务守断点分支，抽取实现守直接调用），与 design §六「两处『存在且非空』判据各写一次」同一
-     * 处理方式。契约约束不能放进 {@code model/}（directory-structure.md 规定 model 无行为），故不抽公共方法。
-     */
-    private static void requireValidSpec(AudioSpec spec) {
-        if (spec.container() == null) {
-            throw new IllegalArgumentException("音频容器不能为空：请传 AudioContainer.WAV 或 AudioContainer.M4A");
-        }
-        if (spec.container() == AudioContainer.M4A && spec.bitrateKbps() <= 0) {
-            throw new IllegalArgumentException("M4A 是有损容器，码率必须为正数：当前为 " + spec.bitrateKbps()
-                    + "；请传 AudioSpec.M4A_AAC_48K_MONO，或指定明确码率（如 48）");
-        }
-        if (spec.sampleRateHz() <= 0) {
-            throw new IllegalArgumentException("采样率必须为正数：当前为 " + spec.sampleRateHz()
-                    + "；请传明确采样率，如 16000");
-        }
-        if (spec.channels() <= 0) {
-            throw new IllegalArgumentException("声道数必须为正数：当前为 " + spec.channels()
-                    + "；单声道请传 1");
-        }
-        if (spec.audioTrackIndex() < 0) {
-            throw new IllegalArgumentException("音频轨序号不能为负：当前为 " + spec.audioTrackIndex()
-                    + "；序号从 0 起计");
-        }
     }
 
     /**

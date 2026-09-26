@@ -1,7 +1,7 @@
 # 日志规范
 
 > 2026-09-24 随首个日志实现落地重建（此前因全库无日志语句而删除，见 [index.md](./index.md)）。
-> 以 `controller/AsrController.java`、`service/TranscriptionService.java`、`provider/asr/dashscope/DashScopeAsrProvider.java` 的真实代码为依据。
+> 以 `web/controller/AsrController.java`、`service/TranscriptionService.java`、`provider/asr/dashscope/DashScopeAsrProvider.java` 的真实代码为依据。
 
 ---
 

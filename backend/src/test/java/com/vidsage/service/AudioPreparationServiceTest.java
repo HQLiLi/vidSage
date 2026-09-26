@@ -250,21 +250,16 @@ class AudioPreparationServiceTest {
                 () -> "消息应指出两参重载的替代做法：" + error.getMessage());
     }
 
-    @Test
-    void rejectsInvalidSpecEvenWhenAudioFileExists() throws IOException {
-        // 改 2：spec 校验前置到断点判断之前——「非法 spec + 对应文件恰好存在」也必须抛，
-        // 不得返回未经校验的产物。非法 spec 的指纹与存在文件一致，构造出「会被断点命中」的场景。
-        AcquiredMedia media = acquiredMedia();
-        var invalid = new AudioSpec(AudioContainer.WAV, 0, 1, 0, 0);
-        Files.write(workDir.resolve(AudioPreparationService.audioFileName(invalid)), new byte[9]);
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
-
-        assertThrows(IllegalArgumentException.class, () -> service().prepare(input, invalid, listener));
-
-        verify(audioExtractor, never()).extract(any(), any(), any());
-        assertEquals(List.of("acquire/SKIPPED", "extract-audio/FAILED"), states(),
-                "非法 spec 必须抛异常并发出 extract FAILED 事件，不得返回未经校验的产物");
-    }
+    // 原 rejectsInvalidSpecEvenWhenAudioFileExists 已删除（刻意，非遗漏）。
+    //
+    // 它守护的是一次真实修复（当时注释为「改 2：spec 校验前置到断点判断之前」）：断点分支会直接
+    // 返回产物、不经过抽取实现，故「传了非法 spec 而对应文件恰好存在」时必须先抛，不得返回一份
+    // 未经校验的产物。
+    //
+    // 删除理由：spec 字段校验搬进 AudioSpec 的紧凑构造器后，非法 AudioSpec 不可能存在，
+    // 「非法 spec + 断点命中」这个场景**结构性无法构造**——无法改写，只能删。它守护的整类 bug
+    // 随之消失，这是构造器方案的最强收益，不是测试覆盖的损失；契约的另一半（契约本身不可被违反）
+    // 由 model/media/AudioSpecTest 的构造期拒绝用例覆盖。
 
     @Test
     void rejectsNullInputAndNullSpec() {

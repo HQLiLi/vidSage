@@ -296,29 +296,10 @@ class FfmpegAudioExtractorTest {
                 () -> extractor.extract(media, out, AudioSpec.WAV_PCM_16K_MONO));
     }
 
-    @Test
-    void rejectsInvalidSpecFields() throws IOException {
-        FfmpegAudioExtractor extractor = newExtractor();
-        Path media = dummyMedia("in.mp4");
-        Path out = tempDir.resolve("audio.wav");
-        var zeroSampleRate = new AudioSpec(AudioContainer.WAV, 0, 1, 0, 0);
-
-        assertThrows(IllegalArgumentException.class, () -> extractor.extract(media, out, zeroSampleRate));
-    }
-
-    @Test
-    void rejectsZeroBitrateForLossyContainer() throws IOException {
-        FfmpegAudioExtractor extractor = newExtractor();
-        Path media = dummyMedia("in.mp4");
-        Path out = tempDir.resolve("audio.m4a");
-        var zeroBitrate = new AudioSpec(AudioContainer.M4A, 16000, 1, 0, 0);
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> extractor.extract(media, out, zeroBitrate));
-
-        assertTrue(error.getMessage().contains("AudioSpec.M4A_AAC_48K_MONO"),
-                () -> "应给出 M4A 预置常量名：" + error.getMessage());
-    }
+    // 原 rejectsInvalidSpecFields / rejectsZeroBitrateForLossyContainer 已移除：
+    // spec 字段校验搬进 AudioSpec 的紧凑构造器后，非法值在构造那一刻就抛，测不到 extractor 了。
+    // 两者守护的契约改由 model/media/AudioSpecTest 覆盖（含「消息含 AudioSpec.M4A_AAC_48K_MONO」
+    // 那条断言），归属比留在本类更准。
 
     /** 构造被测对象：工具路径解析被 mock 成固定 ffmpeg 路径，避免依赖运行机器。 */
     private FfmpegAudioExtractor newExtractor() {

@@ -1,4 +1,4 @@
-package com.vidsage.controller;
+package com.vidsage.web.controller;
 
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
