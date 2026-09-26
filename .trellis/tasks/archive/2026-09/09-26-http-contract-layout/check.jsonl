@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/09-26-http-contract-layout/design.md", "reason": "验收基准：逐条核对 §六 规范改写清单（12+4 处）与 §十 验收方式的每一项。"}
+{"file": ".trellis/tasks/09-26-http-contract-layout/prd.md", "reason": "验收基准：R1-R7 逐条可验证，且无遗留开放问题。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "验收：无字面矛盾、无遗留 controller/ 引用、新判据（按角色分子包）已写明并解释了为何不违 :108 的 package-by-feature 教训。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "验收：判据 3 已写入；且未与 mvp2a 对同一文件的更新冲突。"}
