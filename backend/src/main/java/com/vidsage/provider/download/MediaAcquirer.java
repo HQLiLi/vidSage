@@ -6,16 +6,17 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * 媒体输入获取抽象：把一条 {@link MediaInput} 变成工作目录里的一份本地媒体文件 + 元数据。
+ * 媒体文件获取器接口（目前分为本地和链接【走yt-dlp插件获取】）。
  *
- * <p><b>两条路线由输入子类型决定，不由配置决定</b>，因此两个实现同时驻留容器（区别于
- * provider-pattern.md 里「同能力、配置二选一」的 {@code @ConditionalOnProperty} 形态）；
- * 具体选哪个由上层服务按 {@link #supports} 分派，接口自身不含选择逻辑。
+ * <p>干的就一件事：把一条 {@link MediaInput} 变成工作目录里的一份可读媒体文件，外加标题和时长。
+ * 产出的是<b>完整媒体文件（带视频轨）</b>，不是音频——抽音频是下一阶段 {@code AudioExtractor} 的事。
  *
- * <p><b>刻意不收进度监听参数</b>：阶段内进度（下载百分比）不在本阶段范围，
- * 阶段事件由上层服务在调用前后发出（RUNNING / SUCCEEDED / SKIPPED / FAILED）。
- * 将来确实需要阶段内进度时再加——那时监听契约位于 {@code model/} 下，
- * 不会构成 provider 反向依赖 service 的分层倒置。
+ * <p>走哪条路线由<b>输入子类型</b>定，不由配置定：远程 URL 走 yt-dlp 下载，本地路径直接采用。
+ * 所以两个实现同时待在容器里、都不要加 {@code @ConditionalOnProperty}，选谁由上层服务按
+ * {@link #supports} 分派；两个实现的 {@code supports} <b>互斥</b>，同一输入只有一个返回 true。
+ *
+ * <p>本接口<b>不收进度监听</b>：下载百分比这类阶段内进度不在本阶段范围，阶段事件由上层服务
+ * 在调用前后发出（RUNNING / SUCCEEDED / SKIPPED / FAILED）。
  */
 public interface MediaAcquirer {
 

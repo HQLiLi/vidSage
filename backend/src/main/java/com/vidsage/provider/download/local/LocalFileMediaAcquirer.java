@@ -105,7 +105,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
             throw new IllegalArgumentException("本地媒体文件不可读：" + file
                     + "；请给服务运行账号授予读权限，或改传 url");
         }
-
+        // 媒体时长（毫秒）
         long durationMs = probeDurationMs(file);
         // 本地路线不拷贝，直接采用；workDir 留给 2b 落字幕产物用，本阶段不需要
         log.info("采用本地媒体文件: file={}, durationMs={}, sizeBytes={}",

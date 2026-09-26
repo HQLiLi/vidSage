@@ -91,6 +91,11 @@ public class AudioPreparationService {
 
     /**
      * 准备音频：获取媒体（必要时下载）后按规格抽取音频，两阶段均支持断点复用。
+     * 断点复用：产物文件本身作为检查点的幂等重跑：同一个输入再次调用 prepare()时，
+     * 某个阶段如果发现上一次跑出来的产物已经好好躺在磁盘上，就跳过这个阶段直接拿现成的，
+     * 而不是重新下载 / 重新转码。
+     * 阶段一：acquire（获取媒体）
+     * 阶段二：extract-audio（抽取音频）
      *
      * @param input    媒体输入；不可为空
      * @param spec     音频输出规格；不可为空（字段合法性由其构造器保证，见 {@link AudioSpec}）
@@ -110,12 +115,11 @@ public class AudioPreparationService {
             throw new IllegalArgumentException("音频规格不能为空：请传 AudioSpec（如 AudioSpec.WAV_PCM_16K_MONO）");
         }
         if (listener == null) {
-            // 不把 null 静默当成 noop()：那会让「忘了传 listener」变成进度无声消失，
-            // 正是本项目一直在避免的无声失败（design §六 / 裁定改 3）
             throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
                     + "或改用不带 listener 的 prepare(input, spec) 两参重载（内部走 ProgressListener.noop()）");
         }
 
+        // 获取该媒体的产物目录
         Path workDir = workspaceService.workspaceFor(input);
         log.debug("开始准备音频: workDir={}, container={}", workDir.getFileName(), spec.container());
 
@@ -145,19 +149,11 @@ public class AudioPreparationService {
     }
 
     /**
-     * extract-audio 阶段：判是否有非空音频产物——有则跳过，否则委托抽取。
+     * extract-audio（提取音频） 阶段：判是否有非空音频产物——有则跳过，否则委托抽取。
      */
     private AudioArtifact runExtractStage(AcquiredMedia media, Path workDir, AudioSpec spec,
                                           ProgressListener listener) {
         try {
-            // spec 字段合法性已由 AudioSpec 的紧凑构造器结构性保证（见 model/media/AudioSpec.java），
-            // 故此处不再前置校验。
-            //
-            // 历史：本处原有一次 requireValidSpec 调用（当时注释为「改 2：spec 校验必须前置到断点判断
-            // 之前」），理由是断点分支会直接返回产物、不经过抽取实现，若不先校验，「传了非法 spec 而
-            // 对应文件恰好存在」会返回一个未经校验的产物。该防御意图仍然成立——非法 spec 不得被断点
-            // 分支放过；但场景本身在紧凑构造器落地后已不可能构造（非法 AudioSpec 不存在），故本服务
-            // 与 FfmpegAudioExtractor 两处 requireValidSpec 一并移除，由构造器单点保证。
             Path audioPath = workDir.resolve(audioFileName(spec));
             long existingSize = nonEmptySize(audioPath);
             if (existingSize > 0) {

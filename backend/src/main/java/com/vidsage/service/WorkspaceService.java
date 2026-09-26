@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 任务工作目录：按<b>输入内容寻址</b>给每条 {@link MediaInput} 算出唯一的本地目录。
+ * 存放产物的目录：按<b>输入内容寻址</b>给每条 {@link MediaInput} 算出唯一的本地目录。
  *
  * <p>目录名 = {@code <安全化名字>-<sha256(规范化输入) 前 12 位>}，其中：
  * <ul>
@@ -40,7 +40,10 @@ public class WorkspaceService {
     /** 结果为空或命中保留名时的兜底名。 */
     static final String FALLBACK_NAME = "media";
 
-    /** Windows 保留设备名（不区分大小写）；保留判定只看第一个点之前的基名。 */
+    /** Windows 保留设备名（不区分大小写）；保留判定只看第一个点之前的基名。
+     * 目录前半段来自用户输入（URL或文件名），在 Windows 上拿这些名字当路径，
+     * 行为不可靠——可能创建失败，也可能落到设备语义上去。
+     */
     static final Set<String> RESERVED_NAMES = Set.of(
             "CON", "PRN", "AUX", "NUL",
             "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
@@ -82,6 +85,7 @@ public class WorkspaceService {
                 .resolve(dirName)
                 .toAbsolutePath();
         try {
+            // 如果已存在则静默返回
             Files.createDirectories(dir);
         } catch (IOException e) {
             throw new IllegalStateException("无法创建任务工作目录：" + dir
