@@ -39,7 +39,7 @@ com.vidsage
 | `model/` | 进程内数据契约 | `record`、sealed 接口、Javadoc 约束、**紧凑构造器承载的字段不变量**、**直接充当对外契约时的 `@Schema`**（后两项见下） | 框架注解（**会改变行为的**，Jackson 绑定注解除外）、行为方法、SDK 类型 |
 | `provider/` | 出站实现（外部 API / 模型服务） | 接口 + 实现类 + 专用 `*Properties` | SDK 类型外泄到公开签名 |
 | `provider/tool/` | 调外部程序的**通用机制** | 进程执行器、外部工具路径解析与诊断等**不面向业务契约**的机制类 | 接口 + 多实现的 Provider 四件套（那属于 `provider/<领域>/`）；直接依赖 SDK |
-| `config/` | 跨领域装配（**未来落点，当前未创建**） | `@Configuration`、跨领域 Bean | 某一实现专用的配置（那属于 `provider/<领域>/<实现>/`） |
+| `config/` | 跨领域配置与装配（**已建**：`WorkspaceProperties`） | `@Configuration`、`@ConfigurationProperties`、跨领域 Bean | 某一实现专用的配置（那属于 `provider/<领域>/<实现>/`） |
 
 > **`provider/tool/` 是「单一实现的基础设施」形态，不是 Provider 四件套。** 该机制只有一种实现方式（在本机调用外部程序），不存在「同一能力、多种来源、配置二选一」的前提，因此**不抽接口**——与 [quality-guidelines.md](./quality-guidelines.md) 反模式清单同一条精神。测试的可替换点应落在更小的地方（如外部命令的测试替身），而不是为单一实现预先造接口。
 > 详见 [provider-pattern.md](./provider-pattern.md) 的「同能力多实现共存」一节。
@@ -71,7 +71,7 @@ com.vidsage
 | `model` | 进程内数据形状，无行为方法 | 类都是 `record`/sealed，只有字段与**约束**（Javadoc 声明的、或紧凑构造器强制的） |
 | `domain` | 业务对象，有行为与不变量 | 类里有状态流转与校验逻辑，出现 `markRunning()` 这类会拒绝非法状态的方法 |
 | `persistence` | 出站存储适配层 | 出现表映射、Mapper、缓存读写 |
-| `config` | 跨领域装配 | 出现不属于任何单一实现、跨领域共用的 `@Configuration` |
+| `config` | 跨领域配置与装配 | 出现不属于任何单一实现、跨领域共用的 `@Configuration` 或 `@ConfigurationProperties` |
 
 **当前只建 `model/`，不建 `domain/` 与 `persistence/`。** 现有类全是 `record` 或纯委托：`record` 里可能有**构造期字段不变量**（如 `AudioSpec` 的紧凑构造器），但**没有任何状态流转不变量**——没有那种「随调用改变状态、并拒绝非法变化」的对象。`domain/` 的成立前提是后者，不是前者；把只有字段约束的数据放进 `domain/`，会让包名做出「这里有状态机」的承诺，而后来者照 `domain/` 找状态流转逻辑却找不到，最终把规则写进 `service/` —— 规范与代码打架。
 
@@ -125,7 +125,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 > **`web/` 的子包不会重蹈 package-by-feature 的覆辙。** `web/controller/` + `web/dto/` 是**按角色**（构件类型）分：一个包装「入站适配构件」，另一个装「HTTP 契约构件」，与上面[顶层分包判据](#顶层分包判据)的职责表一一对应。package-by-feature 是按**功能领域**切（`asr/`、`translate/`），切出来每个包都同时装着 controller、service、model —— 包本身不再表达任何职责边界，这才是它被推翻的原因。两者不是同类东西。
 
-推论：`config/` 作为「跨领域装配类的未来落点」记入本文件即可，**出现第一个跨领域 `@Configuration` 时才建**。
+推论：`config/` **已建**，首个类是 `WorkspaceProperties`。**建目录的触发条件不止 `@Configuration`**——`@ConfigurationProperties`（跨领域配置属性）同样算，别把这条判据读窄了。
 
 ## 启动类
 
