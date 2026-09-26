@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-09-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~375 | Active |
+| `journal-1.md` | ~397 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-09-26 | MVP-2b 音频转字幕（ASR→SRT）实现+合并+归档 | `45e852c` | `dev` |
 | 11 | 2026-09-26 | HTTP 契约归位与包结构规范修订（含一处顺带修复的校验顺序缺陷） | `045b89a`, `6f52b67`, `9878df3`, `79d6e85`, `affdd81`, `c1e1f6a`, `fceb609` | `dev` |
 | 10 | 2026-09-26 | MVP-2a 收尾并归档；HTTP 契约归位任务完成规划 | `4bd3574`, `8a05a75`, `cc111b8` | `dev` |
 | 9 | 2026-09-25 | MVP-2 路线敲定：yt-dlp 直调 + ffmpeg 抽音频（含外部进程实测） | - | `feature/gitignore-tools` |

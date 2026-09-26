@@ -373,3 +373,25 @@ MVP-2a（输入获取与音频抽取）完成收尾：提交实现（4bd3574）�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: MVP-2b 音频转字幕（ASR→SRT）实现+合并+归档
+<!-- trellis-session: v=2 fp=61ec50c91df4f9c1 -->
+
+**Date**: 2026-09-26
+**Task**: MVP-2b 音频转字幕（ASR→SRT）实现+合并+归档
+**Branch**: `dev`
+
+### Summary
+
+实现音频转字幕 MVP-2b：ASRProvider 加 requiredAudioSpec()/route() 自述方法，DashScopeAsrProvider 实现并以 HAVE_NO_WORDS 降级为空结果；新增 model/subtitle 三契约类、SubtitleService（编排+JSON检查点断点复用+SRT自渲染+原子写盘+进度映射）、POST /api/subtitles 临时端点。全量单测 16类/181全绿，6项真实运行+空转写端到端验证通过。已合并回 dev 并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `45e852c` | feat(subtitle): 音频转字幕 MVP-2b——ASR 自述规格/路线 + SubtitleService + POST /api/subtitles |
+
+### Status
+
+[OK] **Completed**
