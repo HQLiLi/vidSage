@@ -7,8 +7,9 @@ import com.vidsage.model.media.MediaInput;
 import com.vidsage.model.process.ExternalToolReport;
 import com.vidsage.service.AudioPreparationService;
 import com.vidsage.service.ToolDiagnosticsService;
+import com.vidsage.web.dto.PrepareAudioRequest;
+import com.vidsage.web.dto.PreparedAudioResponse;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -163,81 +164,5 @@ public class MediaController {
                 : request.audioTrackIndex();
         return new AudioSpec(preset.container(), preset.sampleRateHz(), preset.channels(),
                 preset.bitrateKbps(), trackIndex);
-    }
-
-    /**
-     * 抽音频请求体。
-     *
-     * @param url             公网媒体页面地址；与 {@code localPath} 只能传一个
-     * @param localPath       服务端可读的本地媒体文件路径；与 {@code url} 只能传一个
-     * @param audioContainer  音频容器，必填：{@code WAV} 或 {@code M4A}
-     * @param audioTrackIndex 音频轨序号（从 0 起）；<b>不传默认 0</b>，多音轨媒体请显式指定，
-     *                        否则抽取实现的默认选轨可能静默取错轨
-     */
-    @Schema(description = "抽音频请求体：url 与 localPath 只能传一个，audioContainer 必填")
-    record PrepareAudioRequest(
-            @Schema(description = "公网媒体页面地址；与 localPath 只能传一个", nullable = true,
-                    example = "https://www.bilibili.com/video/BV1xx411c7mD")
-            String url,
-            @Schema(description = "服务端可读的本地媒体文件路径；与 url 只能传一个", nullable = true,
-                    example = "F:/media/sample.mp4")
-            String localPath,
-            @Schema(description = "音频容器，必填", example = "WAV", allowableValues = {"WAV", "M4A"})
-            String audioContainer,
-            @Schema(description = "音频轨序号（从 0 起）；不传默认 0，多音轨媒体请显式指定",
-                    nullable = true, example = "0")
-            Integer audioTrackIndex) {
-    }
-
-    /**
-     * 抽音频响应：由 {@link AudioArtifact} <b>展平映射</b>而来——路径转字符串、规格拆成独立字段。
-     *
-     * <p><b>为什么不直接复用 {@code AudioArtifact}</b>：它含 {@code java.nio.file.Path}（JSON 形状
-     * 取决于 Jackson 对 Path 的支持）与嵌套的 {@code AudioSpec} 契约；直接当 HTTP 形状暴露会把
-     * 内部模型的演进绑到对外接口上。展平后每个字段形状明确、可独立加 {@code @Schema}，且不必给
-     * {@code model/} 的内部契约补 HTTP 注解。
-     *
-     * @param audioPath       产物音频文件绝对路径
-     * @param container       容器类型（WAV / M4A）
-     * @param sampleRateHz    采样率（赫兹）
-     * @param channels        声道数
-     * @param bitrateKbps     码率（kbps）；无损容器（WAV）为 0
-     * @param audioTrackIndex 实际取用的音频轨序号（从 0 起）
-     * @param sizeBytes       产物字节数，恒 &gt; 0
-     */
-    @Schema(description = "音频抽取产物（绝对路径 + 展平的规格 + 字节数）")
-    record PreparedAudioResponse(
-            @Schema(description = "产物音频文件绝对路径", example = "F:/vidsage/data/works/media-3f2a1b/audio-16k1ch-t0.wav")
-            String audioPath,
-            @Schema(description = "容器类型", example = "WAV")
-            String container,
-            @Schema(description = "采样率（赫兹）", example = "16000")
-            int sampleRateHz,
-            @Schema(description = "声道数", example = "1")
-            int channels,
-            @Schema(description = "码率（kbps）；WAV 等无损容器为 0", example = "48")
-            int bitrateKbps,
-            @Schema(description = "实际取用的音频轨序号（从 0 起）", example = "0")
-            int audioTrackIndex,
-            @Schema(description = "产物字节数，恒大于 0", example = "1048576")
-            long sizeBytes) {
-
-        /**
-         * 由 {@link AudioArtifact} 映射：路径转字符串、规格展平。
-         *
-         * @param artifact 抽取产物
-         * @return HTTP 响应体
-         */
-        static PreparedAudioResponse from(AudioArtifact artifact) {
-            AudioSpec spec = artifact.spec();
-            return new PreparedAudioResponse(
-                    artifact.audioPath().toString(),
-                    spec.container().name(),
-                    spec.sampleRateHz(),
-                    spec.channels(),
-                    spec.bitrateKbps(),
-                    spec.audioTrackIndex(),
-                    artifact.sizeBytes());
-        }
     }
 }
