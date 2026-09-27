@@ -5,6 +5,8 @@ import com.vidsage.model.media.AcquiredMedia;
 import com.vidsage.model.media.MediaInput;
 import com.vidsage.model.process.ProcessOutcome;
 import com.vidsage.provider.download.MediaAcquirer;
+import com.vidsage.utils.fs.ArtifactFiles;
+import com.vidsage.utils.text.TextTail;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -154,7 +156,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
         long durationMs = Math.round(info.duration() * 1000);
         // 脱敏：只记产物文件名与度量，不记标题（用户内容）
         log.info("复用已下载产物（断点复用）: media={}, durationMs={}, sizeBytes={}",
-                media.getFileName(), durationMs, sizeOrZero(media));
+                media.getFileName(), durationMs, ArtifactFiles.sizeOrZero(media));
         return Optional.of(new AcquiredMedia(media, info.title(), durationMs, Optional.of(infoJson)));
     }
 
@@ -260,7 +262,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
         long durationMs = durationMsOf(info);
         String title = requireTitle(info);
         log.info("yt-dlp 下载完成: exit=0, media={}, durationMs={}, sizeBytes={}, elapsedMs={}",
-                media.getFileName(), durationMs, sizeOrZero(media), outcome.elapsedMs());
+                media.getFileName(), durationMs, ArtifactFiles.sizeOrZero(media), outcome.elapsedMs());
         return new AcquiredMedia(media, title, durationMs, Optional.of(infoJson));
     }
 
@@ -358,7 +360,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
      * <p>包级 static：可直测。文案匹配<b>保守</b>——只匹配两条实测过的子串，命不中不影响正常路径。
      */
     static String failureMessage(int exitCode, String stderr) {
-        String tail = tailLines(stderr, STDERR_TAIL_LINES);
+        String tail = TextTail.tailLines(stderr, STDERR_TAIL_LINES);
         String raw = stderr == null ? "" : stderr;
         if (raw.contains(BOT_DETECTION_MARKER)) {
             return "yt-dlp 下载失败（exit=" + exitCode + "）：站点要求登录验证（bot 检测）；请把 "
@@ -431,29 +433,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
      */
     private static boolean isNonProduct(String fileName) {
         return NON_PRODUCT_SUFFIXES.stream().anyMatch(fileName::endsWith);
-    }
-
-    /**
-     * 文件大小；不存在或读取失败时返回 0（只用于日志度量，不影响契约）。
-     */
-    private static long sizeOrZero(Path path) {
-        try {
-            return Files.size(path);
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
-
-    /**
-     * 取文本尾部若干行：全文可能很长（含输入流转储），尾部通常已含失败原因。
-     */
-    private static String tailLines(String text, int maxLines) {
-        if (text == null || text.isBlank()) {
-            return "";
-        }
-        List<String> lines = text.lines().toList();
-        int from = Math.max(0, lines.size() - maxLines);
-        return String.join("\n", lines.subList(from, lines.size()));
     }
 
     /**

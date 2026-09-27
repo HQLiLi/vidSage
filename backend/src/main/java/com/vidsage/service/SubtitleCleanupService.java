@@ -7,13 +7,13 @@ import com.vidsage.model.subtitle.CleanedSubtitle;
 import com.vidsage.model.subtitle.SubtitleRoute;
 import com.vidsage.model.subtitle.SubtitleTrack;
 import com.vidsage.provider.asr.ASRProvider;
+import com.vidsage.utils.fs.ArtifactFiles;
+import com.vidsage.utils.subtitle.SrtRenderer;
+import com.vidsage.utils.subtitle.SubtitleArtifactNames;
 import com.vidsage.utils.subtitle.SubtitleCorrector;
 import com.vidsage.utils.subtitle.SubtitleSegmentSplitter;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -93,9 +93,9 @@ public class SubtitleCleanupService {
 
         SubtitleRoute route = asrProvider.route();
         Path workDir = workspaceService.workspaceFor(input);
-        Path rawSeg = workDir.resolve(SubtitleService.segmentsFileName(route));
-        Path cleanSeg = workDir.resolve(cleanSegmentsFileName(route));
-        Path cleanSrt = workDir.resolve(cleanSrtFileName(route));
+        Path rawSeg = workDir.resolve(SubtitleArtifactNames.segmentsFileName(route));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(route));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactNames.cleanSrtFileName(route));
 
         // 断点复用：已有非空 -clean.json → 反序列化直接返回，跳过切分与纠错
         SubtitleTrack existing = readCheckpoint(cleanSeg);
@@ -108,7 +108,7 @@ public class SubtitleCleanupService {
         // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮接受 500：它是「服务端状态缺失」，
         // 可归入 error-handling 的「环境不对」；改成 4xx 需新增异常类或动既有 handler，超本任务
         // 「只新增」范围。2026-09-27 经项目所有者拍板：本轮接受 500，4xx 映射留作后续小任务。
-        if (!isNonEmpty(rawSeg)) {
+        if (!ArtifactFiles.isNonEmpty(rawSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
                     + rawSeg.getFileName() + "）");
         }
@@ -132,25 +132,11 @@ public class SubtitleCleanupService {
     }
 
     /**
-     * -clean 检查点文件名：{@code segments-asr-cloud-clean.json}。
-     */
-    static String cleanSegmentsFileName(SubtitleRoute route) {
-        return "segments-" + SubtitleService.routeToken(route) + "-clean.json";
-    }
-
-    /**
-     * -clean SRT 文件名：{@code subtitles-asr-cloud-clean.srt}。
-     */
-    static String cleanSrtFileName(SubtitleRoute route) {
-        return "subtitles-" + SubtitleService.routeToken(route) + "-clean.srt";
-    }
-
-    /**
      * 读断点：{@code -clean.json} 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。
      * 解析失败当未完成重跑（同 {@link SubtitleService}）。
      */
     private SubtitleTrack readCheckpoint(Path cleanSeg) {
-        if (!isNonEmpty(cleanSeg)) {
+        if (!ArtifactFiles.isNonEmpty(cleanSeg)) {
             return null;
         }
         try {
@@ -178,8 +164,10 @@ public class SubtitleCleanupService {
      */
     private void writeArtifacts(Path cleanSeg, Path cleanSrt, SubtitleTrack track) {
         try {
-            writeAtomically(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(track), cleanSeg);
-            writeAtomically(SubtitleService.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), cleanSrt);
+            ArtifactFiles.writeAtomically(
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(track), cleanSeg);
+            ArtifactFiles.writeAtomically(
+                    SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), cleanSrt);
         } catch (JacksonException e) {
             throw new IllegalStateException("清洗 segments 序列化失败：请检查 SubtitleTrack 结构；原因："
                     + e.getMessage(), e);
@@ -192,38 +180,6 @@ public class SubtitleCleanupService {
     private static CleanedSubtitle toCleaned(SubtitleTrack track, Path cleanSeg, Path cleanSrt,
                                              int correctedCount, int retrySteps) {
         return new CleanedSubtitle(cleanSrt, cleanSeg, track.route(), track.language(),
-                track.segments().size(), nonEmptySize(cleanSrt), correctedCount, retrySteps);
-    }
-
-    /**
-     * 产物可用时的字节数；不存在或为 0 时返回 0。
-     */
-    private static long nonEmptySize(Path path) {
-        try {
-            return Files.isRegularFile(path) ? Math.max(Files.size(path), 0L) : 0L;
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
-
-    /**
-     * 文件存在且大小 &gt; 0。
-     */
-    private static boolean isNonEmpty(Path path) {
-        return nonEmptySize(path) > 0;
-    }
-
-    /**
-     * 原子写盘：先写 {@code <name>.tmp} 再原子替换到目标名（同 {@link SubtitleService} 纪律）。
-     */
-    private static void writeAtomically(byte[] bytes, Path target) {
-        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        try {
-            Files.write(tmp, bytes);
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new IllegalStateException("清洗产物写入失败：" + target
-                    + "；请检查磁盘空间与目录写权限。原因：" + e.getMessage(), e);
-        }
+                track.segments().size(), ArtifactFiles.sizeOrZero(cleanSrt), correctedCount, retrySteps);
     }
 }

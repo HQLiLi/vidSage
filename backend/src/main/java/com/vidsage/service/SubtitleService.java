@@ -2,7 +2,6 @@ package com.vidsage.service;
 
 import com.vidsage.model.asr.AudioSource;
 import com.vidsage.model.asr.TranscriptionResult;
-import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.AudioArtifact;
 import com.vidsage.model.media.AudioSpec;
 import com.vidsage.model.media.MediaInput;
@@ -12,21 +11,19 @@ import com.vidsage.model.subtitle.SubtitleArtifact;
 import com.vidsage.model.subtitle.SubtitleRoute;
 import com.vidsage.model.subtitle.SubtitleTrack;
 import com.vidsage.provider.asr.ASRProvider;
-import java.io.IOException;
+import com.vidsage.utils.fs.ArtifactFiles;
+import com.vidsage.utils.subtitle.SrtRenderer;
+import com.vidsage.utils.subtitle.SubtitleArtifactNames;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.List;
-import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 字幕编排：把「一条 {@link MediaInput}」变成两个产物——{@code segments-<路线>.srt} 与
- * {@code segments-<路线>.json}。
+ * 字幕编排：把「一条 {@link MediaInput}」变成两个产物——{@code subtitles-<路线>.srt} 与
+ * {@code segments-<路线>.json}（名字规则见 {@link SubtitleArtifactNames}）。
  *
  * <p>编排顺序（design §四）：取 provider 自述的音频规格 → 断点复用判定 →
  * 音频准备（复用 2a）→ 转写（复用云 provider）→ 组 {@link SubtitleTrack} → 先写 JSON（检查点）
@@ -123,10 +120,10 @@ public class SubtitleService {
         }
 
         SubtitleRoute route = asrProvider.route();
-        String routeToken = routeToken(route);
+        String routeToken = SubtitleArtifactNames.routeToken(route);
         Path workDir = workspaceService.workspaceFor(input);
-        Path segmentsPath = workDir.resolve(segmentsFileName(route));
-        Path srtPath = workDir.resolve(srtFileName(route));
+        Path segmentsPath = workDir.resolve(SubtitleArtifactNames.segmentsFileName(route));
+        Path srtPath = workDir.resolve(SubtitleArtifactNames.srtFileName(route));
 
         // 断点复用：已有非空 segments JSON → 反序列化直接返回，不做任何音频/转写/写盘
         SubtitleTrack existing = readCheckpoint(segmentsPath);
@@ -169,7 +166,7 @@ public class SubtitleService {
      * （design 决策 4，回归测试守着这条）。
      */
     private SubtitleTrack readCheckpoint(Path segmentsPath) {
-        if (!isNonEmpty(segmentsPath)) {
+        if (!ArtifactFiles.isNonEmpty(segmentsPath)) {
             return null;
         }
         try {
@@ -189,8 +186,8 @@ public class SubtitleService {
     private void writeArtifacts(Path segmentsPath, Path srtPath, SubtitleTrack track) {
         try {
             String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(track);
-            writeAtomically(json.getBytes(StandardCharsets.UTF_8), segmentsPath);
-            writeAtomically(toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), srtPath);
+            ArtifactFiles.writeAtomically(json.getBytes(StandardCharsets.UTF_8), segmentsPath);
+            ArtifactFiles.writeAtomically(SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), srtPath);
         } catch (JacksonException e) {
             throw new IllegalStateException("字幕 segments 序列化失败：请检查 SubtitleTrack 结构；"
                     + "原因：" + e.getMessage(), e);
@@ -201,109 +198,9 @@ public class SubtitleService {
      * 产物 → {@link SubtitleArtifact}：从磁盘读 SRT 字节数（空转写时为 0）。
      */
     private static SubtitleArtifact toArtifact(Path srtPath, Path segmentsPath, SubtitleTrack track) {
-        long srtSizeBytes = nonEmptySize(srtPath);
+        long srtSizeBytes = ArtifactFiles.sizeOrZero(srtPath);
         return new SubtitleArtifact(srtPath, segmentsPath, track.route(), track.language(),
                 track.segments().size(), srtSizeBytes);
-    }
-
-    /**
-     * 产物可用时的字节数；不存在或为 0 时返回 0。
-     */
-    private static long nonEmptySize(Path path) {
-        try {
-            return Files.isRegularFile(path) ? Math.max(Files.size(path), 0) : 0L;
-        } catch (IOException e) {
-            log.debug("读取产物大小失败，按 0 处理: file={}, reason={}", path.getFileName(), e.getMessage());
-            return 0L;
-        }
-    }
-
-    /**
-     * 文件存在且大小 &gt; 0（0 字节视为不存在，用于断点判定）。
-     */
-    private static boolean isNonEmpty(Path path) {
-        return nonEmptySize(path) > 0;
-    }
-
-    /**
-     * 枚举名 → 产物 token：{@code ASR_CLOUD → asr-cloud}。
-     *
-     * <p>对照 {@link AudioPreparationService#audioFileName} 从 {@code name()} 派生扩展名——
-     * 派生规则只有定名字的人知道，不写进契约类型。token 用 kebab（与 JSON 里的枚举名风格不同
-     * 不是疏忽，与 {@code AudioContainer} 同名同源、两种媒材各自的惯例，design 决策 4）。
-     *
-     * @param route 字幕路线
-     * @return kebab 形式的路线 token
-     */
-    static String routeToken(SubtitleRoute route) {
-        return route.name().toLowerCase(Locale.ROOT).replace('_', '-');
-    }
-
-    /**
-     * SRT 产物文件名，带路线指纹：{@code subtitles-asr-cloud.srt}。
-     *
-     * <p><b>为什么必须带路线指纹</b>：工作目录按媒体内容寻址，同一媒体下唯一会变的就是「谁
-     * 转写的」。若叫 {@code subtitles.srt}，换 provider 后重跑会命中上一次云端产物被当成已完成而
-     * 跳过，返回与当前配置不符的字幕且不报错。指纹防止跨 provider 误用（design 决策 4）。
-     */
-    static String srtFileName(SubtitleRoute route) {
-        return "subtitles-" + routeToken(route) + ".srt";
-    }
-
-    /**
-     * segments JSON 产物文件名，带路线指纹：{@code segments-asr-cloud.json}。这是检查点。
-     */
-    static String segmentsFileName(SubtitleRoute route) {
-        return "segments-" + routeToken(route) + ".json";
-    }
-
-    /**
-     * 毫秒 → SRT 时间戳 {@code HH:MM:SS,mmm}（逗号分隔毫秒，SRT 规范形式）。
-     *
-     * <p>超过一天的毫秒数会自然进位进「小时」位（{@code 90000000 → 25:00:00,000}），符合 SRT
-     * 对长时长的处理。负值钳到 {@code 00:00:00,000}（异常段落防御，见 research/asr-cloud-behavior.md
-     * §三；DashScope 正常返回不产生，但钳掉比传出负时间戳稳）。
-     */
-    static String formatTimestamp(long millis) {
-        long safe = Math.max(millis, 0L);
-        long hours = safe / 3_600_000L;
-        long minutes = (safe % 3_600_000L) / 60_000L;
-        long seconds = (safe % 60_000L) / 1_000L;
-        long ms = safe % 1_000L;
-        return String.format(Locale.ROOT, "%02d:%02d:%02d,%03d", hours, minutes, seconds, ms);
-    }
-
-    /**
-     * 渲染整份 SRT（design 决策 7：自己写，不引库）。序号从 1 起，块间空一行，{@code \n} 换行。
-     * 句数为 0 时返回空字符串（产出 0 字节文件）。
-     */
-    static String toSrt(List<TranscriptionSegment> segments) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < segments.size(); i++) {
-            TranscriptionSegment s = segments.get(i);
-            sb.append(i + 1).append('\n')
-                    .append(formatTimestamp(s.beginTimeMs())).append(" --> ")
-                    .append(formatTimestamp(s.endTimeMs())).append('\n')
-                    .append(s.text() == null ? "" : s.text()).append("\n\n");
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 原子写盘：先写 {@code <name>.tmp} 再原子替换到目标名。
-     *
-     * <p>与 2a 的 {@link AudioArtifact} 同一条纪律——「路径存在即代表文件完整」。否则断电/崩溃
-     * 会留下「非空但被截断」的半成品，而按字节数 &gt; 0 的判据它会被当成已完成（design 决策 7）。
-     */
-    private static void writeAtomically(byte[] bytes, Path target) {
-        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        try {
-            Files.write(tmp, bytes);
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new IllegalStateException("字幕产物写入失败：" + target
-                    + "；请检查磁盘空间与目录写权限。原因：" + e.getMessage(), e);
-        }
     }
 
     /**
