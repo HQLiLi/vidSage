@@ -40,6 +40,7 @@ com.vidsage
 | `provider/` | 出站实现（外部 API / 模型服务） | 接口 + 实现类 + 专用 `*Properties` | SDK 类型外泄到公开签名 |
 | `provider/tool/` | 调外部程序的**通用机制** | 进程执行器、外部工具路径解析与诊断等**不面向业务契约**的机制类 | 接口 + 多实现的 Provider 四件套（那属于 `provider/<领域>/`）；直接依赖 SDK |
 | `config/` | 跨领域配置与装配（**已建**：`WorkspaceProperties`） | `@Configuration`、`@ConfigurationProperties`、跨领域 Bean | 某一实现专用的配置（那属于 `provider/<领域>/<实现>/`） |
+| `utils/` | 跨领域的纯算法与本地文件系统助手 | 纯静态方法的工具类（私有构造器 + 全静态）；`utils/<领域>/` 二级分包；不要求容器的 `org.springframework.util.*` 工具 | 网络 / 外部进程 / Spring 注解与容器类型 / HTTP 类型；被 `model/` 依赖；业务编排 |
 
 > **`provider/tool/` 是「单一实现的基础设施」形态，不是 Provider 四件套。** 该机制只有一种实现方式（在本机调用外部程序），不存在「同一能力、多种来源、配置二选一」的前提，因此**不抽接口**——与 [quality-guidelines.md](./quality-guidelines.md) 反模式清单同一条精神。测试的可替换点应落在更小的地方（如外部命令的测试替身），而不是为单一实现预先造接口。
 > 详见 [provider-pattern.md](./provider-pattern.md) 的「同能力多实现共存」一节。
@@ -196,7 +197,15 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 参照：`provider/asr/`（接口在领域包根，`dashscope/` 放云端实现与配置）、`model/asr/`（中立契约）、`web/controller/AsrController.java`、`web/dto/`、`service/TranscriptionService.java`。
 
-**`utils/<领域>/` —— 领域化助手包（2026-09-27 立）**：`utils/` 是允许的顶层包，`utils/<领域>/` 装该功能的助手——**只收无 Spring / 无 I/O / 无 HTTP 的纯算法或静态助手**，以领域名限定归属；服务编排、Provider 实现、`*Properties`、契约模型一律不得进入。跨包使用须 `public`，纯内部助手保留包私有。参照：`utils/subtitle/`（字幕清洗的切分器 / 纠错器 / 相似度助手，前两者被 `service/SubtitleCleanupService` 跨包用故 `public`，`TextSimilarity` 仅同包用故包私有）。
+**`utils/<领域>/` —— 领域化助手包（2026-09-27 立；2026-09-27 修订边界）**：`utils/` 是允许的顶层包，`utils/<领域>/` 装该功能的助手——**只收纯算法助手，以及仅使用 `java.nio.file` 的本地文件系统助手**；以领域名限定归属。服务编排、Provider 实现、`*Properties`、契约模型一律不得进入。
+
+**Spring 边界看容器，不看 jar**：判据是「**把 Spring 容器整个拿掉，这个包还能不能编译并通过测试**」——**能**才准进。故 `org.springframework.util.*` 这类纯静态工具**允许**；Spring 注解（`@Component` / `@Service` / `@Autowired` / `@Value` / `@ConfigurationProperties` 等）、`ApplicationContext`、`Environment`、HTTP 类型**禁止**。
+
+**其余允许**：JDK、slf4j、Jackson、`java.nio.file`。**其余禁止**：自己发起网络传输或调用外部进程——注意**依赖注入进来的接口不算**，`utils/subtitle/SubtitleCorrector` 正是这种：它只调注入的 `SubtitleCorrector.Llm` 函数式接口，HTTP 发生在 `config/` 的装配里。这条划的是「谁真的发请求」，不是「谁的名字听起来像外部调用」。
+
+**`model/` 不得依赖 `utils/fs/`**——`model/` 类型的紧凑构造器里不许做 I/O。这条是允许 `utils/fs/` 存在的前提：`utils/` 从此不再保证「无副作用」，靠这条护栏挡住最危险的误用点。
+
+跨包使用须 `public`，纯内部助手保留包私有。参照：`utils/subtitle/`（切分器 / 纠错器 / 相似度 / 渲染器 / 产物命名）、`utils/fs/ArtifactFiles`（产物落盘与大小判定）、`utils/text/TextTail`（文本尾部截取）。
 
 ## 服务层与 HTTP 入口
 

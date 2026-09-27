@@ -9,8 +9,7 @@ import com.vidsage.model.progress.ProgressListener;
 import com.vidsage.model.progress.StageEvent;
 import com.vidsage.model.progress.StageEvent.StageState;
 import com.vidsage.provider.audio.AudioExtractor;
-import java.io.IOException;
-import java.nio.file.Files;
+import com.vidsage.utils.fs.ArtifactFiles;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
@@ -155,7 +154,7 @@ public class AudioPreparationService {
                                           ProgressListener listener) {
         try {
             Path audioPath = workDir.resolve(audioFileName(spec));
-            long existingSize = nonEmptySize(audioPath);
+            long existingSize = ArtifactFiles.sizeOrZero(audioPath);
             if (existingSize > 0) {
                 log.info("extract 阶段跳过（断点复用）: file={}, sizeBytes={}",
                         audioPath.getFileName(), existingSize);
@@ -214,18 +213,6 @@ public class AudioPreparationService {
             return (sampleRateHz / 1000) + "k";
         }
         return (sampleRateHz / 1000.0) + "k";
-    }
-
-    /**
-     * 产物可用时的字节数；不存在或为 0 字节时返回 0（0 表示「视为不存在」）。
-     */
-    private static long nonEmptySize(Path path) {
-        try {
-            return Files.isRegularFile(path) ? Math.max(Files.size(path), 0) : 0L;
-        } catch (IOException e) {
-            log.debug("读取音频产物大小失败，按不存在处理: file={}, reason={}", path.getFileName(), e.getMessage());
-            return 0L;
-        }
     }
 
     /**
