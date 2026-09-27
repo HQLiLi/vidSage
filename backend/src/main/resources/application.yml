@@ -46,6 +46,18 @@ vidsage:
     yt-dlp:
       # B站未登录时的风控边界未实测；部分站点需登录态时，指定导出的 Netscape 格式 cookies 文件
       cookies-file: ${YT_DLP_COOKIES_FILE:}
+  subtitle:
+    cleanup:
+      # 一句字幕最多几毫秒。超过就会被切分器切开
+      max-segment-ms: 8000
+      # 一次丢给 LLM 修正多少句（一「批」）
+      batch-size: 20
+      # 纠错最多重来几轮：模型回得不对（掉行/改过头），让它再改，最多 3 次
+      max-steps: 3
+      # 长句（>10字）的「最小改动」底线：改完与原句相似度必须 ≥ 0.7，否则判「改太狠」→ 重来
+      similarity-normal: 0.7
+      # 短句（≤10字）的底线，放宽到 0.3
+      similarity-short-text: 0.3
 
 logging:
   level:

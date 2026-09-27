@@ -1,8 +1,11 @@
 package com.vidsage.web.controller;
 
 import com.vidsage.model.media.MediaInput;
+import com.vidsage.model.subtitle.CleanedSubtitle;
 import com.vidsage.model.subtitle.SubtitleArtifact;
+import com.vidsage.service.SubtitleCleanupService;
 import com.vidsage.service.SubtitleService;
+import com.vidsage.web.dto.CleanedSubtitleResponse;
 import com.vidsage.web.dto.PrepareSubtitleRequest;
 import com.vidsage.web.dto.PreparedSubtitleResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,6 +17,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -35,14 +39,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class SubtitleController {
 
     private final SubtitleService subtitleService;
+    private final SubtitleCleanupService subtitleCleanupService;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param subtitleService 字幕编排
+     * @param subtitleService        字幕编排（产字幕）
+     * @param subtitleCleanupService 字幕清洗（切分 + 纠错）
      */
-    public SubtitleController(SubtitleService subtitleService) {
+    public SubtitleController(SubtitleService subtitleService,
+                              SubtitleCleanupService subtitleCleanupService) {
         this.subtitleService = subtitleService;
+        this.subtitleCleanupService = subtitleCleanupService;
     }
 
     /**
@@ -68,6 +76,36 @@ public class SubtitleController {
                 artifact.route().name(), artifact.segmentCount(), artifact.srtSizeBytes(),
                 System.currentTimeMillis() - start);
         return PreparedSubtitleResponse.from(artifact);
+    }
+
+    /**
+     * 清洗一份已有字幕：读 2b 产出的原始 segments，切分超长段 + LLM 纠错，产出 {@code -clean} 产物。
+     *
+     * <p>前提：必须已对同一输入跑过 {@code POST /api/subtitles}，否则报「缺原始字幕」。
+     * 同步端点（临时面，与 {@code prepare} 同源：MVP-1 异步管线落地后一并改或删）。
+     *
+     * @param request   媒体来源（url 与 localPath 只能传一个，与产字幕同源）
+     * @param reference 可选参考 / 术语表（纠正误识别术语）
+     * @return 清洗产物（-clean 路径 + 语种 + 句数 + 修正/重试统计）
+     * @throws IllegalArgumentException 媒体来源歧义 / 为空
+     * @throws IllegalStateException    原始字幕缺失（先跑产字幕）、解析或写入失败
+     */
+    @Operation(summary = "清洗一份已有字幕（切分超长段 + LLM 纠错）",
+            description = "同步执行：需先对同一输入调用 POST /api/subtitles 产出原始字幕；"
+                    + "产出 segments-<route>-clean.json 与 subtitles-<route>-clean.srt 两条 -clean 产物。"
+                    + "不再覆盖原始产物。reference 为可选术语表。")
+    @PostMapping("/clean")
+    public CleanedSubtitleResponse clean(@RequestBody PrepareSubtitleRequest request,
+                                         @RequestParam(required = false) String reference) {
+        MediaInput input = toMediaInput(request);
+        log.info("收到字幕清洗请求: sourceType={}", input.getClass().getSimpleName());
+        long start = System.currentTimeMillis();
+        CleanedSubtitle cleaned = subtitleCleanupService.clean(input, reference);
+        log.info("字幕清洗请求完成: route={}, segments={}, corrected={}, retry={}, cost={}ms",
+                cleaned.route().name(), cleaned.segmentCount(),
+                cleaned.correctedCount(), cleaned.retrySteps(),
+                System.currentTimeMillis() - start);
+        return CleanedSubtitleResponse.from(cleaned);
     }
 
     /**

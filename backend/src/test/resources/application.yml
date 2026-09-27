@@ -12,3 +12,10 @@ vidsage:
     provider: cloud
     dashscope:
       api-key: test-key
+  subtitle:
+    cleanup:
+      max-segment-ms: 8000
+      batch-size: 20
+      max-steps: 3
+      similarity-normal: 0.7
+      similarity-short-text: 0.3

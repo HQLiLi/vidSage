@@ -6,8 +6,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.vidsage.model.subtitle.CleanedSubtitle;
 import com.vidsage.model.subtitle.SubtitleArtifact;
 import com.vidsage.model.subtitle.SubtitleRoute;
+import com.vidsage.service.SubtitleCleanupService;
 import com.vidsage.service.SubtitleService;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,9 @@ class SubtitleControllerTest {
     @MockitoBean
     private SubtitleService subtitleService;
 
+    @MockitoBean
+    private SubtitleCleanupService subtitleCleanupService;
+
     @Test
     void returnsSubtitleArtifactForUrl() throws Exception {
         when(subtitleService.prepare(any())).thenReturn(new SubtitleArtifact(
@@ -47,6 +52,36 @@ class SubtitleControllerTest {
                 .andExpect(jsonPath("$.srtSizeBytes").value(88))
                 .andExpect(jsonPath("$.srtPath").value("F:\\work\\subtitles-asr-cloud.srt"))
                 .andExpect(jsonPath("$.segmentsPath").value("F:\\work\\segments-asr-cloud.json"));
+    }
+
+    @Test
+    void returnsCleanedSubtitleForUrl() throws Exception {
+        when(subtitleCleanupService.clean(any(), any())).thenReturn(new CleanedSubtitle(
+                Path.of("F:/work/subtitles-asr-cloud-clean.srt"),
+                Path.of("F:/work/segments-asr-cloud-clean.json"),
+                SubtitleRoute.ASR_CLOUD, "zh", 2, 159, 1, 0));
+
+        mockMvc.perform(post("/api/subtitles/clean")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"https://www.bilibili.com/video/BV1xx411c7mD\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.route").value("ASR_CLOUD"))
+                .andExpect(jsonPath("$.language").value("zh"))
+                .andExpect(jsonPath("$.segmentCount").value(2))
+                .andExpect(jsonPath("$.correctedCount").value(1))
+                .andExpect(jsonPath("$.retrySteps").value(0))
+                .andExpect(jsonPath("$.srtPath").value("F:\\work\\subtitles-asr-cloud-clean.srt"))
+                .andExpect(jsonPath("$.segmentsPath").value("F:\\work\\segments-asr-cloud-clean.json"));
+    }
+
+    @Test
+    void cleanReturnsBadRequestWhenBothSourcesGiven() throws Exception {
+        mockMvc.perform(post("/api/subtitles/clean")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"url":"https://www.bilibili.com/video/av1","localPath":"F:/a.mp4"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("url 与 localPath 不能同时传：请恰好传其中一个"));
     }
 
     @Test
