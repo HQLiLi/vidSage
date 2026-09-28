@@ -148,9 +148,11 @@ Windows 上 `@TempDir` 的清理**偶发失败**：`JUnitException: Failed to de
 
 参照：`provider/audio/ffmpeg/FfmpegAudioExtractorTest.java`
 
-### 不要为单元测试起 Spring 容器
+### 测试分档：能不起容器就不起，按需升级
 
-`DashScopeAsrProviderTest` **没有** `@SpringBootTest`，而是直接 `new` 出被测对象，把依赖手动传进去：
+纯逻辑一律**直接 `new` 出被测对象、构造函数手动注入依赖**，不起 Spring 容器。
+
+`DashScopeAsrProviderTest` 就是范例，它没有 `@SpringBootTest`：
 
 ```java
 var provider = new DashScopeAsrProvider(
@@ -158,6 +160,24 @@ var provider = new DashScopeAsrProvider(
 ```
 
 这要求被测类**构造函数可注入依赖**（本项目 `DashScopeAsrProvider` 正是构造函数注入）。写新 Provider 时保持这个可测性。
+
+**判据：这段逻辑用不用得上容器的能力？**（DI / AOP / 事务 / 自动配置 / MVC 绑定校验 / Jackson 装配）
+
+用不上 → 纯单元测试。用得上 → 按下面逐级升，**能停在哪级就停在哪级**：
+
+| 档位 | 判据 | 手段 | 本项目实例 |
+|---|---|---|---|
+| 纯单元测试 | 逻辑不依赖容器能力 | `new` + 构造注入 | `DashScopeAsrProviderTest` 等 21 个 |
+| 切片测试 | 只缺某一层的框架能力 | `@WebMvcTest` / `@DataJpaTest` / `@JsonTest` | `MediaControllerTest`、`AsrControllerTest`、`SubtitleControllerTest` |
+| 全容器 | 验证跨层协作、自动配置、真实外部依赖 | `@SpringBootTest` + Testcontainers | `VidSageApplicationTests`（冒烟） |
+
+**切片测试会起「部分容器」，这是设计如此，不违反本节。** 它管的不是「不许起容器」，而是「只缺某一层的框架能力时，别去起完整容器」。所以把 `@WebMvcTest` 叫「单元测试」或「集成测试」都不准确——**直接叫「切片测试」**。
+
+`@SpringBootTest` **只留给冒烟与跨层集成**，不作为默认。
+
+> **依据（2026-09-27 核实）**：Spring Boot Reference「You can instantiate objects by using the `new` operator without even involving Spring」；Framework 的 Unit Testing 章把不起容器的称作 *true* unit tests。Spring 官方示例项目 `spring-petclinic` 的实际分层与上表一致——它的 `CrashControllerTests` 连 Controller 都直接 `new`，源码注释里自称 "plain UNIT test"。
+>
+> 注意官方**从未把这条写成禁令**，用的是 "can" / "consider" 这类措辞。它是**默认起点 + 升级判据**，不是红线。
 
 ### 映射逻辑必须可直接测
 
@@ -211,7 +231,7 @@ var file = new DashScopeAsrProvider.TranscriptionFile(
 | 手写 HTTP 轮询 / JSON 解析 / 配置读取 | 「不重复造轮子」要求 |
 | 契约类用 `@Data` 或改成普通 class | 现有契约全为 record |
 | 私有方法不写注释 | 「函数方法要写注释」要求 |
-| 单元测试起 `@SpringBootTest` | 现有测试均为纯单元测试 |
+| 纯逻辑测试起 `@SpringBootTest` | 纯逻辑 `new` 即可；`@SpringBootTest` 留给冒烟与跨层集成 |
 | 测试方法命名为 `testXxx` | 现有命名为行为描述式 |
 | Provider 构造函数里 `new` 出依赖 | 必须构造函数注入，否则不可测 |
 | 引入依赖时不排除冲突的日志实现 | pom 已有先例注释 |

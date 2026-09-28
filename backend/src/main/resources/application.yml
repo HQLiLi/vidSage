@@ -2,16 +2,13 @@ spring:
   application:
     name: vidsage
   profiles:
-    # 本机无显式 profile 时激活 application-local.yml（存本机密钥与工具绝对路径）。
-    # 用 default 而非 active：容器/CI 只要显式给 SPRING_PROFILES_ACTIVE=prod，本项自动失效。
-    # 注意本项只设 default，不设 active——active 会让其它 profile 无法再被命令行覆盖。
     default: local
   threads:
     virtual:
       enabled: true
   ai:
     deepseek:
-      # 翻译走 LLM
+      # 字幕清洗与摘要的 LLM 调用（翻译属 MVP3 规划，届时同样走这里）
       api-key: ${DEEPSEEK_API_KEY}
       chat:
         model: deepseek-chat
@@ -25,9 +22,6 @@ vidsage:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY}
       model: qwen-audio-3.1-asr-flash-filetrans
-  llm:
-    # DeepSeek 为首个 LLM 实现；后续如加本地模型，增加对应实现后在此切换
-    provider: deepseek
   tools:
     # 外部工具（yt-dlp / ffmpeg / ffprobe）；留空则从 PATH 解析。
     # 容器里 ffmpeg 未必在 PATH，交付时必须显式配置，不要把本机绝对路径写进仓库
@@ -52,8 +46,15 @@ vidsage:
       max-segment-ms: 8000
       # 一次丢给 LLM 修正多少句（一「批」）
       batch-size: 20
+      # 一次最多多少字
+      max-batch-chars: 600
       # 纠错最多重来几轮：模型回得不对（掉行/改过头），让它再改，最多 3 次
       max-steps: 3
+      # 跨批对话历史的字符上限：把前几批的「批次原文 + 已采纳的纠正结果」作为多轮历史带给后续批次，
+      # 让模型看得见自己前面把专有名词定成了什么写法。累计超过就从最老的一轮开始丢。
+      # 一轮往返约 1400 字（600 字批），20000 ≈ 14 轮 ≈ 280 句；设为 0 关闭，退回「每批独立」。
+      # 注意代价：每批都要重发全部历史，输入 token 总量随「批数 × 本上限」增长。
+      history-max-chars: 20000
       # 长句（>10字）的「最小改动」底线：改完与原句相似度必须 ≥ 0.7，否则判「改太狠」→ 重来
       similarity-normal: 0.7
       # 短句（≤10字）的底线，放宽到 0.3
