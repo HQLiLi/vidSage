@@ -373,3 +373,53 @@ MVP-2a（输入获取与音频抽取）完成收尾：提交实现（4bd3574）�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: MVP-2b 音频转字幕（ASR→SRT）实现+合并+归档
+<!-- trellis-session: v=2 fp=61ec50c91df4f9c1 -->
+
+**Date**: 2026-09-26
+**Task**: MVP-2b 音频转字幕（ASR→SRT）实现+合并+归档
+**Branch**: `dev`
+
+### Summary
+
+实现音频转字幕 MVP-2b：ASRProvider 加 requiredAudioSpec()/route() 自述方法，DashScopeAsrProvider 实现并以 HAVE_NO_WORDS 降级为空结果；新增 model/subtitle 三契约类、SubtitleService（编排+JSON检查点断点复用+SRT自渲染+原子写盘+进度映射）、POST /api/subtitles 临时端点。全量单测 16类/181全绿，6项真实运行+空转写端到端验证通过。已合并回 dev 并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `45e852c` | feat(subtitle): 音频转字幕 MVP-2b——ASR 自述规格/路线 + SubtitleService + POST /api/subtitles |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 13: 字幕清洗 v0 收尾整理与 LLM 层收口
+<!-- trellis-session: v=2 fp=35082ba07b3e3a64 -->
+
+**Date**: 2026-09-28
+**Task**: 字幕清洗 v0 收尾整理与 LLM 层收口
+**Branch**: `dev`
+
+### Summary
+
+v0 跑通后的整理轮：任务文档按实际落地重写（prd/design 重写为现状、implement 瘦身，废弃内容删除只记 Llm 接口缺陷一笔）；删四个死文件与 SubtitleContext.isEmpty；com.vidsage.llm 挪入 provider/llm（具体类不抽接口），新建 SubtitleContextSummarizer 收口摘要调用使 service 无 Spring AI 类型；拍板不建 LLMProvider 接口（Spring AI 已承担供应商缝，本地/云端均 OpenAI 兼容）并删 vidsage.llm.provider 预留键；用户手改后窗提示语「以下→以上」原样入库。全量 231 例绿，合并回 dev（e48a9a7）并推送。遗留：摘要落盘 R5、摘要输入截断、并发批处理、真实素材 A/B（history-max-chars 0 vs 20000）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ec7f3c7` | feat(subtitle): 跨批对话历史与双判据切批 |
+| `f378a4a` | docs(task): 09-27-subtitle-context 任务文档按实际落地重写 |
+| `1ee40b4` | refactor(subtitle): 删除被 SubtitleCleanser 取代的旧实现 |
+| `fe3f768` | refactor(llm): SubtitleCleanser 挪入 provider/llm，摘要调用收口 |
+| `d8d191b` | docs(llm): 确定不建 LLMProvider 接口，删 vidsage.llm.provider 预留键 |
+| `b9731bd` | fix(prompt): 后窗提示语「以下后文」→「以上后文」，注释梳理 |
+| `106e675` | docs(task): 09-27-subtitle-context 收尾清单销账 |
+
+### Status
+
+[OK] **Completed**

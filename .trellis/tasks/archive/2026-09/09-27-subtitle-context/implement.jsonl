@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/09-27-subtitle-context/design.md", "reason": "施工图：数据流、新增/改动的类与接口、提示词形态、七条决策。**动手前整篇读完**，尤其第四节（前后窗为什么不带编号）与决策 7（本轮明确不做并发）。"}
+{"file": ".trellis/tasks/09-27-subtitle-context/implement.md", "reason": "五步顺序、每步的验证命令与回滚点。Step 1-4 每步改完即停等审查，不要一口气做完。"}
+{"file": ".trellis/tasks/09-24-vidsage/research/oss-references.md", "reason": "参考项目索引与**许可证红线**。开头「使用方法」节必须先读：VideoLingo 是 Apache-2.0 可搬代码，VideoCaptioner 是 GPL-3.0 **只能读思路不能抄代码**（会传染）。源在 F:\\learning_projects\\asr_references\\。本任务要读的是 VideoLingo/core/_4_2_translate.py、_4_1_summarize.py、core/prompts.py、config.yaml。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "utils/<领域>/ 的边界（收纯算法 + 本地文件系统助手、Spring 看容器不看 jar）、可见性规则、测试包镜像对应、以及本任务要往 SubtitleArtifactNames 里加产物名时该守的命名约定。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "每个方法都要写中文注释、测试方法用行为描述式命名、不为单元测试起 Spring 容器（本项目测试均为纯单元测试，桩 Llm 即可）、反模式清单。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "异常类型选择与「卫语句早于一切 I/O」。本任务关键点是**降级而非抛出**：摘要失败必须返回空上下文并记 WARN，不能把可选增益做成硬依赖。"}

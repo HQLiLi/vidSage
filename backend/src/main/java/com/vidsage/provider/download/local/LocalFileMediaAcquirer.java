@@ -7,7 +7,8 @@ import com.vidsage.provider.download.MediaAcquirer;
 import com.vidsage.provider.tool.ExternalProcessRunner;
 import com.vidsage.provider.tool.ExternalToolDiagnostics;
 import com.vidsage.provider.tool.ExternalToolProperties;
-import java.io.IOException;
+import com.vidsage.utils.fs.ArtifactFiles;
+import com.vidsage.utils.text.TextTail;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -16,7 +17,6 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 /**
  * 本地文件路线的输入获取：直接采用本机媒体文件，不下载、不拷贝。
@@ -109,7 +109,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
         long durationMs = probeDurationMs(file);
         // 本地路线不拷贝，直接采用；workDir 留给 2b 落字幕产物用，本阶段不需要
         log.info("采用本地媒体文件: file={}, durationMs={}, sizeBytes={}",
-                file.getFileName(), durationMs, sizeOrZero(file));
+                file.getFileName(), durationMs, ArtifactFiles.sizeOrZero(file));
         return new AcquiredMedia(file, file.getFileName().toString(), durationMs, Optional.empty());
     }
 
@@ -132,7 +132,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
         if (outcome.exitCode() != 0) {
             // 文件存在且可读，ffprobe 却打不开：多半不是可解析的媒体文件，属调用方输入问题
             throw new IllegalArgumentException("无法读取媒体时长（ffprobe exit=" + outcome.exitCode() + "）："
-                    + tailLines(outcome.stderr(), STDERR_TAIL_LINES) + "；请确认为可解析的媒体文件，或改传 url");
+                    + TextTail.tailLines(outcome.stderr(), STDERR_TAIL_LINES) + "；请确认为可解析的媒体文件，或改传 url");
         }
         return parseDurationMs(outcome.stdout())
                 .orElseThrow(() -> new IllegalArgumentException("ffprobe 未返回可解析的时长："
@@ -164,28 +164,5 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
         } catch (NumberFormatException e) {
             return OptionalLong.empty();
         }
-    }
-
-    /**
-     * 文件大小；读取失败返回 0（只用于日志度量，不影响契约）。
-     */
-    private static long sizeOrZero(Path path) {
-        try {
-            return Files.size(path);
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
-
-    /**
-     * 取文本尾部若干行：全文可能很长，尾部通常已含失败原因。
-     */
-    private static String tailLines(String text, int maxLines) {
-        if (!StringUtils.hasText(text)) {
-            return "";
-        }
-        List<String> lines = text.lines().toList();
-        int from = Math.max(0, lines.size() - maxLines);
-        return String.join("\n", lines.subList(from, lines.size()));
     }
 }

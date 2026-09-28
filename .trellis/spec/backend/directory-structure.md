@@ -40,6 +40,7 @@ com.vidsage
 | `provider/` | 出站实现（外部 API / 模型服务） | 接口 + 实现类 + 专用 `*Properties` | SDK 类型外泄到公开签名 |
 | `provider/tool/` | 调外部程序的**通用机制** | 进程执行器、外部工具路径解析与诊断等**不面向业务契约**的机制类 | 接口 + 多实现的 Provider 四件套（那属于 `provider/<领域>/`）；直接依赖 SDK |
 | `config/` | 跨领域配置与装配（**已建**：`WorkspaceProperties`） | `@Configuration`、`@ConfigurationProperties`、跨领域 Bean | 某一实现专用的配置（那属于 `provider/<领域>/<实现>/`） |
+| `utils/` | 跨领域的纯算法与本地文件系统助手 | 纯静态方法的工具类（私有构造器 + 全静态）；`utils/<领域>/` 二级分包；不要求容器的 `org.springframework.util.*` 工具 | 网络 / 外部进程 / Spring 注解与容器类型 / HTTP 类型；被 `model/` 依赖；业务编排 |
 
 > **`provider/tool/` 是「单一实现的基础设施」形态，不是 Provider 四件套。** 该机制只有一种实现方式（在本机调用外部程序），不存在「同一能力、多种来源、配置二选一」的前提，因此**不抽接口**——与 [quality-guidelines.md](./quality-guidelines.md) 反模式清单同一条精神。测试的可替换点应落在更小的地方（如外部命令的测试替身），而不是为单一实现预先造接口。
 > 详见 [provider-pattern.md](./provider-pattern.md) 的「同能力多实现共存」一节。
@@ -61,6 +62,8 @@ com.vidsage
 > **本规范曾以「再套一层二级目录是冗余层级」为由否掉过这类结构，此处有意推翻。** 那条判据对「**同一构件**的再分组」（按领域把 Controller 再切一层）成立；对「**不同构件**的分离」不成立。区分点是包内是否会混放异质构件，而非目录深度本身。
 
 **新增领域时**：`web/controller/`、`service/` 直接加类；`web/dto/` 直接加契约；`model/`、`provider/` 下开新的领域子包。`provider/<领域>/` 内仍遵循 Provider 四件套结构（接口留领域包根、实现与该实现专用的 `*Properties` 进 `provider/<领域>/<实现短名>/`，见 [provider-pattern.md](./provider-pattern.md)）。
+
+> **`provider/llm/` 的现阶段形态（2026-09-28）**：包里目前是两个**具体类**的 LLM 调用 worker——`SubtitleCleanser`（字幕纠错）、`SubtitleContextSummarizer`（摘要），**没有抽接口**：它们不是「同一能力、多种来源」的缝，而是吃 LLM 的领域 worker（与 `provider/tool/` 单一实现不抽接口同一条精神；纠错的 `.messages()` 多轮历史也装不进窄缝）。SDK 类型（`ChatClient` / `Message` 等）只出现在这两类的内部，公开签名只有本项目的契约类型。**`LLMProvider` 接口不建**（2026-09-28 定）：供应商切换由 Spring AI 承担（本地 Ollama 与云端 DeepSeek 均 OpenAI 兼容），翻案条件见 [provider-pattern.md](./provider-pattern.md)——本包就是终态形态。曾经的临时顶层包 `com.vidsage.llm` 就此消除。
 
 ## `model` / `domain` / `persistence` / `config` 怎么选
 
@@ -187,11 +190,24 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 数据契约（`Command` / `Result` / 子结构）放 `model/<领域>/`；出站接口（`XxxProvider`）留 `provider/<领域>/` 包根，实现类与该实现专用的 `*Properties` 进 `provider/<领域>/<实现短名>/`。
 
-**不建「按形状 / 角色分类的桶式顶层包」**：`dto/`、`util/`、`common/` 这类顶层包**单独放在顶层时**不表达任何职责边界——它们只是形状分类，任何一层的任何东西都能声称自己属于它。
+**顶层包：`dto/`、`vo/` 这类「形状分类」包不做顶层；`common/`、`utils/` 这类「内容 / 机制」包可以做顶层。**
+
+- **`dto/`、`vo/`、`entity/` 这类形状分类包不做顶层**：它们只按「是什么形状」分类，任何一层的任何东西都能声称自己属于它，而且把它们全顶置会让顶层包数量失控（本项目顶层应控制在明显的构件层 `web` / `service` / `model` / `provider` / `config`）。需要时作为某构件的子包存在（如 `web/dto/`）。
+- **`common/`、`utils/` 可以做顶层**：它们装的是跨领域的内容 / 机制，不是形状空壳，有责可辨，顶置不失控（按领域子包收敛：`utils/<领域>/`）。
 
 > **为何 `dto/` 作 `web/` 的子包可以、作顶层包不可以**：`web/dto/` 有明确且**唯一的**职责边界（「需展平的 HTTP 请求/响应契约」），填得满[顶层分包判据](#顶层分包判据)的职责表，故不是桶式包；而顶层的 `dto/` 没有归属语境，写不出「这个包不许装什么」。**判据是「能否写出它不许装什么」，不是「包名是不是分类词」。** 构件层（有职责边界、填得满职责表）不受本条限制；`config/` 是另一例，见上。
 
 参照：`provider/asr/`（接口在领域包根，`dashscope/` 放云端实现与配置）、`model/asr/`（中立契约）、`web/controller/AsrController.java`、`web/dto/`、`service/TranscriptionService.java`。
+
+**`utils/<领域>/` —— 领域化助手包（2026-09-27 立；2026-09-27 修订边界）**：`utils/` 是允许的顶层包，`utils/<领域>/` 装该功能的助手——**只收纯算法助手，以及仅使用 `java.nio.file` 的本地文件系统助手**；以领域名限定归属。服务编排、Provider 实现、`*Properties`、契约模型一律不得进入。
+
+**Spring 边界看容器，不看 jar**：判据是「**把 Spring 容器整个拿掉，这个包还能不能编译并通过测试**」——**能**才准进。故 `org.springframework.util.*` 这类纯静态工具**允许**；Spring 注解（`@Component` / `@Service` / `@Autowired` / `@Value` / `@ConfigurationProperties` 等）、`ApplicationContext`、`Environment`、HTTP 类型**禁止**。
+
+**其余允许**：JDK、slf4j、Jackson、`java.nio.file`。**其余禁止**：自己发起网络传输或调用外部进程——注意**依赖注入进来的接口不算**（某个 utils 类只调注入的函数式接口、真正的 HTTP 在 `config/` 装配里发生，就不算它发的）。这条划的是「谁真的发请求」，不是「谁的名字听起来像外部调用」。（2026-09-28 注：原范例 `utils/subtitle/SubtitleCorrector` 已被 `provider/llm/SubtitleCleanser` 取代删除——后者持 Spring AI 类型，本就过不了 utils 的「拿掉容器还能编译」判据。）
+
+**`model/` 不得依赖 `utils/fs/`**——`model/` 类型的紧凑构造器里不许做 I/O。这条是允许 `utils/fs/` 存在的前提：`utils/` 从此不再保证「无副作用」，靠这条护栏挡住最危险的误用点。
+
+跨包使用须 `public`，纯内部助手保留包私有。参照：`utils/subtitle/`（切分器 / 相似度 / 渲染器 / 产物命名）、`utils/fs/ArtifactFiles`（产物落盘与大小判定）、`utils/text/TextTail`（文本尾部截取）。
 
 ## 服务层与 HTTP 入口
 

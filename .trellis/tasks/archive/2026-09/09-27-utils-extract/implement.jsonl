@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/09-27-utils-extract/design.md", "reason": "本次的施工图：搬迁映射表（原位置→去向）、四个新类的完整签名、六条决策及其理由、三处行为变化清单、规范改动的逐字文本。动手前必须整篇读完，不要只挑相关小节。"}
+{"file": ".trellis/tasks/09-27-utils-extract/implement.md", "reason": "分步顺序与每步的验证命令、回滚点。Step 1-3 每步改完即停等审查，不要一口气做完。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核心依据：顶层分包判据表、utils/<领域>/ 的归属与可见性规则（跨包须 public、纯内部助手包私有）、测试包与主包镜像对应的规则。注意第 199 行的 utils 段落在 Step 4 会被本任务改写。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "每个方法都要写中文注释、测试方法用行为描述式命名（不用 testXxx 前缀）、会写文件的测试用 @TempDir(cleanup = CleanupMode.NEVER)、反模式清单（不为单一实现预抽接口）。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "异常类型选择（错在调用方 IAE / 错在环境 ISE）、错误信息必须含「缺什么 + 怎么补」、中文为主专有名词保留原文。第 64-66 行的字符串判空规则全库适用，utils/ 不例外——本任务不改这份文档。"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端技术栈基线与常用命令（mvn 命令在 backend/ 下执行）。"}

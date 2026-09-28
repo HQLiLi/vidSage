@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端技术栈基线与常用命令（Maven 无 wrapper、Boot 4 约束、依赖清单以 pom 为准）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "包结构判据：model/ 要领域二级包（本轮新增 model/subtitle/）、web/ 按角色分子包、service/ 平铺、目录随代码出现不预建；model/ 的两处例外"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "Provider 四件套、契约中立性（§5）、SDK 类型不外泄、包级可见映射方法、Boot 4 的 Jackson 3 包名坑（tools.jackson.databind.ObjectMapper 才有 bean）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "卫语句必须排在 HTTP 边界且早于一切 I/O（2026-09-26 实测对照）、异常类型按「谁之过」选、错误信息必须含「缺什么+怎么补」、中文为主"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "契约全 record、Javadoc 与负面约束、Java 21 写法、测试命名与不起 Spring 容器、写文件的测试用 @TempDir(cleanup = NEVER)"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志级别分层与脱敏红线（不打媒体完整 URL、不打转写全文、含用户内容的 record 整体不进日志）"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用思考：同一件事只定义一处（路线 token 由枚举派生、不另建映射表）"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流检查（契约 model/ → 服务 service/ → Provider → HTTP web/）"}
+{"file": ".trellis/tasks/09-25-vidsage-mvp2b-subtitles/design.md", "reason": "本任务技术方案：7 条关键决策与理由、产物格式、断点复用判据（检查点选 JSON 不选 SRT）、待实测项清单、回滚与兼容"}
+{"file": ".trellis/tasks/09-25-vidsage-mvp2b-subtitles/implement.md", "reason": "执行顺序、每步验证命令、步骤 0 的实测脚本、审查门与回滚点、Phase 3.3 要回写的规范"}
+{"file": ".trellis/tasks/09-25-vidsage-mvp2b-subtitles/prd.md", "reason": "需求与验收标准。注意「平台字幕路线」已整体移出本任务，不要按旧描述实现 yt-dlp 相关功能"}

@@ -8,10 +8,10 @@ import com.vidsage.provider.audio.AudioExtractor;
 import com.vidsage.provider.tool.ExternalProcessRunner;
 import com.vidsage.provider.tool.ExternalToolDiagnostics;
 import com.vidsage.provider.tool.ExternalToolProperties;
-import java.io.IOException;
+import com.vidsage.utils.fs.ArtifactFiles;
+import com.vidsage.utils.text.TextTail;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -105,7 +105,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         Path ffmpeg = tools.requireFfmpeg();
         Path part = partPath(output);
         // 清掉上一次失败/中断可能残留的半截临时文件，避免它被误当作本次产物
-        deleteQuietly(part);
+        ArtifactFiles.deleteQuietly(part);
 
         List<String> command = buildCommand(ffmpeg, media, part, spec);
         // 脱敏红线：不整体打印 AudioSpec / ExternalToolProperties（record 的 toString 会带出配置），逐字段打
@@ -115,7 +115,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         ProcessOutcome outcome = runner.run(command, null, Duration.ofSeconds(properties.defaultTimeoutSeconds()));
 
         if (outcome.timedOut()) {
-            deleteQuietly(part);
+            ArtifactFiles.deleteQuietly(part);
             // 失败信息分层：面向用户的异常消息有界、可操作（不带 stderr 全文），
             // 完整 stderr 在此落 DEBUG 供深挖——否则完整内容既不在消息也不在日志里（design §八）
             log.debug("ffmpeg 抽音频超时，完整 stderr: {}", outcome.stderr());
@@ -123,21 +123,21 @@ public class FfmpegAudioExtractor implements AudioExtractor {
                     + " 秒）：ffmpeg；可用 vidsage.tools.default-timeout-seconds 调整");
         }
         if (outcome.exitCode() != 0) {
-            deleteQuietly(part);
+            ArtifactFiles.deleteQuietly(part);
             // 失败信息分层：异常消息只带 stderr 尾部 20 行（有界、可操作），
             // 完整 stderr 在此落 DEBUG 供深挖（design §八；执行器 WARN 也只打尾部）
             log.debug("ffmpeg 抽音频失败，完整 stderr: exit={}, stderr={}", outcome.exitCode(), outcome.stderr());
             throw new IllegalStateException(failureMessage(outcome.exitCode(), outcome.stderr(), spec));
         }
-        long sizeBytes = sizeOrZero(part);
+        long sizeBytes = ArtifactFiles.sizeOrZero(part);
         if (sizeBytes <= 0) {
             // ffmpeg 声称成功却没产出：不能静默返回空文件
-            deleteQuietly(part);
+            ArtifactFiles.deleteQuietly(part);
             throw new IllegalStateException("ffmpeg 声称成功但未产出音频（输出缺失或为空）：" + part
                     + "；请确认输入媒体含音频轨，或改用 AudioSpec.audioTrackIndex 指定其它音频轨");
         }
-        moveAtomically(part, output);
-        long finalSize = sizeOrZero(output);
+        ArtifactFiles.moveAtomically(part, output);
+        long finalSize = ArtifactFiles.sizeOrZero(output);
         log.info("音频抽取完成: exit=0, container={}, sizeBytes={}, elapsedMs={}",
                 spec.container(), finalSize, outcome.elapsedMs());
         return new AudioArtifact(output, spec, finalSize);
@@ -217,7 +217,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
      * 会随 ffmpeg 版本变化，见研究 §二）。
      */
     private static String failureMessage(int exitCode, String stderr, AudioSpec spec) {
-        String tail = tailLines(stderr, STDERR_TAIL_LINES);
+        String tail = TextTail.tailLines(stderr, STDERR_TAIL_LINES);
         String raw = stderr == null ? "" : stderr;
         if (raw.contains(MAP_OPTION_MARKER)) {
             // 透传 ffmpeg 原文；不写「共 N 条轨」——该报错不含总轨数（研究 §8.3）
@@ -242,51 +242,5 @@ public class FfmpegAudioExtractor implements AudioExtractor {
      */
     private static Path partPath(Path output) {
         return output.resolveSibling(output.getFileName().toString() + PART_SUFFIX);
-    }
-
-    /**
-     * 原子改名落盘。失败时清掉临时文件并抛异常，绝不让半截文件冒充成最终产物。
-     */
-    private static void moveAtomically(Path part, Path output) {
-        try {
-            Files.move(part, output, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException e) {
-            deleteQuietly(part);
-            throw new IllegalStateException("音频产物落盘失败：" + output + "；" + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 删除文件（不存在即忽略）。清理属 best-effort：失败只记 DEBUG，不掩盖原本要抛的异常。
-     */
-    private static void deleteQuietly(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException e) {
-            log.debug("清理临时文件失败（忽略）: file={}, reason={}", path.getFileName(), e.getMessage());
-        }
-    }
-
-    /**
-     * 文件大小；不存在或读取失败时返回 0（调用方据 0 判定「无有效产物」）。
-     */
-    private static long sizeOrZero(Path path) {
-        try {
-            return Files.isRegularFile(path) ? Files.size(path) : 0L;
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
-
-    /**
-     * 取文本尾部若干行：全文可能很长，尾部通常已含失败原因。
-     */
-    private static String tailLines(String text, int maxLines) {
-        if (text == null || text.isBlank()) {
-            return "";
-        }
-        List<String> lines = text.lines().toList();
-        int from = Math.max(0, lines.size() - maxLines);
-        return String.join("\n", lines.subList(from, lines.size()));
     }
 }

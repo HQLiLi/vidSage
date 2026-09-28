@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "本任务改三个 record 契约（CleanseResult/CleanedSubtitle/CleanedSubtitleResponse）并补单测，契约设计与测试写法按其要求"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "判断新增字段该落在 model 还是 web/dto，按其「契约类的位置」判据"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "新增「术语命中/替换数 + 未替换清单」日志，按级别分层与脱敏红线写"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "两处 system prompt 的归属与 ChatClient bean 装配约定"}

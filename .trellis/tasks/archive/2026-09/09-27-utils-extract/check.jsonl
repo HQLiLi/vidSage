@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/09-27-utils-extract/prd.md", "reason": "验收标准逐条核对：mvn test 全绿且测试数不减、四个助手的定义各只剩一处、utils/ 不 import org.springframework、SubtitleService 与 SubtitleCleanupService 不再互调包级 static、测试已迁到镜像包、规范已同步。"}
+{"file": ".trellis/tasks/09-27-utils-extract/design.md", "reason": "核对是否越界：行为变化只允许 3 处（sizeOrZero 守卫、writeAtomically 消息、去 debug 日志），多一处即为超范围。同时核对搬迁判据是否被一致应用，以及决策 5（emit、异常消息兜底不搬）、决策 3（两套原子落盘约定有意保留、不统一）有没有被自作主张地「顺手整理」。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "检查搬迁后的包归属与可见性（跨包须 public、纯内部助手包私有）、测试包与主包镜像对应、没有预建空目录。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查新增类的 Javadoc 是否写全（公共类型、公共方法）、测试命名是否为行为描述式、会写文件的测试是否用了 @TempDir(cleanup = CleanupMode.NEVER)。特别核对：有没有以「顺手统一」为由改动范围外、且无 flake 证据的既有测试类。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "检查新搬的 ArtifactFiles 抛的异常类型是否正确（落盘失败 = 环境问题 → IllegalStateException）、错误信息是否含「缺什么 + 怎么补」、是否为中文。"}
+{"file": ".trellis/tasks/09-27-utils-extract/implement.md", "reason": "核对每步的验证命令确实执行过，且报告里贴的是原始输出而不是「全绿」这类结论。跑测试前有没有先删 target/surefire-reports。"}
