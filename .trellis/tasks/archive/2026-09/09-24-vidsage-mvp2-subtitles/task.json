@@ -3,7 +3,7 @@
   "name": "vidsage-mvp2-subtitles",
   "title": "MVP-2 下载与字幕获取",
   "description": "yt-dlp下载适配器+平台已有字幕拉取,无字幕走ASRProvider双路兜底,ffmpeg音频抽取",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "HeQiu",
   "assignee": "HeQiu",
   "createdAt": "2026-09-24",
-  "completedAt": null,
+  "completedAt": "2026-09-28",
   "branch": null,
   "base_branch": "dev",
   "worktree_path": null,
@@ -25,5 +25,7 @@
   "parent": "09-24-vidsage",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "delivery": "父任务，自身无分支：交付由子任务 09-25-vidsage-mvp2a-media-to-audio 与 09-25-vidsage-mvp2b-subtitles 各自在特性分支完成、合入 dev，父任务只负责跨子任务验收（2026-09-28 逐条核完，见 research/acceptance-evidence.md）。故无 branch 元数据，archive 用 --skip-branch-validation。"
+  }
 }
