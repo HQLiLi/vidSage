@@ -1,2 +1,4 @@
-{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "检查 Provider 模式合规"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查测试与注释规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查测试覆盖与注释规范：新增契约的 Javadoc、prompt 类注释、mock 单测是否齐"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "检查层界：provider/llm 的 worker 不得碰产物 I/O 与断点判断；utils 新增内容须是纯算法或仅用 java.nio.file"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "检查卫语句位置（早于 I/O）、异常类型选择与错误信息写法（指明缺什么、怎么补）"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "检查观测日志的级别分层与是否泄露媒体路径原值"}
