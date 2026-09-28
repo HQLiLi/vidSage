@@ -275,32 +275,6 @@ class SubtitleCleanserTest {
     }
 
     @Test
-    void 历史超上限时丢掉最老的一轮往返() {
-        List<Message> history = new ArrayList<>(List.of(
-                new UserMessage("u1"), new AssistantMessage("a1"),
-                new UserMessage("u2"), new AssistantMessage("a2"),
-                new UserMessage("u3"), new AssistantMessage("a3")));   // 共 12 字符
-
-        SubtitleCleanser.trimHistory(history, 9);   // 丢一对变 8 字符 ≤ 9，停
-
-        assertEquals(4, history.size(), "只丢最老的一对");
-        assertEquals("u2", history.getFirst().getText());
-        assertEquals(UserMessage.class, history.getFirst().getClass(), "历史必须以 user 开头");
-        assertEquals(AssistantMessage.class, history.getLast().getClass());
-    }
-
-    @Test
-    void 只有一轮历史时即使超限也不丢() {
-        List<Message> history = new ArrayList<>(List.of(
-                new UserMessage("u1"), new AssistantMessage("a1")));
-
-        SubtitleCleanser.trimHistory(history, 1);
-
-        assertEquals(2, history.size(), "刚追加的那一对无论多长都要保留");
-        assertEquals("u1", history.getFirst().getText());
-    }
-
-    @Test
     void 历史上限为0时关闭跨批历史() {
         ScriptedChatModel model = new ScriptedChatModel(
                 "{\"1\": \"今天天气很好\"}", "{\"1\": \"我们去公园\"}");

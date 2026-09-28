@@ -83,4 +83,33 @@ public class ChatClientConfig {
                         不要输出任何解释、注释或 markdown 代码块。""")
                 .build();
     }
+
+    /**
+     * 字幕翻译的 ChatClient。
+     *
+     * <p>目标语种<b>烧进 system 提示词</b>：它由配置驱动、进程内固定，正是 system 提示词该装的东西；
+     * 且 design §3.1 已定「不引短码 → 自然语言名的映射表」，这里直接把短码交给模型。
+     *
+     * @param builder             ChatClient.Builder
+     * @param translateProperties 翻译配置（只用到目标语种短码）
+     * @return ChatClient
+     */
+    @Bean
+    public ChatClient subtitleTranslateChatClient(ChatClient.Builder builder,
+                                                  SubtitleTranslateProperties translateProperties) {
+        return builder.clone()
+                .defaultSystem("""
+                        你是专业的字幕翻译助手。把给定批次的每条字幕翻译成目标语种（BCP-47 短码：%s）。
+
+                        对每条字幕的要求：
+                        - 保持条号与输入完全一致：不许合并、不许拆分、不许删除或新增任何一条。
+                        - 术语参考里的写法是专有名词，一律保留原样不译；即使它是另一种语言的词，也照给定的写法输出。
+                        - 结合上下文理解整段意思，翻译得自然通顺，不要逐字硬译。
+                        - 不许添加原文没有的信息，也不许省略原文的意思。
+
+                        只输出一个 JSON 对象：键为输入条号（字符串），值为该条的译文。
+                        不要输出任何解释、注释或 markdown 代码块。"""
+                        .formatted(translateProperties.targetLanguage()))
+                .build();
+    }
 }

@@ -80,6 +80,14 @@ rm -rf backend/target/surefire-reports
 4.4 `provider/llm/SubtitleTranslator`：切批（双判据）、三路上下文、跨批历史按对裁剪、
 多轮重试、键集与空译文校验、用尽重试回退原文并计 `untranslatedCount`。
 
+> **实现期发现的 design 缺陷与修法（2026-09-28）**：design §4.3 原定「术语命中判定与清洗共用一份
+> 实现」，但两个 worker 的**输入文本不同**——清洗吃原始 ASR 文本（含 `asr`），翻译吃 `-clean` 文本
+> （命中术语的字面已被换成 `fixed`）。共用单一按 `asr` 匹配的入口会：① 漏掉已被替换成 `fixed` 的
+> 术语（本该保留原文的专有名词可能被翻掉）；② 命中清洗**故意没换**的术语，把 `fixed` 写进参考，
+> 与清洗刚做的判断自相矛盾。**修法**：`TermMatcher` 判据本体保持一份，拆成 `hitTermsByAsr`（清洗）
+> 与 `hitTermsByFixed`（翻译）两个入口；`SubtitleCleanser` 改调前者（行为不变），`SubtitleTranslator`
+> 调后者。design §4.3 与决策记录 11 已同步订正。`TermMatcherTest` 补三条钉住两个入口的差别。
+
 **验证**：`SubtitleTranslatorTest`（mock `ChatClient`，不起容器）覆盖：
 键集不一致触发重试、空译文触发重试、用尽重试回退原文、跨批历史成对裁剪、
 术语参考只列本批命中项、失败往返不进跨批历史。
@@ -232,6 +240,18 @@ curl -X POST localhost:8080/api/subtitles/translate -H 'Content-Type: applicatio
 - 验收标准逐条结果：_待填_
 
 ---
+
+## 遗留（本期不做，留给后续）
+
+- **`jsonQuote` 有两份私有副本**：`SubtitleCleanser` 与 `SubtitleTranslator` 各一份逐字相同的
+  私有静态方法。它不触发「同一判据只有一份」（是纯格式化助手，不是判据），抽出来要同时动清洗器与
+  `utils/`，超出本期「保持清洗行为不变」的边界。**等 design 决策 8 的骨架抽取定案时一并处理**
+  （届时连同「批循环 + 重试循环要不要抽公共骨架」一起决定）。
+- **`maxSegmentMs` 抛 IAE 与规范不一致**：`SubtitleSegmentSplitter` 对来自配置的 `maxSegmentMs`
+  抛 `IllegalArgumentException`，而 `error-handling.md` 的判据是「配置问题属环境不对 → ISE」。
+  既有代码问题，已记入 design §六，另立小任务，不在本期范围。
+- **「单句就超字符上限」分支无直测**：`end == start ? end = start + 1` 那条防死循环的兜底，
+  清洗器与翻译器都没有直测用例。非本期引入，implement.md 未要求。
 
 ## 注意事项
 

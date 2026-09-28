@@ -128,7 +128,7 @@ public class SubtitleCleanser {
             // 循环退出时 end 已定，累加值不再变化。它可能略超 maxBatchChars——循环的判断在累加之前，
             // 所以最后一个塞进来的句子会把总数顶过上限。这条日志正是要看「句数还是字数先到」。
             log.debug("字幕纠错批次: 序号={}, 句数={}, 字数={}, 历史轮数={}, 历史字符={}",
-                    batchNo, end - start, chars, history.size() / 2, historyChars(history));
+                    batchNo, end - start, chars, history.size() / 2, MessageHistory.chars(history));
 
             // 清洗
             AgentOutcome outcome = agentLoop(original, context, reference, after, history);
@@ -193,8 +193,8 @@ public class SubtitleCleanser {
         List<Message> messages = new ArrayList<>(history);
 
         // 本批命中哪些术语：判定在 TermMatcher 里只有一份（清洗的渲染、基线、指标三处共用，
-        // 翻译是第四个使用者）。这里一次算好往下传，避免各处各判一遍后将来分叉。
-        List<SubtitleContext.Term> hits = TermMatcher.hitTerms(original, context);
+        // 翻译是第四个使用者）。清洗吃原始 ASR 文本，故按 asr 匹配——见 TermMatcher#hitTermsByAsr。
+        List<SubtitleContext.Term> hits = TermMatcher.hitTermsByAsr(original, context);
 
         // 格式说明拼在任务这条上——ChatClient 只会往最后一条 UserMessage 追加，
         // 而重试的反馈那条会成为最后一条，所以得自己把它钉在任务上。
@@ -257,53 +257,11 @@ public class SubtitleCleanser {
         history.add(new AssistantMessage(rawAccepted));
 
         int sizeBefore = history.size();
-        trimHistory(history, prop.historyMaxChars());
+        MessageHistory.trimHistory(history, prop.historyMaxChars());
         if (history.size() < sizeBefore) {
             log.debug("跨批历史超上限，丢弃最老的 {} 轮往返: 上限={} 字符",
                     (sizeBefore - history.size()) / 2, prop.historyMaxChars());
         }
-    }
-
-
-    /**
-     * 按字符上限裁剪跨批历史，以「一对往返」为单位从最老的开始丢。
-     *
-     * <p>按对裁而不是按条裁：只留 assistant 会造出「孤立的 assistant」——模型看见一个没有对应问题的回答。
-     * 成对增、成对删，历史才永远满足「user 开头、assistant 结尾、条数为偶数」。
-     *
-     * <p>守卫是 {@code size() > 2}：保证刚追加的那一对无论多长都保留。否则遇到「单批正文就超上限」
-     * 的配置会把历史清空到 0，等于白算一次裁剪。
-     *
-     * <p>包级可见是为了直接单测（同 {@link #validate}）。
-     *
-     * @param history  跨批历史，原地裁剪
-     * @param maxChars 字符上限
-     */
-    static void trimHistory(List<Message> history, int maxChars) {
-        while (history.size() > 2 && historyChars(history) > maxChars) {
-            history.subList(0, 2).clear();
-        }
-    }
-
-
-    /**
-     * 跨批历史的累计字符数。
-     *
-     * <p>只算历史，不含系统提示词、格式说明与本批任务——那些每次必须发、裁不掉，
-     * 计进来会让上限的语义变成「整条请求的预算」，那是另一个旋钮。
-     *
-     * <p>是字符不是 token，属<b>粗代理</b>：中文约 1 字 ≈ 1 token（估算准），
-     * 英文约 4 字 ≈ 1 token（偏保守，会提前裁剪）。不引入 tokenizer。
-     *
-     * @param history 跨批历史
-     * @return 累计字符数
-     */
-    static int historyChars(List<Message> history) {
-        int total = 0;
-        for (Message m : history) {
-            total += safe(m.getText()).length();
-        }
-        return total;
     }
 
 
@@ -510,7 +468,7 @@ public class SubtitleCleanser {
 
 
     /**
-     * 不区分大小写的子串包含，与 {@link TermMatcher#hitTerms} 的命中判定同一套口径。
+     * 不区分大小写的子串包含，与 {@link TermMatcher#hitTermsByAsr} 的命中判定同一套口径。
      */
     private static boolean containsIgnoreCase(String haystack, String needle) {
         return safe(haystack).toLowerCase(Locale.ROOT).contains(safe(needle).toLowerCase(Locale.ROOT));
@@ -536,7 +494,7 @@ public class SubtitleCleanser {
             sb.append("### 内容主题\n").append(context.theme()).append("\n\n");
         }
 
-        // 3. 术语：只列本批真出现过的（命中判定已在 hitTerms 里做好，这里不重判）
+        // 3. 术语：只列本批真出现过的（命中判定已在 hitTermsByAsr 里做好，这里不重判）
         if (!hits.isEmpty()) {
             StringBuilder terms = new StringBuilder();
             for (SubtitleContext.Term t : hits) {
