@@ -123,8 +123,11 @@ public class SubtitleCleanser {
             for (int i = end; i < Math.min(maxSize, end + LINES_AFTER); i++) {
                 after.add(safe(segments.get(i).text()));
             }
-            log.debug("字幕纠错批次: 序号={}, 句数={}, 历史轮数={}, 历史字符={}",
-                    batchNo, end - start, history.size() / 2, historyChars(history));
+            // chars 就是本批的实际字数：上面那个内层循环把 [start, end) 每句的长度都加了进去，
+            // 循环退出时 end 已定，累加值不再变化。它可能略超 maxBatchChars——循环的判断在累加之前，
+            // 所以最后一个塞进来的句子会把总数顶过上限。这条日志正是要看「句数还是字数先到」。
+            log.debug("字幕纠错批次: 序号={}, 句数={}, 字数={}, 历史轮数={}, 历史字符={}",
+                    batchNo, end - start, chars, history.size() / 2, historyChars(history));
 
             // 清洗
             AgentOutcome outcome = agentLoop(original, context, reference, after, history);
@@ -200,13 +203,31 @@ public class SubtitleCleanser {
         for (int step = 0; step < prop.maxSteps(); step++) {
             String raw = ask(messages);
             Map<String, String> parsed = parse(raw);
-            String error = parsed == null ? "回复不是合法的 JSON 对象。" : validate(original, parsed, hits);
-            if (error == null) {
+            // 回的不是合法 JSON：既非「键集不一致」也非「改动过大」，不归两类校验失败，照旧重试
+            if (parsed == null) {
+                retries++;
+                appendRetry(messages, raw, "回复不是合法的 JSON 对象。");
+                continue;
+            }
+            ValidationFailure failure = validate(original, parsed, hits);
+            if (failure == null) {
                 remember(history, original, raw);
                 return new AgentOutcome(parsed, retries, hits);
             }
             retries++;
-            appendRetry(messages, raw, error);
+            // 按 kind 记 DEBUG：跑完真实素材好数出两类各触发了几次，供「相似度守卫去留」取证。
+            // 只记分类与轮次，不记 detail——detail 里带着本句原文与模型改写的字幕文本，属用户内容，
+            // 按 logging-guidelines 的脱敏红线（转写文本不进日志）不落盘。这条是生产环境唯一的读数来源。
+            log.debug("字幕纠错校验未过: 分类={}, 轮次={}", failure.kind(), step + 1);
+            // 开发期口子：光看分类答不出「相似度守卫拦下的是模型真改写，还是合法的术语替换被误判」，
+            // 那要读 detail 里内嵌的「原…改成了…」。故按开关再补一条带 detail 的日志，开关缺席即为关，
+            // 见 SubtitleCleanupProperties#logRejectedText。级别用 TRACE 而非 DEBUG：即使开关被误开，
+            // 也要再过一道级别闸门（生产基线是 com.vidsage: DEBUG，TRACE 不会输出）。
+            if (prop.logRejectedText()) {
+                log.trace("字幕纠错校验未过详情（开发期专用，含字幕正文）: 分类={}, 轮次={}, 详情={}",
+                        failure.kind(), step + 1, failure.detail());
+            }
+            appendRetry(messages, raw, failure.detail());
         }
         // 用尽重试仍未拿到合法回复：保留原文（宁可没纠，不可被带偏）。
         // 什么都没采纳，所以不给 history 留痕——否则后面所有批次都会看着一条坏样板。
@@ -362,7 +383,7 @@ public class SubtitleCleanser {
 
 
     /**
-     * 校验一次 LLM 回复是否「可采纳」。返回 {@code null} 表示通过，否则返回违规说明。
+     * 校验一次 LLM 回复是否「可采纳」。返回 {@code null} 表示通过，否则返回带分类的失败。
      *
      * <p>两个硬约束：键集必须与原文完全一致（不许掉行/加行）；每条改写幅度不能超过相似度阈值
      * （&lt;= 10 字用 similarityShortText，其余用 similarityNormal）。
@@ -371,13 +392,17 @@ public class SubtitleCleanser {
      * 只跟原文比会把正确的替换判成改太狠；只跟基线比又会在模型判断「读不通、故意不换」时
      * 把保留原文的正确结果判成改太狠。两个目标够到任一个就算过。
      *
+     * <p>失败分类成 {@code KEY_SET}（键集问题）与 {@code TOO_MUCH_EDIT}（改动过大）两类，是为了能分开
+     * 计数：相似度守卫到底有没有拦下过东西，要靠这个读数回答。分类是结构化的，不靠文案前缀——前缀
+     * 一改就静默失效。
+     *
      * @param original  原文键值对
      * @param candidate 模型回复键值对
      * @param hits      本批命中术语（用于构造替换基线）；无命中时传空列表即可
-     * @return 违规说明；通过则 {@code null}
+     * @return 带分类的失败；通过则 {@code null}
      */
-    String validate(Map<String, String> original, Map<String, String> candidate,
-                    List<SubtitleContext.Term> hits) {
+    ValidationFailure validate(Map<String, String> original, Map<String, String> candidate,
+                               List<SubtitleContext.Term> hits) {
         StringBuilder sb = new StringBuilder();
         for (String k : original.keySet()) {
             if (!candidate.containsKey(k)) {
@@ -390,7 +415,8 @@ public class SubtitleCleanser {
             }
         }
         if (sb.length() > 0) {
-            return sb.toString() + " 请确保返回与输入完全相同的条号集合。";
+            return new ValidationFailure(ValidationFailure.FailureKind.KEY_SET,
+                    sb.toString() + " 请确保返回与输入完全相同的条号集合。");
         }
 
         for (String k : original.keySet()) {
@@ -408,7 +434,9 @@ public class SubtitleCleanser {
                         .append("原 \"").append(orig).append("\" 改成了 \"").append(cand).append("\"；");
             }
         }
-        return sb.length() == 0 ? null : sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。";
+        return sb.length() == 0 ? null
+                : new ValidationFailure(ValidationFailure.FailureKind.TOO_MUCH_EDIT,
+                        sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。");
     }
 
     /**
@@ -614,6 +642,28 @@ public class SubtitleCleanser {
      * 单批术语替换指标：命中数、已替换数、未替换清单。
      */
     private record TermMetrics(int hits, int applied, List<String> unapplied) {
+    }
+
+    /**
+     * 一次校验失败的分类结果。
+     *
+     * <p>包级可见是为了能直接单测（{@link #validate} 也如此）。{@code detail} 是给人看的原因，
+     * 会被拼进重试消息发给模型，措辞与拆分前的文本一字不差。
+     *
+     * @param kind   失败类型
+     * @param detail 失败原因
+     */
+    record ValidationFailure(FailureKind kind, String detail) {
+
+        /**
+         * 失败类型：键集问题、改动过大。分开计数才能看清相似度守卫有没有拦下过东西。
+         */
+        enum FailureKind {
+            /** 键集与原文不一致：缺条目或多条目。 */
+            KEY_SET,
+            /** 改写幅度超过相似度阈值。 */
+            TOO_MUCH_EDIT
+        }
     }
 
 }

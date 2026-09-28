@@ -41,7 +41,7 @@ class SubtitleCleanupServiceTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final SubtitleCleanupProperties PROPS =
-            new SubtitleCleanupProperties(8000, 600, 20, 3, 0.7, 0.3, 20000);
+            new SubtitleCleanupProperties(8000, 600, 20, 3, 0.7, 0.3, 20000, false);
 
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;

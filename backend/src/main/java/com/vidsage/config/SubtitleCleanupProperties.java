@@ -16,6 +16,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                             累计超过就从最老的一轮开始丢。设为 0 或负数即关闭（退回「每批只看自己」）。
  *                             按字符估 token，中文约 1 字 ≈ 1 token。
  *                             <b>缺席时绑定成 0 = 静默关闭</b>，所以 yml 里必须显式写。
+ * @param logRejectedText      校验失败时是否把失败详情（内含本句原文与模型改写的文本）打进日志。
+ *                             <b>只在 application-local.yml 里开</b>：那个文件不进仓库，生产配置里没有
+ *                             这个键，所以开不了——这是结构性保证，不是「记得别开」。
+ *                             用途：判断相似度守卫拦下的究竟是模型真改写，还是合法的术语替换被误判。
+ *                             <b>缺席时绑定成 false</b>（record 的 boolean 默认值），正是生产要的方向，
+ *                             所以 application.yml 里不写这个键。与 historyMaxChars 相反——那个字段
+ *                             缺席时的默认值会静默关掉功能，故必须显式写。
  */
 @ConfigurationProperties(prefix = "vidsage.subtitle.cleanup")
 public record SubtitleCleanupProperties(
@@ -25,5 +32,6 @@ public record SubtitleCleanupProperties(
         int maxSteps,
         double similarityNormal,
         double similarityShortText,
-        int historyMaxChars) {
+        int historyMaxChars,
+        boolean logRejectedText) {
 }
