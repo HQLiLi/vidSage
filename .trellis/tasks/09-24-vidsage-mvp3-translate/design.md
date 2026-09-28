@@ -246,6 +246,18 @@ public static String contextFileName(SubtitleRoute route);
 `target-language` 再跑会命中上一次的产物被当成已完成而跳过，返回与当前配置不符的字幕且不报错。
 （`contextFileName` 相反，不带——见 §3.2。）
 
+**目标语种先归一化再拼名**：`trim()` + `toLowerCase(Locale.ROOT)`。不归一化的话，配置写成 `ZH`
+就会静默产出第二份产物、绕开断点——与「必须带指纹」要防的是同一类事故。不做更进一步的 BCP-47
+规范化（如 `zh_cn` → `zh-CN`）：那属于「配置写错该报错」而非「替它猜」的分界。
+
+**语种为空时抛 `IllegalStateException`，不兜底**（2026-09-28 定）。两个理由：
+空语种会拼出 `translate-.json` 这种名字，任何两个未配置的语种都会撞到同一份产物；
+异常类型按 `error-handling.md` 的「非法值是谁产生的」判据取 ISE——该值来自配置而非请求体，
+属「环境不对」，映射 500。抛 IAE 会变成 400，等于告诉调用方「你的请求有问题」，
+而请求本身完全合法，错的是部署配置。
+（注：同包 `SubtitleSegmentSplitter` 对同样来自配置的 `maxSegmentMs` 抛的是 IAE，
+那是既有代码与规范的一处不一致，不是本任务该跟的规矩；是否回头修它，另立小任务，不在本期范围。）
+
 ## 七、配置
 
 ```yaml
