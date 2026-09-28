@@ -1,6 +1,7 @@
 package com.vidsage.utils.subtitle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.vidsage.model.subtitle.SubtitleRoute;
 import org.junit.jupiter.api.Test;
@@ -40,5 +41,34 @@ class SubtitleArtifactNamesTest {
     void contextFileNameCarriesRouteFingerprintButNoTargetLanguage() {
         assertEquals("context-asr-cloud.json", SubtitleArtifactNames.contextFileName(SubtitleRoute.ASR_CLOUD));
         assertEquals("context-asr-local.json", SubtitleArtifactNames.contextFileName(SubtitleRoute.ASR_LOCAL));
+    }
+
+    @Test
+    void translateArtifactFileNamesCarryRouteAndTargetLanguageFingerprint() {
+        assertEquals("segments-asr-cloud-translate-zh.json",
+                SubtitleArtifactNames.translateSegmentsFileName(SubtitleRoute.ASR_CLOUD, "zh"));
+        assertEquals("subtitles-asr-cloud-translate-zh.srt",
+                SubtitleArtifactNames.translateSrtFileName(SubtitleRoute.ASR_CLOUD, "zh"));
+        assertEquals("subtitles-asr-local-translate-en.srt",
+                SubtitleArtifactNames.translateSrtFileName(SubtitleRoute.ASR_LOCAL, "en"));
+    }
+
+    @Test
+    void normalizesTargetLanguageCaseAndSurroundingWhitespace() {
+        // ZH /  zh  必须落到同一个文件名，否则大小写一变就静默产出第二份产物、绕开断点
+        assertEquals("segments-asr-cloud-translate-zh.json",
+                SubtitleArtifactNames.translateSegmentsFileName(SubtitleRoute.ASR_CLOUD, "ZH"));
+        assertEquals("segments-asr-cloud-translate-zh.json",
+                SubtitleArtifactNames.translateSegmentsFileName(SubtitleRoute.ASR_CLOUD, "  zh  "));
+    }
+
+    @Test
+    void rejectsBlankTargetLanguage() {
+        // 用 ISE 而非 IAE：语种来自配置不是请求体，属「环境不对」；抛 IAE 会被映射成 400，
+        // 而调用方的请求本身完全合法（见 error-handling 的「非法值是谁产生的」判据）
+        assertThrows(IllegalStateException.class,
+                () -> SubtitleArtifactNames.translateSegmentsFileName(SubtitleRoute.ASR_CLOUD, "  "));
+        assertThrows(IllegalStateException.class,
+                () -> SubtitleArtifactNames.translateSrtFileName(SubtitleRoute.ASR_CLOUD, null));
     }
 }

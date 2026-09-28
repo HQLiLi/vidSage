@@ -1,6 +1,7 @@
 package com.vidsage.utils.subtitle;
 
 import com.vidsage.model.asr.TranscriptionSegment;
+import com.vidsage.model.subtitle.TranslatedSegment;
 import java.util.List;
 import java.util.Locale;
 
@@ -42,6 +43,33 @@ public final class SrtRenderer {
                     .append(formatTimestamp(s.beginTimeMs())).append(" --> ")
                     .append(formatTimestamp(s.endTimeMs())).append('\n')
                     .append(s.text() == null ? "" : s.text()).append("\n\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 渲染整份双语 SRT：每条上行原文、下行译文，其余格式（序号、时间轴、空行、{@code \n}）同
+     * {@link #toSrt(List)}。句数为 0 时返回空字符串。
+     *
+     * <p><b>译文与原文相同时该条只渲染一行</b>（不把同一句话写两遍）：跳过的产物（源语种等于目标
+     * 语种）因此不会出现两行一模一样的字幕，「跳过」在 SRT 里自然可读，不需要额外标记。判据是
+     * 两侧都按空串处理后再比（同 {@code toSrt} 对 {@code null} 文本的处理），故 {@code null} 与空串
+     * 视为同一行。
+     */
+    public static String toBilingualSrt(List<TranslatedSegment> segments) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < segments.size(); i++) {
+            TranslatedSegment s = segments.get(i);
+            String source = s.sourceText() == null ? "" : s.sourceText();
+            String translated = s.translatedText() == null ? "" : s.translatedText();
+            sb.append(i + 1).append('\n')
+                    .append(formatTimestamp(s.beginTimeMs())).append(" --> ")
+                    .append(formatTimestamp(s.endTimeMs())).append('\n')
+                    .append(source).append('\n');
+            if (!translated.equals(source)) {
+                sb.append(translated).append('\n');
+            }
+            sb.append('\n');
         }
         return sb.toString();
     }
