@@ -415,9 +415,9 @@ public class SubtitleCleanser {
                 if (batchText.contains(t.asr().toLowerCase(Locale.ROOT))) {
 
                     terms.append("- \"").append(t.asr())
-                            .append("\" 应为 \"").append(t.fixed()).append("\"");
+                            .append("\" → \"").append(t.fixed()).append("\"（候选正确写法）");
                     if (t.note() != null && !t.note().isBlank()) {
-                        terms.append("（").append(t.note()).append("）");
+                        terms.append("：").append(t.note());
                     }
                     terms.append('\n');
                 }
@@ -427,8 +427,8 @@ public class SubtitleCleanser {
             }
         }
 
-        // 4. 本批正文（原有拼接，一字未改）
-        sb.append("请修正以下字幕，保持原语言，不要翻译：\n{");
+        // 4. 本批正文与修正要求
+        sb.append("请修正以下字幕，术语按上面的术语参考判断是否替换；其余内容保持原语言，不要翻译：\n{");
         boolean first = true;
         for (Map.Entry<String, String> e : original.entrySet()) {
             if (!first) {
@@ -439,7 +439,7 @@ public class SubtitleCleanser {
         }
         sb.append("\n}");
 
-        // 5. 人工术语表（原有，一字未改）
+        // 5. 人工术语表（HTTP 查询参数传进来的，原样拼）
         if (reference != null && !reference.isBlank()) {
             sb.append("\n\n参考术语表：\n").append(reference);
         }
