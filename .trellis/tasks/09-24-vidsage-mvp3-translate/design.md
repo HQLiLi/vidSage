@@ -323,6 +323,18 @@ record ValidationFailure(FailureKind kind, String detail) { enum FailureKind { K
 `validate` 的返回类型由 `String` 改为 `ValidationFailure`（通过时仍返回 `null`），
 `agentLoop` 里按 `kind()` 计数并记 DEBUG。
 
+`detail` 里内嵌本句原文与模型改写的文本，属脱敏红线（`logging-guidelines.md` §四）内的用户内容，
+故**默认不进日志**：上面那条 DEBUG 只记分类与轮次、不带 detail，它才是生产环境唯一的读数来源。
+另按开关补一条带 detail 的日志，机制与约束：
+
+- `vidsage.subtitle.cleanup.log-rejected-text`（`SubtitleCleanupProperties` 末尾字段）为 `true` 时才打；
+- 这个键只写在**不进仓库**的 `application-local.yml`，生产配置里没有它 → 开关开不了，
+  这是结构性保证；
+- 级别用 **TRACE** 而非 DEBUG：即使开关被误开，也要再过一道级别闸门（生产基线 `com.vidsage: DEBUG`，
+  TRACE 不输出）；
+- 用途与边界：只为判断「守卫拦下的是模型真改写、还是合法的术语替换被误判」，不得推广成
+  「用户内容可以进日志」。规范侧例外说明见 `logging-guidelines.md` §四。
+
 **为什么用结构化而不是按字符串前缀分类**：前缀分类是脆的——文案一改就静默失效，
 而它服务的正是「观测」这件事本身。改签名会动到 `SubtitleCleanserTest`（`validate` 是包级可见、
 有直测），属可接受的代价。
