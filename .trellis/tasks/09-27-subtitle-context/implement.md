@@ -6,12 +6,12 @@
 
 **改道记录（只记这一笔）**：原规划把 LLM 调用抽成 `SubtitleCorrector.Llm` 函数式接口 `(system, user) -> String`，实施时去掉——它表达不了 `.messages()` 多轮消息：批内重试要让模型看见自己上一条错在哪（失败回复作 assistant 消息 + 反馈 user 消息），跨批历史要成对携带往返，窄缝装不下。故 `SubtitleCleanser` 直持 `ChatClient`。
 
-**本轮收尾（「字幕清洗 v0 收尾整理」，2026-09-28 已批准，按步停等审查）**：
+**本轮收尾（「字幕清洗 v0 收尾整理」，2026-09-28 已批准）——✅ 四项全部完成（2026-09-28）**：
 
-1. 删死代码：`SubtitleCorrector` / `SubtitleContextBuilder` / `SubtitleCorrectorTest` / `SubtitleCleanupConfig`（唯一 bean 是无人注入的孤儿）/ `SubtitleContext.isEmpty()`（零调用）
-2. 挪包：`com.vidsage.llm` → `provider/llm`，具体类不抽接口（先例 `provider/tool/ExternalProcessRunner`；它不是「同一能力多种来源」的缝，是吃 LLM 的领域 worker）
-3. 摘要收口：新建 `provider/llm/SubtitleContextSummarizer` 接走服务层摘要调用，service 摘掉 Spring AI 类型；补摘要测试（正常 / 异常降级 / 坏 JSON 降级）
-4. spec 记录 `provider/llm` 现阶段形态；design.md 同步两笔（包名、摘要落点）
+1. ✅ 删死代码：`SubtitleCorrector` / `SubtitleContextBuilder` / `SubtitleCorrectorTest` / `SubtitleCleanupConfig`（唯一 bean 是无人注入的孤儿）/ `SubtitleContext.isEmpty()`（零调用）（提交 `1ee40b4`）
+2. ✅ 挪包：`com.vidsage.llm` → `provider/llm`，具体类不抽接口（先例 `provider/tool/ExternalProcessRunner`；它不是「同一能力多种来源」的缝，是吃 LLM 的领域 worker）（提交 `fe3f768`）
+3. ✅ 摘要收口：新建 `provider/llm/SubtitleContextSummarizer` 接走服务层摘要调用，service 摘掉 Spring AI 类型；补摘要测试（正常 / 异常降级 / 坏 JSON 降级）（提交 `fe3f768`）
+4. ✅ spec 记录 `provider/llm` 现阶段形态；design.md 同步两笔（包名、摘要落点）；LLMProvider 接口确定为不建（提交 `d8d191b`）
 
 ## 踩坑备查
 
