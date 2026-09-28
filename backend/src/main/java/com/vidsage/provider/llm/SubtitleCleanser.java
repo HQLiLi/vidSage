@@ -390,22 +390,21 @@ public class SubtitleCleanser {
                                           String reference, List<String> after) {
         StringBuilder sb = new StringBuilder();
 
-        // ① 后窗：不带编号的纯文本，模型不会把它当成要改的条目。
-        //    前窗已移除——上一批的「原文 + 已采纳的纠正」现在走跨批历史，那是前窗的严格超集。
+        // 1. 本批次后面的部分字幕，增加点前后批关联，缓解跨批次的语义坍塌问题。
         if (!after.isEmpty()) {
             sb.append("### Context Information\n")
                     .append("<subsequent_content>\n")
                     .append(String.join("\n", after))
                     .append("\n</subsequent_content>\n\n")
-                    .append("以下后文仅供参考，不要修改，也不要出现在返回结果里。\n\n");
+                    .append("以上后文仅供参考，不要修改，也不要出现在返回结果里。\n\n");
         }
 
-        // ② 全篇主题
+        // 2. 全篇主题
         if (context != null && !context.theme().isBlank()) {
             sb.append("### 内容主题\n").append(context.theme()).append("\n\n");
         }
 
-        // ③ 术语：只列本批真出现过的
+        // 3. 术语：只列本批真出现过的
         if (context != null && !context.terms().isEmpty()) {
             String batchText = String.join("\n", original.values()).toLowerCase(Locale.ROOT);
             StringBuilder terms = new StringBuilder();
@@ -428,7 +427,7 @@ public class SubtitleCleanser {
             }
         }
 
-        // ④ 本批正文（原有拼接，一字未改）
+        // 4. 本批正文（原有拼接，一字未改）
         sb.append("请修正以下字幕，保持原语言，不要翻译：\n{");
         boolean first = true;
         for (Map.Entry<String, String> e : original.entrySet()) {
@@ -440,7 +439,7 @@ public class SubtitleCleanser {
         }
         sb.append("\n}");
 
-        // ⑤ 人工术语表（原有，一字未改）
+        // 5. 人工术语表（原有，一字未改）
         if (reference != null && !reference.isBlank()) {
             sb.append("\n\n参考术语表：\n").append(reference);
         }

@@ -22,7 +22,7 @@ vidsage:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY}
       model: qwen-audio-3.1-asr-flash-filetrans
-  tools:  
+  tools:
     # 外部工具（yt-dlp / ffmpeg / ffprobe）；留空则从 PATH 解析。
     # 容器里 ffmpeg 未必在 PATH，交付时必须显式配置，不要把本机绝对路径写进仓库
     yt-dlp-path: ${YT_DLP_PATH:}
