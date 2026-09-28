@@ -7,8 +7,8 @@ package com.vidsage.utils.subtitle;
  * {@code M}，返回 {@code 2 * M / (lenA + lenB)}。纠错阶段拿它判断「LLM 改得太多还是太少」——
  * 太高说明几乎没纠，太低说明 LLM 顺手重写了，都要拦。
  *
- * <p><b>包私有</b>：它只有 {@link SubtitleCorrector} 一个消费者（同包），不打算作为共享工具外泄；
- * 谁将来真要用，再考虑提升可见性，别为「可能用到」提前造 util 桶（见 directory-structure.md）。
+ * <p><b>public</b>：唯一消费者是字幕纠错器 {@code SubtitleCleanser}，跨包使用，收不进包私有；
+ * 谁将来真要用，也别为「可能用到」提前造 util 桶（见 directory-structure.md）。
  */
 public final class TextSimilarity {
 

@@ -37,11 +37,4 @@ public record SubtitleContext(String theme, List<Term> terms) {
     public static SubtitleContext empty() {
         return new SubtitleContext("", List.of());
     }
-
-    /**
-     * 有没有实质内容（主题与术语都空就算空）。
-     */
-    public boolean isEmpty() {
-        return theme.isBlank() && terms.isEmpty();
-    }
 }
