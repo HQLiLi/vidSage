@@ -7,7 +7,7 @@
 ```
 segments-<route>.json（原始，只读，必须已存在）
    │
-   ├─ SubtitleCleanupService.summarizeContent(全篇拼接文本)    摘要出跨批上下文
+   ├─ SubtitleContextSummarizer.summarize(全篇拼接文本)         摘要出跨批上下文
    │     └─ @Qualifier("ContentSummarizer") ChatClient
    │        .prompt().user(全文).call().entity(SubtitleContext.class)
    │        任何 RuntimeException → SubtitleContext.empty() 降级，清洗继续
@@ -32,7 +32,8 @@ segments-<route>.json（原始，只读，必须已存在）
 | 类 | 位置 | 职责 |
 |---|---|---|
 | `SubtitleCleanupService` | `service/` | 编排：断点判据、摘要、切分、调清洗、写产物 |
-| `SubtitleCleanser` | `com.vidsage.llm`（临时顶层包，收尾时挪 `provider/llm/`） | 批切分、提示词、`validate`、`agentLoop`、跨批历史 |
+| `SubtitleCleanser` | `provider/llm/` | 批切分、提示词、`validate`、`agentLoop`、跨批历史 |
+| `SubtitleContextSummarizer` | `provider/llm/` | 摘要调用与降级（system prompt 挂在 ContentSummarizer client 上） |
 | `SubtitleContext` | `model/subtitle/` | `record(theme, terms)`，`Term(asr, fixed, note)`，`empty()` 静态工厂 |
 | `ChatClientConfig` | `config/` | 两个带 `defaultSystem` 的领域 client：`subtitleCleanupChatClient`（纠错）、`ContentSummarizer`（摘要） |
 | `TextSimilarity` | `utils/subtitle/` | 相似度，`validate` 用 |
@@ -106,8 +107,9 @@ segments-<route>.json（原始，只读，必须已存在）
 ## 六、装配与测试形态
 
 - `SubtitleCleanser`：`@Component`，构造注入 `@Qualifier("subtitleCleanupChatClient") ChatClient` + `SubtitleCleanupProperties`。公开签名无 SDK 类型（ChatClient 是私有字段）
-- `SubtitleCleanupService`：构造注入 `@Qualifier("ContentSummarizer") ChatClient`——**临时违例**（SDK 类型进 service/），收口步新建 `provider/llm/SubtitleContextSummarizer` 接走，service 摘掉 Spring AI 类型
-- 测试：**真 ChatClient + 桩 ChatModel**，不起 Spring 容器（`SubtitleCleanserTest` 13 例：消息形态、批内重试、跨批历史注入/排除/裁剪、围栏解析、回滚、`historyMaxChars=0` 关闭）
+- `SubtitleContextSummarizer`：`@Component`，构造注入 `@Qualifier("ContentSummarizer") ChatClient`；公开方法 `summarize(String) → SubtitleContext`，失败记 WARN 降级 `empty()`。公开签名无 SDK 类型外泄
+- `SubtitleCleanupService`：构造注入 `SubtitleContextSummarizer`，service 里没有任何 Spring AI 类型（2026-09-28 收口，原先直持 ChatClient 的违例已消除）
+- 测试：**真 ChatClient + 桩 ChatModel**，不起 Spring 容器（`SubtitleCleanserTest` 13 例：消息形态、批内重试、跨批历史注入/排除/裁剪、围栏解析、回滚、`historyMaxChars=0` 关闭；`SubtitleContextSummarizerTest` 3 例：正常解析、异常降级、坏 JSON 降级）
 
 ## 七、未实现（明确出栈，另行任务）
 

@@ -63,6 +63,8 @@ com.vidsage
 
 **新增领域时**：`web/controller/`、`service/` 直接加类；`web/dto/` 直接加契约；`model/`、`provider/` 下开新的领域子包。`provider/<领域>/` 内仍遵循 Provider 四件套结构（接口留领域包根、实现与该实现专用的 `*Properties` 进 `provider/<领域>/<实现短名>/`，见 [provider-pattern.md](./provider-pattern.md)）。
 
+> **`provider/llm/` 的现阶段形态（2026-09-28）**：包里目前是两个**具体类**的 LLM 调用 worker——`SubtitleCleanser`（字幕纠错）、`SubtitleContextSummarizer`（摘要），**没有抽接口**：它们不是「同一能力、多种来源」的缝，而是吃 LLM 的领域 worker（与 `provider/tool/` 单一实现不抽接口同一条精神；纠错的 `.messages()` 多轮历史也装不进窄缝）。SDK 类型（`ChatClient` / `Message` 等）只出现在这两类的内部，公开签名只有本项目的契约类型。Provider 四件套留给规划中的 `LLMProvider`（主 PRD 本地模型落地时建，`vidsage.llm.provider` 键已预留），届时这两个 worker 改吃该缝。曾经的临时顶层包 `com.vidsage.llm` 就此消除。
+
 ## `model` / `domain` / `persistence` / `config` 怎么选
 
 这四个包名不是互斥选项：`model` 与 `domain` 是同一个轴（类**是什么**），`persistence` 是另一个轴（类**放哪一层**），永远不与之抢位置。
@@ -201,11 +203,11 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 **Spring 边界看容器，不看 jar**：判据是「**把 Spring 容器整个拿掉，这个包还能不能编译并通过测试**」——**能**才准进。故 `org.springframework.util.*` 这类纯静态工具**允许**；Spring 注解（`@Component` / `@Service` / `@Autowired` / `@Value` / `@ConfigurationProperties` 等）、`ApplicationContext`、`Environment`、HTTP 类型**禁止**。
 
-**其余允许**：JDK、slf4j、Jackson、`java.nio.file`。**其余禁止**：自己发起网络传输或调用外部进程——注意**依赖注入进来的接口不算**，`utils/subtitle/SubtitleCorrector` 正是这种：它只调注入的 `SubtitleCorrector.Llm` 函数式接口，HTTP 发生在 `config/` 的装配里。这条划的是「谁真的发请求」，不是「谁的名字听起来像外部调用」。
+**其余允许**：JDK、slf4j、Jackson、`java.nio.file`。**其余禁止**：自己发起网络传输或调用外部进程——注意**依赖注入进来的接口不算**（某个 utils 类只调注入的函数式接口、真正的 HTTP 在 `config/` 装配里发生，就不算它发的）。这条划的是「谁真的发请求」，不是「谁的名字听起来像外部调用」。（2026-09-28 注：原范例 `utils/subtitle/SubtitleCorrector` 已被 `provider/llm/SubtitleCleanser` 取代删除——后者持 Spring AI 类型，本就过不了 utils 的「拿掉容器还能编译」判据。）
 
 **`model/` 不得依赖 `utils/fs/`**——`model/` 类型的紧凑构造器里不许做 I/O。这条是允许 `utils/fs/` 存在的前提：`utils/` 从此不再保证「无副作用」，靠这条护栏挡住最危险的误用点。
 
-跨包使用须 `public`，纯内部助手保留包私有。参照：`utils/subtitle/`（切分器 / 纠错器 / 相似度 / 渲染器 / 产物命名）、`utils/fs/ArtifactFiles`（产物落盘与大小判定）、`utils/text/TextTail`（文本尾部截取）。
+跨包使用须 `public`，纯内部助手保留包私有。参照：`utils/subtitle/`（切分器 / 相似度 / 渲染器 / 产物命名）、`utils/fs/ArtifactFiles`（产物落盘与大小判定）、`utils/text/TextTail`（文本尾部截取）。
 
 ## 服务层与 HTTP 入口
 

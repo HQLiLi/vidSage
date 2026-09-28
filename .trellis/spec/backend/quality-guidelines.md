@@ -167,7 +167,7 @@ var provider = new DashScopeAsrProvider(
 
 | 档位 | 判据 | 手段 | 本项目实例 |
 |---|---|---|---|
-| 纯单元测试 | 逻辑不依赖容器能力 | `new` + 构造注入 | `DashScopeAsrProviderTest`、`SubtitleCorrectorTest` 等 21 个 |
+| 纯单元测试 | 逻辑不依赖容器能力 | `new` + 构造注入 | `DashScopeAsrProviderTest` 等 21 个 |
 | 切片测试 | 只缺某一层的框架能力 | `@WebMvcTest` / `@DataJpaTest` / `@JsonTest` | `MediaControllerTest`、`AsrControllerTest`、`SubtitleControllerTest` |
 | 全容器 | 验证跨层协作、自动配置、真实外部依赖 | `@SpringBootTest` + Testcontainers | `VidSageApplicationTests`（冒烟） |
 

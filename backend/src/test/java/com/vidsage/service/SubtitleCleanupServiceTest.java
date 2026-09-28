@@ -8,13 +8,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.config.SubtitleCleanupProperties;
-import com.vidsage.llm.SubtitleCleanser;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.MediaInput;
 import com.vidsage.model.subtitle.CleanedSubtitle;
+import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.model.subtitle.SubtitleRoute;
 import com.vidsage.model.subtitle.SubtitleTrack;
 import com.vidsage.provider.asr.ASRProvider;
+import com.vidsage.provider.llm.SubtitleCleanser;
+import com.vidsage.provider.llm.SubtitleContextSummarizer;
 import com.vidsage.utils.subtitle.SubtitleArtifactNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,7 +26,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.ai.chat.client.ChatClient;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -34,8 +35,7 @@ import tools.jackson.databind.ObjectMapper;
  * 摘要器与 cleanser 都是 mock。
  *
  * <p><b>清洗算法本身（分批、守卫、重试、保留原文）不在这里测</b>——它的覆盖在
- * {@link com.vidsage.utils.subtitle.SubtitleCorrectorTest}，那边有可注入的 {@code Llm} 桩。
- * {@code SubtitleCleanser} 直接持有 {@code ChatClient}，没留那道缝，桩不进去。
+ * {@code SubtitleCleanserTest}：真 ChatClient + 桩 ChatModel，桩从 ChatModel 层进去。
  */
 class SubtitleCleanupServiceTest {
 
@@ -48,7 +48,7 @@ class SubtitleCleanupServiceTest {
 
     private final WorkspaceService workspaceService = mock(WorkspaceService.class);
     private final ASRProvider asrProvider = mock(ASRProvider.class);
-    private final ChatClient contentSummarizer = mock(ChatClient.class);
+    private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
     private final SubtitleCleanser subtitleCleanser = mock(SubtitleCleanser.class);
 
     /** cleanser 被调了几次——「断点复用后不再跑」这类断言靠它。 */
@@ -67,7 +67,7 @@ class SubtitleCleanupServiceTest {
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
         return new SubtitleCleanupService(workspaceService, asrProvider, JSON, PROPS,
-                contentSummarizer, subtitleCleanser);
+                contextSummarizer, subtitleCleanser);
     }
 
     private void writeRawTrack() throws Exception {
@@ -81,6 +81,7 @@ class SubtitleCleanupServiceTest {
     void resetStubs() {
         cleanserCalls.set(0);
         stubCleanserEcho();
+        when(contextSummarizer.summarize(any())).thenReturn(SubtitleContext.empty());
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
     }

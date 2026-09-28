@@ -1,4 +1,4 @@
-package com.vidsage.llm;
+package com.vidsage.provider.llm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

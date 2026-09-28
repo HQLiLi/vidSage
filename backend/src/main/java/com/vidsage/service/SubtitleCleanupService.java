@@ -1,7 +1,8 @@
 package com.vidsage.service;
 
 import com.vidsage.config.SubtitleCleanupProperties;
-import com.vidsage.llm.SubtitleCleanser;
+import com.vidsage.provider.llm.SubtitleCleanser;
+import com.vidsage.provider.llm.SubtitleContextSummarizer;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.MediaInput;
 import com.vidsage.model.subtitle.CleanedSubtitle;
@@ -20,8 +21,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -29,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 字幕清洗编排：把「2b 产出的原始 segments」变成「切分 + LLM 纠错后的 -clean 产物」。
  *
- * <p>管线形状：读原始 segments → 摘要出跨批上下文（{@link ChatClient}）→
+ * <p>管线形状：读原始 segments → 摘要出跨批上下文（{@link SubtitleContextSummarizer}）→
  * {@link SubtitleSegmentSplitter} 切分超长段 → {@link SubtitleCleanser} 逐批清洗 →
  * 写 {@code segments-<route>-clean.json} + {@code subtitles-<route>-clean.srt}。
  *
@@ -48,7 +47,7 @@ public class SubtitleCleanupService {
     private final ObjectMapper objectMapper;
     private final SubtitleCleanupProperties props;
 
-    private final ChatClient contentSummarizer;
+    private final SubtitleContextSummarizer contextSummarizer;
 
     private final SubtitleCleanser subtitleCleanser;
 
@@ -59,20 +58,20 @@ public class SubtitleCleanupService {
      * @param asrProvider      当前装配的 ASR provider（取路线与产物命名指纹）
      * @param objectMapper     Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      * @param props            字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
-     * @param contentSummarizer 内容总结器（摘要出主题与术语，供跨批上下文用）
+     * @param contextSummarizer 内容总结器（摘要出主题与术语，供跨批上下文用）
      * @param subtitleCleanser 字幕清洗器（持有清洗专用的 ChatClient）
      */
     public SubtitleCleanupService(WorkspaceService workspaceService,
                                   ASRProvider asrProvider,
                                   ObjectMapper objectMapper,
                                   SubtitleCleanupProperties props,
-                                  @Qualifier("ContentSummarizer") ChatClient contentSummarizer,
+                                  SubtitleContextSummarizer contextSummarizer,
                                   SubtitleCleanser subtitleCleanser) {
         this.workspaceService = workspaceService;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
         this.props = props;
-        this.contentSummarizer = contentSummarizer;
+        this.contextSummarizer = contextSummarizer;
         this.subtitleCleanser = subtitleCleanser;
     }
 
@@ -128,12 +127,12 @@ public class SubtitleCleanupService {
         List<TranscriptionSegment> segments = raw.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
         // 内容的主题和从中提取出的术语
-        SubtitleContext subtitleContext = summarizeContent(radioContent);
+        SubtitleContext subtitleContext = contextSummarizer.summarize(radioContent);
 
         // 切分
         List<TranscriptionSegment> split = new SubtitleSegmentSplitter(props.maxSegmentMs()).split(segments);
 
-        // 清洗（分批 + 每批带主题/术语/前后窗）
+        // 清洗（分批 + 每批带主题/术语/后窗/跨批历史）
         SubtitleCleanser.CleanseResult result = subtitleCleanser.clean(split, subtitleContext, reference);
 
         SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments());
@@ -142,24 +141,6 @@ public class SubtitleCleanupService {
                 route.name(), result.segments().size(), result.correctedCount(), result.retrySteps());
         return toCleaned(cleaned, cleanSeg, cleanSrt, result.correctedCount(), result.retrySteps());
     }
-
-    /**
-     * 总结
-     *
-     * @param content
-     * @return
-     */
-    private SubtitleContext summarizeContent(String content) {
-        try {
-            return contentSummarizer.prompt()
-                    .user(content)
-                    .call()
-                    .entity(SubtitleContext.class);
-        } catch (RuntimeException e) {
-            return SubtitleContext.empty();
-        }
-    }
-
 
     /**
      * 读断点：{@code -clean.json} 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。

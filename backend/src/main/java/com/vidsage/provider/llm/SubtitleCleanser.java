@@ -1,4 +1,4 @@
-package com.vidsage.llm;
+package com.vidsage.provider.llm;
 
 
 import com.vidsage.config.SubtitleCleanupProperties;
