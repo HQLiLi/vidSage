@@ -14,7 +14,8 @@
 ### 阶段一（MVP）
 
 1. 任务提交：B站 / YouTube 链接或本地视频、音频文件；异步任务管线，SSE 推送进度（复用 0009 经验）。
-2. 字幕获取：优先拉取平台已有字幕（yt-dlp --write-subs）；无字幕走 ASR——本地 FunASR 微服务为默认，云端 ASR API 为兜底，通过 ASRProvider 接口配置切换。
+2. 字幕获取：优先拉取平台已有字幕（yt-dlp --write-subs）；无字幕走 ASR——~~本地 FunASR 微服务为默认~~，云端 ASR API 为兜底，通过 ASRProvider 接口配置切换。
+   - **2026-09-28 项目所有者定调：「本地为默认」这个目标态大概率不会落地**——本地配置跑不出可用的模型质量（与本文件「Out of scope」里的「本地推理优化」同源）。`ASRProvider` 抽象与 `ASR_LOCAL` 取值**保留**（契约域已冻结，见 `SubtitleRoute` 的注释），但后续任务不要再按「本地为默认」去排优先级。
 3. 翻译：全走 LLM（DeepSeek，OpenAI 兼容接口），不做传统机器翻译 API。要求上下文感知的整段翻译、术语与称谓全片一致；架构上预留「直译 -> 反思 -> 重写」的进阶轮次（借鉴 VideoLingo 三遍过思路，2026-09-22 README 核实）。导出原文 + 译文双语 SRT。
 4. 总结：结构化总结（要点、章节、关键结论），长字幕走分段压缩（0007 上下文工程）。
 
@@ -44,7 +45,7 @@
 
 - 向量库选型（Redis vs pgvector，结合本机已有 Docker Redis 的现状）。
 - 项目名：候选 VidSage（2026-09-23 GitHub 搜索未见同名仓库；VidLens、VidWise-AI、VidAtlas 均已被占用或近似占用），待用户确认后定仓库名。
-- ~~B站字幕拉取的登录 / 风控边界需要实测~~ → **已实测（2026-09-26），结论不是风控边界，是登录态壁垒**：未登录时 B站 提取器一律不返回真实字幕（`--list-subs` 只给伪语言 `danmaku`），4 条视频（普通投稿 / 多分P / bangumi）行为一致，yt-dlp 明报 `Subtitles are only available when logged in.`。**因此平台字幕路线的前置问题不是技术而是产品**：cookies 用谁的？自用 / 演示形态下用个人 cookies 可行，部署给别人用则这条路不该存在（与本文件 Out of scope 的「下载功能公开服务化」同源）。取证见 `../09-25-vidsage-mvp2b-subtitles/research/platform-subtitle-formats.md`。
+- ~~B站字幕拉取的登录 / 风控边界需要实测~~ → **已实测（2026-09-26），结论不是风控边界，是登录态壁垒**：未登录时 B站 提取器一律不返回真实字幕（`--list-subs` 只给伪语言 `danmaku`），4 条视频（普通投稿 / 多分P / bangumi）行为一致，yt-dlp 明报 `Subtitles are only available when logged in.`。**因此平台字幕路线的前置问题不是技术而是产品**：cookies 用谁的？自用 / 演示形态下用个人 cookies 可行，部署给别人用则这条路不该存在（与本文件 Out of scope 的「下载功能公开服务化」同源）。取证见 `../09-25-vidsage-mvp2b-subtitles/research/platform-subtitle-formats.md`。**2026-09-28 项目所有者定调：平台字幕直取目前不打算实现，挂为未来任务**——本项由此从「待决产品问题」转为「已挂账的未来工作」，条目见 `../09-24-vidsage-mvp2-subtitles/prd.md` 的「后续优化」。
 - ASR 模型 bake-off 未做（候选与约束见 `research/competitive-and-asr.md`）。
 - 是否引入说话人分离（diarization）：现验收标准未要求，但阶段二「带时间戳引用的问答」若面向访谈 / 对话类视频可能受益。启用成本：本地需 MOSS 且受 15–20 分钟限制，云端需 ¥2.00/小时。**属产品决策，需先定——它决定上层 `TranscriptionSegment` 是否要预留 `speakerId` 可选字段，以及本地 / 云端能力不对齐时的降级策略。**
   - **2026-09-26 已定：`TranscriptionSegment` 不预留 `speakerId`**（经项目所有者拍板，见 `../09-25-vidsage-mvp2b-subtitles/prd.md` 规划期决策 5）。理由：当前两个 ASR 实现（DashScope、SenseVoice）都不输出说话人，预留会是恒为 `null` 的槽位，属「为将来可能用到预先造」，且 `provider-pattern.md` 明令契约不得固化实现方专属字段。**本项其余部分仍未决**——是否引入说话人分离本身、以及引入时的时间戳 / 降级策略，仍待产品决策；届时加字段本就属那个任务的范围。
@@ -57,7 +58,7 @@
 | 子任务 | 范围 | 状态 |
 |---|---|---|
 | `09-24-vidsage-mvp1-submit` | 任务提交 + 落库 + SSE 进度管线 | planning |
-| `09-24-vidsage-mvp2-subtitles` | **2a 输入获取与音频抽取（已完成并归档）** + 2b 音频转字幕（走 ASR；平台字幕路线 2026-09-26 移出、降为后续项；本地 FunASR 本轮不做） | planning（父任务） |
+| `09-24-vidsage-mvp2-subtitles` | **2a 输入获取与音频抽取（已完成并归档）** + 2b 音频转字幕（走 ASR；平台字幕路线 2026-09-26 移出、降为后续项（2026-09-28 定调：目前不打算实现，挂未来任务）；本地 FunASR 本轮不做、2026-09-28 定调大概率不落地） | planning（父任务） |
 | `09-24-vidsage-mvp3-translate` | DeepSeek 翻译 + 双语 SRT 导出 | planning |
 | `09-24-vidsage-mvp4-summary` | 结构化总结 + 长字幕分段压缩 | planning |
 
