@@ -58,7 +58,7 @@
 | 子任务 | 范围 | 状态 |
 |---|---|---|
 | `09-24-vidsage-mvp1-submit` | 任务提交 + 落库 + SSE 进度管线 | planning |
-| `09-24-vidsage-mvp2-subtitles` | **2a 输入获取与音频抽取（已完成并归档）** + 2b 音频转字幕（走 ASR；平台字幕路线 2026-09-26 移出、降为后续项（2026-09-28 定调：目前不打算实现，挂未来任务）；本地 FunASR 本轮不做、2026-09-28 定调大概率不落地） | planning（父任务） |
+| `09-24-vidsage-mvp2-subtitles` | **2a 输入获取与音频抽取（已完成并归档）** + 2b 音频转字幕（走 ASR；平台字幕路线 2026-09-26 移出、降为后续项（2026-09-28 定调：目前不打算实现，挂未来任务）；本地 FunASR 本轮不做、2026-09-28 定调大概率不落地） | **已归档（2026-09-28）**，跨子任务验收逐条核完，见 `../archive/2026-09/09-24-vidsage-mvp2-subtitles/research/acceptance-evidence.md` |
 | `09-24-vidsage-mvp3-translate` | DeepSeek 翻译 + 双语 SRT 导出 | planning |
 | `09-24-vidsage-mvp4-summary` | 结构化总结 + 长字幕分段压缩 | planning |
 
