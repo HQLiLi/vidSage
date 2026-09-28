@@ -15,7 +15,11 @@ vidsage:
   subtitle:
     cleanup:
       max-segment-ms: 8000
+      # 缺这个键会绑成 0 → 每批退化成 1 句，静默的行为漂移
+      max-batch-chars: 600
       batch-size: 20
       max-steps: 3
       similarity-normal: 0.7
       similarity-short-text: 0.3
+      # 缺这个键会绑成 0 → 跨批历史在容器路径上静默关闭
+      history-max-chars: 20000

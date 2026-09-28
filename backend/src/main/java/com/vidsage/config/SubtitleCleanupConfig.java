@@ -13,6 +13,9 @@ import org.springframework.context.annotation.Configuration;
  * <p><b>为什么在这里、不直接注 {@code ChatModel} 进服务</b>：{@code service/} 依赖 spring-ai 的类型
  * 会破「SDK 类型不外泄」的纪律（见 directory-structure / provider-pattern）。{@code ChatModel} 只在
  * 这个装配角落出现一次，服务只依赖我们自己的 {@code SubtitleCorrector.Llm} 接口。
+ * proxyBeanMethods = false: 每次都调用都实例化一个对象
+ * proxyBeanMethods = true: 调用时返回同一个实例对象
+ * 
  */
 @Configuration(proxyBeanMethods = false)
 public class SubtitleCleanupConfig {

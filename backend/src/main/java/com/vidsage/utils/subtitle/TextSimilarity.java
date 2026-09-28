@@ -10,7 +10,7 @@ package com.vidsage.utils.subtitle;
  * <p><b>包私有</b>：它只有 {@link SubtitleCorrector} 一个消费者（同包），不打算作为共享工具外泄；
  * 谁将来真要用，再考虑提升可见性，别为「可能用到」提前造 util 桶（见 directory-structure.md）。
  */
-final class TextSimilarity {
+public final class TextSimilarity {
 
     private TextSimilarity() {
         // 纯静态工具，不实例化

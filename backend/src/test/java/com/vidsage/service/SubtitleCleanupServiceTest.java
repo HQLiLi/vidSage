@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.config.SubtitleCleanupProperties;
+import com.vidsage.llm.SubtitleCleanser;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.MediaInput;
 import com.vidsage.model.subtitle.CleanedSubtitle;
@@ -15,7 +16,6 @@ import com.vidsage.model.subtitle.SubtitleRoute;
 import com.vidsage.model.subtitle.SubtitleTrack;
 import com.vidsage.provider.asr.ASRProvider;
 import com.vidsage.utils.subtitle.SubtitleArtifactNames;
-import com.vidsage.utils.subtitle.SubtitleCorrector;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -24,42 +24,50 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.ai.chat.client.ChatClient;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * SubtitleCleanupService 的纯单元测试：<b>不起 Spring 容器</b>。工作目录与 ASR provider 用 mock，
- * LLM 用桩（按键剧本吐修正后的 JSON），切分器/纠错器是真的——验证编排：切分→纠错→写 -clean、
- * 断点复用、原始缺失报错、空输入卫语句。
+ * SubtitleCleanupService 的纯单元测试：<b>不起 Spring 容器</b>。
+ *
+ * <p>只测<b>编排</b>：定位产物 → 断点复用 → 切分 → 交给 {@link SubtitleCleanser} → 写 -clean 产物。
+ * 摘要器与 cleanser 都是 mock。
+ *
+ * <p><b>清洗算法本身（分批、守卫、重试、保留原文）不在这里测</b>——它的覆盖在
+ * {@link com.vidsage.utils.subtitle.SubtitleCorrectorTest}，那边有可注入的 {@code Llm} 桩。
+ * {@code SubtitleCleanser} 直接持有 {@code ChatClient}，没留那道缝，桩不进去。
  */
 class SubtitleCleanupServiceTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final SubtitleCleanupProperties PROPS =
-            new SubtitleCleanupProperties(8000, 20, 3, 0.7, 0.3);
+            new SubtitleCleanupProperties(8000, 600, 20, 3, 0.7, 0.3, 20000);
 
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
 
     private final WorkspaceService workspaceService = mock(WorkspaceService.class);
     private final ASRProvider asrProvider = mock(ASRProvider.class);
+    private final ChatClient contentSummarizer = mock(ChatClient.class);
+    private final SubtitleCleanser subtitleCleanser = mock(SubtitleCleanser.class);
 
-    /** 记录调用次数、直接吐修正后 JSON 的桩。 */
-    private static final class StubLlm implements SubtitleCorrector.Llm {
-        final AtomicInteger calls = new AtomicInteger();
+    /** cleanser 被调了几次——「断点复用后不再跑」这类断言靠它。 */
+    private final AtomicInteger cleanserCalls = new AtomicInteger();
 
-        @Override
-        public String complete(String system, String user) {
-            calls.incrementAndGet();
-            return "{\"1\":\"我防到这边露出\", \"2\":\"今天天气不错\"}";
-        }
+    /** cleanser 的桩：原样返回入参（零修正、零重试），只记调用次数。 */
+    private void stubCleanserEcho() {
+        when(subtitleCleanser.clean(any(), any(), any())).thenAnswer(invocation -> {
+            cleanserCalls.incrementAndGet();
+            List<TranscriptionSegment> in = invocation.getArgument(0);
+            return new SubtitleCleanser.CleanseResult(in, 0, 0);
+        });
     }
-
-    private final StubLlm llm = new StubLlm();
 
     private SubtitleCleanupService service() {
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
-        return new SubtitleCleanupService(workspaceService, asrProvider, JSON, PROPS, llm);
+        return new SubtitleCleanupService(workspaceService, asrProvider, JSON, PROPS,
+                contentSummarizer, subtitleCleanser);
     }
 
     private void writeRawTrack() throws Exception {
@@ -70,14 +78,15 @@ class SubtitleCleanupServiceTest {
     }
 
     @BeforeEach
-    void cleanStubCount() {
-        llm.calls.set(0);
+    void resetStubs() {
+        cleanserCalls.set(0);
+        stubCleanserEcho();
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
     }
 
     @Test
-    void cleanWritesCleanArtifactsAndStats() throws Exception {
+    void cleanWritesCleanArtifactsAndDelegatesOnce() throws Exception {
         writeRawTrack();
         SubtitleCleanupService s = service();
 
@@ -88,21 +97,21 @@ class SubtitleCleanupServiceTest {
         Path cleanSrt = workDir.resolve(SubtitleArtifactNames.cleanSrtFileName(SubtitleRoute.ASR_CLOUD));
         assertTrue(Files.isRegularFile(cleanSeg) && Files.size(cleanSeg) > 0, "应产出 -clean.json");
         assertTrue(Files.isRegularFile(cleanSrt) && Files.size(cleanSrt) > 0, "应产出 -clean.srt");
-        // 纠错把「防关」改成「防到」，corrected 至少 1 句；句数保持（无切分）
         assertEquals(2, cleaned.segmentCount());
-        assertTrue(cleaned.correctedCount() >= 1, "应改到错字句");
-        assertEquals(1, llm.calls.get(), "LLM 应只调一次（一批两段）");
+        // 整份清单一次交给 cleanser——内部分几批是它自己的事，service 不该管
+        assertEquals(1, cleanserCalls.get(), "整份清单应只交给 cleanser 一次");
     }
 
     @Test
-    void cleanReusesCheckpointSkipsLlm() throws Exception {
+    void cleanReusesCheckpointSkipsCleanser() throws Exception {
         writeRawTrack();
         SubtitleCleanupService s = service();
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
-        // 二跑：-clean.json 已在，应断点复用，LLM 不再被调
+        // 二跑：-clean.json 已在，应断点复用，不再走切分与清洗
         CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), "");
-        assertEquals(1, llm.calls.get(), "断点复用后 LLM 不应再被调用");
+
+        assertEquals(1, cleanserCalls.get(), "断点复用后不应再调 cleanser");
         assertEquals(2, second.segmentCount());
     }
 
@@ -126,7 +135,7 @@ class SubtitleCleanupServiceTest {
         // 二跑：断点命中直接返回，不重跑（空转写不死循环）
         CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), "");
         assertEquals(0, second.segmentCount());
-        assertEquals(0, llm.calls.get(), "空转写没有批次，LLM 不应被调用");
+        assertEquals(1, cleanserCalls.get(), "空转写二跑应走断点复用，不再调 cleanser");
     }
 
     @Test

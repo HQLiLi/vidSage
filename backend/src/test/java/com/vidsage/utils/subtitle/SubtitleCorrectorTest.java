@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.model.asr.TranscriptionSegment;
+import com.vidsage.model.subtitle.SubtitleContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +57,7 @@ class SubtitleCorrectorTest {
         SubtitleCorrector c = corrector(llm, 3);
         List<TranscriptionSegment> in = List.of(seg("我防关这边露出"), seg("今天天气不错"));
 
-        SubtitleCorrector.CorrectionResult r = c.correct(in, null);
+        SubtitleCorrector.CorrectionResult r = c.correct(in, SubtitleContext.empty(), null);
 
         // 只改了错字的那条，未改的字原样保留；时间戳不变、条数不变
         assertEquals("我防到这边露出", r.segments().get(0).text());
@@ -75,7 +76,7 @@ class SubtitleCorrectorTest {
         SubtitleCorrector c = corrector(llm, 3);
         List<TranscriptionSegment> in = List.of(seg("我防关这边露出"));
 
-        SubtitleCorrector.CorrectionResult r = c.correct(in, null);
+        SubtitleCorrector.CorrectionResult r = c.correct(in, SubtitleContext.empty(), null);
 
         assertEquals("我防到这边露出", r.segments().get(0).text());
         assertEquals(1, r.retrySteps(), "第一次被拒后应恰好重试一次");
@@ -92,7 +93,7 @@ class SubtitleCorrectorTest {
         SubtitleCorrector c = corrector(llm, 2);   // 只给 2 次机会，两次都不达标
         List<TranscriptionSegment> in = List.of(seg("我防关这边露出"));
 
-        SubtitleCorrector.CorrectionResult r = c.correct(in, null);
+        SubtitleCorrector.CorrectionResult r = c.correct(in, SubtitleContext.empty(), null);
 
         assertEquals("我防关这边露出", r.segments().get(0).text(), "全败时应保留原文（兜底不伤数据）");
         assertEquals(0, r.correctedCount());
@@ -107,7 +108,7 @@ class SubtitleCorrectorTest {
         SubtitleCorrector c = corrector(llm, 3);
         List<TranscriptionSegment> in = List.of(seg("我防关这边露出"), seg("今天天气不错"));
 
-        SubtitleCorrector.CorrectionResult r = c.correct(in, null);
+        SubtitleCorrector.CorrectionResult r = c.correct(in, SubtitleContext.empty(), null);
 
         assertEquals(2, r.segments().size());
         assertEquals(1, r.retrySteps());
@@ -122,7 +123,7 @@ class SubtitleCorrectorTest {
         SubtitleCorrector c = corrector(llm, 3);
         List<TranscriptionSegment> in = List.of(seg("我防关这边露出"));
 
-        SubtitleCorrector.CorrectionResult r = c.correct(in, null);
+        SubtitleCorrector.CorrectionResult r = c.correct(in, SubtitleContext.empty(), null);
 
         assertEquals("我防到这边露出", r.segments().get(0).text(), "应剥掉 ```json 围栏再解析");
         assertEquals(0, r.retrySteps());
@@ -133,7 +134,7 @@ class SubtitleCorrectorTest {
         ScriptedLlm llm = new ScriptedLlm();
         llm.script.add("{\"1\":\"我防到这边露出\"}");
         SubtitleCorrector c = corrector(llm, 3);
-        c.correct(List.of(seg("我防关这边露出")), "术语表：纳尔人 = 捺尔人");
+        c.correct(List.of(seg("我防关这边露出")), SubtitleContext.empty(), "术语表：纳尔人 = 捺尔人");
 
         assertTrue(llm.userPrompts.get(0).contains("纳尔人"),
                 "提供了术语表时 user 提示应带上它，实际：" + llm.userPrompts.get(0));

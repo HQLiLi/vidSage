@@ -48,6 +48,22 @@
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-simple</artifactId>
                 </exclusion>
+                <!--
+                  SDK 的 function-call 支持拖进 jsonschema-generator:4.31.1（按 Jackson 2 编译）。
+                  它与 Spring AI 需要的 5.0.0（按 Jackson 3 编译）是同一个坐标，Maven 取「最近者胜」
+                  选了 4.31.1，于是 Spring AI 的 BeanOutputConverter 运行时炸 NoSuchMethodError
+                  （getObjectMapper() 的返回类型从 com.fasterxml.* 变成了 tools.jackson.*，
+                  描述符对不上）。影响面不止 .entity()：tool calling 生成参数 schema 也走它。
+                  已核实 SDK 全部版本（含最新 2.23.1）都钉着 4.31.1，升级解决不了。
+                  SDK 自己在该依赖上方标注「function call support」，而本项目只用它的 ASR
+                  （audio.asr.transcription.Transcription），用不到——故排除，让 5.0.0 进来。
+                  若将来要用 SDK 的 function calling：删掉这条排除，同时 .entity() 会失效。
+                  同坐标只能留一个大版本，两者不可兼得。（2026-09-27 实测）
+                -->
+                <exclusion>
+                    <groupId>com.github.victools</groupId>
+                    <artifactId>jsonschema-generator</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>

@@ -1,10 +1,16 @@
 package com.vidsage.utils.subtitle;
 
 import com.vidsage.model.asr.TranscriptionSegment;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.vidsage.model.subtitle.SubtitleContext;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -22,7 +28,9 @@ import tools.jackson.databind.ObjectMapper;
  * <p>本类<b>不碰 LLM 具体实现</b>：构造时注入 {@link Llm} 函数式接口，由调用方接 Spring AI
  * {@code ChatModel}。这样 agent-loop / 守卫 / prompt 全部可拿桩测，不依赖模型细节。
  */
+
 public class SubtitleCorrector {
+
 
     /**
      * LLM 调用口：给最终 system + user 提示词，返回模型纯文本回复。由外部接 {@code ChatModel}。
@@ -47,7 +55,9 @@ public class SubtitleCorrector {
     public record CorrectionResult(List<TranscriptionSegment> segments, int correctedCount, int retrySteps) {
     }
 
-    /** agent loop 单次调用的产物：采纳的纠正 + 本轮重试次数。 */
+    /**
+     * agent loop 单次调用的产物：采纳的纠正 + 本轮重试次数。
+     */
     private record AgentOutcome(Map<String, String> map, int retrySteps) {
     }
 
@@ -73,12 +83,12 @@ public class SubtitleCorrector {
     private final double similarityShortText;
 
     /**
-     * @param llm                     LLM 调用口（外部接 ChatModel，不可为 null）
-     * @param objectMapper            Jackson 3 序列化器
-     * @param batchSize               每批字幕条数，必须 &gt; 0
-     * @param maxSteps                agent loop 重试上限，必须 &gt;= 1
-     * @param similarityNormal        常规文本的相似度下限（如 0.7）
-     * @param similarityShortText     短文本（&lt;= 10 字）的相似度下限（如 0.3）
+     * @param llm                 LLM 调用口（外部接 ChatModel，不可为 null）
+     * @param objectMapper        Jackson 3 序列化器
+     * @param batchSize           每批字幕条数，必须 &gt; 0
+     * @param maxSteps            agent loop 重试上限，必须 &gt;= 1
+     * @param similarityNormal    常规文本的相似度下限（如 0.7）
+     * @param similarityShortText 短文本（&lt;= 10 字）的相似度下限（如 0.3）
      * @throws IllegalArgumentException 任一参数非法
      */
     public SubtitleCorrector(Llm llm, ObjectMapper objectMapper, int batchSize, int maxSteps,
@@ -110,7 +120,7 @@ public class SubtitleCorrector {
      * @param reference 可选术语表 / 参考；可为 {@code null} 或空白（不提供）
      * @return 修正结果 + 统计
      */
-    public CorrectionResult correct(List<TranscriptionSegment> segments, String reference) {
+    public CorrectionResult correct(List<TranscriptionSegment> segments, SubtitleContext context, String reference) {
         List<TranscriptionSegment> out = new ArrayList<>(segments.size());
         int corrected = 0;
         int retries = 0;
@@ -246,8 +256,10 @@ public class SubtitleCorrector {
 
     /**
      * 去掉回复首尾可能出现的 ```json / ``` 围栏（LLM 常爱包一层，剥掉才敢交给 Jackson）。
+     *
+     * <p>包级可见：{@link SubtitleContextBuilder} 解析摘要回复时复用同一套围栏处理。
      */
-    private static String stripCodeFence(String content) {
+    static String stripCodeFence(String content) {
         String s = content.trim();
         if (s.startsWith("```")) {
             int firstNewline = s.indexOf('\n');
