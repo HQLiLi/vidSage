@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
+- **Total Sessions**: 14
 - **Last Active**: 2026-09-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~425 | Active |
+| `journal-1.md` | ~452 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-09-28 | 字幕术语替换：跨书写系统替换打通，暴露摘要层知识盲区 | `2649a61`, `96d5556`, `c70cfa4`, `0e02750`, `56d0a9f`, `6d757e8` | `dev` |
 | 13 | 2026-09-28 | 字幕清洗 v0 收尾整理与 LLM 层收口 | `ec7f3c7`, `f378a4a`, `1ee40b4`, `fe3f768`, `d8d191b`, `b9731bd`, `106e675` | `dev` |
 | 12 | 2026-09-26 | MVP-2b 音频转字幕（ASR→SRT）实现+合并+归档 | `45e852c` | `dev` |
 | 11 | 2026-09-26 | HTTP 契约归位与包结构规范修订（含一处顺带修复的校验顺序缺陷） | `045b89a`, `6f52b67`, `9878df3`, `79d6e85`, `affdd81`, `c1e1f6a`, `fceb609` | `dev` |

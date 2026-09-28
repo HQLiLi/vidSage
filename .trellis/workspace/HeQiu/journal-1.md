@@ -423,3 +423,30 @@ v0 跑通后的整理轮：任务文档按实际落地重写（prd/design 重写
 ### Status
 
 [OK] **Completed**
+
+
+## Session 14: 字幕术语替换：跨书写系统替换打通，暴露摘要层知识盲区
+<!-- trellis-session: v=2 fp=f66a467485af8af4 -->
+
+**Date**: 2026-09-28
+**Task**: 字幕术语替换：跨书写系统替换打通，暴露摘要层知识盲区
+**Branch**: `dev`
+
+### Summary
+
+让 ASR 记成中文音译的专有名词在字幕正文里替换成原文（米特号→Mittelhau 等）。先经 /grilling 逐轮收敛出 10 条拍板决策（字幕显示原文、替换与否交模型按上下文判断、note 改语义为替换理由、校验层只豁免不强制、加可观测指标），再分两批实现：提示词（总结的 fixed/note 语义与外语原文规则、清洗的翻译禁令收窄+判定口径+正反例、用户模板渲染改中性并列）与代码（校验层基线豁免 max(原文,基线)、术语替换指标贯通 HTTP、摘要结果 DEBUG 观测日志）。真实视频复跑：跨书写系统替换 9 处全中（改动前为 0 处），但暴露摘要层知识盲区——帕姆 6 次复跑里 5 次被编成 Palm（应为 Pommel），提示词加「不许凭读音猜」后 3/3 仍错；指标全程绿灯，证明它测的是遵从度不是正确性。已记入 research/term-source-limitation.md，prd 验收按实测订正。测试 239 全绿。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2649a61` | feat(prompt): 术语替换的判定口径与 fixed/note 语义 |
+| `96d5556` | feat(prompt): 外语原文不得凭读音猜，补反例与判定原则 |
+| `c70cfa4` | feat(subtitle): 校验层基线豁免、术语替换指标与摘要观测日志 |
+| `0e02750` | docs(spec): 契约设计补守卫基线豁免与字幕术语表契约 |
+| `56d0a9f` | docs(task): 09-28-subtitle-term-replacement 规划、验收订正与研究记录 |
+| `6d757e8` | Merge branch 'feature/subtitle-term-replacement' into dev |
+
+### Status
+
+[OK] **Completed**
