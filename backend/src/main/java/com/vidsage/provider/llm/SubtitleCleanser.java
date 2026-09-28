@@ -24,7 +24,8 @@ import java.util.*;
  * 字幕纠错：把 ASR 出来的错字、口头语、乱标点修掉，只做最小改动。
  *
  * <p>整份字幕按批丢给 LLM（批的粒度由 batchSize 句数 / maxBatchChars 字符双判据切，先到为准）。
- * 每批的回复都要过一遍 {@link #validate}：键集必须与原文完全一致、改写幅度不能超过相似度阈值。
+ * 每批的回复都要过一遍 {@link #validate}：键集必须与原文完全一致、改写幅度不能超过相似度阈值
+ * （相似度取「原文」与「术语替换基线」两者对候选的<b>较大值</b>，故术语替换本身不算改太狠，详见该方法的注释）。
  * 没过就带着原因重试，最多 maxSteps 轮；全败保留原文——宁可没纠，不可被带偏。
  *
  * <p>跨批上下文走两条路：<b>后窗</b>（下一批开头几行，管的是"后面"）和<b>对话历史</b>
@@ -88,6 +89,8 @@ public class SubtitleCleanser {
         List<TranscriptionSegment> cleanedList = new ArrayList<>(segments.size());
         int corrected = 0;
         int retries = 0;
+        int termHits = 0;
+        int termApplied = 0;
 
         // 跨批对话历史。必须是本方法的局部变量——本类是单例，挂成字段会在并发请求之间串味，
         // 而且是静默的（虚拟线程已全局开启，两个请求真的会同时进来）。
@@ -129,6 +132,15 @@ public class SubtitleCleanser {
             Map<String, String> correctedMap = outcome.map();
             retries += outcome.retrySteps();
 
+            // 术语替换指标：口径是保守近似，详见 termMetrics 的注释
+            TermMetrics metrics = termMetrics(original, correctedMap, outcome.hits());
+            termHits += metrics.hits();
+            termApplied += metrics.applied();
+            // DEBUG 而非 INFO：本类是 Provider 内部节点，级别分层见 logging-guidelines；
+            // 汇总数另有 Service 层那条 INFO，这里要的是「哪一批、哪条术语没换」的细粒度
+            log.debug("术语替换: 批次={}, 命中={}, 已替换={}, 未替换={}",
+                    batchNo, metrics.hits(), metrics.applied(), metrics.unapplied());
+
             for (int i = start; i < end; i++) {
                 TranscriptionSegment seg = segments.get(i);
                 String key = String.valueOf(i - start + 1);
@@ -146,7 +158,7 @@ public class SubtitleCleanser {
 
             start = end;
         }
-        return new CleanseResult(cleanedList, corrected, retries);
+        return new CleanseResult(cleanedList, corrected, retries, termHits, termApplied);
     }
 
 
@@ -176,25 +188,29 @@ public class SubtitleCleanser {
         // 而且任务消息会在 history 里越堆越多，下一批收到上一批的任务两遍。
         List<Message> messages = new ArrayList<>(history);
 
+        // 本批命中哪些术语：渲染术语参考、构造校验基线、统计指标三处共用同一份判定，
+        // 这里一次算好往下传，避免三处各判一遍后将来分叉。
+        List<SubtitleContext.Term> hits = hitTerms(original, context);
+
         // 格式说明拼在任务这条上——ChatClient 只会往最后一条 UserMessage 追加，
         // 而重试的反馈那条会成为最后一条，所以得自己把它钉在任务上。
-        String task = buildUserPrompt(original, context, reference, after);
+        String task = buildUserPrompt(original, context, hits, reference, after);
         messages.add(new UserMessage(task + System.lineSeparator() + FORMAT.getFormat()));
 
         for (int step = 0; step < prop.maxSteps(); step++) {
             String raw = ask(messages);
             Map<String, String> parsed = parse(raw);
-            String error = parsed == null ? "回复不是合法的 JSON 对象。" : validate(original, parsed);
+            String error = parsed == null ? "回复不是合法的 JSON 对象。" : validate(original, parsed, hits);
             if (error == null) {
                 remember(history, original, raw);
-                return new AgentOutcome(parsed, retries);
+                return new AgentOutcome(parsed, retries, hits);
             }
             retries++;
             appendRetry(messages, raw, error);
         }
         // 用尽重试仍未拿到合法回复：保留原文（宁可没纠，不可被带偏）。
         // 什么都没采纳，所以不给 history 留痕——否则后面所有批次都会看着一条坏样板。
-        return new AgentOutcome(original, retries);
+        return new AgentOutcome(original, retries, hits);
     }
 
 
@@ -351,11 +367,17 @@ public class SubtitleCleanser {
      * <p>两个硬约束：键集必须与原文完全一致（不许掉行/加行）；每条改写幅度不能超过相似度阈值
      * （&lt;= 10 字用 similarityShortText，其余用 similarityNormal）。
      *
+     * <p>相似度取「原文」「术语替换基线」两者对候选的<b>较大值</b>：术语替换是合法目标，
+     * 只跟原文比会把正确的替换判成改太狠；只跟基线比又会在模型判断「读不通、故意不换」时
+     * 把保留原文的正确结果判成改太狠。两个目标够到任一个就算过。
+     *
      * @param original  原文键值对
      * @param candidate 模型回复键值对
+     * @param hits      本批命中术语（用于构造替换基线）；无命中时传空列表即可
      * @return 违规说明；通过则 {@code null}
      */
-    String validate(Map<String, String> original, Map<String, String> candidate) {
+    String validate(Map<String, String> original, Map<String, String> candidate,
+                    List<SubtitleContext.Term> hits) {
         StringBuilder sb = new StringBuilder();
         for (String k : original.keySet()) {
             if (!candidate.containsKey(k)) {
@@ -374,11 +396,14 @@ public class SubtitleCleanser {
         for (String k : original.keySet()) {
             String orig = original.get(k);
             String cand = candidate.get(k);
-            double sim = TextSimilarity.ratio(orig, cand);
+            // 原文与「术语全替换后的基线」都是合法目标，够到任一个就算没改太狠（详见方法注释）
+            double best = Math.max(
+                    TextSimilarity.ratio(orig, cand),
+                    TextSimilarity.ratio(baselineOf(orig, hits), cand));
             double threshold = orig.length() <= 10 ? prop.similarityShortText() : prop.similarityNormal();
-            if (sim < threshold) {
+            if (best < threshold) {
                 sb.append("条目 ").append(k).append(" 改动过大（相似度 ")
-                        .append(String.format("%.2f", sim * 100)).append("% < ")
+                        .append(String.format("%.2f", best * 100)).append("% < ")
                         .append(String.format("%.0f", threshold * 100)).append("%）：")
                         .append("原 \"").append(orig).append("\" 改成了 \"").append(cand).append("\"；");
             }
@@ -386,8 +411,114 @@ public class SubtitleCleanser {
         return sb.length() == 0 ? null : sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。";
     }
 
+    /**
+     * 挑出本批正文里真出现过的术语。
+     *
+     * <p>判据是「本批原文拼成小写后包含 asr 的小写原文」。术语参考渲染、校验基线、替换指标
+     * 三处都靠它，抽成一处共用，免得将来改判据时只改到一半。
+     *
+     * @param original 本批原文键值对
+     * @param context  字幕上下文；可为 {@code null}
+     * @return 命中的术语，顺序与 {@code context.terms()} 一致；无命中返回空列表
+     */
+    static List<SubtitleContext.Term> hitTerms(Map<String, String> original, SubtitleContext context) {
+        if (context == null || context.terms().isEmpty()) {
+            return List.of();
+        }
+        String batchText = String.join("\n", original.values()).toLowerCase(Locale.ROOT);
+        List<SubtitleContext.Term> hits = new ArrayList<>();
+        for (SubtitleContext.Term t : context.terms()) {
+            if (t.asr().isBlank()) {
+                continue;
+            }
+            if (batchText.contains(t.asr().toLowerCase(Locale.ROOT))) {
+                hits.add(t);
+            }
+        }
+        return hits;
+    }
+
+
+    /**
+     * 造一条原文的「术语替换基线」：把其中命中术语的 asr 字面串换成 fixed。
+     *
+     * <p>基线代表「模型把本批术语全换掉」的目标文本。校验层把它当备选目标，免得跨书写系统的
+     * 正确替换（相似度天然很低）被「最小改动」守卫判成改太狠。
+     *
+     * <p>asr 与 fixed 相同、或 fixed 为空的条目跳过——它们没法换，也不该参与判定。
+     *
+     * @param text 一条原文，可为 {@code null}
+     * @param hits 本批命中术语
+     * @return 替换后的基线文本；无命中时与原文本相同
+     */
+    static String baselineOf(String text, List<SubtitleContext.Term> hits) {
+        String base = safe(text);
+        for (SubtitleContext.Term t : hits) {
+            if (t.asr().equals(t.fixed()) || t.fixed().isBlank()) {
+                continue;
+            }
+            base = base.replace(t.asr(), t.fixed());
+        }
+        return base;
+    }
+
+
+    /**
+     * 统计本批的术语替换情况，口径是保守近似：
+     *
+     * <p>对本批每个已渲染进术语参考、且 {@code asr != fixed} 的术语 t，取本批原文里含 asr 的
+     * 条目集合 K；只要 K 中任一条的候选文本里出现了 fixed，就记 t 为「已替换」。
+     *
+     * <p>「保守」指：模型把 fixed 写成变体形（如 {@code Mittel Hau}、{@code Mittelhau（米特号）}）
+     * 会被算成未替换。宁可多报一条让人去看，也不漏报——本次故障正是静默漏报造成的。
+     *
+     * @param original  本批原文键值对
+     * @param candidate 本批候选（模型回复）；掉了的键按「没替换」算
+     * @param hits      本批命中术语
+     * @return 命中数、已替换数、未替换术语清单（{@code asr → fixed} 形态）
+     */
+    private static TermMetrics termMetrics(Map<String, String> original, Map<String, String> candidate,
+                                           List<SubtitleContext.Term> hits) {
+        int hitCount = 0;
+        int applied = 0;
+        List<String> unapplied = new ArrayList<>();
+        for (SubtitleContext.Term t : hits) {
+            if (t.asr().equals(t.fixed()) || t.fixed().isBlank()) {
+                continue;   // 无需替换的条目从分子分母都排除
+            }
+            hitCount++;
+            boolean replaced = false;
+            for (Map.Entry<String, String> e : original.entrySet()) {
+                if (!containsIgnoreCase(e.getValue(), t.asr())) {
+                    continue;   // 这条不含 asr，不参与该术语的判定
+                }
+                String cand = candidate.get(e.getKey());
+                if (cand != null && containsIgnoreCase(cand, t.fixed())) {
+                    replaced = true;
+                    break;
+                }
+            }
+            if (replaced) {
+                applied++;
+            } else {
+                unapplied.add(t.asr() + " → " + t.fixed());
+            }
+        }
+        return new TermMetrics(hitCount, applied, unapplied);
+    }
+
+
+    /**
+     * 不区分大小写的子串包含，与 {@link #hitTerms} 的命中判定同一套口径。
+     */
+    private static boolean containsIgnoreCase(String haystack, String needle) {
+        return safe(haystack).toLowerCase(Locale.ROOT).contains(safe(needle).toLowerCase(Locale.ROOT));
+    }
+
+
     private static String buildUserPrompt(Map<String, String> original, SubtitleContext context,
-                                          String reference, List<String> after) {
+                                          List<SubtitleContext.Term> hits, String reference,
+                                          List<String> after) {
         StringBuilder sb = new StringBuilder();
 
         // 1. 本批次后面的部分字幕，增加点前后批关联，缓解跨批次的语义坍塌问题。
@@ -404,31 +535,22 @@ public class SubtitleCleanser {
             sb.append("### 内容主题\n").append(context.theme()).append("\n\n");
         }
 
-        // 3. 术语：只列本批真出现过的
-        if (context != null && !context.terms().isEmpty()) {
-            String batchText = String.join("\n", original.values()).toLowerCase(Locale.ROOT);
+        // 3. 术语：只列本批真出现过的（命中判定已在 hitTerms 里做好，这里不重判）
+        if (!hits.isEmpty()) {
             StringBuilder terms = new StringBuilder();
-            for (SubtitleContext.Term t : context.terms()) {
-                if (t.asr().isBlank()) {
-                    continue;
+            for (SubtitleContext.Term t : hits) {
+                terms.append("- \"").append(t.asr())
+                        .append("\" → \"").append(t.fixed()).append("\"（候选正确写法）");
+                if (t.note() != null && !t.note().isBlank()) {
+                    terms.append("：").append(t.note());
                 }
-                if (batchText.contains(t.asr().toLowerCase(Locale.ROOT))) {
-
-                    terms.append("- \"").append(t.asr())
-                            .append("\" 应为 \"").append(t.fixed()).append("\"");
-                    if (t.note() != null && !t.note().isBlank()) {
-                        terms.append("（").append(t.note()).append("）");
-                    }
-                    terms.append('\n');
-                }
+                terms.append('\n');
             }
-            if (terms.length() > 0) {
-                sb.append("### 术语参考\n").append(terms).append('\n');
-            }
+            sb.append("### 术语参考\n").append(terms).append('\n');
         }
 
-        // 4. 本批正文（原有拼接，一字未改）
-        sb.append("请修正以下字幕，保持原语言，不要翻译：\n{");
+        // 4. 本批正文与修正要求
+        sb.append("请修正以下字幕，术语按上面的术语参考判断是否替换；其余内容保持原语言，不要翻译：\n{");
         boolean first = true;
         for (Map.Entry<String, String> e : original.entrySet()) {
             if (!first) {
@@ -439,7 +561,7 @@ public class SubtitleCleanser {
         }
         sb.append("\n}");
 
-        // 5. 人工术语表（原有，一字未改）
+        // 5. 人工术语表（HTTP 查询参数传进来的，原样拼）
         if (reference != null && !reference.isBlank()) {
             sb.append("\n\n参考术语表：\n").append(reference);
         }
@@ -469,18 +591,29 @@ public class SubtitleCleanser {
      * 清洗结果
      *
      * @param segments       清洗后的列表
-     * @param correctedCount
-     * @param retrySteps     重试次数
+     * @param correctedCount 本趟实际改变文本的段数
+     * @param retrySteps     本趟触发的校验重试轮数
+     * @param termHits       本趟命中（渲染进术语参考）的术语数，跨批次累计
+     * @param termApplied    本趟已替换的术语数，跨批次累计；口径见 {@link #termMetrics}
      */
     public record CleanseResult(List<TranscriptionSegment> segments,
                                 int correctedCount,
-                                int retrySteps) {
+                                int retrySteps,
+                                int termHits,
+                                int termApplied) {
     }
 
     /**
-     * agent loop 单次调用的产物：采纳的纠正 + 本轮重试次数。
+     * agent loop 单次调用的产物：采纳的纠正 + 本轮重试次数 + 本批命中术语。
      */
-    private record AgentOutcome(Map<String, String> map, int retrySteps) {
+    private record AgentOutcome(Map<String, String> map, int retrySteps,
+                                List<SubtitleContext.Term> hits) {
+    }
+
+    /**
+     * 单批术语替换指标：命中数、已替换数、未替换清单。
+     */
+    private record TermMetrics(int hits, int applied, List<String> unapplied) {
     }
 
 }

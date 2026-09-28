@@ -16,8 +16,11 @@ import java.nio.file.Path;
  * @param srtSizeBytes  清洗后 SRT 文件字节数，可为 0
  * @param correctedCount 本趟纠错实际改变文本的段数；断点复用（跳过重跑）时为 0
  * @param retrySteps    本趟纠错触发的校验重试轮数；断点复用时为 0
+ * @param termHits      本趟命中术语表的术语数（跨批次累计）；断点复用时为 0
+ * @param termApplied   本趟已替换成 fixed 写法的术语数（跨批次累计）；断点复用时为 0
  */
 public record CleanedSubtitle(Path srtPath, Path segmentsPath, SubtitleRoute route,
                               String language, int segmentCount, long srtSizeBytes,
-                              int correctedCount, int retrySteps) {
+                              int correctedCount, int retrySteps,
+                              int termHits, int termApplied) {
 }

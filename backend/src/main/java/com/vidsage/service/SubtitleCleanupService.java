@@ -110,7 +110,8 @@ public class SubtitleCleanupService {
         SubtitleTrack existing = readCheckpoint(cleanSeg);
         if (existing != null) {
             log.info("字幕清洗断点复用跳过: clean={}", cleanSeg.getFileName());
-            return toCleaned(existing, cleanSeg, cleanSrt, 0, 0);
+            // 断点复用不重跑，本趟统计一律为 0（含术语指标），语义与 correctedCount 一致
+            return toCleaned(existing, cleanSeg, cleanSrt, 0, 0, 0, 0);
         }
 
         // 原始缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
@@ -137,9 +138,11 @@ public class SubtitleCleanupService {
 
         SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments());
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换
-        log.info("字幕清洗完成: route={}, segments={}, corrected={}, retry={}",
-                route.name(), result.segments().size(), result.correctedCount(), result.retrySteps());
-        return toCleaned(cleaned, cleanSeg, cleanSrt, result.correctedCount(), result.retrySteps());
+        log.info("字幕清洗完成: route={}, segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
+                route.name(), result.segments().size(), result.correctedCount(), result.retrySteps(),
+                result.termHits(), result.termApplied());
+        return toCleaned(cleaned, cleanSeg, cleanSrt, result.correctedCount(), result.retrySteps(),
+                result.termHits(), result.termApplied());
     }
 
     /**
@@ -189,8 +192,10 @@ public class SubtitleCleanupService {
      * 产物 → {@link CleanedSubtitle}：带路径、语种、句数与文件字节数。
      */
     private static CleanedSubtitle toCleaned(SubtitleTrack track, Path cleanSeg, Path cleanSrt,
-                                             int correctedCount, int retrySteps) {
+                                             int correctedCount, int retrySteps,
+                                             int termHits, int termApplied) {
         return new CleanedSubtitle(cleanSrt, cleanSeg, track.route(), track.language(),
-                track.segments().size(), ArtifactFiles.sizeOrZero(cleanSrt), correctedCount, retrySteps);
+                track.segments().size(), ArtifactFiles.sizeOrZero(cleanSrt), correctedCount, retrySteps,
+                termHits, termApplied);
     }
 }

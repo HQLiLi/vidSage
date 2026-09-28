@@ -59,7 +59,7 @@ class SubtitleCleanupServiceTest {
         when(subtitleCleanser.clean(any(), any(), any())).thenAnswer(invocation -> {
             cleanserCalls.incrementAndGet();
             List<TranscriptionSegment> in = invocation.getArgument(0);
-            return new SubtitleCleanser.CleanseResult(in, 0, 0);
+            return new SubtitleCleanser.CleanseResult(in, 0, 0, 0, 0);
         });
     }
 

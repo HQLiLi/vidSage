@@ -307,4 +307,143 @@ class SubtitleCleanserTest {
         assertEquals(2, model.prompts.get(1).getInstructions().size(),
                 "上限 0 = 关闭，第二批不该带历史");
     }
+
+    // ------------------------------------------------------------------
+    // 术语替换：校验层基线豁免 + 指标
+    // ------------------------------------------------------------------
+
+    /** 造一个带术语的上下文，主题固定。 */
+    private static SubtitleContext contextWith(SubtitleContext.Term... terms) {
+        return new SubtitleContext("剑术", List.of(terms));
+    }
+
+    @Test
+    void 跨书写系统的术语替换不被判改太狠() {
+        // 原文 15 字走 normal 阈值 0.7：直接比原文相似度 0.667 < 0.7 会被拦，
+        // 靠「术语替换基线」把相似度拉回 1.0 才通过——正是本次故障的守卫反杀点
+        ScriptedChatModel model = new ScriptedChatModel(
+                "{\"1\": \"Mittelhau是其中记载最少的一种斩击\"}");
+        SubtitleContext ctx = contextWith(
+                new SubtitleContext.Term("米特号", "Mittelhau", "ASR 把德语术语记成了中文音译"));
+
+        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+                .clean(segments("米特号是其中记载最少的一种斩击"), ctx, "");
+
+        assertEquals(0, result.retrySteps(), "正确的术语替换不该被判改太狠");
+        assertEquals("Mittelhau是其中记载最少的一种斩击", result.segments().get(0).text());
+        assertEquals(1, result.termHits(), "本批命中一条术语");
+        assertEquals(1, result.termApplied(), "该术语已被替换");
+    }
+
+    @Test
+    void 模型判断读不通而保留原写法_也不被拦() {
+        // R2 把判断权交给模型：保留音译是正确结果，不能因「没改成基线」被拦
+        ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"这个展办得挺热闹\"}");
+        SubtitleContext ctx = contextWith(
+                new SubtitleContext.Term("这个展", "这个斩", "同音误写"));
+
+        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+                .clean(segments("这个展办得挺热闹"), ctx, "");
+
+        assertEquals(0, result.retrySteps(), "保留原写法不该触发重试");
+        assertEquals("这个展办得挺热闹", result.segments().get(0).text(), "应原样保留");
+        assertEquals(0, result.correctedCount(), "没改动");
+        assertEquals(1, result.termHits(), "命中了术语");
+        assertEquals(0, result.termApplied(), "但没替换");
+    }
+
+    @Test
+    void 长句保留原写法也不被拦_原文本身是合法目标() {
+        // 14 字走 normal 阈值 0.7：若只跟基线比，保留原文相似度仅 0.43 会被判改太狠；
+        // 取 max(原文, 基线) 后原文这条 1.0 兜住——R2 的「读不通就不换」靠这条守住，
+        // 也钉住「不做强制」：不替换永不触发重试
+        ScriptedChatModel model = new ScriptedChatModel(
+                "{\"1\": \"乌波号与翁特号都是基础的斩击\"}");
+        SubtitleContext ctx = contextWith(
+                new SubtitleContext.Term("乌波号", "Oberhau", "x"),
+                new SubtitleContext.Term("翁特号", "Unterhau", "y"));
+
+        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+                .clean(segments("乌波号与翁特号都是基础的斩击"), ctx, "");
+
+        assertEquals(0, result.retrySteps(), "保留原文不该被判改太狠");
+        assertEquals("乌波号与翁特号都是基础的斩击", result.segments().get(0).text(), "原样保留");
+        assertEquals(2, result.termHits(), "两条命中");
+        assertEquals(0, result.termApplied(), "一条都没换");
+    }
+
+    @Test
+    void 只换一半也能过_指标如实上报() {
+        // 只换「乌波号」那条：单比原文相似度 0.6875 < 0.7 会被拦，靠基线拉到 0.7317 ≥ 0.7 才过 ——
+        // 部分替换是 R2 的自然结果，机器不逐词裁；但指标必须把「有一条没换」照出来，否则又是静默失败
+        ScriptedChatModel model = new ScriptedChatModel(
+                "{\"1\": \"Oberhau与翁特号都是基础的斩击\"}");
+        SubtitleContext ctx = contextWith(
+                new SubtitleContext.Term("乌波号", "Oberhau", "x"),
+                new SubtitleContext.Term("翁特号", "Unterhau", "y"));
+
+        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+                .clean(segments("乌波号与翁特号都是基础的斩击"), ctx, "");
+
+        assertEquals(0, result.retrySteps(), "部分替换应能过校验");
+        assertEquals(2, result.termHits(), "命中两条术语");
+        assertEquals(1, result.termApplied(), "只换了一条");
+    }
+
+    @Test
+    void 全批不换时指标为零替换_命中仍计入() {
+        ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"乌波号与帕姆\"}");
+        SubtitleContext ctx = contextWith(
+                new SubtitleContext.Term("乌波号", "Oberhau", "x"),
+                new SubtitleContext.Term("帕姆", "Pommel", "y"));
+
+        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+                .clean(segments("乌波号与帕姆"), ctx, "");
+
+        assertEquals(2, result.termHits(), "两条命中");
+        assertEquals(0, result.termApplied(), "一条都没换");
+        assertEquals(0, result.retrySteps(), "不换也不该被拦");
+    }
+
+    @Test
+    void asr与fixed相同的条目不进指标() {
+        ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"日耳曼剑术\"}");
+        SubtitleContext ctx = contextWith(
+                new SubtitleContext.Term("日耳曼剑术", "日耳曼剑术", "本来就写对了"));
+
+        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+                .clean(segments("日耳曼剑术"), ctx, "");
+
+        assertEquals(0, result.termHits(), "无需替换的条目不该计入命中");
+        assertEquals(0, result.termApplied());
+    }
+
+    @Test
+    void 术语参考段按候选正确写法格式渲染() {
+        ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"米特号\"}");
+        SubtitleContext ctx = contextWith(
+                new SubtitleContext.Term("米特号", "Mittelhau", "ASR 把德语术语记成了中文音译"));
+
+        cleanserOver(model).clean(segments("米特号"), ctx, "");
+
+        String task = allText(model.prompts.get(0));
+        assertTrue(task.contains("### 术语参考"), "有命中就该带术语参考段");
+        assertTrue(task.contains(
+                        "- \"米特号\" → \"Mittelhau\"（候选正确写法）：ASR 把德语术语记成了中文音译"),
+                "术语行应是「候选正确写法」格式，note 摆在显眼位置");
+    }
+
+    @Test
+    void 只渲染本批正文里出现过的术语() {
+        ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"米特号\"}");
+        SubtitleContext ctx = contextWith(
+                new SubtitleContext.Term("米特号", "Mittelhau", "x"),
+                new SubtitleContext.Term("帕姆", "Pommel", "y"));
+
+        cleanserOver(model).clean(segments("米特号"), ctx, "");
+
+        String task = allText(model.prompts.get(0));
+        assertTrue(task.contains("米特号"), "出现过的术语要渲染");
+        assertFalse(task.contains("帕姆"), "没出现过的术语不该渲染");
+    }
 }
