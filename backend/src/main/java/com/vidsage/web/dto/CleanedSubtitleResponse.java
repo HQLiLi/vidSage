@@ -17,6 +17,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param srtSizeBytes   清洗后 SRT 文件字节数，可为 0
  * @param correctedCount 本趟纠错实际改变文本的段数；断点复用时为 0
  * @param retrySteps     本趟纠错触发的校验重试轮数；断点复用时为 0
+ * @param termHits       本趟命中术语表的术语数（跨批次累计）；断点复用时为 0
+ * @param termApplied    本趟已替换成 fixed 写法的术语数（跨批次累计）；断点复用时为 0
  */
 @Schema(description = "字幕清洗产物（绝对路径 + 展平的元信息与纠错统计）")
 public record CleanedSubtitleResponse(
@@ -37,7 +39,11 @@ public record CleanedSubtitleResponse(
         @Schema(description = "本趟纠错改变文本的段数；断点复用时为 0", example = "3")
         int correctedCount,
         @Schema(description = "本趟纠错触发的校验重试轮数；断点复用时为 0", example = "0")
-        int retrySteps) {
+        int retrySteps,
+        @Schema(description = "本趟命中术语表的术语数（跨批次累计）；断点复用时为 0", example = "4")
+        int termHits,
+        @Schema(description = "本趟已替换成正确写法的术语数（跨批次累计）；断点复用时为 0", example = "4")
+        int termApplied) {
 
     /**
      * 由 {@link CleanedSubtitle} 映射：路径转字符串、枚举转名字。
@@ -54,6 +60,8 @@ public record CleanedSubtitleResponse(
                 cleaned.segmentsPath().toString(),
                 cleaned.srtSizeBytes(),
                 cleaned.correctedCount(),
-                cleaned.retrySteps());
+                cleaned.retrySteps(),
+                cleaned.termHits(),
+                cleaned.termApplied());
     }
 }

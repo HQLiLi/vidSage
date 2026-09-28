@@ -59,7 +59,7 @@ class SubtitleControllerTest {
         when(subtitleCleanupService.clean(any(), any())).thenReturn(new CleanedSubtitle(
                 Path.of("F:/work/subtitles-asr-cloud-clean.srt"),
                 Path.of("F:/work/segments-asr-cloud-clean.json"),
-                SubtitleRoute.ASR_CLOUD, "zh", 2, 159, 1, 0));
+                SubtitleRoute.ASR_CLOUD, "zh", 2, 159, 1, 0, 3, 2));
 
         mockMvc.perform(post("/api/subtitles/clean")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -70,6 +70,8 @@ class SubtitleControllerTest {
                 .andExpect(jsonPath("$.segmentCount").value(2))
                 .andExpect(jsonPath("$.correctedCount").value(1))
                 .andExpect(jsonPath("$.retrySteps").value(0))
+                .andExpect(jsonPath("$.termHits").value(3))
+                .andExpect(jsonPath("$.termApplied").value(2))
                 .andExpect(jsonPath("$.srtPath").value("F:\\work\\subtitles-asr-cloud-clean.srt"))
                 .andExpect(jsonPath("$.segmentsPath").value("F:\\work\\segments-asr-cloud-clean.json"));
     }
