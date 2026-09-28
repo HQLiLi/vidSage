@@ -127,8 +127,24 @@ public class SubtitleCleanupService {
         // 媒体内容
         List<TranscriptionSegment> segments = raw.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
-        // 内容的主题和从中提取出的术语
-        SubtitleContext subtitleContext = contextSummarizer.summarize(radioContent);
+        // 内容的主题、源语种和从中提取出的术语：先读缓存，没有才摘要。
+        // 断点分支留在本层（不在 SubtitleContextSummarizer 里）——与 -clean 断点判据同处，见 design §3.2。
+        Path ctxFile = workDir.resolve(SubtitleArtifactNames.contextFileName(route));
+        SubtitleContext subtitleContext = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
+        if (subtitleContext == null) {
+            subtitleContext = contextSummarizer.summarize(radioContent).orElse(null);
+            if (subtitleContext != null) {
+                // 摘要成功才落盘：降级出的空上下文绝不能写文件，否则下次会命中这份空缓存，
+                // 摘要永久丢失且不报错（design 决策 5）。
+                ArtifactFiles.writeJsonAtomically(subtitleContext, objectMapper, ctxFile);
+                log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
+            } else {
+                subtitleContext = SubtitleContext.empty();   // 降级，且不写文件
+                log.debug("字幕摘要失败，降级为空上下文（不落盘）");
+            }
+        } else {
+            log.debug("字幕上下文缓存命中: file={}", ctxFile.getFileName());
+        }
 
         // 切分
         List<TranscriptionSegment> split = new SubtitleSegmentSplitter(props.maxSegmentMs()).split(segments);
@@ -177,15 +193,9 @@ public class SubtitleCleanupService {
      * 写两个 -clean 产物：先 segments JSON（检查点），再 SRT（由 track 渲染）。都原子替换。
      */
     private void writeArtifacts(Path cleanSeg, Path cleanSrt, SubtitleTrack track) {
-        try {
-            ArtifactFiles.writeAtomically(
-                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(track), cleanSeg);
-            ArtifactFiles.writeAtomically(
-                    SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), cleanSrt);
-        } catch (JacksonException e) {
-            throw new IllegalStateException("清洗 segments 序列化失败：请检查 SubtitleTrack 结构；原因："
-                    + e.getMessage(), e);
-        }
+        ArtifactFiles.writeJsonAtomically(track, objectMapper, cleanSeg);
+        ArtifactFiles.writeAtomically(
+                SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), cleanSrt);
     }
 
     /**

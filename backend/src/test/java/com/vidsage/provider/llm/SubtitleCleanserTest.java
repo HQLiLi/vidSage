@@ -315,9 +315,9 @@ class SubtitleCleanserTest {
     // 术语替换：校验层基线豁免 + 指标
     // ------------------------------------------------------------------
 
-    /** 造一个带术语的上下文，主题固定。 */
+    /** 造一个带术语的上下文，主题固定；源语种留空（这批用例不关心它）。 */
     private static SubtitleContext contextWith(SubtitleContext.Term... terms) {
-        return new SubtitleContext("剑术", List.of(terms));
+        return new SubtitleContext("剑术", "", List.of(terms));
     }
 
     @Test

@@ -4,7 +4,7 @@ import com.vidsage.model.subtitle.SubtitleRoute;
 import java.util.Locale;
 
 /**
- * 字幕产物的文件名规则：路线名转 kebab token，以及四个产物名（原始 / 清洗 × JSON / SRT）。
+ * 字幕产物的文件名规则：路线名转 kebab token，以及各产物名（原始 / 清洗 × JSON / SRT，外加上下文摘要缓存）。
  *
  * <p>全静态、无状态，构造器私有，不要 new 它。
  *
@@ -60,5 +60,16 @@ public final class SubtitleArtifactNames {
      */
     public static String cleanSegmentsFileName(SubtitleRoute route) {
         return "segments-" + routeToken(route) + "-clean.json";
+    }
+
+    /**
+     * 上下文摘要缓存文件名：{@code context-asr-cloud.json}。清洗与翻译共用同一份。
+     *
+     * <p><b>故意不带目标语种指纹</b>——本文件里别的产物名都带指纹，这不是漏了：上下文就三样
+     * （主题、术语、源语种），与译成哪种语言无关，同一份对任何目标语种都成立。带指纹反而会让
+     * 换目标语种时白重跑一次摘要。
+     */
+    public static String contextFileName(SubtitleRoute route) {
+        return "context-" + routeToken(route) + ".json";
     }
 }

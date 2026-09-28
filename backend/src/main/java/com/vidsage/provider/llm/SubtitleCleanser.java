@@ -4,6 +4,7 @@ package com.vidsage.provider.llm;
 import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.subtitle.SubtitleContext;
+import com.vidsage.utils.subtitle.TermMatcher;
 import com.vidsage.utils.subtitle.TextSimilarity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -191,9 +192,9 @@ public class SubtitleCleanser {
         // 而且任务消息会在 history 里越堆越多，下一批收到上一批的任务两遍。
         List<Message> messages = new ArrayList<>(history);
 
-        // 本批命中哪些术语：渲染术语参考、构造校验基线、统计指标三处共用同一份判定，
-        // 这里一次算好往下传，避免三处各判一遍后将来分叉。
-        List<SubtitleContext.Term> hits = hitTerms(original, context);
+        // 本批命中哪些术语：判定在 TermMatcher 里只有一份（清洗的渲染、基线、指标三处共用，
+        // 翻译是第四个使用者）。这里一次算好往下传，避免各处各判一遍后将来分叉。
+        List<SubtitleContext.Term> hits = TermMatcher.hitTerms(original, context);
 
         // 格式说明拼在任务这条上——ChatClient 只会往最后一条 UserMessage 追加，
         // 而重试的反馈那条会成为最后一条，所以得自己把它钉在任务上。
@@ -440,34 +441,6 @@ public class SubtitleCleanser {
     }
 
     /**
-     * 挑出本批正文里真出现过的术语。
-     *
-     * <p>判据是「本批原文拼成小写后包含 asr 的小写原文」。术语参考渲染、校验基线、替换指标
-     * 三处都靠它，抽成一处共用，免得将来改判据时只改到一半。
-     *
-     * @param original 本批原文键值对
-     * @param context  字幕上下文；可为 {@code null}
-     * @return 命中的术语，顺序与 {@code context.terms()} 一致；无命中返回空列表
-     */
-    static List<SubtitleContext.Term> hitTerms(Map<String, String> original, SubtitleContext context) {
-        if (context == null || context.terms().isEmpty()) {
-            return List.of();
-        }
-        String batchText = String.join("\n", original.values()).toLowerCase(Locale.ROOT);
-        List<SubtitleContext.Term> hits = new ArrayList<>();
-        for (SubtitleContext.Term t : context.terms()) {
-            if (t.asr().isBlank()) {
-                continue;
-            }
-            if (batchText.contains(t.asr().toLowerCase(Locale.ROOT))) {
-                hits.add(t);
-            }
-        }
-        return hits;
-    }
-
-
-    /**
      * 造一条原文的「术语替换基线」：把其中命中术语的 asr 字面串换成 fixed。
      *
      * <p>基线代表「模型把本批术语全换掉」的目标文本。校验层把它当备选目标，免得跨书写系统的
@@ -537,7 +510,7 @@ public class SubtitleCleanser {
 
 
     /**
-     * 不区分大小写的子串包含，与 {@link #hitTerms} 的命中判定同一套口径。
+     * 不区分大小写的子串包含，与 {@link TermMatcher#hitTerms} 的命中判定同一套口径。
      */
     private static boolean containsIgnoreCase(String haystack, String needle) {
         return safe(haystack).toLowerCase(Locale.ROOT).contains(safe(needle).toLowerCase(Locale.ROOT));

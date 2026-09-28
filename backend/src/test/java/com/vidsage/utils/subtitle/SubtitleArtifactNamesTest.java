@@ -35,4 +35,10 @@ class SubtitleArtifactNamesTest {
         assertEquals("segments-asr-cloud-clean.json",
                 SubtitleArtifactNames.cleanSegmentsFileName(SubtitleRoute.ASR_CLOUD));
     }
+
+    @Test
+    void contextFileNameCarriesRouteFingerprintButNoTargetLanguage() {
+        assertEquals("context-asr-cloud.json", SubtitleArtifactNames.contextFileName(SubtitleRoute.ASR_CLOUD));
+        assertEquals("context-asr-local.json", SubtitleArtifactNames.contextFileName(SubtitleRoute.ASR_LOCAL));
+    }
 }
