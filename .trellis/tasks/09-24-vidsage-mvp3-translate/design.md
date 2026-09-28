@@ -140,8 +140,11 @@ public static <T> T readJsonOrNull(Path path, ObjectMapper mapper, Class<T> type
   `SubtitleCleanupService` 各写了一遍，本期会变成四、五遍。
 - 代价：它从「零依赖字节助手」变成「认识 Jackson」。**spec 允许**——
   `directory-structure.md` 明确把 Jackson 与 JDK、slf4j 并列在 `utils/` 的允许清单里。
-- `readJsonOrNull` 的语义**只覆盖断点形状的读**：文件不存在 / 为空 / 解析失败一律返回 `null`
-  并记 WARN。`SubtitleCleanupService.readRaw`（原始字幕必须能解析，坏了要抛 ISE）**不走它**，
+- `readJsonOrNull` 的语义**只覆盖断点形状的读**：文件不存在 / 为空 / 解析失败一律返回 `null`。
+  日志分两档：**不存在或为空时静默**（首跑没有检查点是正常路径，记 WARN 会在每次首跑刷噪音，
+  与 `SubtitleService` / `SubtitleCleanupService` 既有 `readCheckpoint` 的行为一致）；
+  **解析失败时记 WARN**（文件在但坏了，是需要人看的异常）。
+  `SubtitleCleanupService.readRaw`（原始字幕必须能解析，坏了要抛 ISE）**不走它**，
   保持自己的 try-catch——那是另一种语义，不该被这个方法统一掉。
 
 ## 四、翻译器

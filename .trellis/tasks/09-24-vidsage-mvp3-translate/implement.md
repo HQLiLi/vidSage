@@ -179,6 +179,21 @@ curl -X POST localhost:8080/api/subtitles/translate -H 'Content-Type: applicatio
 且守卫的价值本就体现为「低频但致命」——真要在生产里删掉它，最好再补一条完全不同领域的素材
 （如台词密集、口语化重的访谈或对话类）确认同样不触发。读数手段已就位（分类计数 + 开发期详情日志）。
 
+### 步骤 2：摘要语种输出的真实校验
+
+提示词改动是本步唯一无法用单测覆盖的风险点（LLM 可能不按格式返回）。
+2026-09-28 用 `BV1axNJ6REoa` 跑了一次真实清洗（10.4s）验证：
+
+```
+字幕摘要结果: theme=视频讲解冷兵器剑术中的防御技术…, sourceLanguage=zh, terms=震刀 → 震刀（…）；…
+```
+
+**结论：模型按格式返回了 BCP-47 短码 `zh`，未退化成语言名。** 落盘的
+`context-asr-cloud.json`（2995 字节）形状为 `theme` / `sourceLanguage` / `terms`，与契约一致。
+
+用户原有的 `-clean` 产物跑前备份、跑后按 md5 逐字节还原（该工作目录现在多出一个
+`context-asr-cloud.json`，是本步新建产物的首个真实实例，保留）。
+
 ### 附：长视频各阶段耗时（B站 `BV1C2ae6DEqW`，21m52s，从零到清洗完成）
 
 | 阶段 | 耗时 | 说明 |
