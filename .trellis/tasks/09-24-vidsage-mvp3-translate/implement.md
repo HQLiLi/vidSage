@@ -252,6 +252,10 @@ curl -X POST localhost:8080/api/subtitles/translate -H 'Content-Type: applicatio
   既有代码问题，已记入 design §六，另立小任务，不在本期范围。
 - **「单句就超字符上限」分支无直测**：`end == start ? end = start + 1` 那条防死循环的兜底，
   清洗器与翻译器都没有直测用例。非本期引入，implement.md 未要求。
+- **两个 service 的完成汇总日志级别不一致**：`SubtitleCleanupService` 的完成汇总用 INFO，
+  而新建的 `SubtitleTranslationService` 用 DEBUG。按 `logging-guidelines.md` 的级别分层，
+  service 层编排节点应为 DEBUG——**偏离规范的是清洗那一侧**（且它与 Controller 的 INFO 出口重复）。
+  翻译侧按规范走，未去迁就既有写法；是否把清洗侧统一到 DEBUG，另立小任务。
 
 ## 注意事项
 

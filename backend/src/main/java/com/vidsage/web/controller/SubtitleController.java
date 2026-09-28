@@ -3,11 +3,14 @@ package com.vidsage.web.controller;
 import com.vidsage.model.media.MediaInput;
 import com.vidsage.model.subtitle.CleanedSubtitle;
 import com.vidsage.model.subtitle.SubtitleArtifact;
+import com.vidsage.model.subtitle.TranslatedSubtitle;
 import com.vidsage.service.SubtitleCleanupService;
 import com.vidsage.service.SubtitleService;
+import com.vidsage.service.SubtitleTranslationService;
 import com.vidsage.web.dto.CleanedSubtitleResponse;
 import com.vidsage.web.dto.PrepareSubtitleRequest;
 import com.vidsage.web.dto.PreparedSubtitleResponse;
+import com.vidsage.web.dto.TranslatedSubtitleResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.nio.file.InvalidPathException;
@@ -23,34 +26,39 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 字幕入口：把「一条 URL 或本地媒体文件」变成「一份 SRT 字幕 + 一份 segments JSON」（同步）。
  *
- * <p><b>临时面（design §七）</b>：{@code POST /api/subtitles} 是<b>同步</b>端点，它存在的唯一
- * 理由是在 MVP-1（任务提交 / 落库 / SSE）尚未落地时，提供一个能被真实调用的端到端入口。同步端点
- * 在「本地文件 + 短视频」下可用，<b>长视频会顶到 HTTP 客户端超时</b>；真正的形态是 MVP-1 的
- * 异步管线——<b>该管线落地后本端点应改为它的一个触发入口或直接删除</b>。
+ * <p><b>临时面（design §七 / §8.2）</b>：{@code POST /api/subtitles}、{@code /clean} 与
+ * {@code /translate} 都是<b>同步</b>端点，它们存在的唯一理由是在 MVP-1（任务提交 / 落库 / SSE）
+ * 尚未落地时，提供一个能被真实调用的端到端入口。同步端点在「本地文件 + 短视频」下可用，<b>长视频会顶到
+ * HTTP 客户端超时</b>；翻译尤其如此——它逐批往返 LLM，且叠加在前两个端点之后。真正的形态是 MVP-1 的
+ * 异步管线——<b>该管线落地后这些端点应改为它的触发入口或直接删除</b>。
  *
  * <p>因此本控制器<b>不引入任务 ID、不落库、不排队</b>：那些全是 MVP-1 的范围。
  *
  * <p>本类只做「接收 → 校验 → 委托 → 返回」，不写业务逻辑；依赖 {@code service/}。
  */
 @Slf4j
-@Tag(name = "字幕", description = "URL 或本地文件 → SRT 字幕 + segments JSON（同步，临时面）")
+@Tag(name = "字幕", description = "URL 或本地文件 → 字幕（原始 / 清洗 / 翻译，均同步，临时面）")
 @RestController
 @RequestMapping("/api/subtitles")
 public class SubtitleController {
 
     private final SubtitleService subtitleService;
     private final SubtitleCleanupService subtitleCleanupService;
+    private final SubtitleTranslationService subtitleTranslationService;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param subtitleService        字幕编排（产字幕）
-     * @param subtitleCleanupService 字幕清洗（切分 + 纠错）
+     * @param subtitleService            字幕编排（产字幕）
+     * @param subtitleCleanupService     字幕清洗（切分 + 纠错）
+     * @param subtitleTranslationService 字幕翻译（双语 SRT）
      */
     public SubtitleController(SubtitleService subtitleService,
-                              SubtitleCleanupService subtitleCleanupService) {
+                              SubtitleCleanupService subtitleCleanupService,
+                              SubtitleTranslationService subtitleTranslationService) {
         this.subtitleService = subtitleService;
         this.subtitleCleanupService = subtitleCleanupService;
+        this.subtitleTranslationService = subtitleTranslationService;
     }
 
     /**
@@ -106,6 +114,41 @@ public class SubtitleController {
                 cleaned.correctedCount(), cleaned.retrySteps(),
                 System.currentTimeMillis() - start);
         return CleanedSubtitleResponse.from(cleaned);
+    }
+
+    /**
+     * 翻译一份已清洗的字幕：读 -clean 产物，逐批译成目标语种，产出双语 SRT。
+     *
+     * <p>前提：必须已对同一输入跑过 {@code POST /api/subtitles/clean}，否则报「缺 -clean 字幕」。
+     * <b>目标语种不进请求参数、只走配置</b>（{@code vidsage.subtitle.translate.target-language}）：
+     * 与 {@code route} 同样由配置驱动，产物名带语种指纹后也不存在「同一份媒体译成两种语言」的冲突。
+     * 源语种与目标语种相同则跳过翻译、不调用 LLM。
+     *
+     * <p>同步端点（临时面，与 {@code prepare} / {@code clean} 同源：逐批往返 LLM 会更久，MVP-1 异步
+     * 管线落地后一并改或删）。
+     *
+     * @param request 媒体来源（url 与 localPath 只能传一个，与产字幕 / 清洗同源）
+     * @return 翻译产物（双语 SRT + segments 路径 + 源/目标语种 + 是否跳过 + 统计）
+     * @throws IllegalArgumentException 媒体来源歧义 / 为空
+     * @throws IllegalStateException    -clean 字幕缺失（先跑清洗）、解析或写入失败
+     */
+    @Operation(summary = "把已清洗的字幕翻译成目标语种（双语 SRT）",
+            description = "同步执行：需先对同一输入调用 POST /api/subtitles/clean 产出 -clean 字幕；"
+                    + "目标语种走配置 vidsage.subtitle.translate.target-language，不在请求里传；"
+                    + "产出 segments-<route>-translate-<target>.json 与 subtitles-<route>-translate-<target>.srt。"
+                    + "源语种与目标语种相同则跳过翻译、不调用 LLM。长视频可能顶到客户端超时（临时面，见类注释）")
+    @PostMapping("/translate")
+    public TranslatedSubtitleResponse translate(@RequestBody PrepareSubtitleRequest request) {
+        MediaInput input = toMediaInput(request);
+        log.info("收到字幕翻译请求: sourceType={}", input.getClass().getSimpleName());
+        long start = System.currentTimeMillis();
+        TranslatedSubtitle translated = subtitleTranslationService.translate(input);
+        log.info("字幕翻译请求完成: route={}, sourceLanguage={}, targetLanguage={}, skipped={}, segments={}, "
+                        + "untranslated={}, cost={}ms",
+                translated.route().name(), translated.sourceLanguage(), translated.targetLanguage(),
+                translated.skipped(), translated.segmentCount(), translated.untranslatedCount(),
+                System.currentTimeMillis() - start);
+        return TranslatedSubtitleResponse.from(translated);
     }
 
     /**
