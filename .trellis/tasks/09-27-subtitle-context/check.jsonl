@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/09-27-subtitle-context/prd.md", "reason": "验收标准逐条核对：测试全绿且不减、提示词四段齐备且上下文不带编号、摘要失败仍成功、摘要复用不重跑、守卫未被改动、人工术语优先。"}
+{"file": ".trellis/tasks/09-27-subtitle-context/design.md", "reason": "核对是否越界：**validate/agentLoop/parseResponse/stripCodeFence/SYSTEM_PROMPT 必须一行未动**；**本轮不得引入并发**（决策 7）；HTTP 契约与既有产物名不得变。同时核对降级路径是否真的不外抛。"}
+{"file": ".trellis/tasks/09-24-vidsage/research/oss-references.md", "reason": "核对是否踩许可证红线：VideoCaptioner 是 GPL-3.0，若实现里出现与它逐行对应的代码即为违规。只允许从 VideoLingo（Apache-2.0）搬运。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查新增类的 Javadoc（公共类型 + 每个公共方法）、测试命名是否行为描述式、有没有为单元测试起 Spring 容器、有没有以「顺手统一」为由改动范围外的既有测试。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "检查新类的包归属（SubtitleContext / SubtitleContextBuilder 应进 utils/subtitle/）、可见性（跨包须 public）、产物命名是否加进了 SubtitleArtifactNames 而不是散在服务层。"}
+{"file": ".trellis/tasks/09-27-subtitle-context/implement.md", "reason": "核对每步的验证命令确实执行过、贴的是原始输出；跑测试前有没有先删 target/surefire-reports 并 mvn clean（残留 class 会被 Spring 扫到）。"}
