@@ -116,4 +116,5 @@ segments-<route>.json（原始，只读，必须已存在）
 - **摘要产物落盘（R5）**：无 `context-<route>.json` 二级复用，重跑清洗重复付一次摘要调用
 - **摘要输入截断**：全文直给摘要，长视频 token 量随全篇涨（原规划 summaryChars 未落地）
 - **后窗行数配置**：常量 2（原规划 context-lines-before/after 未落地；前窗已随历史移除）
-- **并发批处理**（参考项目 `max_workers: 4` 供届时参考）；**LLMProvider 四件套**（MVP3，`vidsage.llm.provider` 键已预留，落地后 worker 改吃该缝）
+- **并发批处理**（参考项目 `max_workers: 4` 供届时参考）
+- **LLMProvider 接口不建**（2026-09-28 定）：供应商缝由 Spring AI 的 ChatClient 承担，本地 Ollama 与云端 DeepSeek 均 OpenAI 兼容，再抽接口是抽象套抽象；翻案条件（自研协议来源 / 逐请求多源路由）见 provider-pattern.md

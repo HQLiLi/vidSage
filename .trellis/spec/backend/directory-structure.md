@@ -63,7 +63,7 @@ com.vidsage
 
 **新增领域时**：`web/controller/`、`service/` 直接加类；`web/dto/` 直接加契约；`model/`、`provider/` 下开新的领域子包。`provider/<领域>/` 内仍遵循 Provider 四件套结构（接口留领域包根、实现与该实现专用的 `*Properties` 进 `provider/<领域>/<实现短名>/`，见 [provider-pattern.md](./provider-pattern.md)）。
 
-> **`provider/llm/` 的现阶段形态（2026-09-28）**：包里目前是两个**具体类**的 LLM 调用 worker——`SubtitleCleanser`（字幕纠错）、`SubtitleContextSummarizer`（摘要），**没有抽接口**：它们不是「同一能力、多种来源」的缝，而是吃 LLM 的领域 worker（与 `provider/tool/` 单一实现不抽接口同一条精神；纠错的 `.messages()` 多轮历史也装不进窄缝）。SDK 类型（`ChatClient` / `Message` 等）只出现在这两类的内部，公开签名只有本项目的契约类型。Provider 四件套留给规划中的 `LLMProvider`（主 PRD 本地模型落地时建，`vidsage.llm.provider` 键已预留），届时这两个 worker 改吃该缝。曾经的临时顶层包 `com.vidsage.llm` 就此消除。
+> **`provider/llm/` 的现阶段形态（2026-09-28）**：包里目前是两个**具体类**的 LLM 调用 worker——`SubtitleCleanser`（字幕纠错）、`SubtitleContextSummarizer`（摘要），**没有抽接口**：它们不是「同一能力、多种来源」的缝，而是吃 LLM 的领域 worker（与 `provider/tool/` 单一实现不抽接口同一条精神；纠错的 `.messages()` 多轮历史也装不进窄缝）。SDK 类型（`ChatClient` / `Message` 等）只出现在这两类的内部，公开签名只有本项目的契约类型。**`LLMProvider` 接口不建**（2026-09-28 定）：供应商切换由 Spring AI 承担（本地 Ollama 与云端 DeepSeek 均 OpenAI 兼容），翻案条件见 [provider-pattern.md](./provider-pattern.md)——本包就是终态形态。曾经的临时顶层包 `com.vidsage.llm` 就此消除。
 
 ## `model` / `domain` / `persistence` / `config` 怎么选
 

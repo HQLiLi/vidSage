@@ -23,7 +23,7 @@
 
 - **摘要产物落盘（PRD R5）+ 摘要输入截断**：`context-<route>.json` 二级复用未实现，每次清洗重跑重复付摘要调用；当前摘要拿全文，长视频 token 量随全篇涨
 - **并发批处理**：维持串行；参考项目 `max_workers: 4` 供届时参考
-- **`LLMProvider` 四件套**（provider-pattern「规划中」项）：MVP3 本地模型落地时建；届时 `SubtitleCleanser` / `SubtitleContextSummarizer` 改吃该缝，`vidsage.llm.provider` 键已预留
+- **`LLMProvider` 接口不建**（2026-09-28 定）：供应商缝由 Spring AI 承担（本地 Ollama / 云端 DeepSeek 均 OpenAI 兼容）；预留的 `vidsage.llm.provider` 键已删。翻案条件（本地来源不走 OpenAI 兼容协议、需逐请求多源路由）记在 provider-pattern.md
 
 ## 验证命令
 

@@ -8,7 +8,7 @@ spring:
       enabled: true
   ai:
     deepseek:
-      # 翻译走 LLM
+      # 字幕清洗与摘要的 LLM 调用（翻译属 MVP3 规划，届时同样走这里）
       api-key: ${DEEPSEEK_API_KEY}
       chat:
         model: deepseek-chat
@@ -22,10 +22,7 @@ vidsage:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY}
       model: qwen-audio-3.1-asr-flash-filetrans
-  llm:
-    # DeepSeek 为首个 LLM 实现；后续如加本地模型，增加对应实现后在此切换
-    provider: deepseek
-  tools:
+  tools:  
     # 外部工具（yt-dlp / ffmpeg / ffprobe）；留空则从 PATH 解析。
     # 容器里 ffmpeg 未必在 PATH，交付时必须显式配置，不要把本机绝对路径写进仓库
     yt-dlp-path: ${YT_DLP_PATH:}

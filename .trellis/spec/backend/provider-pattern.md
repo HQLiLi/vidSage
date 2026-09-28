@@ -10,7 +10,9 @@
 新增或修改任何一个「同一能力、多种来源」的环节时：本地模型 vs 云 API、多家云厂商备选、主实现 vs 兜底实现。
 
 已落地：`ASRProvider`
-规划中（见主 PRD 与 `docs/prd/local-model-deployment.md`）：`LLMProvider`、`EmbeddingProvider`
+规划中（见主 PRD 与 `docs/prd/local-model-deployment.md`）：`EmbeddingProvider`
+
+> **`LLMProvider` 不建（2026-09-28 定）**：LLM 的供应商缝已由 Spring AI 的 `ChatClient` / `ChatModel` 承担——换 starter / base-url 即换来源，Java 零改动；且本地 Ollama 与云端 DeepSeek 都是 OpenAI 兼容协议，同一套集成覆盖两个来源。再抽接口是抽象套抽象，两个实现都是对 ChatClient 的零价值包装。**翻案条件**：本地来源不走 OpenAI 兼容协议（如 FunASR 式自研协议微服务），或需要逐请求的多源路由 / 兜底降级——出现任一再抽缝。`provider/llm/` 的终态是具体 worker 类（见 [directory-structure.md](./directory-structure.md)）。
 
 ---
 

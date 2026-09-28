@@ -63,4 +63,4 @@ ASR 字幕按批丢给 LLM 纠错，批与批之间不能断开：同音误写�
 |---|---|
 | 摘要产物落盘 + 摘要输入截断 | 功能增补；当前全文直给摘要，长视频 token 量随全篇涨 |
 | 并发批处理 | 与「上下文是否生效」混测分不清锅；参考项目 `max_workers: 4` 供届时参考 |
-| `LLMProvider` 四件套 | MVP3 本地模型落地时建（`vidsage.llm.provider` 键已预留） |
+| ~~`LLMProvider` 四件套~~ → **不建**（2026-09-28 定）：供应商缝由 Spring AI 承担，本地 Ollama / 云端 DeepSeek 均 OpenAI 兼容；翻案条件见 provider-pattern.md，`vidsage.llm.provider` 预留键已删 |
