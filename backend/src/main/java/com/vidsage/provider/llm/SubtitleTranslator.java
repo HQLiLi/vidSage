@@ -4,6 +4,7 @@ import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.model.subtitle.TranslatedSegment;
+import com.vidsage.model.subtitle.VerifiedTerm;
 import com.vidsage.utils.subtitle.TermMatcher;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -79,17 +80,31 @@ public class SubtitleTranslator {
 
 
     /**
+     * 翻译字幕（无官方译名产物的等价入口）：等价于 {@code officialTerms} 传空表，
+     * 命中术语全部按「保留原样」渲染。
+     */
+    public TranslateResult translate(List<TranscriptionSegment> segments,
+                                     SubtitleContext context,
+                                     String targetLanguage) {
+        return translate(segments, context, targetLanguage, List.of());
+    }
+
+    /**
      * 翻译字幕。
      *
      * @param segments       待翻译的段落（清洗后的 {@code -clean} 内容），时间戳原样带到产物
      * @param context        字幕上下文（主题 / 源语种 / 术语表）
      * @param targetLanguage 目标语种（BCP-47 短码）；源语种与目标语种相同的**跳过判定不在这里**，
      *                       由调用方在更外层做（那样才不会白白读一遍字幕才决定跳过）
+     * @param officialTerms  术语官方译名查证产物（{@code terms-<route>-<target>.json} 的内容），可为空表：
+     *                       命中术语里查到译名的按「给定的译名照翻」渲染进提示词，弃权（空串）与没查的
+     *                       按「保留原样」渲染
      * @return 逐条双语段落 + 重试轮数 + 未翻译段数
      */
     public TranslateResult translate(List<TranscriptionSegment> segments,
                                      SubtitleContext context,
-                                     String targetLanguage) {
+                                     String targetLanguage,
+                                     List<VerifiedTerm> officialTerms) {
         List<TranslatedSegment> out = new ArrayList<>(segments.size());
         int retries = 0;
         int untranslated = 0;
@@ -130,7 +145,7 @@ public class SubtitleTranslator {
             log.debug("字幕翻译批次: 序号={}, 句数={}, 字数={}, 历史轮数={}, 历史字符={}",
                     batchNo, end - start, chars, history.size() / 2, MessageHistory.chars(history));
 
-            TranslateOutcome outcome = agentLoop(original, context, targetLanguage, after, history);
+            TranslateOutcome outcome = agentLoop(original, context, targetLanguage, after, history, officialTerms);
             retries += outcome.retrySteps();
 
             if (!outcome.translated()) {
@@ -172,10 +187,12 @@ public class SubtitleTranslator {
      * @param targetLanguage 目标语种短码
      * @param after          后 n 行（下一批开头原文）；历史只覆盖过去，后窗给的是未来，替代不了
      * @param history        跨批对话历史；<b>本方法在成功后原地追加本批往返</b>（调用方持有，别当只读入参）
+     * @param officialTerms  术语官方译名查证产物，见 {@link #translate(List, SubtitleContext, String, List)}
      * @return 本批的采纳结果 + 重试轮数 + 是否真拿到了译文（{@code false} 表示整批回退原文）
      */
     private TranslateOutcome agentLoop(Map<String, String> original, SubtitleContext context,
-                                       String targetLanguage, List<String> after, List<Message> history) {
+                                       String targetLanguage, List<String> after, List<Message> history,
+                                       List<VerifiedTerm> officialTerms) {
         int retries = 0;
 
         // 必须是副本：直接拿 history 会在批内重试时把失败往返写进长期记录，
@@ -188,7 +205,7 @@ public class SubtitleTranslator {
 
         // 格式说明拼在任务这条上——ChatClient 只会往最后一条 UserMessage 追加，
         // 而重试的反馈那条会成为最后一条，所以得自己把它钉在任务上。
-        String task = buildUserPrompt(original, context, hits, targetLanguage, after);
+        String task = buildUserPrompt(original, context, hits, targetLanguage, after, officialTerms);
         messages.add(new UserMessage(task + System.lineSeparator() + FORMAT.getFormat()));
 
         for (int step = 0; step < prop.maxSteps(); step++) {
@@ -357,7 +374,7 @@ public class SubtitleTranslator {
 
     private static String buildUserPrompt(Map<String, String> original, SubtitleContext context,
                                           List<SubtitleContext.Term> hits, String targetLanguage,
-                                          List<String> after) {
+                                          List<String> after, List<VerifiedTerm> officialTerms) {
         StringBuilder sb = new StringBuilder();
 
         // 1. 本批次后面的部分字幕，增加点前后批关联，缓解跨批次的语义坍塌问题。
@@ -376,10 +393,35 @@ public class SubtitleTranslator {
 
         // 3. 术语参考：语义与清洗侧相反——那边给的是「候选正确写法 + 替换理由」，让模型判断换不换；
         //    这边给的是「这个词是专有名词，照给定的写法输出、不要译」（命中判定已在 hitTermsByFixed 里做好）。
+        //    查证产物里有译名的词按给定译名翻（09-28 实证：对 zh→en，「保留原样」压不住模型按读音意译，
+        //    与其让它猜不如直接告诉它译名）；弃权与没查到的维持「保留原样」——宁可不动，不可乱译。
         if (!hits.isEmpty()) {
-            sb.append("### 术语参考（以下写法是专有名词，翻译时保留原样，不要译成目标语种）\n");
+            Map<String, String> officialByFixed = officialByFixed(officialTerms);
+            List<SubtitleContext.Term> withOfficial = new ArrayList<>();
+            List<SubtitleContext.Term> keepOriginal = new ArrayList<>();
             for (SubtitleContext.Term t : hits) {
-                sb.append("- \"").append(t.fixed()).append("\"\n");
+                if (officialByFixed.containsKey(t.fixed())) {
+                    withOfficial.add(t);
+                } else {
+                    keepOriginal.add(t);
+                }
+            }
+            sb.append("### 术语参考（专有名词，必须严格遵守）\n");
+            if (!withOfficial.isEmpty()) {
+                sb.append("以下术语翻译时必须使用给定的译名，不得使用其他译法：\n");
+                for (SubtitleContext.Term t : withOfficial) {
+                    sb.append("- \"").append(t.fixed()).append("\" → \"")
+                            .append(officialByFixed.get(t.fixed())).append("\"\n");
+                }
+            }
+            if (!keepOriginal.isEmpty()) {
+                if (!withOfficial.isEmpty()) {
+                    sb.append('\n');
+                }
+                sb.append("以下写法是专有名词，翻译时保留原样，不要译成目标语种：\n");
+                for (SubtitleContext.Term t : keepOriginal) {
+                    sb.append("- \"").append(t.fixed()).append("\"\n");
+                }
             }
             sb.append('\n');
         }
@@ -397,6 +439,27 @@ public class SubtitleTranslator {
         }
         sb.append("\n}");
         return sb.toString();
+    }
+
+
+    /**
+     * 把查证产物收成「fixed 写法 → 查证译名」的映射，供术语参考渲染查表。
+     *
+     * <p>只收 fixed 与 official 都非空的条目（official 空串 = 弃权，走「保留原样」）；
+     * 同名 fixed 取先出现的——摘要层的术语表本不该重复，真重复了也别让后者覆盖前者。
+     */
+    private static Map<String, String> officialByFixed(List<VerifiedTerm> officialTerms) {
+        if (officialTerms == null || officialTerms.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> map = new LinkedHashMap<>();
+        for (VerifiedTerm t : officialTerms) {
+            if (t == null || !StringUtils.hasText(t.fixed()) || !StringUtils.hasText(t.official())) {
+                continue;
+            }
+            map.putIfAbsent(t.fixed(), t.official().trim());
+        }
+        return map;
     }
 
 

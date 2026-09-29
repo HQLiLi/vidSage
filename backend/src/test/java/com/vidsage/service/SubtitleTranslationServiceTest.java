@@ -69,9 +69,13 @@ class SubtitleTranslationServiceTest {
     /** 翻译器被调了几次——「跳过 / 断点复用后不再跑」这类断言靠它。 */
     private final AtomicInteger translatorCalls = new AtomicInteger();
 
+    /** 每次真翻译时翻译器收到的官方译名表（按调用顺序）——「terms 产物有没有传下去」这类断言靠它。 */
+    private final List<List<VerifiedTerm>> officialTermsReceived = new ArrayList<>();
+
     /**
-     * 翻译器的桩：给每条加「译文:」前缀，便于区分「真翻译」与「跳过时照抄原文」；调用次数记进计数器。
-     * 返回值里的重试 / 未翻译计数由用例指定，用来验证 service 原样透传。
+     * 翻译器的桩：给每条加「译文:」前缀，便于区分「真翻译」与「跳过时照抄原文」；调用次数记进计数器，
+     * 第 4 个入参（官方译名表）记进 {@link #officialTermsReceived}。返回值里的重试 / 未翻译计数由用例
+     * 指定，用来验证 service 原样透传。
      *
      * <p>用 {@code doAnswer().when(mock)} 而不是 {@code when(mock).thenAnswer()}：后者在重新打桩时会
      * <b>真的调用一次</b>，触发上一次装的 answer（本例里就会拿 {@code any()} 占位符当参数而 NPE）。
@@ -79,12 +83,13 @@ class SubtitleTranslationServiceTest {
     private void stubTranslator(int retrySteps, int untranslated) {
         doAnswer(invocation -> {
             translatorCalls.incrementAndGet();
+            officialTermsReceived.add(invocation.getArgument(3));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             List<TranslatedSegment> out = in.stream()
                     .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), "译文:" + s.text()))
                     .toList();
             return new SubtitleTranslator.TranslateResult(out, retrySteps, untranslated);
-        }).when(subtitleTranslator).translate(any(), any(), any());
+        }).when(subtitleTranslator).translate(any(), any(), any(), any());
     }
 
     private SubtitleTranslationService service() {
@@ -151,6 +156,7 @@ class SubtitleTranslationServiceTest {
     void resetStubs() {
         translatorCalls.set(0);
         lookupCommands.clear();
+        officialTermsReceived.clear();
         stubTranslator(0, 0);
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
@@ -289,7 +295,7 @@ class SubtitleTranslationServiceTest {
         assertThrows(IllegalStateException.class, () -> s.translate(new MediaInput.RemoteUrl("https://x")));
 
         verify(workspaceService, never()).workspaceFor(any());
-        verify(subtitleTranslator, never()).translate(any(), any(), any());
+        verify(subtitleTranslator, never()).translate(any(), any(), any(), any());
     }
 
     private static SubtitleTranslateProperties props(String targetLanguage) {
@@ -552,5 +558,39 @@ class SubtitleTranslationServiceTest {
                 "全部失败不落产物——空产物会把整批词固化成「已查证」，下次永远不会再补查");
         assertFalse(translated.skipped(), "查证全失败不得挡翻译");
         assertEquals(1, translatorCalls.get(), "翻译照常进行");
+    }
+
+    // ------------------------------------------------------------------
+    // 官方译名接入翻译（terms-<route>-<target>.json 的第一个消费方）
+    // ------------------------------------------------------------------
+
+    @Test
+    void realTranslatePassesVerifiedTermsToTranslator() throws Exception {
+        writeCleanTrack();
+        when(contextSummarizer.summarize(any()))
+                .thenReturn(Optional.of(contextWithTerms("en")));
+        JSON.writeValue(termsFile().toFile(), new VerifiedTerms(List.of(
+                new VerifiedTerm("只狼", "只狼", "游戏名", "Sekiro", "官方译名（来源：example.com）"),
+                new VerifiedTerm("弹刀", "弹刀", "机制名", "", "弃权"))));
+
+        service().translate(new MediaInput.RemoteUrl("https://x"));
+
+        assertEquals(1, translatorCalls.get());
+        List<VerifiedTerm> received = officialTermsReceived.get(0);
+        assertEquals(2, received.size(), "产物里的官方译名与弃权结论都要传给翻译器（弃权由翻译器分流渲染）");
+        assertEquals("Sekiro", received.get(0).official());
+        assertEquals("", received.get(1).official());
+    }
+
+    @Test
+    void missingTermsFilePassesEmptyOfficialTerms() throws Exception {
+        writeCleanTrack();
+        when(contextSummarizer.summarize(any()))
+                .thenReturn(Optional.of(contextWithTerms("en")));
+        // provider 缺席 = 查证关闭 = terms 文件不存在：翻译照常，官方译名按空表
+        service().translate(new MediaInput.RemoteUrl("https://x"));
+
+        assertEquals(1, translatorCalls.get(), "官方译名是增益不是前提，缺产物不挡翻译");
+        assertTrue(officialTermsReceived.get(0).isEmpty(), "无产物应传空表而不是 null");
     }
 }
