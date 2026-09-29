@@ -1,4 +1,4 @@
-package com.vidsage.provider.termlookup.dashscope;
+package com.vidsage.provider.llm.termlookup.dashscope;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 
 import com.vidsage.model.subtitle.TermLookupCommand;
 import com.vidsage.model.subtitle.TermLookupResult;
+import com.vidsage.provider.llm.termlookup.dashscope.DashScopeTermLookupProperties;
+import com.vidsage.provider.llm.termlookup.dashscope.DashScopeTermLookupProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
@@ -27,13 +29,14 @@ class DashScopeTermLookupProviderTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final DashScopeTermLookupProperties PROPS = new DashScopeTermLookupProperties(
-            "test-key", "qwen-flash", "https://dashscope.aliyuncs.com/compatible-mode/v1", "standard");
+            "test-key", "qwen-flash", "https://dashscope.aliyuncs.com/compatible-mode/v1", "standard", 0.1);
 
     private final StringBuilder capturedRequest = new StringBuilder();
 
     /** 抓请求体的桩：post 不真发 HTTP，把请求存下来、返回构造时给的固样响应。 */
     private DashScopeTermLookupProvider providerReturning(String responseJson) {
-        // builder 只需让构造器把 baseUrl 链走通；post 已被覆写，restClient 永远不会被真正调用
+        // builder 只需让构造器把 baseUrl 链走通；post 已被覆写，restClient 永远不会被真正调用。
+        // baseUrl(any(String.class))：baseUrl 有 String/URI 两个重载，裸 any() 会因歧义编译不过
         RestClient.Builder builder = mock(RestClient.Builder.class);
         when(builder.baseUrl(any(String.class))).thenReturn(builder);
         return new DashScopeTermLookupProvider(builder, PROPS, JSON) {
@@ -66,6 +69,9 @@ class DashScopeTermLookupProviderTest {
         assertEquals("qwen-flash", req.get("model").asString());
         assertTrue(req.get("enable_search").asBoolean());
         assertEquals("standard", req.get("search_options").get("search_strategy").asString());
+        // 抽取任务不要采样抖动（同词逐轮异结论），也不要思考链（单条 1.5s → 20~45s，同步接口必超时）
+        assertEquals(0.1, req.get("temperature").asDouble(), 1e-9);
+        assertFalse(req.get("enable_thinking").asBoolean());
         assertEquals("system", req.get("messages").get(0).get("role").asString());
         String user = req.get("messages").get(1).get("content").asString();
         assertTrue(user.contains("只狼"));
@@ -147,7 +153,7 @@ class DashScopeTermLookupProviderTest {
         RestClient.Builder builder = mock(RestClient.Builder.class);
         when(builder.baseUrl(any(String.class))).thenReturn(builder);
         DashScopeTermLookupProvider p = new DashScopeTermLookupProvider(builder,
-                new DashScopeTermLookupProperties(" ", "qwen-flash", "https://x", "standard"), JSON) {
+                new DashScopeTermLookupProperties(" ", "qwen-flash", "https://x", "standard", 0.1), JSON) {
             @Override
             String post(String requestJson) {
                 return "{}";

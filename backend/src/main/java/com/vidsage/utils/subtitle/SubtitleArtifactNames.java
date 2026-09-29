@@ -97,6 +97,20 @@ public final class SubtitleArtifactNames {
     }
 
     /**
+     * 术语查证产物文件名：{@code terms-asr-cloud-en.json}。
+     *
+     * <p>语义：这份字幕的术语表联网查证后的结论（{@link com.vidsage.model.subtitle.VerifiedTerms}），
+     * 由翻译流程在真翻译前生成。<b>文件存在 = 已查证</b>——断点判据与 -clean / -translate 同哲学：
+     * 删掉本文件即重新查证。查证调用失败的词不进文件，所以下次文件缺失重跑时自然补查。
+     *
+     * <p>带目标语种指纹的理由见 {@link #translateSegmentsFileName(SubtitleRoute, String)}，此处更甚：
+     * 译名回答的是「这个词在目标语种里叫什么」，换目标语种必须另查一份，绝不能拿上一份语种的译名凑数。
+     */
+    public static String verifiedTermsFileName(SubtitleRoute route, String targetLanguage) {
+        return "terms-" + routeToken(route) + "-" + normalizeLanguage(targetLanguage) + ".json";
+    }
+
+    /**
      * 目标语种归一化：去掉首尾空白并转小写，让 {@code ZH} 与 {@code zh} 指向同一个文件。
      *
      * <p>不归一化的话，配置里的大小写一变就会静默产出第二份产物、绕开断点判据——旧的「已完成」

@@ -1,4 +1,4 @@
-package com.vidsage.provider.termlookup;
+package com.vidsage.provider.llm.termlookup;
 
 import com.vidsage.model.subtitle.TermLookupCommand;
 import com.vidsage.model.subtitle.TermLookupResult;
@@ -6,8 +6,9 @@ import com.vidsage.model.subtitle.TermLookupResult;
 /**
  * 术语译名查证：查一个专有名词在目标语种里的官方/通用译名。
  *
- * <p>这是「同一能力、多种来源」的缝（见 provider-pattern）：当前实现是 DashScope 联网搜索
- * （模型自带 {@code enable_search}，零新增账号）；将来若接独立搜索 API（自搜 + LLM 提取）或
+ * <p>这是「同一能力、多种来源」的缝（见 provider-pattern）：查证也是模型调用，接口落在本包
+ * （领域包根，同 {@code SubtitleTranslator} 等的位置）；当前实现是 DashScope 联网搜索
+ * （模型自带 {@code enable_search}，零新增账号），将来若接独立搜索 API（自搜 + LLM 提取）或
  * 其他带检索的模型，各成一个实现，由 {@code vidsage.term-lookup.provider} 配置切换。
  * 触发确定性（哪些词要查、什么时机查）由上层编排负责，<b>不属于本接口</b>——09-28 的实证是
  * 「模型不觉得自己在猜」，凡是「要不要查」交给人或模型临场决定的做法都已被否决。

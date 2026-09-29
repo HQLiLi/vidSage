@@ -1,12 +1,14 @@
-package com.vidsage.provider.termlookup.dashscope;
+package com.vidsage.provider.llm.termlookup.dashscope;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.vidsage.model.subtitle.TermLookupCommand;
 import com.vidsage.model.subtitle.TermLookupResult;
-import com.vidsage.provider.termlookup.TermLookupProvider;
+
 import java.net.URI;
 import java.util.List;
+
+import com.vidsage.provider.llm.termlookup.TermLookupProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -84,10 +86,26 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
         String responseJson = post(requestJson);
         LookupAnswer answer = parseResponse(responseJson);
         TermLookupResult result = validateEvidence(answer);
-        log.info("术语译名查证: term={}, verdict={}, level={}, cost={}ms",
+        log.info("术语译名查证: term={}, verdict={}, level={}, source={}, cost={}ms",
                 command.term(), result.officialName().isEmpty() ? "无" : "有", answer.level(),
-                System.currentTimeMillis() - start);
+                describeSource(result.sourceUrl()), System.currentTimeMillis() - start);
         return result;
+    }
+
+    /**
+     * 来源只记 host：来源页是公开网页，但完整 URL 拼进日志既长又无必要，host 足够人工回查
+     * （与翻译 service 侧 officialNote 的记法一致，同 logging-guidelines 脱敏精神）。
+     */
+    private static String describeSource(String sourceUrl) {
+        if (!StringUtils.hasText(sourceUrl)) {
+            return "无";
+        }
+        try {
+            String host = URI.create(sourceUrl.trim()).getHost();
+            return StringUtils.hasText(host) ? host : "无";
+        } catch (RuntimeException e) {
+            return "无";
+        }
     }
 
     /**
@@ -109,8 +127,8 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
     }
 
     /**
-     * 组装一次查证请求体。扩展参数（enable_search / search_options）是 DashScope 专属，
-     * 用 @JsonProperty 显式映射，序列化后原样出现在请求里。
+     * 组装一次查证请求体。扩展参数（enable_search / search_options / enable_thinking）是
+     * DashScope 专属，用 @JsonProperty 显式映射，序列化后原样出现在请求里。
      */
     private String buildRequest(TermLookupCommand command) {
         String user = "术语「" + command.term() + "」\n视频主题：" + command.theme()
@@ -119,7 +137,9 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
                 properties.model(),
                 List.of(new ChatMessage("system", SYSTEM_PROMPT), new ChatMessage("user", user)),
                 true,
-                new SearchOptions(properties.searchStrategy()));
+                new SearchOptions(properties.searchStrategy()),
+                properties.temperature(),
+                false);
         return objectMapper.writeValueAsString(request);
     }
 
@@ -209,10 +229,19 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
     /**
      * 请求体。字段名是 DashScope 扩展参数，@JsonProperty 显式落成 snake_case。
      */
+    /**
+     * 请求体。字段名是 DashScope 扩展参数，@JsonProperty 显式落成 snake_case。
+     *
+     * <p>{@code enableThinking} 固定 false：查证是「从检索结果做确定性抽取」，不是推理题——
+     * 实测（2026-09-29，qwen3.7-flash）思考模式让单条 1.5s 涨到 20~45s，15 条术语把同步
+     * 翻译接口拖到必超时，且思维链按输出计费；关掉后结论质量无损。
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record ChatRequest(String model, List<ChatMessage> messages,
                        @JsonProperty("enable_search") boolean enableSearch,
-                       @JsonProperty("search_options") SearchOptions searchOptions) {
+                       @JsonProperty("search_options") SearchOptions searchOptions,
+                       double temperature,
+                       @JsonProperty("enable_thinking") boolean enableThinking) {
     }
 
     record ChatMessage(String role, String content) {

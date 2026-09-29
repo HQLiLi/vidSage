@@ -6,23 +6,31 @@ import com.vidsage.model.media.MediaInput;
 import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.model.subtitle.SubtitleRoute;
 import com.vidsage.model.subtitle.SubtitleTrack;
+import com.vidsage.model.subtitle.TermLookupCommand;
+import com.vidsage.model.subtitle.TermLookupResult;
 import com.vidsage.model.subtitle.TranslatedSegment;
 import com.vidsage.model.subtitle.TranslatedSubtitle;
 import com.vidsage.model.subtitle.TranslatedTrack;
+import com.vidsage.model.subtitle.VerifiedTerm;
+import com.vidsage.model.subtitle.VerifiedTerms;
 import com.vidsage.provider.asr.ASRProvider;
 import com.vidsage.provider.llm.SubtitleContextSummarizer;
 import com.vidsage.provider.llm.SubtitleTranslator;
+import com.vidsage.provider.llm.termlookup.TermLookupProvider;
 import com.vidsage.utils.fs.ArtifactFiles;
 import com.vidsage.utils.subtitle.SrtRenderer;
 import com.vidsage.utils.subtitle.SubtitleArtifactNames;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import tools.jackson.core.JacksonException;
@@ -32,7 +40,9 @@ import tools.jackson.databind.ObjectMapper;
  * 字幕翻译编排：把「清洗后的 -clean 字幕」变成「双语 -translate 产物」。
  *
  * <p>管线形状：读 -clean segments → 取或摘要跨批上下文（{@link SubtitleContextSummarizer}）→
- * 判定源语种（源语种等于目标语种则跳过、不调 LLM）→ {@link SubtitleTranslator} 逐批翻译 →
+ * 判定源语种（源语种等于目标语种则跳过、不调 LLM）→ 术语官方译名查证（真翻译前逐条联网查证，
+ * 产出 {@code terms-<route>-<target>.json}，见 {@link #verifyTermsIfNeeded}）→
+ * {@link SubtitleTranslator} 逐批翻译 →
  * 写 {@code segments-<route>-translate-<target>.json} + {@code subtitles-<route>-translate-<target>.srt}。
  *
  * <p><b>断点复用判据</b>：{@code -translate-<target>.json} 存在且非空即跳过翻译，直接反序列化返回。
@@ -40,8 +50,8 @@ import tools.jackson.databind.ObjectMapper;
  * （同 {@link SubtitleCleanupService} / {@link SubtitleService}）。
  *
  * <p><b>只读 -clean 产物</b>：输入是 {@code segments-<route>-clean.json}（只读，必须已存在），写
- * {@code -translate}。<b>不静默回退到原始 segments</b>：术语替换的成果只在 -clean 里，回退会让它白做，
- * 而且是静默的。
+ * {@code -translate} 与 {@code terms-<route>-<target>.json}。<b>不静默回退到原始 segments</b>：
+ * 术语替换的成果只在 -clean 里，回退会让它白做，而且是静默的。
  */
 @Slf4j
 @Service
@@ -54,7 +64,7 @@ public class SubtitleTranslationService {
 
     private final SubtitleContextSummarizer contextSummarizer;
 
-    private final SubtitleTermVerifier termVerifier;
+    private final ObjectProvider<TermLookupProvider> lookupProvider;
 
     private final SubtitleTranslator subtitleTranslator;
 
@@ -66,7 +76,9 @@ public class SubtitleTranslationService {
      * @param objectMapper       Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      * @param props              字幕翻译调参（目标语种 / 批次 / 重试 / 跨批历史上限）
      * @param contextSummarizer  内容总结器（摘要出主题 / 源语种 / 术语，供跨批上下文与跳过判定）
-     * @param termVerifier       术语译名查证编排（旧缓存迁移：缓存里的术语还没有 official 字段时补跑查证）
+     * @param lookupProvider     术语译名查证 provider，用 {@link ObjectProvider} 而不是直接注入：
+     *                           查证是增益不是前提，配置里删掉 {@code vidsage.term-lookup.provider}
+     *                           应当让应用照常起、只关查证，而不是缺 bean 起不来
      * @param subtitleTranslator 字幕翻译器（持有翻译专用的 ChatClient）
      */
     public SubtitleTranslationService(WorkspaceService workspaceService,
@@ -74,14 +86,14 @@ public class SubtitleTranslationService {
                                       ObjectMapper objectMapper,
                                       SubtitleTranslateProperties props,
                                       SubtitleContextSummarizer contextSummarizer,
-                                      SubtitleTermVerifier termVerifier,
+                                      ObjectProvider<TermLookupProvider> lookupProvider,
                                       SubtitleTranslator subtitleTranslator) {
         this.workspaceService = workspaceService;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
         this.props = props;
         this.contextSummarizer = contextSummarizer;
-        this.termVerifier = termVerifier;
+        this.lookupProvider = lookupProvider;
         this.subtitleTranslator = subtitleTranslator;
     }
 
@@ -105,6 +117,7 @@ public class SubtitleTranslationService {
         Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(route));
         Path translateSeg = workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(route, targetLanguage));
         Path translateSrt = workDir.resolve(SubtitleArtifactNames.translateSrtFileName(route, targetLanguage));
+        Path termsFile = workDir.resolve(SubtitleArtifactNames.verifiedTermsFileName(route, targetLanguage));
 
         // 断点：检查点已在且非空 → 反序列化直接返回，本趟统计一律归零（含 untranslatedCount）
         TranslatedTrack existing = ArtifactFiles.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
@@ -146,16 +159,10 @@ public class SubtitleTranslationService {
         // 源语种：优先摘要推断（主路径），为空回退 ASR 的 language（实测多为 null，兜底），两者皆空则不跳过
         String sourceLanguage = resolveSourceLanguage(context, clean.language());
 
-        // 旧缓存迁移：查证功能上线前落盘的上下文，术语还没有 official 字段。只要这趟真的要翻译
-        // （源语种 ≠ 目标语种，判定在 verifier 内部），就补跑一次查证并回写缓存——一次性成本，
-        // 之后断点复用直接命中带 official 的上下文。翻译行为本任务不变，这里只服务缓存演进。
-        SubtitleTermVerifier.Result verification = termVerifier.verifyIfNeeded(context, targetLanguage);
-        if (verification.changed()) {
-            context = verification.context();
-            ArtifactFiles.writeJsonAtomically(context, objectMapper, ctxFile);
-            log.debug("字幕上下文术语查证已回写: file={}, terms={}", ctxFile.getFileName(),
-                    context.terms().size());
-        }
+        // 术语官方译名查证：内联在翻译流程里（真翻译分支之前）。为什么挂在翻译而不挂清洗：
+        // 译名是给目标语种的译文用的，只有真的要翻译（源语种 ≠ 目标语种）才值得烧搜索费——
+        // 目标语种默认 zh 的中文素材根本走不到查证。触发条件与失败分流见 verifyTermsIfNeeded。
+        verifyTermsIfNeeded(context, sourceLanguage, targetLanguage, termsFile);
 
         TranslatedTrack track;
         int retrySteps = 0;
@@ -178,6 +185,110 @@ public class SubtitleTranslationService {
                 route.name(), sourceLanguage, targetLanguage, track.skipped(), track.segments().size(),
                 retrySteps, untranslated);
         return toTranslated(track, translateSeg, translateSrt, retrySteps, untranslated);
+    }
+
+    /**
+     * 术语官方译名查证：把上下文里的术语逐条交给 {@link TermLookupProvider} 联网查证，
+     * 结论（官方/通用译名或弃权）落独立的 {@code terms-<route>-<target>.json}。
+     *
+     * <p><b>为什么挂在翻译流程</b>：见调用点注释——查证只为译文服务，翻译不发生就不烧搜索费。
+     * 编排内联在本类、不另建 service/bean：查证不是独立环节，是翻译的前置增益。
+     *
+     * <p><b>触发条件（三条同时成立才查，否则静默跳过）</b>：
+     * 源语种 ≠ 目标语种（复用 {@link #isSameMainLanguage}，翻译真的要发生）、
+     * terms 产物缺失（<b>文件存在 = 已查证</b>，与 -clean/-translate 断点同哲学：删文件即重查，
+     * 换目标语种文件名不同自然重查）、查证 provider 在容器里（yml 删 {@code vidsage.term-lookup.provider}
+     * = 查证整体关闭，跳过不报错——增益缺席不能变成故障）。
+     *
+     * <p><b>失败与弃权是两条路</b>：查证调用抛异常 = 该词<b>不进产物文件</b>（WARN 记账，下次
+     * 文件缺失时自然补查——写进去反而会把「没查成」永久固化成「已查证」）；查过但无有据译名 =
+     * {@code official} 空串落盘（弃权结论持久化，不再重搜烧钱）。查证任何失败形态都不抛出本方法、
+     * 不挡翻译主流程——与「摘要失败降级空上下文」同一哲学。
+     *
+     * <p><b>全部失败不写盘</b>：一条成功/弃权结论都没有时不落文件——落一份空产物会把整批词
+     * 固化成「已查证」，下次永远不会再补查。
+     *
+     * @param context        字幕上下文（术语表的来源；可为降级的空上下文——术语为空时无事可做）
+     * @param sourceLanguage 源语种（可为空串：未知语种按「要翻译」处理，语种判定交给 isSameMainLanguage）
+     * @param targetLanguage 目标语种（已在 translate() 入口保证非空）
+     * @param termsFile      查证产物路径
+     */
+    private void verifyTermsIfNeeded(SubtitleContext context, String sourceLanguage,
+                                     String targetLanguage, Path termsFile) {
+        if (isSameMainLanguage(sourceLanguage, targetLanguage)) {
+            return;   // 同语种不翻译，也就不需要目标语种译名
+        }
+        if (ArtifactFiles.isNonEmpty(termsFile)) {
+            log.debug("术语查证产物已存在，跳过查证（删文件即重查）: file={}", termsFile.getFileName());
+            return;
+        }
+        TermLookupProvider provider = lookupProvider.getIfAvailable();
+        if (provider == null) {
+            log.debug("术语查证未启用（vidsage.term-lookup.provider 未配置），跳过: target={}", targetLanguage);
+            return;
+        }
+        if (context.terms().isEmpty()) {
+            return;   // 无术语可查；也不落空产物——空产物没有信息量，徒增一个「已完成」假象
+        }
+
+        // 触发是确定性的：全量逐条查证，不做「哪些值得查」的预过滤（09-28 实证：模型不觉得自己在猜）
+        log.info("术语译名查证开始: terms={}, target={}", context.terms().size(), targetLanguage);
+        long start = System.currentTimeMillis();
+        List<VerifiedTerm> verified = new ArrayList<>(context.terms().size());
+        int official = 0;
+        int common = 0;
+        int none = 0;
+        int failed = 0;
+        for (SubtitleContext.Term term : context.terms()) {
+            try {
+                TermLookupResult result =
+                        provider.lookup(new TermLookupCommand(term.fixed(), targetLanguage, context.theme()));
+                String name = result.officialName() == null ? "" : result.officialName().trim();
+                String note;
+                if (StringUtils.hasText(name)) {
+                    note = (result.official() ? "官方译名" : "通用译名，非官方")
+                            + "（来源：" + describeSource(result.sourceUrl()) + "）";
+                    if (result.official()) {
+                        official++;
+                    } else {
+                        common++;
+                    }
+                } else {
+                    none++;
+                    note = "联网查证未找到有据可依的目标语种译名，弃权";
+                }
+                verified.add(new VerifiedTerm(term.asr(), term.fixed(), term.note(), name, note));
+            } catch (RuntimeException e) {
+                // 查证失败 ≠ 查不到：该词不进产物文件（下次补查），绝不因查证挡翻译主流程
+                failed++;
+                log.warn("术语查证失败，该词不进产物待下次补查: term={}, reason={}", term.fixed(), e.getMessage());
+            }
+        }
+        if (official + common + none == 0) {
+            // 全部失败：不写盘——落一份空产物会把整批词固化成「已查证」，下次永远不会再补查
+            log.warn("术语查证全部失败，不落产物（下次翻译时重查）: terms={}, failed={}",
+                    context.terms().size(), failed);
+            return;
+        }
+        ArtifactFiles.writeJsonAtomically(new VerifiedTerms(verified), objectMapper, termsFile);
+        log.info("术语译名查证完成: 共={}, 官方={}, 通用={}, 无={}, 失败={}, cost={}ms",
+                context.terms().size(), official, common, none, failed, System.currentTimeMillis() - start);
+    }
+
+    /**
+     * 来源页只记 host：搜索给的来源是公开网页，没有签名参数，但完整 URL 拼进 note 会把
+     * 查证说明撑得很长，host 足够人工回查（logging-guidelines 脱敏精神的同款取舍）。
+     */
+    private static String describeSource(String sourceUrl) {
+        if (!StringUtils.hasText(sourceUrl)) {
+            return "未知来源";
+        }
+        try {
+            String host = URI.create(sourceUrl.trim()).getHost();
+            return StringUtils.hasText(host) ? host : "未知来源";
+        } catch (RuntimeException e) {
+            return "未知来源";
+        }
     }
 
     /**
