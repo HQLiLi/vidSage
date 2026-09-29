@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端规范入口：Pre-Development Checklist 与各文档路由"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "新增 DashScope 查证客户端须按 Provider 抽象+条件装配+record 配置模式"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "R4 弃权/降级路径的卫语句与异常写法红线"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "R8 查证观测日志的级别分层与脱敏（来源 URL 可能带签名参数）"}
+{"file": ".trellis/tasks/archive/2026-09/09-28-subtitle-term-replacement/research/term-source-limitation.md", "reason": "确定性触发与弃权语义的实证来源：模型不觉得自己在猜、指标绿灯不等于正确"}
+{"file": ".trellis/tasks/archive/2026-09/09-24-vidsage-mvp3-translate/research/acceptance-evidence.md", "reason": "术语注入 A/B 实验与 zh→en 残留根因证据"}

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.config.SubtitleCleanupProperties;
+import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.MediaInput;
 import com.vidsage.model.subtitle.CleanedSubtitle;
@@ -26,6 +27,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
@@ -46,6 +48,7 @@ class SubtitleCleanupServiceTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final SubtitleCleanupProperties PROPS =
             new SubtitleCleanupProperties(8000, 600, 20, 3, 0.7, 0.3, 20000, false);
+    private static final SubtitleTranslateProperties TRANSLATE_PROPS = new SubtitleTranslateProperties("en", 12, 400, 3, 20000);
 
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
@@ -70,8 +73,9 @@ class SubtitleCleanupServiceTest {
     private SubtitleCleanupService service() {
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
-        return new SubtitleCleanupService(workspaceService, asrProvider, JSON, PROPS,
-                contextSummarizer, subtitleCleanser);
+        // 查证关闭态（provider 缺席）：verifyIfNeeded 原样返回，本文件只测清洗编排本身
+        return new SubtitleCleanupService(workspaceService, asrProvider, JSON, PROPS, TRANSLATE_PROPS,
+                contextSummarizer, new SubtitleTermVerifier(mock(ObjectProvider.class)), subtitleCleanser);
     }
 
     private void writeRawTrack() throws Exception {

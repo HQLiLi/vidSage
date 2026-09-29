@@ -54,6 +54,8 @@ public class SubtitleTranslationService {
 
     private final SubtitleContextSummarizer contextSummarizer;
 
+    private final SubtitleTermVerifier termVerifier;
+
     private final SubtitleTranslator subtitleTranslator;
 
     /**
@@ -64,6 +66,7 @@ public class SubtitleTranslationService {
      * @param objectMapper       Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      * @param props              字幕翻译调参（目标语种 / 批次 / 重试 / 跨批历史上限）
      * @param contextSummarizer  内容总结器（摘要出主题 / 源语种 / 术语，供跨批上下文与跳过判定）
+     * @param termVerifier       术语译名查证编排（旧缓存迁移：缓存里的术语还没有 official 字段时补跑查证）
      * @param subtitleTranslator 字幕翻译器（持有翻译专用的 ChatClient）
      */
     public SubtitleTranslationService(WorkspaceService workspaceService,
@@ -71,12 +74,14 @@ public class SubtitleTranslationService {
                                       ObjectMapper objectMapper,
                                       SubtitleTranslateProperties props,
                                       SubtitleContextSummarizer contextSummarizer,
+                                      SubtitleTermVerifier termVerifier,
                                       SubtitleTranslator subtitleTranslator) {
         this.workspaceService = workspaceService;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
         this.props = props;
         this.contextSummarizer = contextSummarizer;
+        this.termVerifier = termVerifier;
         this.subtitleTranslator = subtitleTranslator;
     }
 
@@ -140,6 +145,17 @@ public class SubtitleTranslationService {
 
         // 源语种：优先摘要推断（主路径），为空回退 ASR 的 language（实测多为 null，兜底），两者皆空则不跳过
         String sourceLanguage = resolveSourceLanguage(context, clean.language());
+
+        // 旧缓存迁移：查证功能上线前落盘的上下文，术语还没有 official 字段。只要这趟真的要翻译
+        // （源语种 ≠ 目标语种，判定在 verifier 内部），就补跑一次查证并回写缓存——一次性成本，
+        // 之后断点复用直接命中带 official 的上下文。翻译行为本任务不变，这里只服务缓存演进。
+        SubtitleTermVerifier.Result verification = termVerifier.verifyIfNeeded(context, targetLanguage);
+        if (verification.changed()) {
+            context = verification.context();
+            ArtifactFiles.writeJsonAtomically(context, objectMapper, ctxFile);
+            log.debug("字幕上下文术语查证已回写: file={}, terms={}", ctxFile.getFileName(),
+                    context.terms().size());
+        }
 
         TranslatedTrack track;
         int retrySteps = 0;

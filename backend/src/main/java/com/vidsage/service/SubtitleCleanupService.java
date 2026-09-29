@@ -1,6 +1,7 @@
 package com.vidsage.service;
 
 import com.vidsage.config.SubtitleCleanupProperties;
+import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.provider.llm.SubtitleCleanser;
 import com.vidsage.provider.llm.SubtitleContextSummarizer;
 import com.vidsage.model.asr.TranscriptionSegment;
@@ -46,8 +47,11 @@ public class SubtitleCleanupService {
     private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
     private final SubtitleCleanupProperties props;
+    private final SubtitleTranslateProperties translateProps;
 
     private final SubtitleContextSummarizer contextSummarizer;
+
+    private final SubtitleTermVerifier termVerifier;
 
     private final SubtitleCleanser subtitleCleanser;
 
@@ -58,20 +62,26 @@ public class SubtitleCleanupService {
      * @param asrProvider      当前装配的 ASR provider（取路线与产物命名指纹）
      * @param objectMapper     Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      * @param props            字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
+     * @param translateProps   字幕翻译配置（只取目标语种，判定查证触发条件：源语种 ≠ 目标语种才查）
      * @param contextSummarizer 内容总结器（摘要出主题与术语，供跨批上下文用）
+     * @param termVerifier     术语译名查证编排（摘要把术语表定形后、落盘前联网查证官方译名）
      * @param subtitleCleanser 字幕清洗器（持有清洗专用的 ChatClient）
      */
     public SubtitleCleanupService(WorkspaceService workspaceService,
                                   ASRProvider asrProvider,
                                   ObjectMapper objectMapper,
                                   SubtitleCleanupProperties props,
+                                  SubtitleTranslateProperties translateProps,
                                   SubtitleContextSummarizer contextSummarizer,
+                                  SubtitleTermVerifier termVerifier,
                                   SubtitleCleanser subtitleCleanser) {
         this.workspaceService = workspaceService;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
         this.props = props;
+        this.translateProps = translateProps;
         this.contextSummarizer = contextSummarizer;
+        this.termVerifier = termVerifier;
         this.subtitleCleanser = subtitleCleanser;
     }
 
@@ -134,10 +144,16 @@ public class SubtitleCleanupService {
         if (subtitleContext == null) {
             subtitleContext = contextSummarizer.summarize(radioContent).orElse(null);
             if (subtitleContext != null) {
+                // 摘要把术语表定形后、落盘前做一次译名查证（目标语种与源语种相同/配置空白时内部自动跳过）。
+                // 查进缓存：断点复用直接命中带 official 的上下文，不重搜。
+                SubtitleTermVerifier.Result verification =
+                        termVerifier.verifyIfNeeded(subtitleContext, translateProps.targetLanguage());
+                subtitleContext = verification.context();
                 // 摘要成功才落盘：降级出的空上下文绝不能写文件，否则下次会命中这份空缓存，
                 // 摘要永久丢失且不报错（design 决策 5）。
                 ArtifactFiles.writeJsonAtomically(subtitleContext, objectMapper, ctxFile);
-                log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
+                log.debug("字幕上下文摘要已落盘: file={}, termVerified={}", ctxFile.getFileName(),
+                        verification.changed());
             } else {
                 subtitleContext = SubtitleContext.empty();   // 降级，且不写文件
                 log.debug("字幕摘要失败，降级为空上下文（不落盘）");

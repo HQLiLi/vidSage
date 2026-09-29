@@ -50,6 +50,16 @@ vidsage:
   workspace:
     # 任务工作目录根；单任务子目录按内容寻址生成，目录可删
     root: ${VIDSAGE_WORKSPACE_ROOT:./data/works}
+  term-lookup:
+    # 术语官方译名联网查证（摘要产出的术语表 → 逐条搜索目标语种译名 → 写进 context 落盘复用）。
+    # 删除本行 = 整个查证关闭，清洗/翻译照常（不发起任何搜索、不花钱）
+    provider: dashscope
+    dashscope:
+      # 与 ASR 复用同一个百炼 key
+      api-key: ${DASHSCOPE_API_KEY}
+      # 查证用最便宜的文本档即可。冒烟实测（2026-09-29）：qwen-flash + standard 检索策略非流式可用；
+      # Omni 系列（qwen3.8-omni-flash）虽支持搜索但强制 agent 策略 → 思考模式 → 必须流式，故不用
+      model: qwen-flash
   download:
     yt-dlp:
       # B站未登录时的风控边界未实测；部分站点需登录态时，指定导出的 Netscape 格式 cookies 文件

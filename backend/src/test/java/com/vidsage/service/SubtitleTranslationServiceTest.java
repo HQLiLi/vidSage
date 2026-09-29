@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
@@ -80,8 +81,9 @@ class SubtitleTranslationServiceTest {
     }
 
     private SubtitleTranslationService service() {
+        // 查证关闭态（provider 缺席）：verifyIfNeeded 原样返回，本文件只测翻译编排本身
         return new SubtitleTranslationService(workspaceService, asrProvider, JSON, PROPS,
-                contextSummarizer, subtitleTranslator);
+                contextSummarizer, new SubtitleTermVerifier(mock(ObjectProvider.class)), subtitleTranslator);
     }
 
     @BeforeEach
@@ -215,7 +217,8 @@ class SubtitleTranslationServiceTest {
     @Test
     void blankTargetLanguageThrowsBeforeAnyWorkspaceIo() {
         SubtitleTranslationService s = new SubtitleTranslationService(workspaceService, asrProvider, JSON,
-                props("  "), contextSummarizer, subtitleTranslator);
+                props("  "), contextSummarizer,
+                new SubtitleTermVerifier(mock(ObjectProvider.class)), subtitleTranslator);
 
         assertThrows(IllegalStateException.class, () -> s.translate(new MediaInput.RemoteUrl("https://x")));
 
