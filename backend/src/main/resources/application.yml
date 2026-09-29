@@ -10,7 +10,7 @@ spring:
     # LLM 供应商单开关：deepseek | openai。没有 mimo 这个值——mimo 兼容 OpenAI 协议，
     # 走 openai 自动配置，供应商由 base-url 决定。高峰期切 mimo 改成 openai，低谷期改回 deepseek。
     model:
-      chat: openai
+      chat: deepseek
     deepseek:
       # 字幕清洗 / 摘要 / 翻译的 LLM 调用
       api-key: ${DEEPSEEK_API_KEY:}
