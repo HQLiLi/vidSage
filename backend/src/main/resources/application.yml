@@ -7,13 +7,27 @@ spring:
     virtual:
       enabled: true
   ai:
+    # LLM 供应商单开关：deepseek | openai。没有 mimo 这个值——mimo 兼容 OpenAI 协议，
+    # 走 openai 自动配置，供应商由 base-url 决定。高峰期切 mimo 改成 openai，低谷期改回 deepseek。
+    model:
+      chat: openai
     deepseek:
-      # 字幕清洗与摘要的 LLM 调用（翻译属 MVP3 规划，届时同样走这里）
-      api-key: ${DEEPSEEK_API_KEY}
+      # 字幕清洗 / 摘要 / 翻译的 LLM 调用
+      api-key: ${DEEPSEEK_API_KEY:}
       chat:
         model: deepseek-chat
         # 翻译要求术语与称谓稳定，温度不宜过高
         temperature: 0.3
+    openai:
+      # 小米 Mimo 的 OpenAI 兼容端点；开关指到 deepseek 时本段闲置不生效
+      api-key: ${MIMO_API_KEY:}
+      base-url: https://api.xiaomimimo.com/v1
+      chat:
+        model: mimo-v2.6-flash
+        # 同 deepseek：术语与称谓要稳定
+        temperature: 0.3
+
+
 
 vidsage:
   asr:
