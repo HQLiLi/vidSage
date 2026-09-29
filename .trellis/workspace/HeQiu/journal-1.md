@@ -450,3 +450,37 @@ v0 跑通后的整理轮：任务文档按实际落地重写（prd/design 重写
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: MVP-3 LLM 翻译与双语 SRT：规划重写、分步实现与端到端验收
+<!-- trellis-session: v=2 fp=8bfbc29c2972cfd5 -->
+
+**Date**: 2026-09-29
+**Task**: MVP-3 LLM 翻译与双语 SRT：规划重写、分步实现与端到端验收
+**Branch**: `dev`
+
+### Summary
+
+按现状重写 mvp3 规划（输入改 -clean 产物、不预留反思轮次、语种并入摘要落盘、翻译器独立不抽骨架），分 7 步实现并逐步实现+检查子代理把关：观测项（批次字数+校验失败分类+开发期 TRACE 详情日志）、上下文缓存与源语种（Optional 区分成功与降级，失败绝不落盘）、翻译契约与双语渲染（译文==原文单行）、翻译器本体（12/400 批、三路上下文、键集校验、用尽重试回退原文）、编排与 /api/subtitles/translate 端点（主语言子标签比较防 zh-CN 失配、卫语句早于 I/O）。实现期发现并修正 design 两处缺陷：hitTerms 判据在翻译输入上失准（拆 hitTermsByAsr/Fixed）、步骤 1 对批参数的推论算错（句数才是实际抢跑判据）。端到端四场景实测（跳过 0.087s/翻译 8.34s/断点复用 0.104s/长视频 319 段 41.4s，时间轴逐条对齐），302 用例全绿。发现术语保留规则无方向性（zh→en 净负面，对照实验取证），所有者拍板另立「术语官方译名查询」任务（前置：外语素材+搜索选型实测）。已 --no-ff 合并回 dev 并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `15170ef` | docs(task): mvp3 规划按现状重写，删失效移交文档 |
+| `c5f87e4` | feat(subtitle): 校验失败分类计数与开发期详情日志 |
+| `76f4db6` | docs(spec): 日志规范补开发期详情日志的例外说明 |
+| `a8aaad7` | docs(task): mvp3 步骤 1 实测读数与详情日志机制 |
+| `702b754` | feat(subtitle): 上下文缓存与源语种（清洗与翻译共用） |
+| `ba63ec2` | docs(spec): utils 参照清单同步，并立「同一判据只有一份」规则 |
+| `69de54f` | docs(task): mvp3 步骤 2 记录与 design §3.3 订正 |
+| `91852d9` | feat(subtitle): 翻译契约与双语 SRT 渲染 |
+| `da9b84d` | docs(task): mvp3 步骤 3 记录，并订正步骤 1 对翻译批参数的推论 |
+| `e56f395` | feat(subtitle): 翻译器本体（批处理 + 三路上下文 + 校验回退） |
+| `39f64e2` | feat(subtitle): 翻译编排与 /api/subtitles/translate 端点 |
+| `61292e8` | refactor(subtitle): target 改名 targetLanguage，对齐日志占位符 |
+| `a83f28d` | docs(task): mvp3 步骤 6/7 收尾——验收证据、术语规则方向性缺陷与遗留登记 |
+
+### Status
+
+[OK] **Completed**

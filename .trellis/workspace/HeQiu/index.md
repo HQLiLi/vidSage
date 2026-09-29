@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-09-28
+- **Total Sessions**: 15
+- **Last Active**: 2026-09-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~452 | Active |
+| `journal-1.md` | ~486 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-09-29 | MVP-3 LLM 翻译与双语 SRT：规划重写、分步实现与端到端验收 | `15170ef`, `c5f87e4`, `76f4db6`, `a8aaad7`, `702b754`, `ba63ec2`, `69de54f`, `91852d9`, `da9b84d`, `e56f395`, `39f64e2`, `61292e8`, `a83f28d` | `dev` |
 | 14 | 2026-09-28 | 字幕术语替换：跨书写系统替换打通，暴露摘要层知识盲区 | `2649a61`, `96d5556`, `c70cfa4`, `0e02750`, `56d0a9f`, `6d757e8` | `dev` |
 | 13 | 2026-09-28 | 字幕清洗 v0 收尾整理与 LLM 层收口 | `ec7f3c7`, `f378a4a`, `1ee40b4`, `fe3f768`, `d8d191b`, `b9731bd`, `106e675` | `dev` |
 | 12 | 2026-09-26 | MVP-2b 音频转字幕（ASR→SRT）实现+合并+归档 | `45e852c` | `dev` |
