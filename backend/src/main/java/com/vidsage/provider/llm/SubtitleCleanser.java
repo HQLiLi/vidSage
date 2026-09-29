@@ -4,6 +4,7 @@ package com.vidsage.provider.llm;
 import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.subtitle.SubtitleContext;
+import com.vidsage.utils.subtitle.TermMatcher;
 import com.vidsage.utils.subtitle.TextSimilarity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -123,8 +124,11 @@ public class SubtitleCleanser {
             for (int i = end; i < Math.min(maxSize, end + LINES_AFTER); i++) {
                 after.add(safe(segments.get(i).text()));
             }
-            log.debug("字幕纠错批次: 序号={}, 句数={}, 历史轮数={}, 历史字符={}",
-                    batchNo, end - start, history.size() / 2, historyChars(history));
+            // chars 就是本批的实际字数：上面那个内层循环把 [start, end) 每句的长度都加了进去，
+            // 循环退出时 end 已定，累加值不再变化。它可能略超 maxBatchChars——循环的判断在累加之前，
+            // 所以最后一个塞进来的句子会把总数顶过上限。这条日志正是要看「句数还是字数先到」。
+            log.debug("字幕纠错批次: 序号={}, 句数={}, 字数={}, 历史轮数={}, 历史字符={}",
+                    batchNo, end - start, chars, history.size() / 2, MessageHistory.chars(history));
 
             // 清洗
             AgentOutcome outcome = agentLoop(original, context, reference, after, history);
@@ -188,9 +192,9 @@ public class SubtitleCleanser {
         // 而且任务消息会在 history 里越堆越多，下一批收到上一批的任务两遍。
         List<Message> messages = new ArrayList<>(history);
 
-        // 本批命中哪些术语：渲染术语参考、构造校验基线、统计指标三处共用同一份判定，
-        // 这里一次算好往下传，避免三处各判一遍后将来分叉。
-        List<SubtitleContext.Term> hits = hitTerms(original, context);
+        // 本批命中哪些术语：判定在 TermMatcher 里只有一份（清洗的渲染、基线、指标三处共用，
+        // 翻译是第四个使用者）。清洗吃原始 ASR 文本，故按 asr 匹配——见 TermMatcher#hitTermsByAsr。
+        List<SubtitleContext.Term> hits = TermMatcher.hitTermsByAsr(original, context);
 
         // 格式说明拼在任务这条上——ChatClient 只会往最后一条 UserMessage 追加，
         // 而重试的反馈那条会成为最后一条，所以得自己把它钉在任务上。
@@ -200,13 +204,31 @@ public class SubtitleCleanser {
         for (int step = 0; step < prop.maxSteps(); step++) {
             String raw = ask(messages);
             Map<String, String> parsed = parse(raw);
-            String error = parsed == null ? "回复不是合法的 JSON 对象。" : validate(original, parsed, hits);
-            if (error == null) {
+            // 回的不是合法 JSON：既非「键集不一致」也非「改动过大」，不归两类校验失败，照旧重试
+            if (parsed == null) {
+                retries++;
+                appendRetry(messages, raw, "回复不是合法的 JSON 对象。");
+                continue;
+            }
+            ValidationFailure failure = validate(original, parsed, hits);
+            if (failure == null) {
                 remember(history, original, raw);
                 return new AgentOutcome(parsed, retries, hits);
             }
             retries++;
-            appendRetry(messages, raw, error);
+            // 按 kind 记 DEBUG：跑完真实素材好数出两类各触发了几次，供「相似度守卫去留」取证。
+            // 只记分类与轮次，不记 detail——detail 里带着本句原文与模型改写的字幕文本，属用户内容，
+            // 按 logging-guidelines 的脱敏红线（转写文本不进日志）不落盘。这条是生产环境唯一的读数来源。
+            log.debug("字幕纠错校验未过: 分类={}, 轮次={}", failure.kind(), step + 1);
+            // 开发期口子：光看分类答不出「相似度守卫拦下的是模型真改写，还是合法的术语替换被误判」，
+            // 那要读 detail 里内嵌的「原…改成了…」。故按开关再补一条带 detail 的日志，开关缺席即为关，
+            // 见 SubtitleCleanupProperties#logRejectedText。级别用 TRACE 而非 DEBUG：即使开关被误开，
+            // 也要再过一道级别闸门（生产基线是 com.vidsage: DEBUG，TRACE 不会输出）。
+            if (prop.logRejectedText()) {
+                log.trace("字幕纠错校验未过详情（开发期专用，含字幕正文）: 分类={}, 轮次={}, 详情={}",
+                        failure.kind(), step + 1, failure.detail());
+            }
+            appendRetry(messages, raw, failure.detail());
         }
         // 用尽重试仍未拿到合法回复：保留原文（宁可没纠，不可被带偏）。
         // 什么都没采纳，所以不给 history 留痕——否则后面所有批次都会看着一条坏样板。
@@ -235,53 +257,11 @@ public class SubtitleCleanser {
         history.add(new AssistantMessage(rawAccepted));
 
         int sizeBefore = history.size();
-        trimHistory(history, prop.historyMaxChars());
+        MessageHistory.trimHistory(history, prop.historyMaxChars());
         if (history.size() < sizeBefore) {
             log.debug("跨批历史超上限，丢弃最老的 {} 轮往返: 上限={} 字符",
                     (sizeBefore - history.size()) / 2, prop.historyMaxChars());
         }
-    }
-
-
-    /**
-     * 按字符上限裁剪跨批历史，以「一对往返」为单位从最老的开始丢。
-     *
-     * <p>按对裁而不是按条裁：只留 assistant 会造出「孤立的 assistant」——模型看见一个没有对应问题的回答。
-     * 成对增、成对删，历史才永远满足「user 开头、assistant 结尾、条数为偶数」。
-     *
-     * <p>守卫是 {@code size() > 2}：保证刚追加的那一对无论多长都保留。否则遇到「单批正文就超上限」
-     * 的配置会把历史清空到 0，等于白算一次裁剪。
-     *
-     * <p>包级可见是为了直接单测（同 {@link #validate}）。
-     *
-     * @param history  跨批历史，原地裁剪
-     * @param maxChars 字符上限
-     */
-    static void trimHistory(List<Message> history, int maxChars) {
-        while (history.size() > 2 && historyChars(history) > maxChars) {
-            history.subList(0, 2).clear();
-        }
-    }
-
-
-    /**
-     * 跨批历史的累计字符数。
-     *
-     * <p>只算历史，不含系统提示词、格式说明与本批任务——那些每次必须发、裁不掉，
-     * 计进来会让上限的语义变成「整条请求的预算」，那是另一个旋钮。
-     *
-     * <p>是字符不是 token，属<b>粗代理</b>：中文约 1 字 ≈ 1 token（估算准），
-     * 英文约 4 字 ≈ 1 token（偏保守，会提前裁剪）。不引入 tokenizer。
-     *
-     * @param history 跨批历史
-     * @return 累计字符数
-     */
-    static int historyChars(List<Message> history) {
-        int total = 0;
-        for (Message m : history) {
-            total += safe(m.getText()).length();
-        }
-        return total;
     }
 
 
@@ -362,7 +342,7 @@ public class SubtitleCleanser {
 
 
     /**
-     * 校验一次 LLM 回复是否「可采纳」。返回 {@code null} 表示通过，否则返回违规说明。
+     * 校验一次 LLM 回复是否「可采纳」。返回 {@code null} 表示通过，否则返回带分类的失败。
      *
      * <p>两个硬约束：键集必须与原文完全一致（不许掉行/加行）；每条改写幅度不能超过相似度阈值
      * （&lt;= 10 字用 similarityShortText，其余用 similarityNormal）。
@@ -371,13 +351,17 @@ public class SubtitleCleanser {
      * 只跟原文比会把正确的替换判成改太狠；只跟基线比又会在模型判断「读不通、故意不换」时
      * 把保留原文的正确结果判成改太狠。两个目标够到任一个就算过。
      *
+     * <p>失败分类成 {@code KEY_SET}（键集问题）与 {@code TOO_MUCH_EDIT}（改动过大）两类，是为了能分开
+     * 计数：相似度守卫到底有没有拦下过东西，要靠这个读数回答。分类是结构化的，不靠文案前缀——前缀
+     * 一改就静默失效。
+     *
      * @param original  原文键值对
      * @param candidate 模型回复键值对
      * @param hits      本批命中术语（用于构造替换基线）；无命中时传空列表即可
-     * @return 违规说明；通过则 {@code null}
+     * @return 带分类的失败；通过则 {@code null}
      */
-    String validate(Map<String, String> original, Map<String, String> candidate,
-                    List<SubtitleContext.Term> hits) {
+    ValidationFailure validate(Map<String, String> original, Map<String, String> candidate,
+                               List<SubtitleContext.Term> hits) {
         StringBuilder sb = new StringBuilder();
         for (String k : original.keySet()) {
             if (!candidate.containsKey(k)) {
@@ -390,7 +374,8 @@ public class SubtitleCleanser {
             }
         }
         if (sb.length() > 0) {
-            return sb.toString() + " 请确保返回与输入完全相同的条号集合。";
+            return new ValidationFailure(ValidationFailure.FailureKind.KEY_SET,
+                    sb.toString() + " 请确保返回与输入完全相同的条号集合。");
         }
 
         for (String k : original.keySet()) {
@@ -408,36 +393,10 @@ public class SubtitleCleanser {
                         .append("原 \"").append(orig).append("\" 改成了 \"").append(cand).append("\"；");
             }
         }
-        return sb.length() == 0 ? null : sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。";
+        return sb.length() == 0 ? null
+                : new ValidationFailure(ValidationFailure.FailureKind.TOO_MUCH_EDIT,
+                        sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。");
     }
-
-    /**
-     * 挑出本批正文里真出现过的术语。
-     *
-     * <p>判据是「本批原文拼成小写后包含 asr 的小写原文」。术语参考渲染、校验基线、替换指标
-     * 三处都靠它，抽成一处共用，免得将来改判据时只改到一半。
-     *
-     * @param original 本批原文键值对
-     * @param context  字幕上下文；可为 {@code null}
-     * @return 命中的术语，顺序与 {@code context.terms()} 一致；无命中返回空列表
-     */
-    static List<SubtitleContext.Term> hitTerms(Map<String, String> original, SubtitleContext context) {
-        if (context == null || context.terms().isEmpty()) {
-            return List.of();
-        }
-        String batchText = String.join("\n", original.values()).toLowerCase(Locale.ROOT);
-        List<SubtitleContext.Term> hits = new ArrayList<>();
-        for (SubtitleContext.Term t : context.terms()) {
-            if (t.asr().isBlank()) {
-                continue;
-            }
-            if (batchText.contains(t.asr().toLowerCase(Locale.ROOT))) {
-                hits.add(t);
-            }
-        }
-        return hits;
-    }
-
 
     /**
      * 造一条原文的「术语替换基线」：把其中命中术语的 asr 字面串换成 fixed。
@@ -509,7 +468,7 @@ public class SubtitleCleanser {
 
 
     /**
-     * 不区分大小写的子串包含，与 {@link #hitTerms} 的命中判定同一套口径。
+     * 不区分大小写的子串包含，与 {@link TermMatcher#hitTermsByAsr} 的命中判定同一套口径。
      */
     private static boolean containsIgnoreCase(String haystack, String needle) {
         return safe(haystack).toLowerCase(Locale.ROOT).contains(safe(needle).toLowerCase(Locale.ROOT));
@@ -535,7 +494,7 @@ public class SubtitleCleanser {
             sb.append("### 内容主题\n").append(context.theme()).append("\n\n");
         }
 
-        // 3. 术语：只列本批真出现过的（命中判定已在 hitTerms 里做好，这里不重判）
+        // 3. 术语：只列本批真出现过的（命中判定已在 hitTermsByAsr 里做好，这里不重判）
         if (!hits.isEmpty()) {
             StringBuilder terms = new StringBuilder();
             for (SubtitleContext.Term t : hits) {
@@ -614,6 +573,28 @@ public class SubtitleCleanser {
      * 单批术语替换指标：命中数、已替换数、未替换清单。
      */
     private record TermMetrics(int hits, int applied, List<String> unapplied) {
+    }
+
+    /**
+     * 一次校验失败的分类结果。
+     *
+     * <p>包级可见是为了能直接单测（{@link #validate} 也如此）。{@code detail} 是给人看的原因，
+     * 会被拼进重试消息发给模型，措辞与拆分前的文本一字不差。
+     *
+     * @param kind   失败类型
+     * @param detail 失败原因
+     */
+    record ValidationFailure(FailureKind kind, String detail) {
+
+        /**
+         * 失败类型：键集问题、改动过大。分开计数才能看清相似度守卫有没有拦下过东西。
+         */
+        enum FailureKind {
+            /** 键集与原文不一致：缺条目或多条目。 */
+            KEY_SET,
+            /** 改写幅度超过相似度阈值。 */
+            TOO_MUCH_EDIT
+        }
     }
 
 }

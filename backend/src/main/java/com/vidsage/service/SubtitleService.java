@@ -184,14 +184,8 @@ public class SubtitleService {
      * 写两个产物：先写 segments JSON（检查点），再写 SRT（由 track 渲染）。两者都原子替换。
      */
     private void writeArtifacts(Path segmentsPath, Path srtPath, SubtitleTrack track) {
-        try {
-            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(track);
-            ArtifactFiles.writeAtomically(json.getBytes(StandardCharsets.UTF_8), segmentsPath);
-            ArtifactFiles.writeAtomically(SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), srtPath);
-        } catch (JacksonException e) {
-            throw new IllegalStateException("字幕 segments 序列化失败：请检查 SubtitleTrack 结构；"
-                    + "原因：" + e.getMessage(), e);
-        }
+        ArtifactFiles.writeJsonAtomically(track, objectMapper, segmentsPath);
+        ArtifactFiles.writeAtomically(SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), srtPath);
     }
 
     /**

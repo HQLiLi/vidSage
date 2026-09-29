@@ -1,10 +1,13 @@
 package com.vidsage.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.config.SubtitleCleanupProperties;
@@ -21,6 +24,7 @@ import com.vidsage.utils.subtitle.SubtitleArtifactNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +45,7 @@ class SubtitleCleanupServiceTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final SubtitleCleanupProperties PROPS =
-            new SubtitleCleanupProperties(8000, 600, 20, 3, 0.7, 0.3, 20000);
+            new SubtitleCleanupProperties(8000, 600, 20, 3, 0.7, 0.3, 20000, false);
 
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
@@ -81,7 +85,7 @@ class SubtitleCleanupServiceTest {
     void resetStubs() {
         cleanserCalls.set(0);
         stubCleanserEcho();
-        when(contextSummarizer.summarize(any())).thenReturn(SubtitleContext.empty());
+        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(SubtitleContext.empty()));
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
     }
@@ -149,5 +153,57 @@ class SubtitleCleanupServiceTest {
     void cleanNullInputThrows() {
         SubtitleCleanupService s = service();
         assertThrows(IllegalArgumentException.class, () -> s.clean(null, ""));
+    }
+
+    // ------------------------------------------------------------------
+    // 上下文缓存（design §3.2 / 决策 5）
+    // ------------------------------------------------------------------
+
+    private Path contextFile() {
+        return workDir.resolve(SubtitleArtifactNames.contextFileName(SubtitleRoute.ASR_CLOUD));
+    }
+
+    @Test
+    void summarizeSuccessWritesContextFile() throws Exception {
+        writeRawTrack();
+        // 用一份有辨识度的上下文当「成功结果」，好钉住落盘的就是它、不是空壳
+        when(contextSummarizer.summarize(any()))
+                .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
+        SubtitleCleanupService s = service();
+
+        s.clean(new MediaInput.RemoteUrl("https://x"), "");
+
+        assertTrue(Files.isRegularFile(contextFile()) && Files.size(contextFile()) > 0,
+                "摘要成功应把上下文落盘");
+        SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
+        assertEquals("de", persisted.sourceLanguage(), "落盘的该是成功那份上下文");
+        assertEquals("中世纪剑术", persisted.theme());
+        verify(contextSummarizer).summarize(any());
+    }
+
+    @Test
+    void contextCacheHitSkipsSummarize() throws Exception {
+        writeRawTrack();
+        JSON.writeValue(contextFile().toFile(),
+                new SubtitleContext("中世纪剑术", "de", List.of()));
+        SubtitleCleanupService s = service();
+
+        s.clean(new MediaInput.RemoteUrl("https://x"), "");
+
+        verify(contextSummarizer, never()).summarize(any());
+    }
+
+    @Test
+    void summarizeDegradeDoesNotWriteContextFile() throws Exception {
+        writeRawTrack();
+        when(contextSummarizer.summarize(any())).thenReturn(Optional.empty());
+        SubtitleCleanupService s = service();
+
+        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), "");
+
+        assertFalse(Files.exists(contextFile()),
+                "降级成空上下文绝不能落盘，否则下次会命中这份空缓存");
+        assertEquals(2, cleaned.segmentCount(), "摘要失败不该拦住清洗");
+        assertEquals(1, cleanserCalls.get(), "清洗照常进行");
     }
 }

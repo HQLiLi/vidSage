@@ -36,10 +36,15 @@
 ## 验收标准
 
 - [ ] 提交一个 B站 / YouTube 链接或本地 mp4，异步完成字幕获取与翻译，SSE 显示进度，产出双语 SRT。
+      **部分达成（2026-09-28）**：B站链接 → 下载 → 抽音频 → ASR → 清洗 → 翻译 → 双语 SRT 已端到端跑通
+      （`09-24-vidsage-mvp3-translate`，四次真实运行见其 `research/acceptance-evidence.md`），
+      **但走的是同步端点，异步管线与 SSE 属 MVP-1，尚未实现**。
 - [ ] 生成结构化总结（要点 + 章节）。
 - [ ] 对视频内容提问，返回带时间戳引用的答案，引用可跳转（阶段二）。
 - [ ] 评测脚本输出检索命中率数据（阶段二）。
-- [ ] 全流程留下至少一条真实运行证据（learning-records）。
+- [x] 全流程留下至少一条真实运行证据（learning-records）。
+      MVP-2 见 `../archive/2026-09/09-24-vidsage-mvp2-subtitles/research/acceptance-evidence.md`；
+      MVP-3 见 `../09-24-vidsage-mvp3-translate/research/acceptance-evidence.md`。
 
 ## 未决问题
 
@@ -59,7 +64,17 @@
 |---|---|---|
 | `09-24-vidsage-mvp1-submit` | 任务提交 + 落库 + SSE 进度管线 | planning |
 | `09-24-vidsage-mvp2-subtitles` | **2a 输入获取与音频抽取（已完成并归档）** + 2b 音频转字幕（走 ASR；平台字幕路线 2026-09-26 移出、降为后续项（2026-09-28 定调：目前不打算实现，挂未来任务）；本地 FunASR 本轮不做、2026-09-28 定调大概率不落地） | **已归档（2026-09-28）**，跨子任务验收逐条核完，见 `../archive/2026-09/09-24-vidsage-mvp2-subtitles/research/acceptance-evidence.md` |
-| `09-24-vidsage-mvp3-translate` | DeepSeek 翻译 + 双语 SRT 导出 | planning |
+| `09-24-vidsage-mvp3-translate` | DeepSeek 翻译 + 双语 SRT 导出 | **实现完成，待归档（2026-09-28）**，验收逐条见 `../09-24-vidsage-mvp3-translate/research/acceptance-evidence.md` |
 | `09-24-vidsage-mvp4-summary` | 结构化总结 + 长字幕分段压缩 | planning |
+
+**MVP-3 暴露的后续任务（2026-09-28 登记，尚未建任务）**：
+
+- **术语官方译名查询**：MVP-3 的术语保留规则按「外语 → 中文」设计，在反方向上会把中文专有名词
+  钉在译文里（实测 9/42 条），对照实验证明该方向上是净负面。目标形态是「有官方译名就用官方的，
+  没有就不翻」，而「有没有官方译名」模型判断不了（对知名词准、对冷门词靠猜），需靠**联网搜索**支撑。
+  这是一块新东西：管线多一个阶段 + 一个外部依赖（按 provider 四件套）+ 契约要动
+  （`Term` 装目标语种译名，`SubtitleContext` 的缓存指纹要重新想）。
+  **前置**：① 先找一条外语素材（改动动的是主用例的规则，没素材就验不了）；② 搜索服务选型先实测
+  （国内网络可达性决定能用谁）。详见 `../09-24-vidsage-mvp3-translate/prd.md` 的「已知边界」。
 
 阶段二（时间戳问答 / MCP Server / 评测）在 MVP 端到端闭环后再拆分子任务。各子任务完成时回勾本文件「验收标准」对应条目。

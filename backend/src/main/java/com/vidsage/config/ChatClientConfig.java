@@ -20,11 +20,13 @@ public class ChatClientConfig {
                 .clone()
                 .defaultSystem("""
                         你是一个字幕术语分析助手。给你一段视频/音频的字幕文本（可能含语音识别错误），
-                           请提炼两样东西：
+                           请提炼三样东西：
 
                            1. 主题：用一两句话说明这段内容在讲什么（话题、领域、场景）；提到术语表里的词时用 fixed 的写法，不要用 asr 里那个错写法。
-                           2. 术语：里面出现的专有名词——人名、产品名、组织名、专业术语、行业黑话。
-                           
+                           2. 语种：这段字幕主要是什么语言的，给 BCP-47 短码，如 zh / en / ja / ko。
+                                  必须是短码，不要写「中文」「英语」这类自然语言名。拿不准就给空串。
+                           3. 术语：里面出现的专有名词——人名、产品名、组织名、专业术语、行业黑话。
+
                            每条术语给三个字段：
                            - asr   ：字幕原文里出现的那种写法。必须是原文里真实出现过的字串，逐字照抄，
                                      不要做任何规范化（不要改大小写、不要补空格、不要换成标准写法）。
@@ -44,7 +46,7 @@ public class ChatClientConfig {
                            
                            
                            只输出一个 JSON 对象，形如：
-                           {"theme": "……", "terms": [{"asr": "原文写法", "fixed": "正确写法", "note": "替换理由"}]}
+                           {"theme": "……", "sourceLanguage": "……", "terms": [{"asr": "原文写法", "fixed": "正确写法", "note": "替换理由"}]}
                     
                            没有术语就用空数组。不要输出任何解释、注释或 markdown 代码块。
                         """)
@@ -79,6 +81,35 @@ public class ChatClientConfig {
 
                         只输出一个 JSON 对象：键为输入条号（字符串），值为修正后的文本。
                         不要输出任何解释、注释或 markdown 代码块。""")
+                .build();
+    }
+
+    /**
+     * 字幕翻译的 ChatClient。
+     *
+     * <p>目标语种<b>烧进 system 提示词</b>：它由配置驱动、进程内固定，正是 system 提示词该装的东西；
+     * 且 design §3.1 已定「不引短码 → 自然语言名的映射表」，这里直接把短码交给模型。
+     *
+     * @param builder             ChatClient.Builder
+     * @param translateProperties 翻译配置（只用到目标语种短码）
+     * @return ChatClient
+     */
+    @Bean
+    public ChatClient subtitleTranslateChatClient(ChatClient.Builder builder,
+                                                  SubtitleTranslateProperties translateProperties) {
+        return builder.clone()
+                .defaultSystem("""
+                        你是专业的字幕翻译助手。把给定批次的每条字幕翻译成目标语种（BCP-47 短码：%s）。
+
+                        对每条字幕的要求：
+                        - 保持条号与输入完全一致：不许合并、不许拆分、不许删除或新增任何一条。
+                        - 术语参考里的写法是专有名词，一律保留原样不译；即使它是另一种语言的词，也照给定的写法输出。
+                        - 结合上下文理解整段意思，翻译得自然通顺，不要逐字硬译。
+                        - 不许添加原文没有的信息，也不许省略原文的意思。
+
+                        只输出一个 JSON 对象：键为输入条号（字符串），值为该条的译文。
+                        不要输出任何解释、注释或 markdown 代码块。"""
+                        .formatted(translateProperties.targetLanguage()))
                 .build();
     }
 }

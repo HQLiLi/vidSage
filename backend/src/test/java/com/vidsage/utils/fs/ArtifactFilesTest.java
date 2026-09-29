@@ -3,6 +3,7 @@ package com.vidsage.utils.fs;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -12,11 +13,18 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * ArtifactFiles 的纯单元测试：直接读写临时目录里的真实文件，不起 Spring 容器。
  */
 class ArtifactFilesTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** 只为 JSON 往返造的小 record。 */
+    record Sample(String name, int value) {
+    }
 
     // 本类会真的写文件；Windows 上 @TempDir 的清理偶发失败（本仓库已两次独立复现），
     // 宁可留下临时目录，也不要让环境问题把测试判红。
@@ -106,5 +114,42 @@ class ArtifactFilesTest {
         assertFalse(Files.exists(file));
         // 文件本就不存在时也不能抛
         ArtifactFiles.deleteQuietly(tempDir.resolve("already-gone.bin"));
+    }
+
+    @Test
+    void writeJsonAtomicallyWritesPrettyJsonAndLeavesNoTmpFile() throws IOException {
+        Path target = tempDir.resolve("checkpoint.json");
+
+        ArtifactFiles.writeJsonAtomically(new Sample("米特号", 7), JSON, target);
+
+        String json = Files.readString(target, StandardCharsets.UTF_8);
+        assertTrue(json.contains("\"name\""), "该写出字段名");
+        assertTrue(json.contains("米特号"), "该写出中文值");
+        assertTrue(json.contains("\n"), "该是带缩进的 JSON，不是紧凑一行");
+        assertFalse(Files.exists(tempDir.resolve("checkpoint.json.tmp")));
+    }
+
+    @Test
+    void readJsonOrNullRoundTripsWrittenObject() throws IOException {
+        Path target = tempDir.resolve("checkpoint2.json");
+        ArtifactFiles.writeJsonAtomically(new Sample("剑术", 3), JSON, target);
+
+        Sample read = ArtifactFiles.readJsonOrNull(target, JSON, Sample.class);
+
+        assertEquals("剑术", read.name());
+        assertEquals(3, read.value());
+    }
+
+    @Test
+    void readJsonOrNullReturnsNullForMissingEmptyAndBrokenFile() throws IOException {
+        assertNull(ArtifactFiles.readJsonOrNull(tempDir.resolve("nope.json"), JSON, Sample.class),
+                "文件不存在当没有检查点");
+
+        Path empty = Files.createFile(tempDir.resolve("empty.json"));
+        assertNull(ArtifactFiles.readJsonOrNull(empty, JSON, Sample.class), "空文件当没有检查点");
+
+        Path broken = Files.writeString(tempDir.resolve("broken.json"), "这不是 JSON",
+                StandardCharsets.UTF_8);
+        assertNull(ArtifactFiles.readJsonOrNull(broken, JSON, Sample.class), "解析失败当没有检查点");
     }
 }
