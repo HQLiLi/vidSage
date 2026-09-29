@@ -94,12 +94,12 @@ public class SubtitleTranslationService {
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
         }
         // 目标语种是配置值、边界上即可判定，故卫语句排在最前（早于 workspaceFor 的建目录副作用）
-        String target = resolveTargetLanguage(props);
+        String targetLanguage = resolveTargetLanguage(props);
         SubtitleRoute route = asrProvider.route();
         Path workDir = workspaceService.workspaceFor(input);
         Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(route));
-        Path translateSeg = workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(route, target));
-        Path translateSrt = workDir.resolve(SubtitleArtifactNames.translateSrtFileName(route, target));
+        Path translateSeg = workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(route, targetLanguage));
+        Path translateSrt = workDir.resolve(SubtitleArtifactNames.translateSrtFileName(route, targetLanguage));
 
         // 断点：检查点已在且非空 → 反序列化直接返回，本趟统计一律归零（含 untranslatedCount）
         TranslatedTrack existing = ArtifactFiles.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
@@ -144,14 +144,14 @@ public class SubtitleTranslationService {
         TranslatedTrack track;
         int retrySteps = 0;
         int untranslated = 0;
-        if (isSameMainLanguage(sourceLanguage, target)) {
+        if (isSameMainLanguage(sourceLanguage, targetLanguage)) {
             // 源语种等于目标语种：不调 LLM，每条译文 = 原文（双语渲染器会把相同的两行并成一行）
-            track = new TranslatedTrack(route, sourceLanguage, target, true, skipAll(segments));
-            log.info("源语种与目标语种相同，跳过翻译: source={}, target={}, segments={}",
-                    sourceLanguage, target, segments.size());
+            track = new TranslatedTrack(route, sourceLanguage, targetLanguage, true, skipAll(segments));
+            log.info("源语种与目标语种相同，跳过翻译: source={}, targetLanguage={}, segments={}",
+                    sourceLanguage, targetLanguage, segments.size());
         } else {
-            SubtitleTranslator.TranslateResult result = subtitleTranslator.translate(segments, context, target);
-            track = new TranslatedTrack(route, sourceLanguage, target, false, result.segments());
+            SubtitleTranslator.TranslateResult result = subtitleTranslator.translate(segments, context, targetLanguage);
+            track = new TranslatedTrack(route, sourceLanguage, targetLanguage, false, result.segments());
             retrySteps = result.retrySteps();
             untranslated = result.untranslatedCount();
         }
@@ -159,7 +159,7 @@ public class SubtitleTranslationService {
         writeArtifacts(translateSeg, translateSrt, track);   // 先 JSON（检查点）再 SRT（派生），都原子替换
         log.debug("字幕翻译完成: route={}, sourceLanguage={}, targetLanguage={}, skipped={}, segments={}, "
                         + "retry={}, untranslated={}",
-                route.name(), sourceLanguage, target, track.skipped(), track.segments().size(),
+                route.name(), sourceLanguage, targetLanguage, track.skipped(), track.segments().size(),
                 retrySteps, untranslated);
         return toTranslated(track, translateSeg, translateSrt, retrySteps, untranslated);
     }
