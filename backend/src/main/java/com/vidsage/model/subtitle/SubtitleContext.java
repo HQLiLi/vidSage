@@ -27,7 +27,7 @@ public record SubtitleContext(String theme, String sourceLanguage, List<Term> te
     }
 
     /**
-     * 一条术语。
+     * 一条术语（摘要层的原始视角，未做任何查证）。
      *
      * @param asr   字幕原文里的写法（可能有同音误写，靠它匹配），如：亮子纠缠
      * @param fixed 正确的写法，也是字幕里应当替换成的写法；正确写法是外语原文时就写原文，如：Mittelhau
