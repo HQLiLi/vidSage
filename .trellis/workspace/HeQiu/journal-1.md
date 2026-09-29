@@ -484,3 +484,26 @@ v0 跑通后的整理轮：任务文档按实际落地重写（prd/design 重写
 ### Status
 
 [OK] **Completed**
+
+
+## Session 16: 术语官方译名联网查证：实现、重改与换代验收
+<!-- trellis-session: v=2 fp=c47215525b57c765 -->
+
+**Date**: 2026-09-29
+**Task**: 术语官方译名联网查证：实现、重改与换代验收
+**Branch**: `feature/subtitle-term-official-lookup`
+
+### Summary
+
+完成字幕术语官方译名联网查证功能并经两轮迭代定稿：首版（893a959）走 provider/termlookup 四件套 + SubtitleTermVerifier service + Term 三态字段；按项目所有者三条审查意见重改（eb0a559）——查证收进 provider/llm/termlookup（接口保留为换模型留缝）、编排内联翻译流程、查证产出独立类型 VerifiedTerm/VerifiedTerms 落独立产物 terms-<route>-<target>.json（context 永不改写）。查证模型换代 qwen3.7-flash（qwen-flash 别名停在 2025-07-28 快照），请求固定 enable_thinking=false（思考链致单条 20~45s 超时）与 temperature=0.1（防逐轮抖动）。真实验收：context 6+ 次运行零改写，只狼→Sekiro（官方），单条 0.6~2.7s，321 测试全绿。遗留：任务 09-29-subtitle-translate-qwen-mt（qwen-mt-flash 引擎切换）已立项待启动，消费 terms 产物渲染标注；子代理 token 成本观测记于任务 research/subagent-cost-observation.md
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `893a959` | feat(subtitle): 术语官方译名联网查证——摘要后逐条搜索，写入 context 落盘复用 |
+| `eb0a559` | refactor(subtitle): 术语查证按审查意见重改——归入 llm/termlookup、编排内联翻译流程、换代 qwen3.7-flash |
+
+### Status
+
+[OK] **Completed**
