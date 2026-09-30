@@ -42,7 +42,8 @@ import tools.jackson.databind.ObjectMapper;
  * <p>管线形状：读 -clean segments → 取或摘要跨批上下文（{@link SubtitleContextSummarizer}）→
  * 判定源语种（源语种等于目标语种则跳过、不调 LLM）→ 术语官方译名查证（真翻译前逐条联网查证，
  * 产出 {@code terms-<route>-<target>.json}，见 {@link #verifyTermsIfNeeded}）→
- * {@link SubtitleTranslator} 逐批翻译 →
+ * {@link SubtitleTranslator} 逐批翻译（查证到译名的术语按给定译名渲染进提示词，
+ * 见 {@link #readOfficialTerms}）→
  * 写 {@code segments-<route>-translate-<target>.json} + {@code subtitles-<route>-translate-<target>.srt}。
  *
  * <p><b>断点复用判据</b>：{@code -translate-<target>.json} 存在且非空即跳过翻译，直接反序列化返回。
@@ -173,7 +174,9 @@ public class SubtitleTranslationService {
             log.info("源语种与目标语种相同，跳过翻译: source={}, targetLanguage={}, segments={}",
                     sourceLanguage, targetLanguage, segments.size());
         } else {
-            SubtitleTranslator.TranslateResult result = subtitleTranslator.translate(segments, context, targetLanguage);
+            List<VerifiedTerm> officialTerms = readOfficialTerms(termsFile);
+            SubtitleTranslator.TranslateResult result =
+                    subtitleTranslator.translate(segments, context, targetLanguage, officialTerms);
             track = new TranslatedTrack(route, sourceLanguage, targetLanguage, false, result.segments());
             retrySteps = result.retrySteps();
             untranslated = result.untranslatedCount();
@@ -383,6 +386,22 @@ public class SubtitleTranslationService {
         return segments.stream()
                 .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), s.text()))
                 .toList();
+    }
+
+    /**
+     * 读术语官方译名产物，交给翻译器渲染「按给定译名翻」的术语参考。
+     *
+     * <p>查证步骤（{@link #verifyTermsIfNeeded}）刚执行过「存在 = 已查证」的检查；文件缺失
+     * （查证未启用 / 无术语 / 全部失败 / 同语种跳过）按空表处理——官方译名是增益不是前提，
+     * 缺了翻译照常进行。
+     */
+    private List<VerifiedTerm> readOfficialTerms(Path termsFile) {
+        VerifiedTerms verified = ArtifactFiles.readJsonOrNull(termsFile, objectMapper, VerifiedTerms.class);
+        if (verified == null) {
+            log.debug("术语官方译名产物缺失，翻译按无官方译名进行: file={}", termsFile.getFileName());
+            return List.of();
+        }
+        return verified.terms();
     }
 
     /**

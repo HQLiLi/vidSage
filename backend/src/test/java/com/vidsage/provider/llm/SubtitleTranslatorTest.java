@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.subtitle.SubtitleContext;
+import com.vidsage.model.subtitle.VerifiedTerm;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -272,6 +273,58 @@ class SubtitleTranslatorTest {
         assertTrue(task.contains("### 术语参考"), "按 fixed 命中，该带术语参考段");
         assertTrue(task.contains("Mittelhau"), "要保留的是 fixed 的写法");
         assertFalse(task.contains("米特号"), "渲染的是要保留的 fixed，不是 asr");
+    }
+
+    @Test
+    void 查证到译名的术语_渲染成译名映射要求照翻() {
+        ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"Sekiro deflects\"}");
+        SubtitleContext ctx = new SubtitleContext("剑术", "zh", List.of(
+                new SubtitleContext.Term("只狼", "只狼", "游戏名")));
+        List<VerifiedTerm> official = List.of(
+                new VerifiedTerm("只狼", "只狼", "游戏名", "Sekiro: Shadows Die Twice", "官方译名"));
+
+        translatorOver(model).translate(segments("只狼在弹刀"), ctx, "en", official);
+
+        String task = allText(model.prompts.get(0));
+        assertTrue(task.contains("### 术语参考"), "命中的查证术语要渲染");
+        assertTrue(task.contains("- \"只狼\" → \"Sekiro: Shadows Die Twice\""),
+                "查证译名要渲染成「词 → 译名」映射");
+        assertTrue(task.contains("必须使用给定的译名"), "要说明按给定译名翻");
+        assertFalse(task.contains("保留原样"), "有译名的词不再要求保留原样");
+    }
+
+    @Test
+    void 弃权的查证术语_仍按保留原样渲染() {
+        ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"Deflect!\"}");
+        SubtitleContext ctx = new SubtitleContext("剑术", "zh", List.of(
+                new SubtitleContext.Term("弹刀", "弹刀", "机制名")));
+        List<VerifiedTerm> official = List.of(
+                new VerifiedTerm("弹刀", "弹刀", "机制名", "", "弃权"));
+
+        translatorOver(model).translate(segments("弹刀很好用"), ctx, "en", official);
+
+        String task = allText(model.prompts.get(0));
+        assertTrue(task.contains("### 术语参考"), "弃权词也是术语，参考段还在");
+        assertTrue(task.contains("- \"弹刀\""), "弃权词按保留原样渲染");
+        assertTrue(task.contains("保留原样"), "弃权词维持保留原样指令");
+        assertFalse(task.contains("→"), "弃权词没有译名映射");
+    }
+
+    @Test
+    void 查证译名与弃权术语混合时各自渲染() {
+        ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"Sekiro deflects\"}");
+        SubtitleContext ctx = new SubtitleContext("剑术", "zh", List.of(
+                new SubtitleContext.Term("只狼", "只狼", "游戏名"),
+                new SubtitleContext.Term("弹刀", "弹刀", "机制名")));
+        List<VerifiedTerm> official = List.of(
+                new VerifiedTerm("只狼", "只狼", "游戏名", "Sekiro: Shadows Die Twice", "官方译名"),
+                new VerifiedTerm("弹刀", "弹刀", "机制名", "", "弃权"));
+
+        translatorOver(model).translate(segments("只狼在弹刀"), ctx, "en", official);
+
+        String task = allText(model.prompts.get(0));
+        assertTrue(task.contains("- \"只狼\" → \"Sekiro: Shadows Die Twice\""), "有译名的走译名映射");
+        assertTrue(task.contains("- \"弹刀\"\n"), "弃权的走保留原样，且不出现译名映射");
     }
 
     @Test
