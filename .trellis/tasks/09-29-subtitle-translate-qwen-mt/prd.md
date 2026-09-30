@@ -1,7 +1,16 @@
 # 字幕翻译引擎切换 qwen-mt-flash
 
-> **状态：planning——等前置任务 `09-29-subtitle-term-official-lookup` 交付并看过查证效果后再启动。**
-> 本文件目前是 2026-09-29 grilling 的决策存档，开工时再展开成完整 PRD + design。
+> **状态：planning，暂缓——2026-09-30 项目所有者拍板：暂不排期，降级为未来可选测试任务。**
+> 前置对照实验已完成并合入 dev（`feature/subtitle-official-terms-translate`，官方译名经提示词接入
+> deepseek 翻译，双语种实测通过）。本文件是 grilling 决策存档 + 2026-09-29 文档核实的 API 事实；
+> 开工时再展开成完整 PRD + design。
+
+## 2026-09-30 暂缓背景
+
+官方译名接入走**提示词路线**先行落地（本任务原方案的 terms API 干预留作未来对照）：deepseek 实测
+5/5 查证译名全部生效、弃权词正确保留原样，zh→ja 同样成立——提示词路线够用的证据成立后，
+引擎切换不再紧迫。重启本任务的触发条件：A/B 实测中提示词路线出现压不住的译名偏移，
+或成本/质量需要 MT 特调模型。
 
 ## Goal
 
@@ -23,11 +32,18 @@
 | deepseek 世界知识兜底表外词 | 特调模型世界知识可能更弱，**术语表覆盖率更关键**——用 MVP-3 素材 A/B 对照 |
 | Spring AI ChatClient + mimo 高峰开关 | RestClient 裸调（SDK Jackson 禁区同样生效），`translation_options` 是 DashScope 私有参数；deepseek/mimo 退守摘要+清洗，pom「翻译走 LLM 唯一路线」注释作废 |
 
-## 待核实（开工前）
+## 待核实（开工前）→ 2026-09-29 已核实（官方文档 help.aliyun.com/zh/model-studio/qwen-mt-api、/machine-translation）
 
-- terms 数量 / 长度上限与格式。
-- 单发调用是否真无多轮能力（跨批语义的最终定论）。
-- 响应格式与错误语义。
+- ~~terms 数量 / 长度上限与格式~~ → 每条 `{source, target}` 双必选 string；**无官方数量上限**，
+  实际受输入 8192 token 总额约束（本项目术语量级 ≤15 条，无压力）。
+- ~~单发调用是否真无多轮能力~~ → **官方定论：仅支持单轮**。「不支持多轮对话」「不支持 System
+  Message」「messages 有且仅有一个 role=user」——跨批历史机制在 qwen-mt 下无载体，批协议只能传
+  纯文本（任何指令文字都会被翻译掉），掉行重试只能原样重发。
+- ~~响应格式与错误语义~~ → 兼容端点为标准 chat.completion，无 reasoning_content；
+  finish_reason 非流式仅 stop / length 两种（length=截断，须当校验失败处理）。
+- 补充：temperature 默认 0.65（与 top_p 二选一）；max_tokens 默认值文档未给——**实现时显式设置**
+  并把 length 计入校验；语种用英文名或代码（Chinese/zh，92 种）；`domains` 领域提示只收英文语句，
+  是「非术语称谓一致性」潜在载体的候选；流式仅 flash/lite 支持（本项目用非流式，无关）。
 
 ## 验收草案
 
