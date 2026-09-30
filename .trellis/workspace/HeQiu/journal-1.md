@@ -507,3 +507,28 @@ v0 跑通后的整理轮：任务文档按实际落地重写（prd/design 重写
 ### Status
 
 [OK] **Completed**
+
+
+## Session 17: 官方译名接入翻译提示词：deepseek 基线对照与双语种实测
+<!-- trellis-session: v=2 fp=c9b27607a61ca8b6 -->
+
+**Date**: 2026-09-30
+**Task**: 官方译名接入翻译提示词：deepseek 基线对照与双语种实测
+**Branch**: `dev`
+
+### Summary
+
+前置查证任务交付后、引擎切换开工前，项目所有者改道：先把查证好的官方译名按提示词路线接入现有翻译做基线（新分支基于查证分支顶端，qwen-mt 引擎切换暂缓为未来可选测试任务）。SubtitleTranslator 增 officialTerms 入口与 3 参等价重载，术语参考段按查证结论分流——有译名的渲染「词 → 译名」要求照翻、弃权词维持保留原样；service 读 terms-<route>-<target>.json（该产物首个消费方）传入；主翻译模型 mimo→deepseek。真实验证三场：只狼素材 zh→en 对照昨日产物，5/5 查证译名全部生效（只狼→Sekiro: Shadows Die Twice、弹刀→deflection、架势条→Stance 等），10/10 弃权词两侧一致保留原样，0 重试 0 回退 7.7s，译文中文残留 10→5 行；德剑素材 zh→en 冷启动全链路（摘要→查证→翻译 12.5s）复现已知盲区——摘要层把配重球固定为 Palm 且查证层循环确认，再次印证查证修不了上游（term-source-limitation.md 范畴）；zh→ja 一轮 4 术语全部弃权（英文维基不算日文译名，同词异语种不同结论，验证产物按语种分文件的设计），德语术语保留原文恰合 HEMA 惯例，体捌き/見せ場/パッ 等领域词地道，跨批边界语句衔接无缝。人工评审结论：双语种均无系统性机翻味。326 测试全绿；遗留：qwen-mt prd 留档三项已核实 API 事实（单轮无 System Message 定论、terms 无数量上限受 8192 token 约束、max_tokens 须显式设置）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `97af795` | feat(subtitle): 术语官方译名接入翻译提示词——查证译名照翻、弃权维持保留原样 |
+| `c6d49a7` | chore(config): 翻译主模型切回 deepseek（官方译名对照实验基线） |
+| `981a80d` | Merge branch 'feature/subtitle-official-terms-translate' into dev |
+| `3cdbd92` | docs(task): qwen-mt 降级为未来可选测试任务，三项待核实 API 事实已核实留档 |
+
+### Status
+
+[OK] **Completed**
