@@ -1,0 +1,52 @@
+{
+  "hooks": {
+    "enabled": false,
+    "events": {
+      "SessionStart": [
+        {
+          "matcher": "startup|clear|compact",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python \"F:/personal_project/vidSage/.zcode/hooks/session-start.py\"",
+              "timeout": 30
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python \"F:/personal_project/vidSage/.zcode/hooks/inject-workflow-state.py\"",
+              "timeout": 15
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "matcher": "Agent|Task",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python \"F:/personal_project/vidSage/.zcode/hooks/inject-subagent-context.py\"",
+              "timeout": 30
+            }
+          ]
+        },
+        {
+          "matcher": "Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "python \"F:/personal_project/vidSage/.zcode/hooks/inject-shell-session-context.py\"",
+              "timeout": 5
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
