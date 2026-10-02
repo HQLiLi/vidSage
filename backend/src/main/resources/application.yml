@@ -6,6 +6,12 @@ spring:
   threads:
     virtual:
       enabled: true
+  servlet:
+    multipart:
+      # 用户上传本地视频 / 音频文件：给足上限（design.md「依赖与配置」）。超限被容器拒绝，
+      # 不要为了省事调小——长视频素材普遍数百 MB 到数 GB
+      max-file-size: 2GB
+      max-request-size: 2GB
   ai:
     # LLM 供应商单开关：deepseek | openai。没有 mimo 这个值——mimo 兼容 OpenAI 协议，
     # 走 openai 自动配置，供应商由 base-url 决定。高峰期切 mimo 改成 openai，低谷期改回 deepseek。
@@ -30,6 +36,9 @@ spring:
 
 
 vidsage:
+  task:
+    # 同时执行的异步管线任务上限；超出者保持 PENDING 排队（TaskPipelineService 的 Semaphore 限流）
+    max-concurrent: 2
   asr:
     # ASR提供者：本地或云端
     provider: cloud

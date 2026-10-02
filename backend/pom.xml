@@ -33,6 +33,20 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>3.1.1</version>
         </dependency>
+        <!-- MyBatis-Plus 官方 Boot 4 starter（3.5.15 起提供，官方声明支持 Boot 4 + Jackson 3）；
+             3.5.17 为该线当前最新补丁（2026-07-08，Maven Central 核实），补丁级零迁移成本。
+             兼容性兜底（降级核心包 + 原生 mybatis-spring 手工装配）见任务 design.md「依赖与配置」。 -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+            <version>3.5.17</version>
+        </dependency>
+        <!-- MySQL 驱动：版本由 Spring Boot BOM 管理，不写死 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!--        OpenAI 兼容 -->
         <dependency>
             <groupId>org.springframework.ai</groupId>

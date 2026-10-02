@@ -21,6 +21,10 @@ import org.springframework.stereotype.Component;
 /**
  * 本地文件路线的输入获取：直接采用本机媒体文件，不下载、不拷贝。
  *
+ * <p>承接两种输入：{@link MediaInput.LocalPath}（调用方给的本机文件）与
+ * {@link MediaInput.InWorkspace}（MVP-1 上传落盘后的工作区文件）——两者都是「文件已在本机」，
+ * 采用方式完全一致。
+ *
  * <p>标题取文件名；时长用 {@code ffprobe} 补齐（ffprobe 本就在必检工具清单里），
  * 顺带起到「是否是可解析的媒体文件」的校验作用。本地路线没有 info json，
  * 故 {@link AcquiredMedia#infoJsonPath()} 恒为 {@link Optional#empty()}。
@@ -54,7 +58,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
 
     @Override
     public boolean supports(MediaInput input) {
-        return input instanceof MediaInput.LocalPath;
+        return input instanceof MediaInput.LocalPath || input instanceof MediaInput.InWorkspace;
     }
 
     /**
@@ -73,9 +77,9 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.LocalPath（本地文件）或 MediaInput.RemoteUrl（远程 URL）");
         }
-        if (!(input instanceof MediaInput.LocalPath)) {
-            throw new IllegalArgumentException("LocalFileMediaAcquirer 只支持 MediaInput.LocalPath：当前为 "
-                    + input.getClass().getSimpleName() + "，远程 URL 请交给 yt-dlp 路线");
+        if (!supports(input)) {
+            throw new IllegalArgumentException("LocalFileMediaAcquirer 只支持本地文件输入（LocalPath / InWorkspace）："
+                    + "当前为 " + input.getClass().getSimpleName() + "，远程 URL 请交给 yt-dlp 路线");
         }
         return Optional.empty();
     }
@@ -87,14 +91,21 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.LocalPath（本地文件）或 MediaInput.RemoteUrl（远程 URL）");
         }
-        if (!(input instanceof MediaInput.LocalPath local)) {
-            throw new IllegalArgumentException("LocalFileMediaAcquirer 只支持 MediaInput.LocalPath：当前为 "
-                    + input.getClass().getSimpleName() + "，远程 URL 请交给 yt-dlp 路线");
+        if (!supports(input)) {
+            throw new IllegalArgumentException("LocalFileMediaAcquirer 只支持本地文件输入（LocalPath / InWorkspace）："
+                    + "当前为 " + input.getClass().getSimpleName() + "，远程 URL 请交给 yt-dlp 路线");
         }
-        if (local.value() == null) {
+        // 两种本地形态取同一个「媒体文件路径」：LocalPath 本身，或 InWorkspace 携带的工作区文件
+        Path file = switch (input) {
+            case MediaInput.LocalPath local -> local.value();
+            case MediaInput.InWorkspace in -> in.value();
+            default -> throw new IllegalArgumentException("LocalFileMediaAcquirer 只支持本地文件输入"
+                    + "（LocalPath / InWorkspace）：当前为 " + input.getClass().getSimpleName());
+        };
+        if (file == null) {
             throw new IllegalArgumentException("本地媒体文件路径不能为空：请检查路径，或改传 url");
         }
-        Path file = local.value().toAbsolutePath();
+        file = file.toAbsolutePath();
         if (!Files.exists(file)) {
             throw new IllegalArgumentException("本地媒体文件不存在或不可读：" + file + "；请检查路径，或改传 url");
         }

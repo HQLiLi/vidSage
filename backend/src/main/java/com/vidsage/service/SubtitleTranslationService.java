@@ -3,6 +3,8 @@ package com.vidsage.service;
 import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.MediaInput;
+import com.vidsage.model.progress.ProgressListener;
+import com.vidsage.model.progress.StageEvent;
 import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.model.subtitle.SubtitleRoute;
 import com.vidsage.model.subtitle.SubtitleTrack;
@@ -58,6 +60,12 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class SubtitleTranslationService {
 
+    /** 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 80..100）。 */
+    private static final int STAGE_BEGIN = 0;
+
+    /** 阶段进度的终点（0..100 区间自报口径，管线负责 remap 进 80..100）。 */
+    private static final int STAGE_DONE = 100;
+
     private final WorkspaceService workspaceService;
     private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
@@ -99,7 +107,7 @@ public class SubtitleTranslationService {
     }
 
     /**
-     * 翻译一份已清洗的字幕，产出双语 SRT 与翻译检查点。
+     * 翻译一份已清洗的字幕（不关心进度）：内部走 {@link ProgressListener#noop()}。
      *
      * @param input 媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
      * @return 翻译产物（双语 SRT + segments 路径 + 源/目标语种 + 是否跳过 + 统计）
@@ -107,9 +115,35 @@ public class SubtitleTranslationService {
      * @throws IllegalStateException    -clean 字幕缺失（先跑清洗）、解析或写入失败；目标语种为空
      */
     public TranslatedSubtitle translate(MediaInput input) {
+        return translate(input, ProgressListener.noop());
+    }
+
+    /**
+     * 翻译一份已清洗的字幕，产出双语 SRT 与翻译检查点。
+     *
+     * <p>进度事件（{@code 0..100} 自报口径，管线负责 remap 进自己的区间）：
+     * <ul>
+     *   <li>断点复用命中 → 一条 SKIPPED（进度 100），直接返回；</li>
+     *   <li>源语种 = 目标语种 → 不调 LLM，写完照抄产物后一条 SKIPPED（进度 100）；</li>
+     *   <li>真翻译 → 开始（0，RUNNING）→ 每批翻译完成各一条（「第 x/N 批」，来自
+     *       {@link SubtitleTranslator}）→ 完成（100，SUCCEEDED）。</li>
+     * </ul>
+     * 开始事件先于「-clean 缺失」卫语句发出——失败任务的用户消息里能带上所在阶段。
+     *
+     * @param input    媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
+     * @param listener 进度监听；不可为 {@code null}——不关心进度用单参重载
+     * @return 翻译产物（双语 SRT + segments 路径 + 源/目标语种 + 是否跳过 + 统计）
+     * @throws IllegalArgumentException input 或 listener 为空
+     * @throws IllegalStateException    -clean 字幕缺失（先跑清洗）、解析或写入失败；目标语种为空
+     */
+    public TranslatedSubtitle translate(MediaInput input, ProgressListener listener) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
+        }
+        if (listener == null) {
+            throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
+                    + "或改用不带 listener 的 translate(input) 单参重载");
         }
         // 目标语种是配置值、边界上即可判定，故卫语句排在最前（早于 workspaceFor 的建目录副作用）
         String targetLanguage = resolveTargetLanguage(props);
@@ -124,8 +158,11 @@ public class SubtitleTranslationService {
         TranslatedTrack existing = ArtifactFiles.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
         if (existing != null) {
             log.info("字幕翻译断点复用跳过: translate={}", translateSeg.getFileName());
+            emit(listener, SubtitleTranslator.STAGE_TRANSLATE, STAGE_DONE, "已有翻译产物，跳过翻译",
+                    StageEvent.StageState.SKIPPED);
             return toTranslated(existing, translateSeg, translateSrt, 0, 0);
         }
+        emit(listener, SubtitleTranslator.STAGE_TRANSLATE, STAGE_BEGIN, "开始翻译", StageEvent.StageState.RUNNING);
 
         // -clean 缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
         // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮与清洗侧同一取舍（见 SubtitleCleanupService）：
@@ -168,7 +205,8 @@ public class SubtitleTranslationService {
         TranslatedTrack track;
         int retrySteps = 0;
         int untranslated = 0;
-        if (isSameMainLanguage(sourceLanguage, targetLanguage)) {
+        boolean skippedTranslation = isSameMainLanguage(sourceLanguage, targetLanguage);
+        if (skippedTranslation) {
             // 源语种等于目标语种：不调 LLM，每条译文 = 原文（双语渲染器会把相同的两行并成一行）
             track = new TranslatedTrack(route, sourceLanguage, targetLanguage, true, skipAll(segments));
             log.info("源语种与目标语种相同，跳过翻译: source={}, targetLanguage={}, segments={}",
@@ -176,13 +214,16 @@ public class SubtitleTranslationService {
         } else {
             List<VerifiedTerm> officialTerms = readOfficialTerms(termsFile);
             SubtitleTranslator.TranslateResult result =
-                    subtitleTranslator.translate(segments, context, targetLanguage, officialTerms);
+                    subtitleTranslator.translate(segments, context, targetLanguage, officialTerms, listener);
             track = new TranslatedTrack(route, sourceLanguage, targetLanguage, false, result.segments());
             retrySteps = result.retrySteps();
             untranslated = result.untranslatedCount();
         }
 
         writeArtifacts(translateSeg, translateSrt, track);   // 先 JSON（检查点）再 SRT（派生），都原子替换
+        emit(listener, SubtitleTranslator.STAGE_TRANSLATE, STAGE_DONE,
+                skippedTranslation ? "源语种与目标语种相同，跳过翻译" : "翻译完成",
+                skippedTranslation ? StageEvent.StageState.SKIPPED : StageEvent.StageState.SUCCEEDED);
         log.debug("字幕翻译完成: route={}, sourceLanguage={}, targetLanguage={}, skipped={}, segments={}, "
                         + "retry={}, untranslated={}",
                 route.name(), sourceLanguage, targetLanguage, track.skipped(), track.segments().size(),
@@ -377,6 +418,14 @@ public class SubtitleTranslationService {
         String trimmed = language.trim().toLowerCase(Locale.ROOT);
         int dash = trimmed.indexOf('-');
         return dash < 0 ? trimmed : trimmed.substring(0, dash);
+    }
+
+    /**
+     * 发一个阶段事件（本类阶段进度 0..100 自报口径，区间映射归管线的 {@code ProgressMapper}）。
+     */
+    private static void emit(ProgressListener listener, String stage, int progress, String message,
+                             StageEvent.StageState state) {
+        listener.onEvent(new StageEvent(stage, progress, message, state));
     }
 
     /**

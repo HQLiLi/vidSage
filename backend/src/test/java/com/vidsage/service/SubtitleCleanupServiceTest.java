@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,8 @@ import static org.mockito.Mockito.when;
 import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.MediaInput;
+import com.vidsage.model.progress.ProgressListener;
+import com.vidsage.model.progress.StageEvent;
 import com.vidsage.model.subtitle.CleanedSubtitle;
 import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.model.subtitle.SubtitleRoute;
@@ -23,6 +26,7 @@ import com.vidsage.provider.llm.SubtitleContextSummarizer;
 import com.vidsage.utils.subtitle.SubtitleArtifactNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -60,11 +64,11 @@ class SubtitleCleanupServiceTest {
 
     /** cleanser 的桩：原样返回入参（零修正、零重试），只记调用次数。 */
     private void stubCleanserEcho() {
-        when(subtitleCleanser.clean(any(), any(), any())).thenAnswer(invocation -> {
+        doAnswer(invocation -> {
             cleanserCalls.incrementAndGet();
             List<TranscriptionSegment> in = invocation.getArgument(0);
             return new SubtitleCleanser.CleanseResult(in, 0, 0, 0, 0);
-        });
+        }).when(subtitleCleanser).clean(any(), any(), any(), any());
     }
 
     private SubtitleCleanupService service() {
@@ -153,6 +157,69 @@ class SubtitleCleanupServiceTest {
     void cleanNullInputThrows() {
         SubtitleCleanupService s = service();
         assertThrows(IllegalArgumentException.class, () -> s.clean(null, ""));
+    }
+
+    @Test
+    void cleanRejectsNullListener() {
+        SubtitleCleanupService s = service();
+        assertThrows(IllegalArgumentException.class,
+                () -> s.clean(new MediaInput.RemoteUrl("https://x"), "", null));
+    }
+
+    // ------------------------------------------------------------------
+    // 进度事件（管线通过 listener 拿阶段边界与批级进度，MVP-1）
+    // ------------------------------------------------------------------
+
+    @Test
+    void cleanWithListenerEmitsBeginBatchAndEndEvents() throws Exception {
+        writeRawTrack();
+        // 真实批级事件来自 SubtitleCleanser；本层只验「批级事件原样透传 + 首尾事件齐全」
+        doAnswer(invocation -> {
+            ProgressListener listener = invocation.getArgument(3);
+            listener.onEvent(new StageEvent(SubtitleCleanser.STAGE_CLEAN, 100, "第 1/1 批",
+                    StageEvent.StageState.RUNNING));
+            List<TranscriptionSegment> in = invocation.getArgument(0);
+            return new SubtitleCleanser.CleanseResult(in, 0, 0, 0, 0);
+        }).when(subtitleCleanser).clean(any(), any(), any(), any());
+        List<StageEvent> events = new ArrayList<>();
+
+        service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add);
+
+        assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
+        assertEquals(SubtitleCleanser.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(0, events.get(0).progress());
+        assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
+        assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
+        assertEquals(100, events.get(2).progress());
+        assertEquals(StageEvent.StageState.SUCCEEDED, events.get(2).state());
+    }
+
+    @Test
+    void cleanCheckpointHitEmitsSingleSkippedEvent() throws Exception {
+        writeRawTrack();
+        SubtitleCleanupService s = service();
+        s.clean(new MediaInput.RemoteUrl("https://x"), "");
+
+        List<StageEvent> events = new ArrayList<>();
+        s.clean(new MediaInput.RemoteUrl("https://x"), "", events::add);
+
+        assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
+        assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
+        assertEquals(100, events.get(0).progress());
+        assertEquals(SubtitleCleanser.STAGE_CLEAN, events.get(0).stage());
+    }
+
+    @Test
+    void cleanMissingRawStillEmitsBeginEventBeforeFailing() {
+        // 失败也要先留下「阶段已开始」的痕迹：失败消息才能带上所在阶段（管线的复合监听先落库）
+        List<StageEvent> events = new ArrayList<>();
+
+        assertThrows(IllegalStateException.class,
+                () -> service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add));
+
+        assertEquals(1, events.size(), () -> "失败前应已发「开始清洗」：" + events);
+        assertEquals(SubtitleCleanser.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
     }
 
     // ------------------------------------------------------------------

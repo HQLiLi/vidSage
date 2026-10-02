@@ -3,6 +3,8 @@ package com.vidsage.provider.llm;
 
 import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
+import com.vidsage.model.progress.ProgressListener;
+import com.vidsage.model.progress.StageEvent;
 import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.utils.subtitle.TermMatcher;
 import com.vidsage.utils.subtitle.TextSimilarity;
@@ -32,11 +34,18 @@ import java.util.*;
  * <p>跨批上下文走两条路：<b>后窗</b>（下一批开头几行，管的是"后面"）和<b>对话历史</b>
  * （前面几批的原文与已采纳的纠正结果，成对留着，管的是"前面"）。历史是本类里唯一的可变状态，
  * 但它只在单次 {@link #clean} 调用内活着，调用结束即丢。
+ *
+ * <p><b>批级进度</b>：带 {@link ProgressListener} 的重载会在<b>每批清洗完成后</b>回调一次
+ * （进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）——批边界只有本类知道（切批判据在本类），
+ * 回调依赖 {@code model/progress} 是 ProgressListener 注释明确许可的中立方向。批次边界
+ * 一次性算出（{@link #batchRanges}），总数与切批用同一份边界，进度百分比不会漂移。
  */
 @Slf4j
 @Component
 public class SubtitleCleanser {
 
+    /** 本类承担的管线阶段名（StageEvent.stage 同词表；清洗的批级事件用它标注）。 */
+    public static final String STAGE_CLEAN = "clean";
 
     private final ChatClient cleanser;
 
@@ -73,11 +82,7 @@ public class SubtitleCleanser {
     }
 
     /**
-     * 清洗字幕
-     *
-     * <p>跨批上下文分两路：后窗（下一批开头几行）由本方法算好传下去；上一批的内容改走
-     * {@code history}——每批被采纳的「批次原文 + 纠正结果」留成一对多轮往返，带给后续所有批次。
-     * 历史比前窗更强：前窗给的是上一批<b>未清洗</b>的原文，历史给的是<b>已被采纳的纠正</b>。
+     * 清洗字幕，不关心进度（内部走 {@link ProgressListener#noop()}）。
      *
      * @param segments  拆分后的字幕列表
      * @param context   字幕上下文
@@ -87,6 +92,38 @@ public class SubtitleCleanser {
     public CleanseResult clean(List<TranscriptionSegment> segments,
                                SubtitleContext context,
                                String reference) {
+        return clean(segments, context, reference, ProgressListener.noop());
+    }
+
+    /**
+     * 清洗字幕
+     *
+     * <p>跨批上下文分两路：后窗（下一批开头几行）由本方法算好传下去；上一批的内容改走
+     * {@code history}——每批被采纳的「批次原文 + 纠正结果」留成一对多轮往返，带给后续所有批次。
+     * 历史比前窗更强：前窗给的是上一批<b>未清洗</b>的原文，历史给的是<b>已被采纳的纠正</b>。
+     *
+     * <p>每批清洗完成后向 {@code listener} 发一条批级进度（stage={@link #STAGE_CLEAN}，
+     * 进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）；批数为 0（空清单）时无批级事件。
+     *
+     * @param segments  拆分后的字幕列表
+     * @param context   字幕上下文
+     * @param reference 术语表
+     * @param listener  批级进度回调；不可为 {@code null}——不关心进度用三参重载
+     * @return 清洗结果
+     * @throws IllegalArgumentException segments 或 listener 为 {@code null}
+     */
+    public CleanseResult clean(List<TranscriptionSegment> segments,
+                               SubtitleContext context,
+                               String reference,
+                               ProgressListener listener) {
+        if (segments == null) {
+            throw new IllegalArgumentException("待清洗字幕不能为 null：请传切分后的 TranscriptionSegment 列表");
+        }
+        if (listener == null) {
+            throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
+                    + "或改用不带 listener 的 clean(segments, context, reference) 三参重载");
+        }
+        List<BatchRange> batches = batchRanges(segments);
         List<TranscriptionSegment> cleanedList = new ArrayList<>(segments.size());
         int corrected = 0;
         int retries = 0;
@@ -97,20 +134,12 @@ public class SubtitleCleanser {
         // 而且是静默的（虚拟线程已全局开启，两个请求真的会同时进来）。
         List<Message> history = new ArrayList<>();
 
-        int maxSize = segments.size();
-        int start = 0;
-        int batchNo = 0;
-        while (start < maxSize) {
-            int end = start;
-            int chars = 0;
-            while (end < maxSize && end - start < prop.batchSize() && chars < prop.maxBatchChars()) {
-                chars += safe(segments.get(end).text()).length();
-                end++;
-            }
-            if (end == start) {
-                end = start + 1;   // 单句就超字符上限时也得往前走，别死循环
-            }
-            batchNo++;
+        int totalBatches = batches.size();
+        for (int index = 0; index < totalBatches; index++) {
+            int batchNo = index + 1;
+            BatchRange batch = batches.get(index);
+            int start = batch.start();
+            int end = batch.end();
 
             // 本批次要清洗的字幕列表
             Map<String, String> original = new LinkedHashMap<>();
@@ -121,14 +150,14 @@ public class SubtitleCleanser {
 
             // 后窗从整份列表取，跟批边界对齐。它给的是「下一批开头」，历史给不了——历史只覆盖过去
             List<String> after = new ArrayList<>();
-            for (int i = end; i < Math.min(maxSize, end + LINES_AFTER); i++) {
+            for (int i = end; i < Math.min(segments.size(), end + LINES_AFTER); i++) {
                 after.add(safe(segments.get(i).text()));
             }
-            // chars 就是本批的实际字数：上面那个内层循环把 [start, end) 每句的长度都加了进去，
-            // 循环退出时 end 已定，累加值不再变化。它可能略超 maxBatchChars——循环的判断在累加之前，
-            // 所以最后一个塞进来的句子会把总数顶过上限。这条日志正是要看「句数还是字数先到」。
+            // batch.chars() 就是本批的实际字数：按切批判据累加而得，可能略超 maxBatchChars——
+            // 判断在累加之前，最后一个塞进来的句子会把总数顶过上限。
+            // 这条日志正是要看「句数还是字数先到」。
             log.debug("字幕纠错批次: 序号={}, 句数={}, 字数={}, 历史轮数={}, 历史字符={}",
-                    batchNo, end - start, chars, history.size() / 2, MessageHistory.chars(history));
+                    batchNo, end - start, batch.chars(), history.size() / 2, MessageHistory.chars(history));
 
             // 清洗
             AgentOutcome outcome = agentLoop(original, context, reference, after, history);
@@ -160,9 +189,49 @@ public class SubtitleCleanser {
                 cleanedList.add(new TranscriptionSegment(seg.beginTimeMs(), seg.endTimeMs(), newText));
             }
 
-            start = end;
+            // 批完成才发进度：进度值 = 批序号 / 总批数 × 100，最后一批恰好 100，单调不回退
+            emitBatchProgress(listener, batchNo, totalBatches);
         }
         return new CleanseResult(cleanedList, corrected, retries, termHits, termApplied);
+    }
+
+    /**
+     * 发一条批级进度事件（stage 固定 {@link #STAGE_CLEAN}，state 为 RUNNING）。
+     * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
+     */
+    private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
+        listener.onEvent(new StageEvent(STAGE_CLEAN, batchNo * 100 / totalBatches,
+                "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
+    }
+
+    /**
+     * 一次性算出全部批边界（[start, end) 半开区间 + 实际字数），切批判据与清洗循环共用这一份：
+     * 总批数（进度百分比的分母）与实际切批若各算各的，两份逻辑漂移时进度会回退或卡死。
+     *
+     * <p>批的粒度由 batchSize 句数 / maxBatchChars 字符双判据切，先到为准；单句就超字符上限时
+     * 也得单独成批往前走，别死循环。
+     */
+    private List<BatchRange> batchRanges(List<TranscriptionSegment> segments) {
+        List<BatchRange> ranges = new ArrayList<>();
+        int start = 0;
+        while (start < segments.size()) {
+            int end = start;
+            int chars = 0;
+            while (end < segments.size() && end - start < prop.batchSize() && chars < prop.maxBatchChars()) {
+                chars += safe(segments.get(end).text()).length();
+                end++;
+            }
+            if (end == start) {
+                end = start + 1;
+            }
+            ranges.add(new BatchRange(start, end, chars));
+            start = end;
+        }
+        return ranges;
+    }
+
+    /** 一批的边界与实际字数：start 含、end 不含；chars 供「句数还是字数先到」的校准日志用。 */
+    private record BatchRange(int start, int end, int chars) {
     }
 
 

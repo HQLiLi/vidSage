@@ -14,6 +14,8 @@ import static org.mockito.Mockito.when;
 import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.MediaInput;
+import com.vidsage.model.progress.ProgressListener;
+import com.vidsage.model.progress.StageEvent;
 import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.model.subtitle.SubtitleRoute;
 import com.vidsage.model.subtitle.SubtitleTrack;
@@ -89,7 +91,7 @@ class SubtitleTranslationServiceTest {
                     .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), "译文:" + s.text()))
                     .toList();
             return new SubtitleTranslator.TranslateResult(out, retrySteps, untranslated);
-        }).when(subtitleTranslator).translate(any(), any(), any(), any());
+        }).when(subtitleTranslator).translate(any(), any(), any(), any(), any());
     }
 
     private SubtitleTranslationService service() {
@@ -295,7 +297,7 @@ class SubtitleTranslationServiceTest {
         assertThrows(IllegalStateException.class, () -> s.translate(new MediaInput.RemoteUrl("https://x")));
 
         verify(workspaceService, never()).workspaceFor(any());
-        verify(subtitleTranslator, never()).translate(any(), any(), any(), any());
+        verify(subtitleTranslator, never()).translate(any(), any(), any(), any(), any());
     }
 
     private static SubtitleTranslateProperties props(String targetLanguage) {
@@ -370,6 +372,76 @@ class SubtitleTranslationServiceTest {
         assertFalse(translated.skipped(), "源语种为空时不应跳过");
         assertEquals("", translated.sourceLanguage());
         assertEquals(1, translatorCalls.get());
+    }
+
+    // ------------------------------------------------------------------
+    // 进度事件（管线通过 listener 拿阶段边界与批级进度，MVP-1）
+    // ------------------------------------------------------------------
+
+    @Test
+    void translateWithListenerEmitsBeginBatchAndEndEvents() throws Exception {
+        writeCleanTrack();
+        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(contextWithLanguage("en")));
+        // 真实批级事件来自 SubtitleTranslator；本层只验「批级事件原样透传 + 首尾事件齐全」
+        doAnswer(invocation -> {
+            ProgressListener listener = invocation.getArgument(4);
+            listener.onEvent(new StageEvent(SubtitleTranslator.STAGE_TRANSLATE, 100, "第 1/1 批",
+                    StageEvent.StageState.RUNNING));
+            List<TranscriptionSegment> in = invocation.getArgument(0);
+            List<TranslatedSegment> out = in.stream()
+                    .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), "译文:" + s.text()))
+                    .toList();
+            return new SubtitleTranslator.TranslateResult(out, 0, 0);
+        }).when(subtitleTranslator).translate(any(), any(), any(), any(), any());
+        List<StageEvent> events = new ArrayList<>();
+
+        service().translate(new MediaInput.RemoteUrl("https://x"), events::add);
+
+        assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
+        assertEquals(SubtitleTranslator.STAGE_TRANSLATE, events.get(0).stage());
+        assertEquals(0, events.get(0).progress());
+        assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
+        assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
+        assertEquals(100, events.get(2).progress());
+        assertEquals(StageEvent.StageState.SUCCEEDED, events.get(2).state());
+    }
+
+    @Test
+    void translateCheckpointHitEmitsSingleSkippedEvent() throws Exception {
+        writeCleanTrack();
+        SubtitleTranslationService s = service();
+        s.translate(new MediaInput.RemoteUrl("https://x"));
+
+        List<StageEvent> events = new ArrayList<>();
+        s.translate(new MediaInput.RemoteUrl("https://x"), events::add);
+
+        assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
+        assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
+        assertEquals(100, events.get(0).progress());
+        assertEquals(SubtitleTranslator.STAGE_TRANSLATE, events.get(0).stage());
+    }
+
+    @Test
+    void sameLanguageSkipEmitsBeginThenSkippedEvent() throws Exception {
+        writeCleanTrack();
+        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(contextWithLanguage("zh")));
+        List<StageEvent> events = new ArrayList<>();
+
+        service().translate(new MediaInput.RemoteUrl("https://x"), events::add);
+
+        // 阶段先「开始」（做完了读 -clean / 上下文这些前置工作），LLM 翻译跳过后以 SKIPPED 收尾
+        assertEquals(2, events.size(), () -> "同语种跳过应发「开始 → SKIPPED」两条：" + events);
+        assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
+        assertEquals(0, events.get(0).progress());
+        assertEquals(StageEvent.StageState.SKIPPED, events.get(1).state());
+        assertEquals(100, events.get(1).progress());
+    }
+
+    @Test
+    void translateRejectsNullListener() throws Exception {
+        writeCleanTrack();
+        assertThrows(IllegalArgumentException.class,
+                () -> service().translate(new MediaInput.RemoteUrl("https://x"), null));
     }
 
     @Test

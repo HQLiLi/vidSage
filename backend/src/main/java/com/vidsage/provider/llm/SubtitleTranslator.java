@@ -2,6 +2,8 @@ package com.vidsage.provider.llm;
 
 import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.model.asr.TranscriptionSegment;
+import com.vidsage.model.progress.ProgressListener;
+import com.vidsage.model.progress.StageEvent;
 import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.model.subtitle.TranslatedSegment;
 import com.vidsage.model.subtitle.VerifiedTerm;
@@ -41,11 +43,18 @@ import tools.jackson.databind.ObjectMapper;
  * 译文，成对留着）。历史在翻译里的作用比清洗更强：它是「术语与称谓全片一致」的主要载体——后续批次
  * 能看见前面把某个称呼译成了什么。历史是本类里唯一的可变状态，但它只在单次 {@link #translate} 调用内
  * 活着，调用结束即丢。
+ *
+ * <p><b>批级进度</b>：带 {@link ProgressListener} 的重载会在<b>每批翻译完成后</b>回调一次
+ * （进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）——批边界只有本类知道（切批判据在本类），
+ * 回调依赖 {@code model/progress} 是 ProgressListener 注释明确许可的中立方向。批次边界
+ * 一次性算出（{@link #batchRanges}），总数与切批用同一份边界，进度百分比不会漂移。
  */
 @Slf4j
 @Component
 public class SubtitleTranslator {
 
+    /** 本类承担的管线阶段名（StageEvent.stage 同词表；翻译的批级事件用它标注）。 */
+    public static final String STAGE_TRANSLATE = "translate";
 
     private final ChatClient translator;
 
@@ -90,6 +99,16 @@ public class SubtitleTranslator {
     }
 
     /**
+     * 翻译字幕（不关心进度）：内部走 {@link ProgressListener#noop()}。
+     */
+    public TranslateResult translate(List<TranscriptionSegment> segments,
+                                     SubtitleContext context,
+                                     String targetLanguage,
+                                     List<VerifiedTerm> officialTerms) {
+        return translate(segments, context, targetLanguage, officialTerms, ProgressListener.noop());
+    }
+
+    /**
      * 翻译字幕。
      *
      * @param segments       待翻译的段落（清洗后的 {@code -clean} 内容），时间戳原样带到产物
@@ -99,12 +118,25 @@ public class SubtitleTranslator {
      * @param officialTerms  术语官方译名查证产物（{@code terms-<route>-<target>.json} 的内容），可为空表：
      *                       命中术语里查到译名的按「给定的译名照翻」渲染进提示词，弃权（空串）与没查的
      *                       按「保留原样」渲染
+     * @param listener       批级进度回调；每批翻译完成后回调一次（stage={@link #STAGE_TRANSLATE}，
+     *                       进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」），批数为 0 时无批级事件；
+     *                       不可为 {@code null}——不关心进度用四参重载
      * @return 逐条双语段落 + 重试轮数 + 未翻译段数
+     * @throws IllegalArgumentException segments 或 listener 为 {@code null}
      */
     public TranslateResult translate(List<TranscriptionSegment> segments,
                                      SubtitleContext context,
                                      String targetLanguage,
-                                     List<VerifiedTerm> officialTerms) {
+                                     List<VerifiedTerm> officialTerms,
+                                     ProgressListener listener) {
+        if (segments == null) {
+            throw new IllegalArgumentException("待翻译字幕不能为 null：请传清洗后的 TranscriptionSegment 列表");
+        }
+        if (listener == null) {
+            throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
+                    + "或改用不带 listener 的 translate(segments, context, targetLanguage, officialTerms) 四参重载");
+        }
+        List<BatchRange> batches = batchRanges(segments);
         List<TranslatedSegment> out = new ArrayList<>(segments.size());
         int retries = 0;
         int untranslated = 0;
@@ -113,20 +145,12 @@ public class SubtitleTranslator {
         // 而且是静默的（虚拟线程已全局开启，两个请求真的会同时进来）。
         List<Message> history = new ArrayList<>();
 
-        int maxSize = segments.size();
-        int start = 0;
-        int batchNo = 0;
-        while (start < maxSize) {
-            int end = start;
-            int chars = 0;
-            while (end < maxSize && end - start < prop.batchSize() && chars < prop.maxBatchChars()) {
-                chars += safe(segments.get(end).text()).length();
-                end++;
-            }
-            if (end == start) {
-                end = start + 1;   // 单句就超字符上限时也得往前走，别死循环
-            }
-            batchNo++;
+        int totalBatches = batches.size();
+        for (int index = 0; index < totalBatches; index++) {
+            int batchNo = index + 1;
+            BatchRange batch = batches.get(index);
+            int start = batch.start();
+            int end = batch.end();
 
             // 本批次待翻译的字幕列表：条号从 1 起，与提示词里的键、模型回复的键对齐
             Map<String, String> original = new LinkedHashMap<>();
@@ -136,14 +160,14 @@ public class SubtitleTranslator {
 
             // 后窗从整份列表取，跟批边界对齐。它给的是「下一批开头」，历史给不了——历史只覆盖过去
             List<String> after = new ArrayList<>();
-            for (int i = end; i < Math.min(maxSize, end + LINES_AFTER); i++) {
+            for (int i = end; i < Math.min(segments.size(), end + LINES_AFTER); i++) {
                 after.add(safe(segments.get(i).text()));
             }
-            // chars 就是本批的实际字数：内层循环把 [start, end) 每句长度都加了进去，循环退出时 end 已定。
-            // 它可能略超 maxBatchChars——判断在累加之前，最后一个塞进来的句子会把总数顶过上限。
+            // batch.chars() 就是本批的实际字数：按切批判据累加而得，可能略超 maxBatchChars——
+            // 判断在累加之前，最后一个塞进来的句子会把总数顶过上限。
             // 这条日志是校准批参数的读数（句数与字数哪个先到，见 SubtitleTranslateProperties 的注释）。
             log.debug("字幕翻译批次: 序号={}, 句数={}, 字数={}, 历史轮数={}, 历史字符={}",
-                    batchNo, end - start, chars, history.size() / 2, MessageHistory.chars(history));
+                    batchNo, end - start, batch.chars(), history.size() / 2, MessageHistory.chars(history));
 
             TranslateOutcome outcome = agentLoop(original, context, targetLanguage, after, history, officialTerms);
             retries += outcome.retrySteps();
@@ -166,9 +190,49 @@ public class SubtitleTranslator {
                         seg.text(), translated));
             }
 
-            start = end;
+            // 批完成才发进度：进度值 = 批序号 / 总批数 × 100，最后一批恰好 100，单调不回退
+            emitBatchProgress(listener, batchNo, totalBatches);
         }
         return new TranslateResult(out, retries, untranslated);
+    }
+
+    /**
+     * 发一条批级进度事件（stage 固定 {@link #STAGE_TRANSLATE}，state 为 RUNNING）。
+     * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
+     */
+    private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
+        listener.onEvent(new StageEvent(STAGE_TRANSLATE, batchNo * 100 / totalBatches,
+                "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
+    }
+
+    /**
+     * 一次性算出全部批边界（[start, end) 半开区间 + 实际字数），切批判据与翻译循环共用这一份：
+     * 总批数（进度百分比的分母）与实际切批若各算各的，两份逻辑漂移时进度会回退或卡死。
+     *
+     * <p>批的粒度由 batchSize 句数 / maxBatchChars 字符双判据切，先到为准；单句就超字符上限时
+     * 也得单独成批往前走，别死循环。
+     */
+    private List<BatchRange> batchRanges(List<TranscriptionSegment> segments) {
+        List<BatchRange> ranges = new ArrayList<>();
+        int start = 0;
+        while (start < segments.size()) {
+            int end = start;
+            int chars = 0;
+            while (end < segments.size() && end - start < prop.batchSize() && chars < prop.maxBatchChars()) {
+                chars += safe(segments.get(end).text()).length();
+                end++;
+            }
+            if (end == start) {
+                end = start + 1;
+            }
+            ranges.add(new BatchRange(start, end, chars));
+            start = end;
+        }
+        return ranges;
+    }
+
+    /** 一批的边界与实际字数：start 含、end 不含；chars 供「句数还是字数先到」的校准日志用。 */
+    private record BatchRange(int start, int end, int chars) {
     }
 
 
