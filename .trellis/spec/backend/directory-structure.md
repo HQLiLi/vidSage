@@ -57,7 +57,9 @@ com.vidsage
 - `AsrController` 平铺在 `web/controller/` 下（HTTP 入口之间不存在再分组的需求）。
 - 契约类名（`TranscriptionCommand`）与实现配置类名（`DashScopeProperties`）**不带机制前缀**，平铺后必然混杂。MVP-3 的 `LLMCommand` 与 `TranscriptionCommand` 并排在 `model/` 根下读起来分不清归属，所以这两处按领域分组（`model/asr/`、`model/llm/`、`provider/asr/`、`provider/llm/`）。
 
-**`web/` 下的两个子包是另一条轴：按「角色」分，不是按「领域」分。** `AsrController`（入站适配构件）与 `PrepareAudioRequest`（HTTP 契约构件）是**两种构件**，不是一个领域的两个层次——把它们堆进同一包才会混杂。这与 `model/` / `provider/` 的「按领域分」是**两条独立判据，不要互相推导**。
+**`web/` 下的子包是另一条轴：按「角色」分，不是按「领域」分**（现有三个：`controller/`、`dto/`、`sse/`，第三个 2026-09-30 随 MVP-1 加入，装 SSE 连接管理等 web 层构件）。`AsrController`（入站适配构件）与 `PrepareAudioRequest`（HTTP 契约构件）是**两种构件**，不是一个领域的两个层次——把它们堆进同一包才会混杂。这与 `model/` / `provider/` 的「按领域分」是**两条独立判据，不要互相推导**。
+
+**`subscribe/` 顶层包（2026-09-30 定调）**：装任务进度的中立发布-订阅机制（`TaskSubscriptionRegistry`、`Subscription`）——service 层管线广播事件、web 层挂「写 emitter」回调，两边都依赖它。判据是「写得出它不许装什么」：**禁 HTTP 类型**（`SseEmitter` 只活 `web/sse/`）、**禁业务编排**；与 `utils/` 同类「机制包」先例。升级条件：出现多传输协议（SSE + WebSocket）并存或包内构件 ≥3 时再议拆分。
 
 > **本规范曾以「再套一层二级目录是冗余层级」为由否掉过这类结构，此处有意推翻。** 那条判据对「**同一构件**的再分组」（按领域把 Controller 再切一层）成立；对「**不同构件**的分离」不成立。区分点是包内是否会混放异质构件，而非目录深度本身。
 
@@ -78,13 +80,13 @@ com.vidsage
 
 **当前只建 `model/`，不建 `domain/` 与 `persistence/`。** 现有类全是 `record` 或纯委托：`record` 里可能有**构造期字段不变量**（如 `AudioSpec` 的紧凑构造器），但**没有任何状态流转不变量**——没有那种「随调用改变状态、并拒绝非法变化」的对象。`domain/` 的成立前提是后者，不是前者；把只有字段约束的数据放进 `domain/`，会让包名做出「这里有状态机」的承诺，而后来者照 `domain/` 找状态流转逻辑却找不到，最终把规则写进 `service/` —— 规范与代码打架。
 
-**`domain/` 升级触发条件**：当出现**必须拒绝非法状态变化**的对象时，建 `domain/`，与 `model/` 并存、不合并。候选场景：转写任务生命周期状态机（`PENDING → RUNNING → SUCCEEDED/FAILED`）、字幕编辑合并、翻译重试策略。
+**`domain/` 已于 2026-09-30 成立（MVP-1）**，首个居民是任务状态机 `domain/task/VideoTask`（`PENDING → RUNNING → SUCCEEDED/FAILED`，拒绝非法迁移）——正是上文预告的候选场景。判据不变：**只有字段约束的数据仍进 `model/`**；出现「必须拒绝非法状态变化」的对象才进 `domain/`，与 `model/` 并存、不合并。
 
 **`persistence/` 与 `model/` 不合并**：数据库行结构与接口契约的演进节奏不同；若合并，MyBatis 注解会混进 `model/`，破坏「框架类型不外泄」的同一条精神。转换点只允许有一处。
 
 ## 持久化三层：Entity / Mapper / Repository
 
-> 前置说明：`backend/pom.xml` 目前**没有任何持久化依赖**，`persistence/` 尚不存在。以下为**落库时的规则**，不是当前代码的现状。
+> **已落地（2026-09-30，MVP-1）**：`persistence/` 已存在，布局为**三个子包** `entity/`、`mapper/`、`repository/`——2026-09-30 项目所有者定调按「构件类型」分子包、类不平铺在 persistence/ 根；当前单表不分领域二级包，表多时再议。依赖与数据源契约见 [database-guidelines.md](./database-guidelines.md)。`domain/` 同步成立（触发条件见下节：任务状态机 `domain/task/VideoTask`）。
 
 | 层 | 类名 | 职责 | 谁看得见 |
 |---|---|---|---|
@@ -96,7 +98,7 @@ com.vidsage
 - **受限的是可见性，不是存在性**：`Mapper` 必须存在（`Repository` 要用），但**不许出现在 `service/` 里**。规则是「`service/` 不许直接依赖 `Mapper`」，不是「不许同时存在 `Mapper` 和 `Repository`」。
 - **不预先抽接口**：`XxxRepository` 直接是**具体类**，不写 `interface` + `Impl`。单一存储实现下抽接口属于「为以后可能用到」的过度设计（与 [quality-guidelines.md](./quality-guidelines.md) 反模式清单同一条精神）。
 - **`@Repository` 只是跟随社区惯例**：不要写成「白拿异常转换收益」—— `PersistenceExceptionTranslationPostProcessor` 的异常转换主要针对 JPA/Hibernate 原生异常，**MyBatis-Plus 下是否触发未经核实**，别把它当成立即收益。
-- `mapper` / `repository` 是**类名**（`XxxMapper`、`XxxRepository`），不是顶层包名。
+- `mapper` / `repository` **不做顶层包名**——它们以子包形式存在于 `persistence/` 之下（`persistence/mapper/`、`persistence/repository/`，2026-09-30 项目所有者定调）；类名仍按本表（`XxxMapper`、`XxxRepository`）。
 
 ### 反模式
 
