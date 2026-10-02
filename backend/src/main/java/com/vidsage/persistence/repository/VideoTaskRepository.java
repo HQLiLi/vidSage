@@ -86,7 +86,8 @@ public class VideoTaskRepository {
     private static VideoTask toDomain(VideoTaskEntity entity) {
         return VideoTask.restore(entity.getId(), entity.getTaskNo(), entity.getInputType(),
                 entity.getSourceUri(), entity.getWorkspaceKey(), entity.getWorkspaceDir(),
-                entity.getStatus(), entity.getCurrentStage(), entity.getErrorMessage(),
+                entity.getStatus(), entity.getCurrentStage(), entity.getTranslationStatus(),
+                entity.getErrorMessage(),
                 entity.getCreatedAt(), entity.getUpdatedAt(), entity.getStartedAt(), entity.getFinishedAt());
     }
 
@@ -103,6 +104,7 @@ public class VideoTaskRepository {
         entity.setWorkspaceDir(task.getWorkspaceDir());
         entity.setStatus(task.getStatus());
         entity.setCurrentStage(task.getCurrentStage());
+        entity.setTranslationStatus(task.getTranslationStatus());
         entity.setErrorMessage(task.getErrorMessage());
         entity.setCreatedAt(task.getCreatedAt());
         entity.setUpdatedAt(task.getUpdatedAt());

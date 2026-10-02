@@ -263,6 +263,34 @@ class SubtitleTranslationServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // 翻译检查点判定（2026-10-02 两段式：管线触发翻译前的幂等判据）
+    // ------------------------------------------------------------------
+
+    @Test
+    void hasTranslationArtifactTrueOnlyWhenCheckpointNonEmpty() throws Exception {
+        SubtitleTranslationService s = service();
+        MediaInput input = new MediaInput.RemoteUrl("https://x");
+
+        assertFalse(s.hasTranslationArtifact(input), "从未跑过翻译：检查点不在，应返回 false");
+
+        // 造一份空检查点：空文件不算「已完成」（与 translate 的断点判据同口径）
+        Files.writeString(translateSegFile(), "");
+        assertFalse(s.hasTranslationArtifact(input), "空检查点不算已完成");
+
+        // 写入非空检查点（合法 TranslatedTrack JSON）：判定为已完成
+        JSON.writeValue(translateSegFile().toFile(),
+                new TranslatedTrack(SubtitleRoute.ASR_CLOUD, "en", "zh", true, List.of()));
+
+        assertTrue(s.hasTranslationArtifact(input), "非空检查点在 → 已完成");
+    }
+
+    @Test
+    void hasTranslationArtifactRejectsNullInput() {
+        SubtitleTranslationService s = service();
+        assertThrows(IllegalArgumentException.class, () -> s.hasTranslationArtifact(null));
+    }
+
+    // ------------------------------------------------------------------
     // 目标语种：卫语句须早于 I/O（error-handling.md 的硬规则）
     // ------------------------------------------------------------------
 

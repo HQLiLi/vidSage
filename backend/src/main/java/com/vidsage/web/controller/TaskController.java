@@ -4,6 +4,7 @@ import com.vidsage.model.progress.TaskProgressMessage;
 import com.vidsage.model.task.TaskArtifactFile;
 import com.vidsage.model.task.TaskStatus;
 import com.vidsage.model.task.TaskView;
+import com.vidsage.model.task.TranslationStatus;
 import com.vidsage.service.TaskService;
 import com.vidsage.subscribe.Subscription;
 import com.vidsage.subscribe.TaskSubscriptionRegistry;
@@ -33,10 +34,11 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * 任务提交、状态查询、进度订阅与产物下载 HTTP 入口（MVP-1 异步管线的唯一前端依赖）。
+ * 任务提交、状态查询、按需翻译、进度订阅与产物下载 HTTP 入口（MVP-1 异步管线的唯一前端依赖）。
  *
  * <p>本类只做「接收 → 卫语句 → 委托 → 返回」，不写业务逻辑；提交即返回 202 与任务视图，
- * <b>不等管线跑完</b>——长视频不再顶客户端超时。
+ * <b>不等管线跑完</b>——长视频不再顶客户端超时。自动管线跑到清洗 / 原文字幕为止（2026-10-02
+ * 两段式裁定），翻译由用户对 SUCCEEDED 任务显式触发（{@code POST /{taskNo}/translate}）。
  *
  * <p>SSE 订阅（{@code /events}）的接线：读 DB 快照（未知 taskNo 在此 404）→ 建 emitter →
  * 挂「写 emitter」的 Consumer 进注册表 → 重读快照推送（防「读快照 → 挂订阅」窗口内任务到达
@@ -47,8 +49,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * （design.md 任务表 source_uri 注、logging-guidelines 脱敏红线）。
  */
 @Slf4j
-@Tag(name = "任务", description = "任务提交（URL / 文件上传）、状态查询、进度订阅（SSE）与产物下载："
-        + "异步管线入口，提交即返回 202")
+@Tag(name = "任务", description = "任务提交（URL / 文件上传）、状态查询、按需翻译、进度订阅（SSE）与"
+        + "产物下载：异步管线入口，提交即返回 202；自动管线到原文字幕为止，翻译按需触发")
 @RestController
 @RequestMapping("/api/tasks")
 public class TaskController {
@@ -74,7 +76,8 @@ public class TaskController {
     }
 
     /**
-     * 提交 URL 任务：异步执行 下载 → 抽音频 → 转写 → 清洗 → 翻译 全流程。
+     * 提交 URL 任务：异步执行 下载 → 抽音频 → 转写 → 清洗，到原文字幕就绪为止（2026-10-02
+     * 两段式）；翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
      *
      * <p><b>当前支持的输入（2026-10-02 记录，待前端落地后复议校验层级）</b>：公网媒体页面 URL，
      * 实测可用的是 yt-dlp 支持的站点——本项目验证过 B 站视频页与 YouTube；未验证站点不提前拦截，
@@ -89,7 +92,9 @@ public class TaskController {
      * @throws com.vidsage.service.TaskConflictException 同 URL 已有进行中任务（409，响应体附既有任务）
      */
     @Operation(summary = "提交 URL 任务",
-            description = "异步执行全流程，立即返回 202 与任务视图；同一 URL 已有排队 / 执行中任务时返回 409")
+            description = "异步执行到原文字幕就绪（下载 → 抽音频 → 转写 → 清洗），立即返回 202 与任务视图；"
+                    + "翻译需任务成功后另调 POST /api/tasks/{taskNo}/translate 触发。"
+                    + "同一 URL 已有排队 / 执行中任务时返回 409")
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     public TaskView submitUrl(@RequestBody SubmitUrlRequest request) {
@@ -103,7 +108,8 @@ public class TaskController {
     }
 
     /**
-     * 上传本地视频 / 音频文件提交任务：流式落盘（按内容寻址），异步执行全流程。
+     * 上传本地视频 / 音频文件提交任务：流式落盘（按内容寻址），异步执行到原文字幕就绪为止
+     * （2026-10-02 两段式）；翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
      *
      * @param file 上传的媒体文件（multipart 字段名 file）；不能为空
      * @return 新任务的 PENDING 视图
@@ -190,6 +196,29 @@ public class TaskController {
     }
 
     /**
+     * 按需触发字幕翻译（2026-10-02 两段式）：提交后的自动管线只跑到清洗 / 原文字幕为止，
+     * 用户点「翻译」才触发——不看翻译的人不花 LLM 钱。幂等语义见服务层：
+     * 已有翻译产物则幂等收敛（不发 LLM），翻译进行中重复触发返回当前视图不重入。
+     *
+     * @param taskNo 提交响应返回的任务号
+     * @return 触发后的任务视图（translationStatus 反映翻译子状态；正常触发为 RUNNING）
+     * @throws IllegalArgumentException taskNo 为空（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
+     * @throws com.vidsage.service.TaskNotFoundException 任务不存在（404）
+     */
+    @Operation(summary = "触发字幕翻译（按需）",
+            description = "主任务成功（SUCCEEDED）后可触发；202 返回触发后的任务视图。幂等：已有翻译产物"
+                    + "不重复调用 LLM，翻译进行中重复触发返回当前视图；主任务未成功返回 400（字幕尚未就绪）")
+    @PostMapping("/{taskNo}/translate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public TaskView translate(@PathVariable String taskNo) {
+        if (!StringUtils.hasText(taskNo)) {
+            throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
+        }
+        log.info("触发字幕翻译: taskNo={}", taskNo);
+        return taskService.translate(taskNo);
+    }
+
+    /**
      * 下载任务产物：流式返回工作区内的文件，文件名来自任务视图的 artifacts 清单。
      * 路径穿越防护（{@code ../} / 绝对路径 / 编码绕过）在服务层 resolve 后校验，越界一律 400。
      *
@@ -222,9 +251,13 @@ public class TaskController {
     }
 
     /**
-     * 是否终态事件：终态快照推完即收口连接，随后退订。
+     * 是否终态事件：主状态终态<b>且</b>翻译子状态不在进行中，任务才真正不再有后续事件——
+     * 终态快照推完即收口连接，随后退订。与 {@code TaskSseHub.send} 的终态判定同一判据
+     * （翻译事件的 taskStatus 恒为主状态 SUCCEEDED，只看主状态会把翻译进行中的连接提前收掉）。
      */
     private static boolean isTerminal(TaskProgressMessage event) {
-        return event.taskStatus() == TaskStatus.SUCCEEDED || event.taskStatus() == TaskStatus.FAILED;
+        boolean mainTerminal =
+                event.taskStatus() == TaskStatus.SUCCEEDED || event.taskStatus() == TaskStatus.FAILED;
+        return mainTerminal && event.translationStatus() != TranslationStatus.RUNNING;
     }
 }

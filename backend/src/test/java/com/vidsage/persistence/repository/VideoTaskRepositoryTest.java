@@ -13,6 +13,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.model.task.TaskInputType;
 import com.vidsage.model.task.TaskStatus;
+import com.vidsage.model.task.TranslationStatus;
 import com.vidsage.persistence.entity.VideoTaskEntity;
 import com.vidsage.persistence.mapper.VideoTaskMapper;
 import java.util.Collection;
@@ -80,6 +81,7 @@ class VideoTaskRepositoryTest {
         entity.setWorkspaceDir("dir-a1b2c3d4e5f6");
         entity.setStatus(TaskStatus.RUNNING);
         entity.setCurrentStage("transcribe");
+        entity.setTranslationStatus(TranslationStatus.SUCCEEDED);
         entity.setErrorMessage(null);
         when(mapper.selectOne(any())).thenReturn(entity);
 
@@ -95,6 +97,8 @@ class VideoTaskRepositoryTest {
         assertEquals("dir-a1b2c3d4e5f6", task.getWorkspaceDir());
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals("transcribe", task.getCurrentStage());
+        assertEquals(TranslationStatus.SUCCEEDED, task.getTranslationStatus(),
+                "翻译子状态应随行双向转换（NULL=从未触发 → null）");
         // 重建出的领域对象可直接继续走状态机（RUNNING → FAILED）
         task.fail("失败详情");
         assertEquals(TaskStatus.FAILED, task.getStatus());
@@ -133,7 +137,7 @@ class VideoTaskRepositoryTest {
     @Test
     void updateWritesMutatedDomainStateBackToEntity() {
         VideoTask task = VideoTask.restore(9L, "abc123", TaskInputType.URL, "https://example.com/v",
-                "a1b2c3d4e5f6", "dir", TaskStatus.RUNNING, "clean", null,
+                "a1b2c3d4e5f6", "dir", TaskStatus.RUNNING, "clean", null, null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), null);
         task.fail("翻译失败：请检查 DEEPSEEK_API_KEY");
@@ -147,5 +151,22 @@ class VideoTaskRepositoryTest {
         assertEquals(TaskStatus.FAILED, entity.getStatus());
         assertEquals("翻译失败：请检查 DEEPSEEK_API_KEY", entity.getErrorMessage());
         assertNotNull(entity.getFinishedAt());
+    }
+
+    @Test
+    void updateCarriesTranslationStatusTransition() {
+        VideoTask task = VideoTask.restore(11L, "def456", TaskInputType.URL, "https://example.com/v",
+                "a1b2c3d4e5f6", "dir", TaskStatus.SUCCEEDED, "clean", null, null,
+                java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
+                java.time.LocalDateTime.now(), java.time.LocalDateTime.now());
+        task.translationStart();
+
+        repository.update(task);
+
+        ArgumentCaptor<VideoTaskEntity> captor = ArgumentCaptor.forClass(VideoTaskEntity.class);
+        verify(mapper).updateById(captor.capture());
+        assertEquals(TranslationStatus.RUNNING, captor.getValue().getTranslationStatus(),
+                "翻译子状态迁移应写回实体（NULL → RUNNING）");
+        assertEquals(TaskStatus.SUCCEEDED, captor.getValue().getStatus(), "主状态不被翻译迁移改动");
     }
 }

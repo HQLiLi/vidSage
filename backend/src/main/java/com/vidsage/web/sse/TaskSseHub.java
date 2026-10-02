@@ -2,6 +2,7 @@ package com.vidsage.web.sse;
 
 import com.vidsage.model.progress.TaskProgressMessage;
 import com.vidsage.model.task.TaskStatus;
+import com.vidsage.model.task.TranslationStatus;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
@@ -110,7 +111,12 @@ public class TaskSseHub {
         if (targets == null) {
             return;
         }
-        boolean terminal = event.taskStatus() == TaskStatus.SUCCEEDED || event.taskStatus() == TaskStatus.FAILED;
+        // 终态判定（2026-10-02 两段式）：主状态终态且翻译子状态不在进行中，任务才真正不再有后续事件。
+        // 翻译事件的 taskStatus 恒为主状态 SUCCEEDED（主管线终态）——若只看主状态，第一条翻译进度
+        // 事件就会把连接收掉；连接必须保持到翻译终态。与 TaskController.isTerminal 同一判据。
+        boolean mainTerminal =
+                event.taskStatus() == TaskStatus.SUCCEEDED || event.taskStatus() == TaskStatus.FAILED;
+        boolean terminal = mainTerminal && event.translationStatus() != TranslationStatus.RUNNING;
         for (SseEmitter target : targets) {
             try {
                 target.send(SseEmitter.event().name(EVENT_NAME).data(event, MediaType.APPLICATION_JSON));

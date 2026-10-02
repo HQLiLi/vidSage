@@ -140,7 +140,7 @@ public class SubtitleService {
                 workDir.getFileName(), routeToken, spec.container());
 
         // 音频准备 + 转写（2a 的 0..100 映射进 0..60；映射逻辑上提至 ProgressMapper——
-        // MVP-1 管线对 clean / translate 的区间映射是第二个使用者）
+        // MVP-1 管线对 clean 的区间映射是第二个使用者，2026-10-02 两段式后翻译不再经映射）
         AudioArtifact audio = audioPreparationService.prepare(input, spec, ProgressMapper.remap(listener, 0, ACQUIRE_END));
         emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_START, "开始转写", StageEvent.StageState.RUNNING);
         TranscriptionResult result = transcriptionService.transcribe(

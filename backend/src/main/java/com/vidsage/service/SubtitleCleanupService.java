@@ -44,10 +44,10 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class SubtitleCleanupService {
 
-    /** 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 60..80）。 */
+    /** 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 70..100）。 */
     private static final int STAGE_BEGIN = 0;
 
-    /** 阶段进度的终点（0..100 区间自报口径，管线负责 remap 进 60..80）。 */
+    /** 阶段进度的终点（0..100 区间自报口径，管线负责 remap 进 70..100）。 */
     private static final int STAGE_DONE = 100;
 
     private final WorkspaceService workspaceService;

@@ -18,6 +18,7 @@ import com.vidsage.model.task.TaskArtifactFile;
 import com.vidsage.model.task.TaskInputType;
 import com.vidsage.model.task.TaskStatus;
 import com.vidsage.model.task.TaskView;
+import com.vidsage.model.task.TranslationStatus;
 import com.vidsage.persistence.repository.VideoTaskRepository;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -287,6 +288,99 @@ class TaskServiceTest {
         assertThrows(TaskNotFoundException.class, () -> service().snapshot("ghost"));
     }
 
+    // ---------- SSE 快照：翻译子状态覆盖（2026-10-02 两段式） ----------
+
+    @Test
+    void snapshotForSucceededTaskWithRunningTranslationCarriesTranslateStage() {
+        VideoTask task = succeededWithTranslation(TranslationStatus.RUNNING, null);
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+
+        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+
+        assertEquals(TaskStatus.SUCCEEDED, event.taskStatus(), "主状态不被翻译子状态改写");
+        assertEquals(TranslationStatus.RUNNING, event.translationStatus(),
+                "快照携带翻译子状态（订阅端终态判定据此保持连接）");
+        assertEquals("translate", event.stage().stage());
+        assertEquals(0, event.stage().progress(), "翻译进行中取粗粒度 0，精确进度由增量事件携带");
+        assertEquals(StageEvent.StageState.RUNNING, event.stage().state());
+    }
+
+    @Test
+    void snapshotForSucceededTaskWithSucceededTranslationCarriesCompletedTranslateStage() {
+        VideoTask task = succeededWithTranslation(TranslationStatus.SUCCEEDED, null);
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+
+        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+
+        assertEquals(TranslationStatus.SUCCEEDED, event.translationStatus());
+        assertEquals("translate", event.stage().stage());
+        assertEquals(100, event.stage().progress());
+        assertEquals(StageEvent.StageState.SUCCEEDED, event.stage().state());
+    }
+
+    @Test
+    void snapshotForSucceededTaskWithFailedTranslationCarriesErrorMessage() {
+        VideoTask task = succeededWithTranslation(TranslationStatus.FAILED, "翻译失败：LLM 返回掉行");
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+
+        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+
+        assertEquals(TranslationStatus.FAILED, event.translationStatus());
+        assertEquals(StageEvent.StageState.FAILED, event.stage().state());
+        assertEquals("翻译失败：LLM 返回掉行", event.stage().message(),
+                "翻译失败快照的消息携带失败原因（重连后仍可见，不只活在实时事件里）");
+    }
+
+    @Test
+    void snapshotWithoutTranslationKeepsMainPipelineStageEvent() {
+        // 主任务成功且翻译从未触发：快照仍是主管线形状（阶段取 current_stage 的粗粒度完成位）
+        VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
+                "a1b2c3d4e5f6", "dir");
+        task.start();
+        task.updateStage("clean");
+        task.succeed();
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+
+        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+
+        assertNull(event.translationStatus(), "从未触发翻译 → 翻译子状态为 null");
+        assertEquals("clean", event.stage().stage(), "不受翻译分支影响");
+        assertEquals(100, event.stage().progress());
+    }
+
+    // ---------- 按需触发翻译（2026-10-02 两段式） ----------
+
+    @Test
+    void translateDelegatesToPipelineAndReturnsRefreshedView() {
+        VideoTask before = succeededWithTranslation(null, null);
+        // loadTask 读一次；translateTask（mock，模拟内部已推进翻译子状态）后重读一次
+        when(repository.findByTaskNo(before.getTaskNo()))
+                .thenReturn(Optional.of(before))
+                .thenReturn(Optional.of(succeededWithTranslation(TranslationStatus.RUNNING, null)));
+
+        TaskView view = service().translate(before.getTaskNo());
+
+        verify(pipelineService).translateTask(before.getTaskNo());
+        assertEquals(before.getTaskNo(), view.taskNo());
+        assertEquals(TaskStatus.SUCCEEDED, view.status());
+        assertEquals(TranslationStatus.RUNNING, view.translationStatus(),
+                "视图应反映触发后的翻译子状态（重读而非触发前的陈旧副本）");
+    }
+
+    @Test
+    void translateThrowsNotFoundWhenTaskMissing() {
+        when(repository.findByTaskNo("ghost")).thenReturn(Optional.empty());
+
+        assertThrows(TaskNotFoundException.class, () -> service().translate("ghost"));
+        verify(pipelineService, never()).translateTask(any());
+    }
+
+    @Test
+    void translateRejectsBlankTaskNo() {
+        assertThrows(IllegalArgumentException.class, () -> service().translate(" "));
+        verify(pipelineService, never()).translateTask(any());
+    }
+
     // ---------- 产物下载（含路径穿越防护） ----------
 
     @Test
@@ -392,5 +486,16 @@ class TaskServiceTest {
 
     private static String sha256Prefix(byte[] bytes) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).substring(0, 12);
+    }
+
+    /**
+     * 主任务已成功、翻译子状态随给定值构造的任务（errorMessage 由调用方给，模拟翻译失败落库的形状）。
+     */
+    private static VideoTask succeededWithTranslation(TranslationStatus translationStatus, String errorMessage) {
+        return VideoTask.restore(7L, "abc123def456abc123def456abc123de", TaskInputType.URL,
+                "https://example.com/v", "a1b2c3d4e5f6", "dir", TaskStatus.SUCCEEDED, "clean",
+                translationStatus, errorMessage,
+                java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
+                java.time.LocalDateTime.now(), java.time.LocalDateTime.now());
     }
 }

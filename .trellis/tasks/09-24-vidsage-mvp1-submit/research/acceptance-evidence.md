@@ -1,5 +1,12 @@
 # MVP-1 真实运行证据（acceptance evidence）
 
+> **2026-10-02 15:16 两段式补充（翻译拆分为按需触发后）**：URL `BV11QMd6WEJp`，
+> taskNo `8c5af2e72b2b4aff99154ddd110f02cf`。
+> ① 提交 → **16 秒 SUCCEEDED**，artifacts 仅 4 件（原文/清洗，**无翻译产物**），translationStatus=NULL；
+> ② `POST /api/tasks/{taskNo}/translate` → 202（translationStatus=RUNNING）→ 数十秒后 translation
+> **SUCCEEDED**，`subtitles-asr-cloud-translate-ja.srt` 下载 200；翻译中重复触发 → 202 不重入。
+> 本地表已 DROP 重建（translation_status 列）。
+
 > 运行时间：2026-10-02 10:11–10:24（本机）
 > 环境：分支 `feature/mvp1-task-pipeline`（步骤 1-8 全部实现 + 两轮质检后）；Boot 4.1.1 +
 > MyBatis-Plus `mybatis-plus-spring-boot4-starter:3.5.17`；本机 MySQL 8.0.37（库 `vidsage`，

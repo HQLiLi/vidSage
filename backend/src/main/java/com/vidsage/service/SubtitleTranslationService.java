@@ -60,10 +60,10 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class SubtitleTranslationService {
 
-    /** 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 80..100）。 */
+    /** 阶段进度的起点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。 */
     private static final int STAGE_BEGIN = 0;
 
-    /** 阶段进度的终点（0..100 区间自报口径，管线负责 remap 进 80..100）。 */
+    /** 阶段进度的终点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。 */
     private static final int STAGE_DONE = 100;
 
     private final WorkspaceService workspaceService;
@@ -107,6 +107,36 @@ public class SubtitleTranslationService {
     }
 
     /**
+     * 翻译检查点是否已存在且非空：按需触发（2026-10-02 两段式）的幂等判据。
+     *
+     * <p>判定与 {@link #translate} 的断点复用完全同源——{@code segments-<route>-translate-<target>.json}
+     * 存在且非空 = 翻译已完成。管线在真正启动翻译（状态机迁移、排队、调 LLM）之前先问这一句，
+     * 命中即幂等收敛为 SUCCEEDED、绝不发 LLM：不看翻译的人不花钱，看过的人不重复花钱。
+     * route 与目标语种的知识单源在本类内（与产物命名、断点判据同处），不向管线泄漏文件名公式。
+     *
+     * <p>定位工作目录复用 {@code workspaceFor}（懒创建）：本方法只在主任务 SUCCEEDED 后被调用，
+     * 工作区必然已由主管线建出；目录意外缺失时创建空目录后返回 {@code false}，无副作用危害。
+     *
+     * @param input 媒体输入（与产字幕、清洗、翻译同源，用于定位工作目录）；不可为空
+     * @return 翻译检查点已在且非空时为 {@code true}
+     * @throws IllegalArgumentException input 为空
+     * @throws IllegalStateException    目标语种配置为空（与 translate 同一入口守卫）
+     */
+    public boolean hasTranslationArtifact(MediaInput input) {
+        // 卫语句先于一切 I/O：真实 WorkspaceService.workspaceFor 对 null 也会拒，但守卫必须
+        // 长在自己身上，不依赖协作者的实现细节（error-handling.md「卫语句优先」）
+        if (input == null) {
+            throw new IllegalArgumentException(
+                    "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
+        }
+        String targetLanguage = resolveTargetLanguage(props);
+        SubtitleRoute route = asrProvider.route();
+        Path workDir = workspaceService.workspaceFor(input);
+        Path translateSeg = workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(route, targetLanguage));
+        return ArtifactFiles.isNonEmpty(translateSeg);
+    }
+
+    /**
      * 翻译一份已清洗的字幕（不关心进度）：内部走 {@link ProgressListener#noop()}。
      *
      * @param input 媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
@@ -121,7 +151,8 @@ public class SubtitleTranslationService {
     /**
      * 翻译一份已清洗的字幕，产出双语 SRT 与翻译检查点。
      *
-     * <p>进度事件（{@code 0..100} 自报口径，管线负责 remap 进自己的区间）：
+     * <p>进度事件（{@code 0..100} 自报口径；2026-10-02 两段式后翻译按需触发、事件自成一段，
+     * 调用方按需 remap 或直通）：
      * <ul>
      *   <li>断点复用命中 → 一条 SKIPPED（进度 100），直接返回；</li>
      *   <li>源语种 = 目标语种 → 不调 LLM，写完照抄产物后一条 SKIPPED（进度 100）；</li>

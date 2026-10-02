@@ -1,6 +1,21 @@
 # MVP-1 — 实施计划
 
-> **⚠️ 进度快照（2026-09-30 傍晚，用户电量不足主动中断）——恢复会话先读本节**
+> **⚠️ 进度快照（2026-10-02，翻译两段式改造轮）——恢复会话先读本节**
+>
+> - MVP-1 合并版已实现并提交（管线 = 下载 → 抽音频 → 转写 → 清洗 → 翻译自动跑完，407 测试全绿；
+>   分支 `feature/mvp1-task-pipeline`，提交 3357a55 / 60c67db / 60cc039 / a508766）。
+> - **本轮（2026-10-02 用户裁定）把翻译拆出自动管线，改为按需触发**：提交后自动管线只跑到
+>   原文字幕为止，用户点「翻译」（`POST /api/tasks/{taskNo}/translate`）才触发翻译——不看翻译的人
+>   不花 LLM 钱。改动面：prd/design/implement 三件套两段式化；schema 加 `translation_status` 列
+>   （**旧库需手动 `DROP TABLE task`** 由 sql.init 重建，MySQL 8 无 ADD COLUMN IF NOT EXISTS）；
+>   `VideoTask` 加翻译子状态迁移（translationStart/Succeed/Fail，主状态机不动）；管线 runStages
+>   去掉 translate 段、权重重排 prepare 0..70 / clean 70..100；新增 `translateTask`（幂等：检查点
+>   在 → translationSucceed 不发 LLM；翻译中重复触发不重入；未就绪 400 / 未知任务 404）；
+>   `TaskProgressMessage` 加可空 translationStatus（SSE 终态判定改为「主状态终态且翻译非 RUNNING」，
+>   否则第一条翻译事件就会收口连接）；`TaskView` 加 translationStatus；控制器加触发端点（202）。
+> - 未提交前不跑收尾（收编 / spec 回写状态见下方 09-30 快照）。
+
+> **进度快照（2026-09-30 傍晚，用户电量不足主动中断）**
 >
 > - 分支 `feature/mvp1-task-pipeline`（自 dev 切出），任务 in_progress，**所有变更均未 commit**。
 > - **步骤 1-5 已完成并通过质检**：批次 A（依赖/持久化三子包/状态机/TaskService/TaskController/

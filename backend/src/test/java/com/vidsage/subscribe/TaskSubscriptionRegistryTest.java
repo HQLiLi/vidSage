@@ -29,7 +29,7 @@ class TaskSubscriptionRegistryTest {
 
     private static TaskProgressMessage event(TaskStatus status) {
         return new TaskProgressMessage("t0", status,
-                new StageEvent("clean", 50, "第 1/2 批", StageEvent.StageState.RUNNING));
+                new StageEvent("clean", 50, "第 1/2 批", StageEvent.StageState.RUNNING), null);
     }
 
     // ---------- 订阅与广播 ----------
