@@ -532,3 +532,29 @@ v0 跑通后的整理轮：任务文档按实际落地重写（prd/design 重写
 ### Status
 
 [OK] **Completed**
+
+
+## Session 18: MVP-1 异步任务管线落地 + 翻译按需触发拆分
+<!-- trellis-session: v=2 fp=5df127e2a247492d -->
+
+**Date**: 2026-10-02
+**Task**: MVP-1 异步任务管线落地 + 翻译按需触发拆分
+**Branch**: `dev`
+
+### Summary
+
+实现 MVP-1 总提交接口与异步管线（URL/上传双路线、MySQL 落库、状态机、虚拟线程编排、SSE 进度推送、订阅注册表、产物下载），收编三个旧同步端点；grill 定调翻译拆为按需触发（POST /api/tasks/{taskNo}/translate + translation_status 子状态）；441 测试全绿，BV11QMd6WEJp 两段式真实取证；真实运行抓修 SSE 断连订阅泄漏；spec 重建 database-guidelines 并修订 directory-structure；合并回 dev 并归档任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3357a55` | feat(backend): MVP-1 异步任务管线与总提交接口 |
+| `60c67db` | refactor(backend): 收编旧同步端点，业务入口收敛到 TaskController |
+| `60cc039` | docs(spec): 数据库规范重建 + 目录结构修订 |
+| `a508766` | docs(task): MVP-1 规划产物、取证文档与 SSE 抓流记录 |
+| `c5c1444` | feat(backend): 翻译拆分为按需触发 |
+
+### Status
+
+[OK] **Completed**
