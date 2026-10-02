@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "入口：Pre-Development Checklist + Quality Check，动任何后端代码前先过"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "本任务新建 domain/ 与 persistence/ 两个顶层包：三层规则、可见性边界、契约落点判据都在此"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "卫语句先于 I/O、异常→状态码映射、中文错误消息：提交入口与管线失败语义照此"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "契约/注释/测试写法与依赖原则，写 TaskService/TaskPipelineService 前必读"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "管线『卡在哪一步』依赖日志；SSE/异步路径的日志位置与脱敏规则"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "vidsage.task.* 配置属性类按 @ConfigurationProperties 惯例装配"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "HTTP→service→persistence/provider 跨层数据流与边界"}
+{"file": ".trellis/tasks/09-24-vidsage/research/oss-references.md", "reason": "MVP1 节实现参考（PRD 明示规划期挂入）：异步管线与 SSE 的开源对照"}
