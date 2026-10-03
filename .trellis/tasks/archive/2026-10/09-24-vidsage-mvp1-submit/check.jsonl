@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "验收时检查契约中性、最小改动、注释白话、测试覆盖"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "检查卫语句位置与异常映射：提交口 400/409、管线失败落 FAILED"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "检查 Mapper 不外泄到 service/、domain-persistence-model 三包分工、契约落点"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查 remap 上提、WorkspaceService/既有服务复用，没有重复造轮子"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查 SSE 事件从 provider/service 到 HTTP 的穿透是否破坏分层"}
+{"file": ".trellis/tasks/09-24-vidsage/research/oss-references.md", "reason": "交叉核对 GPL 红线：确认没有从参考项目抄源码进来"}

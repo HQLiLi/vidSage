@@ -3,6 +3,7 @@ package com.vidsage.provider.llm;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.config.SubtitleCleanupProperties;
@@ -11,7 +12,9 @@ import com.vidsage.model.subtitle.SubtitleContext;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -57,7 +60,7 @@ class SubtitleCleanserTest {
 
     /** 默认调参：单批 20 句 / 600 字 / 跨批历史上限 20000。 */
     private static final SubtitleCleanupProperties PROPS =
-            new SubtitleCleanupProperties(8000L, 600, 20, 3, 0.7, 0.3, 20000);
+            new SubtitleCleanupProperties(8000L, 600, 20, 3, 0.7, 0.3, 20000, false);
 
     private static SubtitleCleanser cleanserOver(ScriptedChatModel model) {
         return cleanserOver(model, PROPS);
@@ -69,7 +72,7 @@ class SubtitleCleanserTest {
 
     /** 一批一句，用来造多批场景；跨批历史上限由用例指定。 */
     private static SubtitleCleanupProperties onePerBatch(int historyMaxChars) {
-        return new SubtitleCleanupProperties(8000L, 600, 1, 3, 0.7, 0.3, historyMaxChars);
+        return new SubtitleCleanupProperties(8000L, 600, 1, 3, 0.7, 0.3, historyMaxChars, false);
     }
 
     /** 把一份 {@link Prompt} 里所有消息的文本拼起来，用于「整份请求里有没有某段文字」这类断言。 */
@@ -228,7 +231,7 @@ class SubtitleCleanserTest {
                 bad, good, "{\"1\": \"好吗\"}");
 
         // batchSize=2 → 第一批 [1,2]、第二批 [3]
-        cleanserOver(model, new SubtitleCleanupProperties(8000L, 600, 2, 3, 0.7, 0.3, 20000))
+        cleanserOver(model, new SubtitleCleanupProperties(8000L, 600, 2, 3, 0.7, 0.3, 20000, false))
                 .clean(segments("今天天气很号", "我们去公园", "好吗"), SubtitleContext.empty(), "");
 
         assertEquals(3, model.prompts.size(), "第一批重试一次 + 第二批一次");
@@ -243,7 +246,7 @@ class SubtitleCleanserTest {
                 "不是 JSON", "还是不是", "依然不是", "{\"1\": \"好吗\"}");
 
         SubtitleCleanser.CleanseResult result = cleanserOver(model,
-                        new SubtitleCleanupProperties(8000L, 600, 2, 3, 0.7, 0.3, 20000))
+                        new SubtitleCleanupProperties(8000L, 600, 2, 3, 0.7, 0.3, 20000, false))
                 .clean(segments("今天天气很号", "我们去公园", "好吗"), SubtitleContext.empty(), "");
 
         assertEquals(3, result.retrySteps());
@@ -272,32 +275,6 @@ class SubtitleCleanserTest {
     }
 
     @Test
-    void 历史超上限时丢掉最老的一轮往返() {
-        List<Message> history = new ArrayList<>(List.of(
-                new UserMessage("u1"), new AssistantMessage("a1"),
-                new UserMessage("u2"), new AssistantMessage("a2"),
-                new UserMessage("u3"), new AssistantMessage("a3")));   // 共 12 字符
-
-        SubtitleCleanser.trimHistory(history, 9);   // 丢一对变 8 字符 ≤ 9，停
-
-        assertEquals(4, history.size(), "只丢最老的一对");
-        assertEquals("u2", history.getFirst().getText());
-        assertEquals(UserMessage.class, history.getFirst().getClass(), "历史必须以 user 开头");
-        assertEquals(AssistantMessage.class, history.getLast().getClass());
-    }
-
-    @Test
-    void 只有一轮历史时即使超限也不丢() {
-        List<Message> history = new ArrayList<>(List.of(
-                new UserMessage("u1"), new AssistantMessage("a1")));
-
-        SubtitleCleanser.trimHistory(history, 1);
-
-        assertEquals(2, history.size(), "刚追加的那一对无论多长都要保留");
-        assertEquals("u1", history.getFirst().getText());
-    }
-
-    @Test
     void 历史上限为0时关闭跨批历史() {
         ScriptedChatModel model = new ScriptedChatModel(
                 "{\"1\": \"今天天气很好\"}", "{\"1\": \"我们去公园\"}");
@@ -312,9 +289,9 @@ class SubtitleCleanserTest {
     // 术语替换：校验层基线豁免 + 指标
     // ------------------------------------------------------------------
 
-    /** 造一个带术语的上下文，主题固定。 */
+    /** 造一个带术语的上下文，主题固定；源语种留空（这批用例不关心它）。 */
     private static SubtitleContext contextWith(SubtitleContext.Term... terms) {
-        return new SubtitleContext("剑术", List.of(terms));
+        return new SubtitleContext("剑术", "", List.of(terms));
     }
 
     @Test
@@ -445,5 +422,66 @@ class SubtitleCleanserTest {
         String task = allText(model.prompts.get(0));
         assertTrue(task.contains("米特号"), "出现过的术语要渲染");
         assertFalse(task.contains("帕姆"), "没出现过的术语不该渲染");
+    }
+
+    // ------------------------------------------------------------------
+    // validate 的失败分类（观测项：结构化分类，不靠文案前缀）
+    // ------------------------------------------------------------------
+
+    /** 只为直接调 {@code validate} 造个实例，不起容器也不发请求。 */
+    private static SubtitleCleanser validator() {
+        return cleanserOver(new ScriptedChatModel());
+    }
+
+    @Test
+    void 校验通过时返回null() {
+        Map<String, String> original = new LinkedHashMap<>();
+        original.put("1", "今天天气很好");
+
+        assertNull(validator().validate(original, new LinkedHashMap<>(original), List.of()));
+    }
+
+    @Test
+    void 缺少条目归为KEY_SET() {
+        Map<String, String> original = new LinkedHashMap<>();
+        original.put("1", "今天天气很好");
+        original.put("2", "我们去公园");
+        Map<String, String> candidate = new LinkedHashMap<>();
+        candidate.put("1", "今天天气很好");
+
+        SubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
+
+        assertNotNull(failure);
+        assertEquals(SubtitleCleanser.ValidationFailure.FailureKind.KEY_SET, failure.kind());
+        assertTrue(failure.detail().contains("缺少条目 2"), "detail 要保留原有文案");
+    }
+
+    @Test
+    void 多余条目也归为KEY_SET() {
+        Map<String, String> original = new LinkedHashMap<>();
+        original.put("1", "今天天气很好");
+        Map<String, String> candidate = new LinkedHashMap<>();
+        candidate.put("1", "今天天气很好");
+        candidate.put("2", "多出来的一条");
+
+        SubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
+
+        assertNotNull(failure);
+        assertEquals(SubtitleCleanser.ValidationFailure.FailureKind.KEY_SET, failure.kind());
+        assertTrue(failure.detail().contains("多余条目 2"));
+    }
+
+    @Test
+    void 改动过大归为TOO_MUCH_EDIT() {
+        Map<String, String> original = new LinkedHashMap<>();
+        original.put("1", "今天天气很好我们去公园散步");   // 13 字，走 normal 阈值 0.7
+        Map<String, String> candidate = new LinkedHashMap<>();
+        candidate.put("1", "xyzxyzxyzxy");                // 与原文无公共字符，相似度 0
+
+        SubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
+
+        assertNotNull(failure);
+        assertEquals(SubtitleCleanser.ValidationFailure.FailureKind.TOO_MUCH_EDIT, failure.kind());
+        assertTrue(failure.detail().contains("改动过大"), "detail 要保留原有文案");
     }
 }

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-09-28
+- **Total Sessions**: 18
+- **Last Active**: 2026-10-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~452 | Active |
+| `journal-1.md` | ~560 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,10 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 18 | 2026-10-02 | MVP-1 异步任务管线落地 + 翻译按需触发拆分 | `3357a55`, `60c67db`, `60cc039`, `a508766`, `c5c1444` | `dev` |
+| 17 | 2026-09-30 | 官方译名接入翻译提示词：deepseek 基线对照与双语种实测 | `97af795`, `c6d49a7`, `981a80d`, `3cdbd92` | `dev` |
+| 16 | 2026-09-29 | 术语官方译名联网查证：实现、重改与换代验收 | `893a959`, `eb0a559` | `feature/subtitle-term-official-lookup` |
+| 15 | 2026-09-29 | MVP-3 LLM 翻译与双语 SRT：规划重写、分步实现与端到端验收 | `15170ef`, `c5f87e4`, `76f4db6`, `a8aaad7`, `702b754`, `ba63ec2`, `69de54f`, `91852d9`, `da9b84d`, `e56f395`, `39f64e2`, `61292e8`, `a83f28d` | `dev` |
 | 14 | 2026-09-28 | 字幕术语替换：跨书写系统替换打通，暴露摘要层知识盲区 | `2649a61`, `96d5556`, `c70cfa4`, `0e02750`, `56d0a9f`, `6d757e8` | `dev` |
 | 13 | 2026-09-28 | 字幕清洗 v0 收尾整理与 LLM 层收口 | `ec7f3c7`, `f378a4a`, `1ee40b4`, `fe3f768`, `d8d191b`, `b9731bd`, `106e675` | `dev` |
 | 12 | 2026-09-26 | MVP-2b 音频转字幕（ASR→SRT）实现+合并+归档 | `45e852c` | `dev` |

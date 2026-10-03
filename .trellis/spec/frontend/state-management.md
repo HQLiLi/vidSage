@@ -1,7 +1,7 @@
 # 状态管理
 
 > 用 **Pinia**，且用 **Setup Store** 写法（在 `defineStore` 里写 Composition API）。
-> 现有 store：`src/stores/counter.ts`
+> store 目录：`src/stores/`，**扁平结构**——不建 `modules/` 子包、不建 `index.ts` barrel（Vuex 时代遗产），一律从具体文件导入：`import { useTaskStore } from '@/stores/task'`。当前目录为空（脚手架 counter 演示已删除）。
 
 ---
 
@@ -23,7 +23,7 @@ app.mount('#app')
 
 ## 写 store：Setup Store 风格
 
-现有唯一的 store 就是这种写法：
+统一用这种写法（示例沿用 Pinia 官方 counter 形态）：
 
 ```ts
 import { ref, computed } from 'vue'
@@ -46,8 +46,6 @@ export const useCounterStore = defineStore('counter', () => {
 - **state 用 `ref`**，**getter 用 `computed`**，**action 用普通函数**
 - 最后**必须 `return` 所有需要暴露的成员**
 - store 的 id（第一个参数）用小写单词，与 `useXxxStore` 对应：`'counter'` ↔ `useCounterStore`
-
-参照：`frontend/src/stores/counter.ts`
 
 ## 命名
 
@@ -75,8 +73,6 @@ const counter = useCounterStore()
 - 在 `<script setup>` **顶层**调用 `useXxxStore()`
 - 模板中**直接访问**属性（`counter.count`），不需要 `.value`
 - 调用 action 时**带括号**：`counter.increment()`
-
-参照：`frontend/src/App.vue`
 
 ## 解构要用 `storeToRefs`
 
@@ -107,7 +103,7 @@ const { increment } = counter
 
 项目要求**每个函数都要写注释**（见 [quality-guidelines.md](./quality-guidelines.md)）。
 
-**现有 `counter.ts` 的 `increment()` 没有注释——这是脚手架遗留，不要跟着学。** 新增的 action 要写：
+**新增的 action 必须写注释**（脚手架的 counter 曾以无注释为先例，已删除，不要效仿）：
 
 ```ts
 /** 计数加一。 */
@@ -120,7 +116,7 @@ function increment() {
 
 | 不要做 | 原因 |
 |---|---|
-| 用 Options Store（`state`/`getters`/`actions` 对象） | 现有 store 是 Setup Store |
+| 用 Options Store（`state`/`getters`/`actions` 对象） | 统一 Setup Store 写法 |
 | `defineStore` 回调里忘记 `return` 成员 | 组件拿不到 |
 | 忘记 `storeToRefs` 就解构 state | 丢失响应性，是最高频的坑 |
 | 在条件分支或函数体里调用 `useXxxStore()` | 必须在 `<script setup>` 顶层 |

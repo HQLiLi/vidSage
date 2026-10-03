@@ -203,6 +203,34 @@ class WorkspaceServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service().workspaceFor(null));
     }
 
+    // ---------- 显式 key 入口（MVP-1 上传路线） ----------
+
+    @Test
+    void explicitKeyEntryCreatesDirectoryWithSanitizedLabelAndGivenKey() {
+        Path dir = service().workspaceFor("上传 视频:mp4", "a1b2c3d4e5f6");
+
+        assertEquals("上传 视频_mp4-a1b2c3d4e5f6", dir.getFileName().toString(),
+                "目录名 = sanitize(标签)-<显式 key>，key 原样使用、不重算");
+        assertTrue(Files.isDirectory(dir), "调用后目录必须已存在");
+    }
+
+    @Test
+    void explicitKeyEntryFallsBackLabelForBlankOrNull() {
+        assertEquals(WorkspaceService.FALLBACK_NAME + "-a1b2c3d4e5f6",
+                service().workspaceFor("  ", "a1b2c3d4e5f6").getFileName().toString());
+        assertEquals(WorkspaceService.FALLBACK_NAME + "-a1b2c3d4e5f6",
+                service().workspaceFor(null, "a1b2c3d4e5f6").getFileName().toString());
+    }
+
+    @Test
+    void workspaceRootResolvesWithoutCreatingDirectory() {
+        Path root = service().workspaceRoot();
+
+        assertTrue(root.isAbsolute(), "根路径应为绝对路径");
+        assertFalse(Files.exists(root), "workspaceRoot 是纯解析，不得有建目录副作用");
+        assertEquals(root, service().workspaceRoot(), "同一配置解析结果稳定");
+    }
+
     private Path writeMedia(String name, int size) throws IOException {
         Path file = tempDir.resolve(name);
         Files.write(file, new byte[size]);

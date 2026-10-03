@@ -46,7 +46,7 @@ export async function submitTranscription(videoId: string): Promise<string> {
 }
 ```
 
-> 现有 `src/stores/counter.ts` 的 `increment()` 无注释，属脚手架遗留。**新增代码必须写**，不要以旧代码为准。
+> 脚手架的 `counter` 演示 store 已删除。**新增代码必须写注释**，不要以旧代码为准。
 
 ---
 

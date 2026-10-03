@@ -248,6 +248,7 @@ Sub-agent dispatch protocol applies to all platforms and all sub-agents, includi
 Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
 Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> STOP for user review (Phase 3.4 gate) -> commit after approval -> `/trellis:finish-work` only when the user asks.
 Wrap-up gates (hard): once the work is done and tests pass, stop and hand it to the user for review; never chain commit -> push -> merge -> archive in one run, and never treat silence as approval. While the task is not archived, end every reply with one line: `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`. Full rules: `.trellis/spec/guides/git-workflow.md`.
+Dispatch granularity: 单次 dispatch ≤2-3 个 implement.md 步骤，超了先拆批；子代理内长输出命令必须 tail/grep 截断。质检随批：只查本批触及文件+受影响接口签名，全量测试只在批次末/任务末，任务收尾只做跨批缝合检查（规则见 Phase 2.1）。
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
 Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
 [/workflow-state:in_progress]
@@ -500,6 +501,18 @@ If `task.py start` errors with a session-identity message (no context key from h
 Goal: turn reviewed planning artifacts into code that passes quality checks.
 
 #### 2.1 Implement `[required · repeatable]`
+
+**Dispatch granularity（2026-10-02 立，全部平台适用）**：单次 dispatch 只覆盖 implement.md 的
+**2-3 步**（或一个可独立验证的交付物）；派发前先按本规则切批，超过即拆。理由：子代理累计 token
+随循环长度近平方级增长（2026-09-30 MVP-1 实测：单批 5 步的 dispatch 累计 10M+ token），且超大
+上下文拖慢推理、加剧压缩失真。配套纪律：子代理内**长输出命令一律截断**（`| tail` / grep 取失败段，
+禁止整段 mvn/日志输出进循环）；design.md 在规划期定死契约细节，把子代理的试错探索压到最低。
+
+**质检与测试节奏（2026-10-02 补充，与上条对齐）**：每批实现完成**立刻**质检本批——只查本批触及的
+文件 + 受影响的接口签名，不重读本批未触碰的文件；全量 `mvn test` 只在**批次末**与**任务末**两个节点跑，
+中途迭代用 `mvn test -Dtest=…` 定向。任务收尾只做一次**跨批缝合检查**（接口一致性、跨层契约），
+不再逐文件重读。权衡警示：全量测试是抓跨文件回归的唯一手段，压缩频次的代价是回归晚发现——
+批次末必跑、不可省；本批未触碰的文件不重读的前提是它们自上次质检后确实未被修改（以 git diff 为准）。
 
 [Claude Code, Cursor, OpenCode, codex-sub-agent, CodeBuddy, Droid, Pi, ZCode, Snow, Oh My Pi]
 

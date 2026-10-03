@@ -1,5 +1,8 @@
 package com.vidsage.web.controller;
 
+import com.vidsage.service.TaskConflictException;
+import com.vidsage.service.TaskNotFoundException;
+import com.vidsage.web.dto.TaskConflictResponse;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -37,6 +40,40 @@ public class ApiExceptionHandler {
     public Map<String, String> handleIllegalArgument(IllegalArgumentException e) {
         log.warn("请求参数不合法: {}", errorMessage(e));
         return Map.of("error", errorMessage(e));
+    }
+
+    /**
+     * taskNo 对应的任务不存在（错在调用方传了未知的任务号）→ 404，记 WARN。
+     *
+     * <p>引入时机见 {@link TaskNotFoundException} 类注释：SSE 订阅与产物下载落地后，「按 taskNo
+     * 找不到资源」首次需要与「参数不合法」（400）区分开——请求格式没错，只是任务号不命中。
+     * 查询 / 订阅 / 产物三个按 taskNo 取任务的端点统一走这条映射。
+     *
+     * @param e 任务不存在异常（查询 / SSE 订阅 / 产物下载统一抛出）
+     * @return 错误体 {@code { "error": message }}；message 提示核对 taskNo
+     */
+    @ExceptionHandler(TaskNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Map<String, String> handleTaskNotFound(TaskNotFoundException e) {
+        log.warn("任务不存在: {}", errorMessage(e));
+        return Map.of("error", errorMessage(e));
+    }
+
+    /**
+     * 同一输入重复提交（错在调用方）→ 409，记 WARN。
+     *
+     * <p>响应体是 {@code { "error": ... }} 的有意扩展（{@link TaskConflictResponse}）：冲突的可操作
+     * 出路是「改用既有任务」，光有文字说明不够，把既有任务视图一并返回。例外原因与引入时机见
+     * {@link TaskConflictException} 的类注释。
+     *
+     * @param e 提交查重命中的冲突异常（携带既有任务视图）
+     * @return 冲突体：错误说明 + 既有任务视图
+     */
+    @ExceptionHandler(TaskConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public TaskConflictResponse handleTaskConflict(TaskConflictException e) {
+        log.warn("任务重复提交被拒绝: {}", errorMessage(e));
+        return new TaskConflictResponse(errorMessage(e), e.getExistingTask());
     }
 
     /**

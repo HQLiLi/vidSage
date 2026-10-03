@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.model.subtitle.SubtitleContext;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -17,8 +18,8 @@ import org.springframework.ai.chat.prompt.Prompt;
  * {@link SubtitleContextSummarizer} 的纯单元测试：<b>不起 Spring 容器</b>，也不打网络。
  *
  * <p>同 {@code SubtitleCleanserTest} 的手法：真 {@code ChatClient} + 桩 {@code ChatModel}。
- * 重点钉的是<b>降级纪律</b>——摘要只是纠错的增益，任何失败（请求炸、回复不是 JSON）
- * 都得降级成空上下文，不能把清洗带挂。
+ * 重点钉的是<b>成功与降级要分得开</b>——摘要只是增益，失败（请求炸、回复不是 JSON）要返回空
+ * {@link Optional}，让调用方知道别把这次结果落盘（空缓存一落盘，摘要就永久丢了）。
  */
 class SubtitleContextSummarizerTest {
 
@@ -39,14 +40,15 @@ class SubtitleContextSummarizerTest {
     }
 
     @Test
-    void 正常回复解析出主题与术语() {
+    void 正常回复解析出主题语种与术语() {
         ChatModel model = scriptedModel(
-                "{\"theme\": \"中世纪德国剑术\", \"terms\": ["
+                "{\"theme\": \"中世纪德国剑术\", \"sourceLanguage\": \"zh\", \"terms\": ["
                         + "{\"asr\": \"亮子纠缠\", \"fixed\": \"量子纠缠\", \"note\": \"物理术语\"}]}");
 
-        SubtitleContext context = summarizerOver(model).summarize("亮子纠缠是什么");
+        SubtitleContext context = summarizerOver(model).summarize("亮子纠缠是什么").orElseThrow();
 
         assertEquals("中世纪德国剑术", context.theme());
+        assertEquals("zh", context.sourceLanguage());
         assertEquals(1, context.terms().size());
         assertEquals("亮子纠缠", context.terms().getFirst().asr());
         assertEquals("量子纠缠", context.terms().getFirst().fixed());
@@ -54,20 +56,18 @@ class SubtitleContextSummarizerTest {
     }
 
     @Test
-    void 请求异常降级为空上下文_不外抛() {
-        SubtitleContext context = summarizerOver(throwingModel()).summarize("随便什么内容");
+    void 请求异常返回空Optional_不外抛() {
+        Optional<SubtitleContext> context = summarizerOver(throwingModel()).summarize("随便什么内容");
 
-        assertEquals("", context.theme());
-        assertTrue(context.terms().isEmpty(), "失败降级应是空术语表");
+        assertTrue(context.isEmpty(), "请求失败该返回空 Optional，交给调用方降级");
     }
 
     @Test
-    void 回复不是合法JSON降级为空上下文_不外抛() {
+    void 回复不是合法JSON返回空Optional_不外抛() {
         ChatModel model = scriptedModel("这不是JSON，是模型的一段废话");
 
-        SubtitleContext context = summarizerOver(model).summarize("随便什么内容");
+        Optional<SubtitleContext> context = summarizerOver(model).summarize("随便什么内容");
 
-        assertEquals("", context.theme());
-        assertTrue(context.terms().isEmpty(), "坏 JSON 降级应是空术语表");
+        assertTrue(context.isEmpty(), "坏 JSON 该返回空 Optional，交给调用方降级");
     }
 }

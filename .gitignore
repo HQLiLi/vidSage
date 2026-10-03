@@ -12,3 +12,6 @@ model-cache/
 asr-service/
 /tools/
 /backend/data/
+
+# 设计原型沙盒（独立于正式前端，不进仓库）
+/prototype/

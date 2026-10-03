@@ -12,6 +12,7 @@ import com.vidsage.model.subtitle.SubtitleRoute;
 import com.vidsage.model.subtitle.SubtitleTrack;
 import com.vidsage.provider.asr.ASRProvider;
 import com.vidsage.utils.fs.ArtifactFiles;
+import com.vidsage.utils.progress.ProgressMapper;
 import com.vidsage.utils.subtitle.SrtRenderer;
 import com.vidsage.utils.subtitle.SubtitleArtifactNames;
 import java.nio.charset.StandardCharsets;
@@ -138,8 +139,9 @@ public class SubtitleService {
         log.debug("开始准备字幕: workDir={}, routeToken={}, audioSpec={}",
                 workDir.getFileName(), routeToken, spec.container());
 
-        // 音频准备 + 转写（2a 的 0..100 映射进 0..60）
-        AudioArtifact audio = audioPreparationService.prepare(input, spec, remap(listener, 0, ACQUIRE_END));
+        // 音频准备 + 转写（2a 的 0..100 映射进 0..60；映射逻辑上提至 ProgressMapper——
+        // MVP-1 管线对 clean 的区间映射是第二个使用者，2026-10-02 两段式后翻译不再经映射）
+        AudioArtifact audio = audioPreparationService.prepare(input, spec, ProgressMapper.remap(listener, 0, ACQUIRE_END));
         emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_START, "开始转写", StageEvent.StageState.RUNNING);
         TranscriptionResult result = transcriptionService.transcribe(
                 new AudioSource.AudioFilePath(audio.audioPath().toString()), null);
@@ -184,14 +186,8 @@ public class SubtitleService {
      * 写两个产物：先写 segments JSON（检查点），再写 SRT（由 track 渲染）。两者都原子替换。
      */
     private void writeArtifacts(Path segmentsPath, Path srtPath, SubtitleTrack track) {
-        try {
-            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(track);
-            ArtifactFiles.writeAtomically(json.getBytes(StandardCharsets.UTF_8), segmentsPath);
-            ArtifactFiles.writeAtomically(SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), srtPath);
-        } catch (JacksonException e) {
-            throw new IllegalStateException("字幕 segments 序列化失败：请检查 SubtitleTrack 结构；"
-                    + "原因：" + e.getMessage(), e);
-        }
+        ArtifactFiles.writeJsonAtomically(track, objectMapper, segmentsPath);
+        ArtifactFiles.writeAtomically(SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), srtPath);
     }
 
     /**
@@ -201,20 +197,6 @@ public class SubtitleService {
         long srtSizeBytes = ArtifactFiles.sizeOrZero(srtPath);
         return new SubtitleArtifact(srtPath, segmentsPath, track.route(), track.language(),
                 track.segments().size(), srtSizeBytes);
-    }
-
-    /**
-     * 把 2a 的 {@code 0..100} 进度线性映射进本任务区间 {@code [from, to]}。
-     *
-     * <p>2a 的进度是绝对的 {@code 0→50→100}（acquire 与 extract 两段拼接），而本任务要把它压缩
-     * 进自己区间的开头（设计决策 6：2a 占 0..60，本任务 transcribe 占 60..95、write 占 95..100）。
-     * 因 acquire 结束与 extract 开始都落在 2a 的 50，映射后连续，单调不倒退。
-     */
-    private static ProgressListener remap(ProgressListener delegate, int from, int to) {
-        return event -> {
-            int progress = from + (int) ((long) event.progress() * (to - from) / 100L);
-            delegate.onEvent(new StageEvent(event.stage(), progress, event.message(), event.state()));
-        };
     }
 
     /**

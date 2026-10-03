@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线与常用命令（Boot 4 / Spring AI 2.0.1 / 无 wrapper 的 mvn）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "包结构落点：契约进 model/subtitle/、LLM worker 进 provider/llm/、编排进 service/、HTTP 入口进 web/controller/ 与 web/dto/；utils/ 只收纯算法与仅用 java.nio.file 的文件助手（本任务要动 ArtifactFiles / SrtRenderer / SubtitleArtifactNames，并把 hitTerms 提为 utils/subtitle/TermMatcher）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "契约设计、注释要求（Javadoc 必留、白话可读）、测试写法（mock 不起容器）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "卫语句与异常类型选择：-clean 缺失抛 ISE、输入为空抛 IAE、边界校验须早于 I/O"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志级别分层与脱敏：本任务新增多处观测 DEBUG（批次字数、校验失败分类）与端点 INFO 汇总"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "provider/llm/ 的定位与边界：LLMProvider 不建（2026-09-28 定）、provider 是实现方不是应用服务，故上下文缓存的断点分支归 service"}
+{"file": ".trellis/tasks/09-24-vidsage/research/oss-references.md", "reason": "MVP3 小节的实现参考：VideoLingo 的切块粒度与三级上下文、术语注入、双语 SRT 落地；VideoCaptioner 的 LLM 输出鲁棒性校验"}

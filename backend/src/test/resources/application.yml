@@ -1,11 +1,22 @@
 # 测试专用配置：覆盖主配置，避免上下文加载依赖真实外部密钥
 spring:
   ai:
+    # 供应商开关在测试上下文里同样必需：缺了它，openai / deepseek 两家自动配置
+    # 都按 matchIfMissing=true 激活，两颗 ChatModel 会让 chatClientBuilder 装配失败。
+    # 测试默认 deepseek + test-key，不触真实 API；探针测试（ModelProbeTest）按需覆盖。
+    model:
+      chat: deepseek
     deepseek:
       api-key: test-key
       chat:
         options:
           model: deepseek-chat
+    openai:
+      # mimo 兼容端点；base-url 与型号非密钥，key 在探针里经 local profile 覆盖为真实值
+      api-key: test-key
+      base-url: https://api.xiaomimimo.com/v1
+      chat:
+        model: mimo-v2.6-flash
 
 vidsage:
   asr:
@@ -22,4 +33,11 @@ vidsage:
       similarity-normal: 0.7
       similarity-short-text: 0.3
       # 缺这个键会绑成 0 → 跨批历史在容器路径上静默关闭
+      history-max-chars: 20000
+    translate:
+      target-language: zh
+      # 缺这些键会绑成 0 → 每批退化成 1 句 / 跨批历史静默关闭，都是静默的行为漂移
+      batch-size: 12
+      max-batch-chars: 400
+      max-steps: 3
       history-max-chars: 20000

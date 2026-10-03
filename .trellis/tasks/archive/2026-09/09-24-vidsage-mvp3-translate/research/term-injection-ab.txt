@@ -1,0 +1,103 @@
+#1
+  有术语表: 震刀、弹刀、打铁 are techniques in games for defending against an opponent's attack, causing them to build up a large amount of 架势条 and 气绝,
+  无术语表: Deflecting, parrying, and clashing blades are techniques in games for defending against an opponent's attack, causing them to build up a large amount of posture meter and become staggered,
+
+#2
+  有术语表: and after executing the opponent, you can deal a large amount of damage to them.
+  无术语表: and after executing the opponent, they can deal a large amount of damage to the enemy.
+
+#3
+  有术语表: So, are these techniques useful in real combat?
+  无术语表: So, are these techniques actually useful in real combat?
+
+#5
+  有术语表: I'm Feisheng from the Student Sword Society. Let's look at a basic principle of defense: by placing your sword in the path of the opponent's attack, you can achieve a basic defense.
+  无术语表: I am Feisheng from the Student Sword Society. Let's take a look at a basic principle of defense: by placing your sword in the path of the opponent's attack, you can achieve a basic defense.
+
+#6
+  有术语表: Then, if the opponent wants to attack the other side, you just move your sword over there, shifting back and forth.
+  无术语表: Then, if the opponent wants to attack from another side, you just move your sword over there, shifting back and forth.
+
+#7
+  有术语表: This is actually like the basic prototype of 弹刀 in 只狼.
+  无术语表: This is actually already like the basic prototype of deflecting in Sekiro.
+
+#9
+  有术语表: So here we offer a simpler and more beginner-friendly defense method: we hold our sword horizontally in front of our head,
+  无术语表: So here we provide a simpler and more beginner-friendly defense method: we hold our sword horizontally in front of our head,
+
+#10
+  有术语表: this way, you place your defense line in a broader blocking zone, and no matter which side the opponent attacks from,
+  无术语表: this way you place your defensive line in a broader blocking zone, and no matter which side the opponent attacks from,
+
+#11
+  有术语表: you can hold your sword in front of your head.
+  无术语表: you can always hold your sword in front of your head.
+
+#12
+  有术语表: Protect yourself.
+  无术语表: Protect yourself well.
+
+#13
+  有术语表: At the same time, you don't need to worry about exposing a weakness on the other side while defending here.
+  无术语表: At the same time, you don't need to worry about exposing another weakness on the other side while defending here.
+
+#14
+  有术语表: In 日耳曼 techniques, this kind of stance is called Ochs, a variant of Ochs.
+  无术语表: In German techniques, this kind of stance is called Ochs, a variant of Ochs.
+
+#15
+  有术语表: In Chinese swordsmanship, this is also called 举顶格.
+  无术语表: In Chinese swordsmanship, this is also referred to as raising the sword overhead to block.
+
+#16
+  有术语表: The advantage of this stance is that its defensive line is long enough, and when the opponent cuts down from above,
+  无术语表: The advantage of this stance is that its defensive line is long enough, and when the opponent slashes downward from above,
+
+#22
+  有术语表: No, because prolonged defense inevitably leads to failure. You can't just keep holding your sword and waiting for the opponent to attack.
+  无术语表: No, because prolonged defense leads to failure; you can't just keep holding your sword up waiting for the opponent to attack,
+
+#23
+  有术语表: You must still use your sword flexibly, whether he attacks from above.
+  无术语表: you must still use your sword flexibly, whether he strikes from above.
+
+#25
+  有术语表: And if the opponent thrusts, just set up your sword and go around it.
+  无术语表: And if the opponent thrusts, you just set up your sword and go around it.
+
+#26
+  有术语表: Of course, it's not enough to just keep defending like this. You can't wait like in a game for the opponent's 架势条 to fill up and then suddenly execute them.
+  无术语表: Of course, it's not enough to just keep defending like this; you can't wait like in a game for the opponent's posture meter to fill up and then suddenly execute them.
+
+#28
+  有术语表: As we discussed today, a person's attack will more or less have some recovery lag. What we need to do is make good use of this lag and extend it.
+  无术语表: As we discussed today, a person's attack will more or less have some recovery lag, and what we need to do is make good use of this lag and extend it.
+
+#29
+  有术语表: When we hold our sword horizontally in front of us, we can't just block his sword. That way, his attack stops, and he can launch his next attack.
+  无术语表: When we hold our sword horizontally in front of us, we can't just block his sword, because then his attack stops and he can launch the next attack.
+
+#32
+  有术语表: If you do this well, in 日耳曼 martial arts, you have performed a 好纳尔人.
+  无术语表: If you do this well, in German martial arts, you have performed a good Nachreisen.
+
+#33
+  有术语表: And in Italian 菲奥雷's martial arts, it is called 农民杀手, because in his techniques, someone who doesn't know how to use a sword,
+  无术语表: In Italian Fiore's martial arts, it is called the peasant killer, because in his technique, someone who doesn't know how to use a sword,
+
+#34
+  有术语表: will probably only cut straight down from above.
+  无术语表: will probably only chop straight down from above.
+
+#36
+  有术语表: In our Chinese martial arts, this technique is also called 劈挂, and in Japanese martial arts, it is called 受流.
+  无术语表: In our Chinese martial arts, this technique is also called pigua, and in Japanese martial arts, it is called ukebarai.
+
+#37
+  有术语表: Have you learned this technique shared by the Chinese, German, Italian, and Japanese systems?
+  无术语表: Have you learned this technique shared by the four systems of China, Germany, Italy, and Japan?
+
+#42
+  有术语表: We are at 重庆南坪印象城, see you next time.
+  无术语表: We are at Chongqing Nanping Impression City. See you next time.

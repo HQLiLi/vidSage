@@ -450,3 +450,111 @@ v0 跑通后的整理轮：任务文档按实际落地重写（prd/design 重写
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: MVP-3 LLM 翻译与双语 SRT：规划重写、分步实现与端到端验收
+<!-- trellis-session: v=2 fp=8bfbc29c2972cfd5 -->
+
+**Date**: 2026-09-29
+**Task**: MVP-3 LLM 翻译与双语 SRT：规划重写、分步实现与端到端验收
+**Branch**: `dev`
+
+### Summary
+
+按现状重写 mvp3 规划（输入改 -clean 产物、不预留反思轮次、语种并入摘要落盘、翻译器独立不抽骨架），分 7 步实现并逐步实现+检查子代理把关：观测项（批次字数+校验失败分类+开发期 TRACE 详情日志）、上下文缓存与源语种（Optional 区分成功与降级，失败绝不落盘）、翻译契约与双语渲染（译文==原文单行）、翻译器本体（12/400 批、三路上下文、键集校验、用尽重试回退原文）、编排与 /api/subtitles/translate 端点（主语言子标签比较防 zh-CN 失配、卫语句早于 I/O）。实现期发现并修正 design 两处缺陷：hitTerms 判据在翻译输入上失准（拆 hitTermsByAsr/Fixed）、步骤 1 对批参数的推论算错（句数才是实际抢跑判据）。端到端四场景实测（跳过 0.087s/翻译 8.34s/断点复用 0.104s/长视频 319 段 41.4s，时间轴逐条对齐），302 用例全绿。发现术语保留规则无方向性（zh→en 净负面，对照实验取证），所有者拍板另立「术语官方译名查询」任务（前置：外语素材+搜索选型实测）。已 --no-ff 合并回 dev 并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `15170ef` | docs(task): mvp3 规划按现状重写，删失效移交文档 |
+| `c5f87e4` | feat(subtitle): 校验失败分类计数与开发期详情日志 |
+| `76f4db6` | docs(spec): 日志规范补开发期详情日志的例外说明 |
+| `a8aaad7` | docs(task): mvp3 步骤 1 实测读数与详情日志机制 |
+| `702b754` | feat(subtitle): 上下文缓存与源语种（清洗与翻译共用） |
+| `ba63ec2` | docs(spec): utils 参照清单同步，并立「同一判据只有一份」规则 |
+| `69de54f` | docs(task): mvp3 步骤 2 记录与 design §3.3 订正 |
+| `91852d9` | feat(subtitle): 翻译契约与双语 SRT 渲染 |
+| `da9b84d` | docs(task): mvp3 步骤 3 记录，并订正步骤 1 对翻译批参数的推论 |
+| `e56f395` | feat(subtitle): 翻译器本体（批处理 + 三路上下文 + 校验回退） |
+| `39f64e2` | feat(subtitle): 翻译编排与 /api/subtitles/translate 端点 |
+| `61292e8` | refactor(subtitle): target 改名 targetLanguage，对齐日志占位符 |
+| `a83f28d` | docs(task): mvp3 步骤 6/7 收尾——验收证据、术语规则方向性缺陷与遗留登记 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 16: 术语官方译名联网查证：实现、重改与换代验收
+<!-- trellis-session: v=2 fp=c47215525b57c765 -->
+
+**Date**: 2026-09-29
+**Task**: 术语官方译名联网查证：实现、重改与换代验收
+**Branch**: `feature/subtitle-term-official-lookup`
+
+### Summary
+
+完成字幕术语官方译名联网查证功能并经两轮迭代定稿：首版（893a959）走 provider/termlookup 四件套 + SubtitleTermVerifier service + Term 三态字段；按项目所有者三条审查意见重改（eb0a559）——查证收进 provider/llm/termlookup（接口保留为换模型留缝）、编排内联翻译流程、查证产出独立类型 VerifiedTerm/VerifiedTerms 落独立产物 terms-<route>-<target>.json（context 永不改写）。查证模型换代 qwen3.7-flash（qwen-flash 别名停在 2025-07-28 快照），请求固定 enable_thinking=false（思考链致单条 20~45s 超时）与 temperature=0.1（防逐轮抖动）。真实验收：context 6+ 次运行零改写，只狼→Sekiro（官方），单条 0.6~2.7s，321 测试全绿。遗留：任务 09-29-subtitle-translate-qwen-mt（qwen-mt-flash 引擎切换）已立项待启动，消费 terms 产物渲染标注；子代理 token 成本观测记于任务 research/subagent-cost-observation.md
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `893a959` | feat(subtitle): 术语官方译名联网查证——摘要后逐条搜索，写入 context 落盘复用 |
+| `eb0a559` | refactor(subtitle): 术语查证按审查意见重改——归入 llm/termlookup、编排内联翻译流程、换代 qwen3.7-flash |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 17: 官方译名接入翻译提示词：deepseek 基线对照与双语种实测
+<!-- trellis-session: v=2 fp=c9b27607a61ca8b6 -->
+
+**Date**: 2026-09-30
+**Task**: 官方译名接入翻译提示词：deepseek 基线对照与双语种实测
+**Branch**: `dev`
+
+### Summary
+
+前置查证任务交付后、引擎切换开工前，项目所有者改道：先把查证好的官方译名按提示词路线接入现有翻译做基线（新分支基于查证分支顶端，qwen-mt 引擎切换暂缓为未来可选测试任务）。SubtitleTranslator 增 officialTerms 入口与 3 参等价重载，术语参考段按查证结论分流——有译名的渲染「词 → 译名」要求照翻、弃权词维持保留原样；service 读 terms-<route>-<target>.json（该产物首个消费方）传入；主翻译模型 mimo→deepseek。真实验证三场：只狼素材 zh→en 对照昨日产物，5/5 查证译名全部生效（只狼→Sekiro: Shadows Die Twice、弹刀→deflection、架势条→Stance 等），10/10 弃权词两侧一致保留原样，0 重试 0 回退 7.7s，译文中文残留 10→5 行；德剑素材 zh→en 冷启动全链路（摘要→查证→翻译 12.5s）复现已知盲区——摘要层把配重球固定为 Palm 且查证层循环确认，再次印证查证修不了上游（term-source-limitation.md 范畴）；zh→ja 一轮 4 术语全部弃权（英文维基不算日文译名，同词异语种不同结论，验证产物按语种分文件的设计），德语术语保留原文恰合 HEMA 惯例，体捌き/見せ場/パッ 等领域词地道，跨批边界语句衔接无缝。人工评审结论：双语种均无系统性机翻味。326 测试全绿；遗留：qwen-mt prd 留档三项已核实 API 事实（单轮无 System Message 定论、terms 无数量上限受 8192 token 约束、max_tokens 须显式设置）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `97af795` | feat(subtitle): 术语官方译名接入翻译提示词——查证译名照翻、弃权维持保留原样 |
+| `c6d49a7` | chore(config): 翻译主模型切回 deepseek（官方译名对照实验基线） |
+| `981a80d` | Merge branch 'feature/subtitle-official-terms-translate' into dev |
+| `3cdbd92` | docs(task): qwen-mt 降级为未来可选测试任务，三项待核实 API 事实已核实留档 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 18: MVP-1 异步任务管线落地 + 翻译按需触发拆分
+<!-- trellis-session: v=2 fp=5df127e2a247492d -->
+
+**Date**: 2026-10-02
+**Task**: MVP-1 异步任务管线落地 + 翻译按需触发拆分
+**Branch**: `dev`
+
+### Summary
+
+实现 MVP-1 总提交接口与异步管线（URL/上传双路线、MySQL 落库、状态机、虚拟线程编排、SSE 进度推送、订阅注册表、产物下载），收编三个旧同步端点；grill 定调翻译拆为按需触发（POST /api/tasks/{taskNo}/translate + translation_status 子状态）；441 测试全绿，BV11QMd6WEJp 两段式真实取证；真实运行抓修 SSE 断连订阅泄漏；spec 重建 database-guidelines 并修订 directory-structure；合并回 dev 并归档任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3357a55` | feat(backend): MVP-1 异步任务管线与总提交接口 |
+| `60c67db` | refactor(backend): 收编旧同步端点，业务入口收敛到 TaskController |
+| `60cc039` | docs(spec): 数据库规范重建 + 目录结构修订 |
+| `a508766` | docs(task): MVP-1 规划产物、取证文档与 SSE 抓流记录 |
+| `c5c1444` | feat(backend): 翻译拆分为按需触发 |
+
+### Status
+
+[OK] **Completed**

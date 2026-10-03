@@ -6,16 +6,39 @@ spring:
   threads:
     virtual:
       enabled: true
+  servlet:
+    multipart:
+      # 用户上传本地视频 / 音频文件：给足上限（design.md「依赖与配置」）。超限被容器拒绝，
+      # 不要为了省事调小——长视频素材普遍数百 MB 到数 GB
+      max-file-size: 2GB
+      max-request-size: 2GB
   ai:
+    # LLM 供应商单开关：deepseek | openai。没有 mimo 这个值——mimo 兼容 OpenAI 协议，
+    # 走 openai 自动配置，供应商由 base-url 决定。高峰期切 mimo 改成 openai，低谷期改回 deepseek。
+    model:
+      chat: deepseek
     deepseek:
-      # 字幕清洗与摘要的 LLM 调用（翻译属 MVP3 规划，届时同样走这里）
-      api-key: ${DEEPSEEK_API_KEY}
+      # 字幕清洗 / 摘要 / 翻译的 LLM 调用
+      api-key: ${DEEPSEEK_API_KEY:}
       chat:
         model: deepseek-chat
         # 翻译要求术语与称谓稳定，温度不宜过高
         temperature: 0.3
+    openai:
+      # 小米 Mimo 的 OpenAI 兼容端点；开关指到 deepseek 时本段闲置不生效
+      api-key: ${MIMO_API_KEY:}
+      base-url: https://api.xiaomimimo.com/v1
+      chat:
+        model: mimo-v2.6-flash
+        # 同 deepseek：术语与称谓要稳定
+        temperature: 0.3
+
+
 
 vidsage:
+  task:
+    # 同时执行的异步管线任务上限；超出者保持 PENDING 排队（TaskPipelineService 的 Semaphore 限流）
+    max-concurrent: 2
   asr:
     # ASR提供者：本地或云端
     provider: cloud
@@ -36,6 +59,19 @@ vidsage:
   workspace:
     # 任务工作目录根；单任务子目录按内容寻址生成，目录可删
     root: ${VIDSAGE_WORKSPACE_ROOT:./data/works}
+  term-lookup:
+    # 术语官方译名联网查证（翻译流程内逐条搜索目标语种译名 → 写独立产物 terms-<route>-<target>.json，
+    # context 永不改写）。删除本行 = 整个查证关闭，翻译照常（不发起任何搜索、不花钱）
+    provider: dashscope
+    dashscope:
+      # 与 ASR 复用同一个百炼 key
+      api-key: ${DASHSCOPE_API_KEY}
+      # 查证模型选型（2026-09-29 定）：qwen-flash 别名停在 2025-07-28 快照（14 个月未更新），
+      # 故换当前代 qwen3.7-flash——三者（qwen-flash / qwen3.7-flash / qwen3.8-flash）输出价最便宜
+      # （0.8 元/百万，官方价目页），实测 enable_search + standard 非流式可用；
+      # Omni 系列搜索强制 agent 策略 → 思考模式 → 必须流式，故不用。
+      # token 费每视频 ≈ 0.013 元，大头是搜索插件费 0.03 元/次，与模型选择无关。
+      model: qwen3.7-flash
   download:
     yt-dlp:
       # B站未登录时的风控边界未实测；部分站点需登录态时，指定导出的 Netscape 格式 cookies 文件
@@ -59,6 +95,24 @@ vidsage:
       similarity-normal: 0.7
       # 短句（≤10字）的底线，放宽到 0.3
       similarity-short-text: 0.3
+    translate:
+      # 目标语种（BCP-47 短码）。源语种与它相同则跳过翻译，不调用 LLM
+      target-language: zh
+      # 批参数（batch-size / max-batch-chars）是**待校准的初值**，依据见任务 implement.md 步骤 1 实测：
+      # 清洗 20 句均值 285 字、区间 197~542，实际抢跑的判据一直是句数，字符上限 600 从未够到。
+      # 翻译的输入字数与清洗同源（同一份 -clean 字幕），所以只调字符上限不会改变批的句数
+      # ——真正控「单次请求输出体量」的旋钮是句数。翻译输出膨胀 1.5~2 倍（token 口径），故句数 20 → 12。
+      # 一次丢给 LLM 翻译多少句（一「批」）；与 max-batch-chars 双判据，先到为准
+      batch-size: 12
+      # 一次最多多少字。它是**次级护栏**：高于实测均值 285，常规素材不抢跑；靠它兜住长句密集素材
+      # （清洗实测出现过 20 句 542 字）。翻译的字符预算应小于清洗的 600——翻译是膨胀任务。
+      max-batch-chars: 400
+      # 翻译最多重来几轮：模型回得不对（掉行/空译文），让它再改，最多 3 次
+      max-steps: 3
+      # 跨批对话历史的字符上限（语义同清洗）：把前几批的「批次原文 + 已采纳的译文」作为多轮历史
+      # 带给后续批次，是「术语与称谓全片一致」的主要载体。累计超过就从最老的一轮开始丢。
+      # 一轮往返约 1000 字（400 字批 + 膨胀译文），20000 ≈ 20 轮；设为 0 关闭，退回「每批独立」。
+      history-max-chars: 20000
 
 logging:
   level:

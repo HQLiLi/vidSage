@@ -5,6 +5,8 @@ import com.vidsage.provider.llm.SubtitleCleanser;
 import com.vidsage.provider.llm.SubtitleContextSummarizer;
 import com.vidsage.model.asr.TranscriptionSegment;
 import com.vidsage.model.media.MediaInput;
+import com.vidsage.model.progress.ProgressListener;
+import com.vidsage.model.progress.StageEvent;
 import com.vidsage.model.subtitle.CleanedSubtitle;
 import com.vidsage.model.subtitle.SubtitleContext;
 import com.vidsage.model.subtitle.SubtitleRoute;
@@ -42,6 +44,12 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class SubtitleCleanupService {
 
+    /** 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 70..100）。 */
+    private static final int STAGE_BEGIN = 0;
+
+    /** 阶段进度的终点（0..100 区间自报口径，管线负责 remap 进 70..100）。 */
+    private static final int STAGE_DONE = 100;
+
     private final WorkspaceService workspaceService;
     private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
@@ -76,7 +84,7 @@ public class SubtitleCleanupService {
     }
 
     /**
-     * 清洗一份字幕（不提供参考术语表）。
+     * 清洗一份字幕（不提供参考术语表、不关心进度）。
      *
      * @param input 媒体输入（与产字幕同源，用于定位工作目录）；不可为空
      * @return 清洗产物（-clean SRT + segments 路径 + 统计）
@@ -87,9 +95,8 @@ public class SubtitleCleanupService {
         return clean(input, "");
     }
 
-
     /**
-     * 清洗一份字幕：读原始 segments → 摘要出上下文 → 切分 → 逐批清洗 → 写 -clean 产物。
+     * 清洗一份字幕（不关心进度）：内部走 {@link ProgressListener#noop()}。
      *
      * @param input     媒体输入；不可为空
      * @param reference 可选参考 / 术语表（纠正误识别术语）；可为 {@code null} 或空白
@@ -98,9 +105,35 @@ public class SubtitleCleanupService {
      * @throws IllegalStateException    原始 segments 缺失（先跑产字幕）、解析或写入失败
      */
     public CleanedSubtitle clean(MediaInput input, String reference) {
+        return clean(input, reference, ProgressListener.noop());
+    }
+
+    /**
+     * 清洗一份字幕：读原始 segments → 摘要出上下文 → 切分 → 逐批清洗 → 写 -clean 产物。
+     *
+     * <p>进度事件（{@code 0..100} 自报口径，管线负责 remap 进自己的区间）：
+     * <ul>
+     *   <li>断点复用命中 → 一条 SKIPPED（进度 100），直接返回；</li>
+     *   <li>正常路径 → 开始（0，RUNNING）→ 每批清洗完成各一条（「第 x/N 批」，来自
+     *       {@link SubtitleCleanser}）→ 完成（100，SUCCEEDED）。</li>
+     * </ul>
+     * 开始事件先于「原始字幕缺失」卫语句发出——失败任务的用户消息里能带上所在阶段。
+     *
+     * @param input     媒体输入；不可为空
+     * @param reference 可选参考 / 术语表（纠正误识别术语）；可为 {@code null} 或空白
+     * @param listener  进度监听；不可为 {@code null}——不关心进度用两参重载
+     * @return 清洗产物（路径 + 语种 + 句数 + 修正/重试统计）
+     * @throws IllegalArgumentException input 或 listener 为空
+     * @throws IllegalStateException    原始 segments 缺失（先跑产字幕）、解析或写入失败
+     */
+    public CleanedSubtitle clean(MediaInput input, String reference, ProgressListener listener) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
+        }
+        if (listener == null) {
+            throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
+                    + "或改用不带 listener 的 clean(input, reference) 两参重载");
         }
         SubtitleRoute route = asrProvider.route();
         Path workDir = workspaceService.workspaceFor(input);
@@ -111,8 +144,11 @@ public class SubtitleCleanupService {
         if (existing != null) {
             log.info("字幕清洗断点复用跳过: clean={}", cleanSeg.getFileName());
             // 断点复用不重跑，本趟统计一律为 0（含术语指标），语义与 correctedCount 一致
+            emit(listener, SubtitleCleanser.STAGE_CLEAN, STAGE_DONE, "已有清洗产物，跳过清洗",
+                    StageEvent.StageState.SKIPPED);
             return toCleaned(existing, cleanSeg, cleanSrt, 0, 0, 0, 0);
         }
+        emit(listener, SubtitleCleanser.STAGE_CLEAN, STAGE_BEGIN, "开始清洗", StageEvent.StageState.RUNNING);
 
         // 原始缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
         // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮接受 500：它是「服务端状态缺失」，
@@ -127,17 +163,34 @@ public class SubtitleCleanupService {
         // 媒体内容
         List<TranscriptionSegment> segments = raw.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
-        // 内容的主题和从中提取出的术语
-        SubtitleContext subtitleContext = contextSummarizer.summarize(radioContent);
+        // 内容的主题、源语种和从中提取出的术语：先读缓存，没有才摘要。
+        // 断点分支留在本层（不在 SubtitleContextSummarizer 里）——与 -clean 断点判据同处，见 design §3.2。
+        Path ctxFile = workDir.resolve(SubtitleArtifactNames.contextFileName(route));
+        SubtitleContext subtitleContext = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
+        if (subtitleContext == null) {
+            subtitleContext = contextSummarizer.summarize(radioContent).orElse(null);
+            if (subtitleContext != null) {
+                // 摘要成功才落盘：降级出的空上下文绝不能写文件，否则下次会命中这份空缓存，
+                // 摘要永久丢失且不报错（design 决策 5）。
+                ArtifactFiles.writeJsonAtomically(subtitleContext, objectMapper, ctxFile);
+                log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
+            } else {
+                subtitleContext = SubtitleContext.empty();   // 降级，且不写文件
+                log.debug("字幕摘要失败，降级为空上下文（不落盘）");
+            }
+        } else {
+            log.debug("字幕上下文缓存命中: file={}", ctxFile.getFileName());
+        }
 
         // 切分
         List<TranscriptionSegment> split = new SubtitleSegmentSplitter(props.maxSegmentMs()).split(segments);
 
-        // 清洗（分批 + 每批带主题/术语/后窗/跨批历史）
-        SubtitleCleanser.CleanseResult result = subtitleCleanser.clean(split, subtitleContext, reference);
+        // 清洗（分批 + 每批带主题/术语/后窗/跨批历史）；批级进度由 cleanser 直接回调 listener
+        SubtitleCleanser.CleanseResult result = subtitleCleanser.clean(split, subtitleContext, reference, listener);
 
         SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments());
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换
+        emit(listener, SubtitleCleanser.STAGE_CLEAN, STAGE_DONE, "清洗完成", StageEvent.StageState.SUCCEEDED);
         log.info("字幕清洗完成: route={}, segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
                 route.name(), result.segments().size(), result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());
@@ -177,15 +230,17 @@ public class SubtitleCleanupService {
      * 写两个 -clean 产物：先 segments JSON（检查点），再 SRT（由 track 渲染）。都原子替换。
      */
     private void writeArtifacts(Path cleanSeg, Path cleanSrt, SubtitleTrack track) {
-        try {
-            ArtifactFiles.writeAtomically(
-                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(track), cleanSeg);
-            ArtifactFiles.writeAtomically(
-                    SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), cleanSrt);
-        } catch (JacksonException e) {
-            throw new IllegalStateException("清洗 segments 序列化失败：请检查 SubtitleTrack 结构；原因："
-                    + e.getMessage(), e);
-        }
+        ArtifactFiles.writeJsonAtomically(track, objectMapper, cleanSeg);
+        ArtifactFiles.writeAtomically(
+                SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), cleanSrt);
+    }
+
+    /**
+     * 发一个阶段事件（本类阶段进度 0..100 自报口径，区间映射归管线的 {@code ProgressMapper}）。
+     */
+    private static void emit(ProgressListener listener, String stage, int progress, String message,
+                             StageEvent.StageState state) {
+        listener.onEvent(new StageEvent(stage, progress, message, state));
     }
 
     /**

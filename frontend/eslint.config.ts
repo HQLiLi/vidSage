@@ -20,6 +20,15 @@ export default defineConfigWithVueTs(
   ...pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
 
+  // views/ 子包约定用 index.vue 作页面主文件，"组件名必须多单词"规则对文件名不适用
+  {
+    name: 'app/views-page-files',
+    files: ['src/views/**/index.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
+    },
+  },
+
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),
 
   skipFormatting,
