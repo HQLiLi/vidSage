@@ -57,7 +57,7 @@ const first = items[0] ?? ''
 `@/*` → `./src/*`，在 `tsconfig.app.json` 的 `paths` 与 `vite.config.ts` 的 `resolve.alias` **两处**都有配置，改一处必须同步另一处。
 
 ```ts
-import { useCounterStore } from '@/stores/counter'
+import router from '@/routes'
 ```
 
 ## 类型定义放哪

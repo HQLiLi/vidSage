@@ -66,8 +66,6 @@ $primary-color: #059669;
 </style>
 ```
 
-参照：`frontend/src/App.vue`
-
 ### 用 `@use`，不用 `@import`
 
 ```scss
@@ -93,7 +91,7 @@ color.scale($primary-color, $lightness: -8%)
 
 - **优先 Tailwind 类**，不要为每个元素发明 SCSS 类名
 - 确实需要自定义类时，用**语义化 kebab-case**，不用 BEM 双下划线风格：`app-button` ✅、`app__button--primary` ❌
-- 现有唯一的自定义类是 `.app-button`，跟随这个风格
+- 当前代码中还没有自定义类，首个出现时跟随上面的风格
 
 ## 反模式
 
