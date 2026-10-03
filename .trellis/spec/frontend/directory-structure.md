@@ -5,10 +5,12 @@
 ```
 frontend/
 ├── src/
+│   ├── api/               # 与后端通信的 HTTP 请求（request.ts 唯一 axios 实例 + 一域一文件 + types.ts）
 │   ├── assets/            # 静态资源与全局样式入口
 │   ├── components/        # 跨页面复用的公共组件（基础结构，.gitkeep 占位）
 │   ├── composables/       # 可复用组合式逻辑（基础结构，.gitkeep 占位）
 │   ├── layouts/           # 跨路由布局组件（基础结构，.gitkeep 占位）
+│   ├── lib/               # 框架无关的单例模块（如 gsap 注册入口）
 │   ├── routes/            # vue-router：index.ts 聚合路由表并创建 router 实例
 │   ├── stores/            # Pinia store，一域一文件（扁平结构）
 │   ├── views/             # 路由页面，每页一个子包（index.vue + components/）
@@ -46,6 +48,8 @@ import UploadPage from '../../views/upload/index.vue'
 
 | 目录 | 放什么 |
 |---|---|
+| `src/api/` | 与后端通信的非 SSE HTTP 请求：`request.ts` 唯一 axios 实例、`types.ts` 契约类型、一域一文件（`tasks.ts` / `media.ts`）。**不建 barrel**，导入写具体文件；SSE 走 `composables/` 不进这里（规则见 [api.md](./api.md)） |
+| `src/lib/` | 框架无关的单例模块。当前只有 `gsap.ts`（GSAP 全项目唯一注册入口）；"一个库全项目共用一份配置"的模块放这里，每个库一个文件 |
 | `src/views/` | 路由页面。**每页一个子包**（kebab-case，与路由 path 同名）：子包内 `index.vue` 是页面主文件，仅本页使用的组件放 `index.vue` 旁的 `components/`（PascalCase） |
 | `src/components/` | 跨页面复用的公共组件。扁平放 PascalCase 文件，数量多了再按域分子目录；只被一个页面使用的组件留在该页面子包内，不上移 |
 | `src/layouts/` | 跨路由布局组件，命名 PascalCase + `Layout` 后缀（如 `DefaultLayout.vue`）。**目录属基础结构（.gitkeep 占位），布局文件等第二个真实布局出现时再建**；页面私有的排布留在页面子包，不上升为 layout |

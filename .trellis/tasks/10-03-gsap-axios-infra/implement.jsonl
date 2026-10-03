@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "新增 src/lib/ 与 src/api/ 需按现有目录职责风格更新本文档"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "需在规范索引表与技术栈表登记 animation.md、api.md、gsap、axios"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "animation.md 的生命周期条款须与 <script setup> 组件写法衔接"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "api 包 types.ts 的类型组织须对齐现有类型规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "提交前质量门（type-check + 双 lint）的执行要求"}

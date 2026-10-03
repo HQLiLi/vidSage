@@ -67,7 +67,7 @@ import router from '@/routes'
 | 单组件内部使用 | 组件 `<script setup>` 内直接定义 |
 | 跨组件共享 | `src/types/`（**尚未创建**，出现共享需求时再建） |
 | store 相关 | 与 store 同文件导出 |
-| 后端接口契约 | 建 `src/types/` 后按功能分文件；**字段名与 Java record 对齐**（`beginTimeMs` 等保持同名） |
+| 后端接口契约 | `src/api/types.ts`（与 api 请求就近，字段名与 Java record / 枚举对齐；规则见 [api.md](./api.md)） |
 
 > 后端契约目前是 Java `record`（如 `TranscriptionSegment(beginTimeMs, endTimeMs, text)`）。前端镜像类型时**保持字段名一致**，便于对照排查。
 
