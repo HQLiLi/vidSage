@@ -558,3 +558,27 @@ v0 跑通后的整理轮：任务文档按实际落地重写（prd/design 重写
 ### Status
 
 [OK] **Completed**
+
+---
+
+## Session 19: 前端引入 GSAP 与 axios 基础设施及规范沉淀
+<!-- trellis-session: v=2 fp=gsap-axios-infra -->
+
+**Date**: 2026-10-03
+**Task**: 前端引入 GSAP 与 axios 基础设施及规范沉淀
+**Branch**: `dev`
+
+### Summary
+
+grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20；`src/lib/gsap.ts` 作全项目唯一 registerPlugin 入口（用户否掉 composables 方案、点名 lib/ 与 request.ts 命名）；`src/api/` 按同源相对路径建 axios 实例（无 baseURL、Vite 代理 /api→8080），types.ts 逐字段镜像后端裸 DTO（无 envelope、409 附既有任务视图），tasks/media 一域一文件覆盖全部非 SSE 端点；发现并 vendoring GreenSock 官方 agent skills 5 个（core/frameworks/performance/timeline/scrolltrigger）进 .agents/skills，与项目 spec 双轨分层（API 级归官方 skills，animation.md 只写项目决策，三类条款标注防冲突）；新增 animation.md 与 api.md 两份 spec，同步 index/directory-structure/type-safety；type-check+lint 全绿，dev 代理实测接管（/api→502=后端未启动，对照 /→200 SPA）；缓动基线 power2.out 用户拍板保留（讨论过改回官方默认，先不动）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `502ef30` | feat(frontend): 引入 gsap 与 axios 基础设施及动画/API 规范 |
+| （auto） | chore(task): archive 10-03-gsap-axios-infra |
+
+### Status
+
+[OK] **Completed**

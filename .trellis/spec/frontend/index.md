@@ -14,6 +14,8 @@
 | [state-management.md](./state-management.md) | Pinia store 组织与命名 | 需要跨组件共享状态时 |
 | [type-safety.md](./type-safety.md) | TS 配置、类型组织、严格模式约束 | 写类型或遇到类型报错时 |
 | [styling.md](./styling.md) | Tailwind vs SCSS 的分工 | 写样式时 |
+| [animation.md](./animation.md) | GSAP 动画：生命周期、性能分层、缓动基线 | 写任何 GSAP 动效时 |
+| [api.md](./api.md) | axios 实例、api 包组织、错误处理约定 | 写与后端通信的请求时 |
 | [quality-guidelines.md](./quality-guidelines.md) | 双 linter、格式化、注释要求 | 写任何代码前 |
 
 ---
@@ -30,6 +32,8 @@
 | Pinia | `^4.0.3` |
 | Tailwind CSS | `^4.3.3`（经 `@tailwindcss/vite` 插件） |
 | SASS | `^1.105.0` |
+| GSAP | `^3.15.0`（动画，统一入口 `src/lib/gsap.ts`，规范见 [animation.md](./animation.md)） |
+| axios | `^1.20.0`（HTTP 请求，统一入口 `src/api/request.ts`，规范见 [api.md](./api.md)） |
 | ESLint | `^10.10.0` |
 | oxlint | `~1.82.0` |
 | Prettier | `3.9.6` |
