@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { ExternalToolReport } from './types'
+import type { ExternalToolReport } from '@/types/media'
 
 /**
  * 诊断外部工具（yt-dlp / ffmpeg / ffprobe）：返回可用性、解析到的绝对路径与版本，

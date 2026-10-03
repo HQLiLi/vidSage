@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查完成定义：type-check/lint/build 全绿与注释要求"}
+{"file": ".trellis/spec/frontend/animation.md", "reason": "核对 GSAP 用法是否符合硬规则（context、revert、reduced-motion、禁布局属性）"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "核对 SSE 是否走 composables、axios 是否唯一实例、错误处理口径"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "核对 store 是否 Setup Store、组件是否 storeToRefs 解构"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "核对组件写法：button type、v-for key、composables 清理"}
+{"file": ".trellis/spec/frontend/styling.md", "reason": "核对样式分工：令牌引用、无行内 style、import 顺序"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "核对类型镜像与严格模式遵循"}

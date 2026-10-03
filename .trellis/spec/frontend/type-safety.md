@@ -60,14 +60,15 @@ const first = items[0] ?? ''
 import router from '@/routes'
 ```
 
-## 类型定义放哪
+## 类型定义放哪（两级类型策略，2026-10-03 定调）
 
 | 场景 | 位置 |
 |---|---|
 | 单组件内部使用 | 组件 `<script setup>` 内直接定义 |
-| 跨组件共享 | `src/types/`（**尚未创建**，出现共享需求时再建） |
+| **跨模块共享**（契约镜像、跨模块视图模型） | 全局 `src/types/`，按域一文件（`task.ts` / `media.ts` / `transcript.ts`）；**准入门槛 = 跨模块使用**，不是「类型就该集中」 |
+| 模块私有类型 | 留在模块内：就地内联，或确需成文件时建**模块内** `types/`（如 `api/types/`）；推断/派生类型（`ReturnType` 等）跟随源模块导出 |
 | store 相关 | 与 store 同文件导出 |
-| 后端接口契约 | `src/api/types.ts`（与 api 请求就近，字段名与 Java record / 枚举对齐；规则见 [api.md](./api.md)） |
+| 后端接口契约 | `src/types/task.ts` / `src/types/media.ts`（字段名与 Java record / 枚举对齐；镜像规则见 [api.md](./api.md)） |
 
 > 后端契约目前是 Java `record`（如 `TranscriptionSegment(beginTimeMs, endTimeMs, text)`）。前端镜像类型时**保持字段名一致**，便于对照排查。
 

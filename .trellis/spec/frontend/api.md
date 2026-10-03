@@ -21,14 +21,15 @@
 | 文件 | 放什么 |
 |---|---|
 | `request.ts` | 唯一 axios 实例 + 拦截器（扩展点） |
-| `types.ts` | 后端契约类型（见下节） |
 | `tasks.ts` | 任务域端点（提交 / 上传 / 查询 / 触发翻译） |
 | `media.ts` | 媒体域端点（工具诊断） |
 
 - **一域一文件**，新域加新文件；**不建 `index.ts` barrel**。
 - 导入写具体文件：`import { getTask } from '@/api/tasks'`。
 
-## 契约类型（types.ts）
+## 契约类型（`src/types/`，两级类型策略）
+
+契约类型**不在 api/ 内**（2026-10-03 定调）：全局共享类型独立在 `src/types/`（按域一文件：`task.ts` / `media.ts`），api 域文件从 `@/types/<域>` 导入。两级策略与准入门槛见 [type-safety.md](./type-safety.md)。
 
 - 与后端 Java `record` / 枚举**逐字段镜像，字段名保持一致**（如 `beginTimeMs` 不改驼峰外的任何拼写），便于对照排查——依据 [type-safety.md](./type-safety.md)。
 - 后端**无 `{code, data}` 包装**：响应体即裸 DTO，类型直接标注在泛型上（`request.get<TaskView>`）。

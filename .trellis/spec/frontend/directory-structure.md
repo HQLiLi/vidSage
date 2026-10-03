@@ -5,14 +5,15 @@
 ```
 frontend/
 ├── src/
-│   ├── api/               # 与后端通信的 HTTP 请求（request.ts 唯一 axios 实例 + 一域一文件 + types.ts）
+│   ├── api/               # 与后端通信的 HTTP 请求（request.ts 唯一 axios 实例 + 一域一文件）
 │   ├── assets/            # 静态资源与全局样式入口
 │   ├── components/        # 跨页面复用的公共组件（基础结构，.gitkeep 占位）
 │   ├── composables/       # 可复用组合式逻辑（基础结构，.gitkeep 占位）
 │   ├── layouts/           # 跨路由布局组件（基础结构，.gitkeep 占位）
-│   ├── lib/               # 框架无关的单例模块（如 gsap 注册入口）
+│   ├── lib/               # 框架无关的单例模块（gsap / dayjs 注册入口）
 │   ├── routes/            # vue-router：index.ts 聚合路由表并创建 router 实例
 │   ├── stores/            # Pinia store，一域一文件（扁平结构）
+│   ├── types/             # 全局共享类型（跨模块才准入，两级类型策略见 type-safety.md）
 │   ├── views/             # 路由页面，每页一个子包（index.vue + components/）
 │   ├── App.vue            # 应用壳，仅承载 <RouterView />
 │   └── main.ts            # 应用入口
@@ -48,7 +49,8 @@ import UploadPage from '../../views/upload/index.vue'
 
 | 目录 | 放什么 |
 |---|---|
-| `src/api/` | 与后端通信的非 SSE HTTP 请求：`request.ts` 唯一 axios 实例、`types.ts` 契约类型、一域一文件（`tasks.ts` / `media.ts`）。**不建 barrel**，导入写具体文件；SSE 走 `composables/` 不进这里（规则见 [api.md](./api.md)） |
+| `src/api/` | 与后端通信的非 SSE HTTP 请求：`request.ts` 唯一 axios 实例 + 一域一文件（`tasks.ts` / `media.ts`）。**不建 barrel**，导入写具体文件；SSE 走 `composables/` 不进这里（规则见 [api.md](./api.md)） |
+| `src/types/` | **全局共享类型**：只收跨模块使用的类型（后端契约镜像 + 跨模块视图模型），按域一文件（`task.ts` / `media.ts` / `transcript.ts`）。**准入门槛 = 跨模块共享**；单模块私有类型就地放（SFC 内联、推断类型跟随源模块），需要成文件时建模块内 `types/`，不上移。规则见 [type-safety.md](./type-safety.md) |
 | `src/lib/` | 框架无关的单例模块。当前只有 `gsap.ts`（GSAP 全项目唯一注册入口）；"一个库全项目共用一份配置"的模块放这里，每个库一个文件 |
 | `src/views/` | 路由页面。**每页一个子包**（kebab-case，与路由 path 同名）：子包内 `index.vue` 是页面主文件，仅本页使用的组件放 `index.vue` 旁的 `components/`（PascalCase） |
 | `src/components/` | 跨页面复用的公共组件。扁平放 PascalCase 文件，数量多了再按域分子目录；只被一个页面使用的组件留在该页面子包内，不上移 |

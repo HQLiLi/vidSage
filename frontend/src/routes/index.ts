@@ -13,10 +13,11 @@ const router = createRouter({
       component: () => import('@/views/upload/index.vue'),
     },
     {
-      path: '/workspace/:videoId',
+      // 工作区：路由参数 :taskNo 对齐后端契约命名（GET /api/tasks/{taskNo}、SSE 订阅、
+      // 产物下载都凭它）；页面通过 defineProps 接收路由参数，不在组件内用 useRoute() 取参。
+      path: '/workspace/:taskNo',
       name: 'workspace',
       component: () => import('@/views/workspace/index.vue'),
-      // 页面通过 defineProps 接收路由参数，不在组件内用 useRoute() 取参。
       props: true,
     },
     {
