@@ -24,6 +24,7 @@ These guides help you **ask the right questions before coding**.
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
 | [Git Workflow Guide](./git-workflow.md) | 分支工作流硬规则：开分支 → 修改 → **停下等审查** → 批准后提交/推送 → 批准后合并 → 删分支；归档由用户发起，未归档期间每轮回复结尾提醒；归档后询问用户：完整生成 traces（`.trellis/workspace/<dev>/traces/`，带任务短名）或只留 journal 记录，沉默按后者 | 任何代码/规范修改动手前 |
+| [Dispatch Protocol Guide](./dispatch-protocol.md) | 子代理派发协议正典：批次并行默认规则（依赖分层 + 所有权清单准入，单派发 ≤3–4 步）、检查拆三读面（读取面限 `git diff` 变更清单 + 锚点，命令关分离）、减轮数三条款、档位三问判据（高档/低档执行者，映射见文末适配层）、worktree 仪式 + 批次完成即 commit + 合并 SOP、执行台账必填列 | 规划批次、写派发词或派发任何子代理之前 |
 
 ---
 

@@ -144,6 +144,13 @@ python ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed g
       MIRROR of rules 2 / 3 / 7 in .trellis/spec/guides/git-workflow.md.
       Change one side, change the other in the same edit. On disagreement
       the spec file is canonical — fix the mirror here to match it
+    - SYNC MARKER: the "Dispatch protocol mirror" lines (Parallelism /
+      Tier test / Round rules / Worktree ritual) in
+      [workflow-state:in_progress] and [workflow-state:in_progress-inline]
+      are a condensed English MIRROR of §1/§3/§4/§5 in
+      .trellis/spec/guides/dispatch-protocol.md. Change one side, change
+      the other in the same edit. On disagreement the spec file is
+      canonical — fix the mirror here to match it
     - Run `trellis update` after editing to push the new bodies to
       downstream user projects (block-level managed replacement)
     - Full runtime contract:
@@ -245,10 +252,15 @@ Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-bef
 Sub-agent dispatch protocol applies to all platforms and all sub-agents, including native Codex `SubagentStart` context injection with child-side pull fallback, class-2 Gemini/Qoder/Copilot/Reasonix/Trae/Grok/Kimi Code, hook-backed ZCode/Snow, and `trellis-research`: every dispatch prompt starts with `Active task: <task path from task.py current>` before role-specific instructions. On Grok Build, use `spawn_subagent` with `subagent_type` set to the Trellis agent name (e.g. `trellis-implement`). On Kimi Code, dispatch the built-in `coder` / `explore` sub-agent with the matching `.kimi-code/skills/trellis-<role>/SKILL.md` instructions.
 
 [workflow-state:in_progress]
-Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
+Tools: `trellis-implement` / `trellis-research` are sub-agent types dispatched via the Task/Agent tool (trellis-implement's SKILL.md is a dispatch-protocol mirror, not an invocable command; there is no skill by these names for trellis-research). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
 Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> STOP for user review (Phase 3.4 gate) -> commit after approval -> `/trellis:finish-work` only when the user asks.
 Wrap-up gates (hard): once the work is done and tests pass, stop and hand it to the user for review; never chain commit -> push -> merge -> archive in one run, and never treat silence as approval. While the task is not archived, end every reply with one line: `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`. Full rules: `.trellis/spec/guides/git-workflow.md`.
-Dispatch granularity: 单次 dispatch ≤2-3 个 implement.md 步骤，超了先拆批；子代理内长输出命令必须 tail/grep 截断。质检随批：只查本批触及文件+受影响接口签名，全量测试只在批次末/任务末，任务收尾只做跨批缝合检查（规则见 Phase 2.1）。
+Dispatch granularity: 单次 dispatch ≤3-4 个 implement.md 步骤，超了先拆批；子代理内长输出命令必须 tail/grep 截断。质检随批：只查本批触及文件+受影响接口签名，全量测试只在批次末/任务末，任务收尾只做跨批缝合检查（规则见 Phase 2.1）。
+Dispatch protocol mirror (SYNC MARKER — condensed English mirror of `.trellis/spec/guides/dispatch-protocol.md` §1/§3/§4/§5; on conflict the canonical doc wins, keep mirrors in sync in the same edit):
+- Parallelism: plan batches by dependency layering; same-layer independent batches dispatch in parallel, cross-layer serial (serial is the exception, not the default). Parallel admission (both required): clear dependency layering (no sibling pair where one batch's output is another's input or both write the same file) + every dispatch word carries a per-file allowed create/modify ownership list (never "and related files").
+- Tier test (three yes/no questions; any "high" answer or unsure -> high tier): 1) design component (new abstraction / new contract / tradeoffs)? 2) safety net downstream (later checks + merge adjudication can catch this batch's errors)? 3) writable as an unambiguous checklist produced at planning? Low-tier executors execute only the dispatch checklist and STOP to report to the main line on anything out-of-checklist (missing prerequisites, conflicts, ambiguity).
+- Round rules for every dispatch: read everything needed in one parallel round before acting; one verification round per batch (parallel type-check + lint at batch end; build once at task end); targeted reads (grep to locate, then offset/limit fragments; no full-file re-reads just to confirm).
+- Worktree ritual: parallel implementation batches default to one git worktree each via `tools/trellis-worktree.sh <batch-name>` (npm ci inside the tree; commit when a batch finishes; `tools/trellis-worktree.sh --clean <batch-name>` removes it). Merge conflicts: mechanical ones per the canonical merge SOP, semantic ones escalate per the canonical escalation rules (`.trellis/spec/guides/dispatch-protocol.md` §5).
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
 Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
 [/workflow-state:in_progress]
@@ -267,6 +279,11 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
 Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> STOP for user review (Phase 3.4 gate) -> commit after approval -> `/trellis:finish-work` only when the user asks.
 Wrap-up gates (hard): once the work is done and tests pass, stop and hand it to the user for review; never chain commit -> push -> merge -> archive in one run, and never treat silence as approval. While the task is not archived, end every reply with one line: `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`. Full rules: `.trellis/spec/guides/git-workflow.md`.
 Do not dispatch implement/check sub-agents in inline mode.
+Dispatch protocol mirror (SYNC MARKER — condensed English mirror of `.trellis/spec/guides/dispatch-protocol.md` §1/§3/§4/§5; on conflict the canonical doc wins, keep mirrors in sync in the same edit; inline mode applies these rules to main-line batch organization):
+- Parallelism: plan batches by dependency layering; same-layer independent batches dispatch in parallel, cross-layer serial (serial is the exception, not the default). Parallel admission (both required): clear dependency layering (no sibling pair where one batch's output is another's input or both write the same file) + every batch carries a per-file allowed create/modify ownership list (never "and related files"). Single implementation batch covers at most 3-4 implement.md steps; split beyond that.
+- Tier test (three yes/no questions; any "high" answer or unsure -> high tier): 1) design component (new abstraction / new contract / tradeoffs)? 2) safety net downstream (later checks + merge adjudication can catch this batch's errors)? 3) writable as an unambiguous checklist produced at planning? Low-tier executors execute only the batch checklist and STOP to report to the main line on anything out-of-checklist (missing prerequisites, conflicts, ambiguity).
+- Round rules: read everything needed in one parallel round before acting; one verification round per batch (parallel type-check + lint at batch end; build once at task end); targeted reads (grep to locate, then offset/limit fragments; no full-file re-reads just to confirm).
+- Worktree ritual: parallel implementation batches default to one git worktree each via `tools/trellis-worktree.sh <batch-name>` (npm ci inside the tree; commit when a batch finishes; `tools/trellis-worktree.sh --clean <batch-name>` removes it). Merge conflicts: mechanical ones per the canonical merge SOP, semantic ones escalate per the canonical escalation rules (`.trellis/spec/guides/dispatch-protocol.md` §5).
 Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
 [/workflow-state:in_progress-inline]
 
@@ -503,7 +520,7 @@ Goal: turn reviewed planning artifacts into code that passes quality checks.
 #### 2.1 Implement `[required · repeatable]`
 
 **Dispatch granularity（2026-10-02 立，全部平台适用）**：单次 dispatch 只覆盖 implement.md 的
-**2-3 步**（或一个可独立验证的交付物）；派发前先按本规则切批，超过即拆。理由：子代理累计 token
+**3-4 步**（或一个可独立验证的交付物）；派发前先按本规则切批，超过即拆。理由：子代理累计 token
 随循环长度近平方级增长（2026-09-30 MVP-1 实测：单批 5 步的 dispatch 累计 10M+ token），且超大
 上下文拖慢推理、加剧压缩失真。配套纪律：子代理内**长输出命令一律截断**（`| tail` / grep 取失败段，
 禁止整段 mvn/日志输出进循环）；design.md 在规划期定死契约细节，把子代理的试错探索压到最低。
