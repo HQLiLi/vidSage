@@ -90,6 +90,9 @@
 | D5 进度语义移到工作区 | 上传页只管提交与上传进度 | SSE 阶段事件在工作区消费；上传页职责单一 |
 | D6 时间处理分野 | 日历时间（提交/完成时刻、耗时）用 **dayjs**（`lib/day.ts` 单例配置）；媒体时长 `mm:ss` 保持纯函数 | 2026-10-03 用户定调引入库；时长非日历时间，dayjs 无时长 API（≥1h 会静默丢小时位） |
 | D7 两级类型组织 | 全局 `src/types/` 收**跨模块共享**类型（契约镜像 `task.ts`/`media.ts` + 跨模块视图模型 `transcript.ts`）；模块私有类型留模块内（就地内联或模块内 `types/`）；`api/types.ts` 迁出后删除；**规范 directory-structure.md / api.md 随本任务同步修订** | 2026-10-03 用户定调：全局共享与模块私有两级管理 |
+| D8 baseURL 收敛 | axios 实例 baseURL 来自 `VITE_API_BASE_URL`（`frontend/.env`，缺省回退 `/api`）；request 衍生调用点去 `/api` 前缀；SSE / `<a download>` / 媒体 src 三类非 axios 出口保留全路径（刻意双拼法，已写入注释与 api.md） | 2026-10-03 用户定调（推翻 api.md 原「不引入 VITE_API_BASE_URL」条款，spec 已同步） |
+| D9 ApiError 归一化 | 响应**错误**拦截器把错误归一化为 `ApiError`（status / message / existingTask，定义在 request.ts）；三个调用点删本地 isErrorBody 拷贝改读字段；成功路径当时保持透传；api.md 同步 | 2026-10-03 用户定调（质检 P2-1 三份拷贝随之消解） |
+| D10 成功解包门面 | 成功拦截器返回 `response.data`；**不导出裸实例**，导出类型化门面 `request = { get, post }`（单泛型位直接返回 `Promise<T>`）；门面边界两处受控断言 `as Promise<T>` 为 type-safety.md no-as 条款唯一例外（axios 1.20 条件类型签名 `AxiosResponseResult` 所迫，零 as 方案已实测排除） | 2026-10-03 用户定调；6 调用点删除手写 `.data` |
 
 ## Out of Scope
 

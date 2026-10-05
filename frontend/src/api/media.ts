@@ -6,5 +6,5 @@ import type { ExternalToolReport } from '@/types/media'
  * 顺序固定；yt-dlp 版本过期时 hint 为新鲜度告警。只读、秒级。
  */
 export async function getTools(): Promise<ExternalToolReport[]> {
-  return (await request.get<ExternalToolReport[]>('/api/media/tools')).data
+  return request.get<ExternalToolReport[]>('/media/tools')
 }

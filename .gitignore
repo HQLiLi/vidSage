@@ -8,6 +8,7 @@ target/
 node_modules/
 dist/
 .env
+!frontend/.env
 model-cache/
 asr-service/
 /tools/
@@ -15,3 +16,8 @@ asr-service/
 
 # 设计原型沙盒（独立于正式前端，不进仓库）
 /prototype/
+
+# 会话本地产物（Playwright MCP 快照日志 / 冒烟测试临时文件 / 会话计划草稿）
+.playwright-mcp/
+.zcode/tmp/
+.zcode/plans/

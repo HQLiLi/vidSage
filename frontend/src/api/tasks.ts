@@ -7,7 +7,7 @@ import type { SubmitUrlRequest, TaskView } from '@/types/task'
  * 错误响应体为 TaskConflictResponse（含既有任务视图）。
  */
 export async function submitUrl(data: SubmitUrlRequest): Promise<TaskView> {
-  return (await request.post<TaskView>('/api/tasks', data)).data
+  return request.post<TaskView>('/tasks', data)
 }
 
 /**
@@ -28,16 +28,15 @@ export async function submitUpload(
 ): Promise<TaskView> {
   const form = new FormData()
   form.append('file', file)
-  return (
-    await request.post<TaskView>('/api/tasks/upload', form, {
-      timeout: 0,
-      onUploadProgress: (event) => {
-        if (!onUploadProgress || !event.total) return
-        // 钳制到 0–100：浮点换算的防御性收边
-        onUploadProgress(Math.min(100, Math.max(0, Math.round((event.loaded / event.total) * 100))))
-      },
-    })
-  ).data
+  return request.post<TaskView>('/tasks/upload', form, {
+    timeout: 0,
+    // 上传进度，通过axios的钩子触发回调
+    onUploadProgress: (event) => {
+      if (!onUploadProgress || !event.total) return
+      // 钳制到 0–100：浮点换算的防御性收边
+      onUploadProgress(Math.min(100, Math.max(0, Math.round((event.loaded / event.total) * 100))))
+    },
+  })
 }
 
 /**
@@ -45,12 +44,20 @@ export async function submitUpload(
  * taskNo 不存在时后端返回 404。
  */
 export async function getTask(taskNo: string): Promise<TaskView> {
-  return (await request.get<TaskView>(`/api/tasks/${taskNo}`)).data
+  return request.get<TaskView>(`/tasks/${taskNo}`)
+}
+
+/**
+ * 经产物端点取 JSON（同源相对路径走 axios；下载链接才用原生 <a> 直连，design §3.2）。
+ * 泛型 T 由调用方按产物类型标注（信封结构见 @/types/task 的 SubtitleArtifactFile 等）。
+ */
+export async function fetchArtifactJson<T>(taskNo: string, name: string): Promise<T> {
+  return request.get<T>(`/tasks/${taskNo}/artifacts/${name}`)
 }
 
 /**
  * 触发翻译（202 Accepted）：仅当任务 SUCCEEDED 后可调；对已完成翻译重复调用幂等收敛。
  */
 export async function translate(taskNo: string): Promise<TaskView> {
-  return (await request.post<TaskView>(`/api/tasks/${taskNo}/translate`)).data
+  return request.post<TaskView>(`/tasks/${taskNo}/translate`)
 }

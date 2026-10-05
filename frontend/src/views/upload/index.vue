@@ -3,12 +3,13 @@
 // 阶段进度不在本页消费（design §3.5：上传页只管提交与上传百分比进度）。
 import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 
-import BrandLogo from '@/components/BrandLogo.vue'
+import AppHeader from '@/components/AppHeader.vue'
+import HeroWave from '@/views/upload/components/HeroWave.vue'
 import { submitUpload, submitUrl } from '@/api/tasks'
+import { ApiError } from '@/api/request'
 import { gsap } from '@/lib/gsap'
-import type { TaskConflictResponse, TaskView } from '@/types/task'
+import type { TaskView } from '@/types/task'
 
 /** 上传方式：本地文件 / 链接 */
 type InputMode = 'local' | 'link'
@@ -20,30 +21,8 @@ type InputMode = 'local' | 'link'
 type SubmitError =
   { kind: 'conflict'; message: string; existingTaskNo: string } | { kind: 'message'; text: string }
 
-/** Hero 声波横幅的单根波形：装饰性列表，位置序号即身份（作 v-for key）。 */
-interface WaveBar {
-  id: number
-  /** 水平位置（viewBox px） */
-  x: number
-  /** 波形高度（viewBox px） */
-  height: number
-  /** 主层竖直起点（viewBox px） */
-  y: number
-  /** 影层竖直起点：主层整体下移 4px，形成双层描边视觉 */
-  shadowY: number
-  /** 主层不透明度：越高越亮，模拟声音能量 */
-  opacity: number
-}
-
 /** 上传方式候选（segmented control 的渲染顺序） */
 const INPUT_MODES: InputMode[] = ['local', 'link']
-
-// Hero 波形几何常量：viewBox 720x200，90 根 * 8px 间距恰好铺满，基线居中于 y=100
-const WAVE_BAR_COUNT = 90
-const WAVE_BAR_GAP = 8
-const WAVE_BASELINE = 100
-const WAVE_MIN_HEIGHT = 8
-const WAVE_AMPLITUDE = 66
 
 const router = useRouter()
 
@@ -70,66 +49,16 @@ const showUploadProgress = computed(() => submitting.value && inputMode.value ==
 const urlCanSubmit = computed(() => url.value.trim() !== '')
 
 /**
- * Hero 声波横幅的 90 根波形：三个不同频率 / 相位的正弦叠加取绝对值，
- * 输出确定性伪随机高度（8–74px）——与音频卡片波形同一视觉语言，且每次渲染完全一致。
- */
-const waveBars = computed<WaveBar[]>(() => {
-  const bars: WaveBar[] = []
-  for (let i = 0; i < WAVE_BAR_COUNT; i++) {
-    const t =
-      Math.sin(i * 0.41) * 0.5 + Math.sin(i * 0.13 + 2.1) * 0.35 + Math.sin(i * 0.67 + 0.7) * 0.15
-    const height = WAVE_MIN_HEIGHT + Math.abs(t) * WAVE_AMPLITUDE
-    bars.push({
-      id: i,
-      x: i * WAVE_BAR_GAP,
-      height,
-      y: WAVE_BASELINE - height / 2,
-      shadowY: WAVE_BASELINE + 4 - height / 2,
-      opacity: 0.22 + (height / (WAVE_MIN_HEIGHT + WAVE_AMPLITUDE)) * 0.55,
-    })
-  }
-  return bars
-})
-
-/** 后端错误响应体形状：`{ "error": 中文说明 }`（ApiExceptionHandler 的统一映射）。 */
-interface ErrorBody {
-  error: string
-}
-
-/** 判定未知响应体是否为后端错误体 `{ error: string }`。 */
-function isErrorBody(data: unknown): data is ErrorBody {
-  if (typeof data !== 'object' || data === null) return false
-  return 'error' in data && typeof data.error === 'string'
-}
-
-/** 判定未知响应体是否为 409 冲突体 TaskConflictResponse（error + 含 taskNo 的既有任务视图）。 */
-function isConflictBody(data: unknown): data is TaskConflictResponse {
-  if (typeof data !== 'object' || data === null) return false
-  if (!('error' in data) || typeof data.error !== 'string') return false
-  if (
-    !('existingTask' in data) ||
-    typeof data.existingTask !== 'object' ||
-    data.existingTask === null
-  ) {
-    return false
-  }
-  return 'taskNo' in data.existingTask
-}
-
-/**
- * 把提交失败的未知错误归一为页内展示模型：409 读 TaskConflictResponse（后端说明 +
- * 既有任务号），其余 axios 错误读响应体 `{ "error": string }`，都拿不到时退回通用文案。
- * 全程类型守卫收窄，不用 as 断言（与 task store 的错误提取同口径）。
+ * 把提交失败的未知错误归一为页内展示模型：拦截器已归一为 ApiError——409 冲突
+ * 读 existingTask（渲染「查看该任务」跳既有任务工作区），其余读统一文案；
+ * 非 ApiError（不经 request 的本地异常）退回通用文案。
  */
 function toSubmitError(error: unknown): SubmitError {
-  if (axios.isAxiosError(error)) {
-    const data: unknown = error.response?.data
-    if (error.response?.status === 409 && isConflictBody(data)) {
-      return { kind: 'conflict', message: data.error, existingTaskNo: data.existingTask.taskNo }
-    }
-    if (isErrorBody(data)) return { kind: 'message', text: data.error }
+  const err = error instanceof ApiError ? error : null
+  if (err?.existingTask) {
+    return { kind: 'conflict', message: err.message, existingTaskNo: err.existingTask.taskNo }
   }
-  return { kind: 'message', text: '提交失败，请稍后重试' }
+  return { kind: 'message', text: err?.message ?? '提交失败，请稍后重试' }
 }
 
 /**
@@ -248,72 +177,12 @@ onUnmounted(() => ctx?.revert())
 
 <template>
   <div ref="root" class="flex min-h-screen flex-col bg-background">
-    <header class="flex h-14 shrink-0 items-center border-b border-border px-4 sm:px-6">
-      <BrandLogo />
-    </header>
+    <AppHeader />
 
     <main class="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-4 py-10 sm:px-6">
       <!-- 氛围横幅：全页唯一的色彩时刻（深绿声波 = "Sage"） -->
       <div data-animate="hero" class="relative overflow-hidden rounded-2xl">
-        <svg
-          class="block h-44 w-full sm:h-48"
-          viewBox="0 0 720 200"
-          preserveAspectRatio="xMidYMid slice"
-          aria-hidden="true"
-        >
-          <defs>
-            <linearGradient id="upload-wave-sky" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" class="wave-sky-top" />
-              <stop offset="1" class="wave-sky-bottom" />
-            </linearGradient>
-            <radialGradient id="upload-wave-glow" cx="0.82" cy="0.3" r="0.9">
-              <stop offset="0" class="wave-glow-strong" />
-              <stop offset="1" class="wave-glow-faint" />
-            </radialGradient>
-            <linearGradient id="upload-wave-shade" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0.45" class="wave-shade-clear" />
-              <stop offset="1" class="wave-shade-deep" />
-            </linearGradient>
-            <linearGradient id="upload-wave-fade" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" class="wave-fade-deep" />
-              <stop offset="1" class="wave-fade-clear" />
-            </linearGradient>
-            <filter id="upload-wave-grain">
-              <feTurbulence
-                type="fractalNoise"
-                baseFrequency="0.9"
-                numOctaves="2"
-                stitchTiles="stitch"
-              />
-              <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.7 0" />
-            </filter>
-          </defs>
-          <rect width="720" height="200" fill="url(#upload-wave-sky)" />
-          <rect width="720" height="200" fill="url(#upload-wave-glow)" />
-          <g v-for="bar in waveBars" :key="bar.id">
-            <rect
-              :x="bar.x"
-              :y="bar.shadowY"
-              width="3"
-              :height="bar.height"
-              rx="1.5"
-              class="fill-sage-300"
-              opacity="0.16"
-            />
-            <rect
-              :x="bar.x"
-              :y="bar.y"
-              width="3"
-              :height="bar.height"
-              rx="1.5"
-              class="fill-sage-50"
-              :opacity="bar.opacity"
-            />
-          </g>
-          <rect width="340" height="200" fill="url(#upload-wave-fade)" />
-          <rect width="720" height="200" fill="url(#upload-wave-shade)" />
-          <rect width="720" height="200" filter="url(#upload-wave-grain)" opacity="0.05" />
-        </svg>
+        <HeroWave class="block h-44 w-full sm:h-48" />
         <div class="absolute inset-x-0 bottom-0 p-5 sm:p-6">
           <h1 class="text-lg font-semibold text-background sm:text-xl">
             把音视频，变成可检索的文字
@@ -443,49 +312,6 @@ onUnmounted(() => ctx?.revert())
 </template>
 
 <style scoped lang="scss">
-/*
- * Hero 渐变 stop 与原生进度条填充：引用 @/assets/tailwind.css 的 @theme 设计令牌。
- * 渐变 stop 色值没有对应的 Tailwind 工具类，走 scoped SCSS + CSS 变量；明暗渐变里的
- * 黑阶统一用 foreground 令牌而非裸 #000，维持「组件只引用 token」的约束。
- */
-.wave-sky-top {
-  stop-color: var(--color-sage-900);
-}
-
-.wave-sky-bottom {
-  stop-color: var(--color-sage-700);
-}
-
-.wave-glow-strong {
-  stop-color: var(--color-sage-300);
-  stop-opacity: 0.1;
-}
-
-.wave-glow-faint {
-  stop-color: var(--color-sage-300);
-  stop-opacity: 0;
-}
-
-.wave-shade-clear {
-  stop-color: var(--color-foreground);
-  stop-opacity: 0;
-}
-
-.wave-shade-deep {
-  stop-color: var(--color-foreground);
-  stop-opacity: 0.45;
-}
-
-.wave-fade-deep {
-  stop-color: var(--color-foreground);
-  stop-opacity: 0.32;
-}
-
-.wave-fade-clear {
-  stop-color: var(--color-foreground);
-  stop-opacity: 0;
-}
-
 /*
  * 上传进度条填充（轨道底色与圆角由元素自身的 bg-mist / rounded-full 承担）：
  * 原生 progress 元素 + :value 绑定真实百分比，归零 appearance 后分别给

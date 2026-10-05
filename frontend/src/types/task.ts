@@ -7,16 +7,22 @@
  * 后端无 `{code, data}` 包装：响应体即裸 DTO，语义全在 HTTP 状态码。
  * 时间字段为 ISO-8601 字符串（Spring Boot 对 LocalDateTime 的默认序列化）；
  * 可空字段显式写 `| null`，与后端 null 语义对齐。
+ *
+ * 本文件保持**纯类型**（构建期整体擦除）：有比较消费的枚举，运行时值对象在
+ * `@/enums/task`（enums/ 承载值），这里经 `import type` + `typeof` 派生联合。
+ * 仅被同文件引用的从属类型（TaskStatus / StageState / StageEvent / SubtitleRoute）
+ * 是契约主类型的组成部分：留在本文件但不导出（export 只给跨模块消费的类型）。
  */
+import type { TASK_STATUS, TRANSLATION_STATUS } from '@/enums/task'
 
 /** 输入类型：URL（链接提交）/ UPLOAD（本站文件上传）——镜像后端 `TaskInputType` */
 export type TaskInputType = 'URL' | 'UPLOAD'
 
-/** 任务状态：PENDING（排队中）/ RUNNING（执行中）/ SUCCEEDED（成功）/ FAILED（失败）——镜像后端 `TaskStatus` */
-export type TaskStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+/** 任务状态：PENDING（排队中）/ RUNNING（执行中）/ SUCCEEDED（成功）/ FAILED（失败）——由 @/enums/task 的 TASK_STATUS 派生，镜像后端 `TaskStatus` */
+type TaskStatus = (typeof TASK_STATUS)[keyof typeof TASK_STATUS]
 
-/** 翻译子状态——镜像后端 `TranslationStatus`；`null` 表示从未触发（主任务成功后按需触发翻译） */
-export type TranslationStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+/** 翻译子状态——由 @/enums/task 的 TRANSLATION_STATUS 派生，镜像后端 `TranslationStatus`；`null` 表示从未触发（主任务成功后按需触发翻译） */
+type TranslationStatus = (typeof TRANSLATION_STATUS)[keyof typeof TRANSLATION_STATUS]
 
 /** 任务产物文件清单项——镜像后端 `TaskArtifact` */
 export interface TaskArtifact {
@@ -61,10 +67,10 @@ export interface TaskConflictResponse {
 }
 
 /** 阶段状态——镜像后端 `StageEvent.StageState`；SKIPPED 表示产物已存在且非空（断点复用跳过） */
-export type StageState = 'RUNNING' | 'SUCCEEDED' | 'SKIPPED' | 'FAILED'
+type StageState = 'RUNNING' | 'SUCCEEDED' | 'SKIPPED' | 'FAILED'
 
 /** 阶段进度事件——镜像后端 `StageEvent` */
-export interface StageEvent {
+interface StageEvent {
   /** 阶段名，如 acquire / extract-audio */
   stage: string
   /** 阶段内进度百分比，取值 0–100 */
@@ -117,7 +123,7 @@ export interface TranslatedSegment {
 }
 
 /** 字幕来源路线——镜像后端 `SubtitleRoute`；与产物文件名里的 kebab token 同源（ASR_CLOUD → asr-cloud） */
-export type SubtitleRoute = 'PLATFORM_MANUAL' | 'PLATFORM_AUTO' | 'ASR_LOCAL' | 'ASR_CLOUD'
+type SubtitleRoute = 'PLATFORM_MANUAL' | 'PLATFORM_AUTO' | 'ASR_LOCAL' | 'ASR_CLOUD'
 
 /**
  * 原文产物文件信封（segments-*.json 落盘形状，raw 与 -clean 同构）——镜像后端 `SubtitleTrack`。

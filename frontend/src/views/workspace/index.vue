@@ -6,12 +6,12 @@ import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch 
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 
-import BrandLogo from '@/components/BrandLogo.vue'
+import AppHeader from '@/components/AppHeader.vue'
 import dayjs from '@/lib/day'
 import { gsap } from '@/lib/gsap'
 import { useTaskStore } from '@/stores/task'
 import { useTranscriptPlayer } from '@/composables/useTranscriptPlayer'
-import MediaPane from '@/views/workspace/components/MediaPane.vue'
+import MediaPane from '@/views/workspace/components/MediaPane/index.vue'
 import TranscriptPane from '@/views/workspace/components/TranscriptPane.vue'
 import WorkspaceHeader from '@/views/workspace/components/WorkspaceHeader.vue'
 
@@ -23,11 +23,10 @@ const props = defineProps<{
 const router = useRouter()
 
 const store = useTaskStore()
-// state / getter 用 storeToRefs，action 直接解构（state-management.md）
 const { taskView, progress, cues, loadError, isRunning, isFailed, isSucceeded } = storeToRefs(store)
 const { load, subscribe } = store
 
-/** 字幕联动播放器：媒体元素唯一时间源，媒体面板与字幕稿共享同一实例（design §3.3）。 */
+/** 字幕联动播放器：媒体元素唯一时间源，媒体面板与字幕稿共享同一实例 */
 const player = useTranscriptPlayer(cues)
 
 // —— 进度卡（isRunning）——
@@ -36,7 +35,7 @@ const player = useTranscriptPlayer(cues)
 const CLOCK_TICK_MS = 30_000
 
 /** 当前时刻（每 CLOCK_TICK_MS 刷新一次），驱动已运行时长的重算。 */
-const now = ref(Date.now())
+const nowTtime = ref(Date.now())
 let clockTimer = 0
 
 /** 进度卡阶段文案：SSE 阶段事件优先；事件未到（刚提交 / 快照无阶段）给排队兜底文案。 */
@@ -55,7 +54,7 @@ const submittedAtText = computed(() => {
 const elapsedMinutes = computed(() => {
   const view = taskView.value
   if (!view) return 0
-  return Math.max(0, Math.floor((now.value - dayjs(view.createdAt).valueOf()) / 60_000))
+  return Math.max(0, Math.floor((nowTtime.value - dayjs(view.createdAt).valueOf()) / 60_000))
 })
 
 // —— 失败卡（isFailed）——
@@ -123,17 +122,17 @@ function playEntrance(): void {
   }, root)
 }
 
+onMounted(() => {
+  clockTimer = window.setInterval(() => {
+    nowTtime.value = Date.now()
+  }, CLOCK_TICK_MS)
+  void loadThenSubscribe()
+})
+
 // 就绪双栏挂载后播放入场：覆盖「刷新即成功」与「进度卡 → 成功」两条路径
 watch(isSucceeded, (ready) => {
   if (!ready) return
   void nextTick(playEntrance)
-})
-
-onMounted(() => {
-  clockTimer = window.setInterval(() => {
-    now.value = Date.now()
-  }, CLOCK_TICK_MS)
-  void loadThenSubscribe()
 })
 
 onUnmounted(() => {
@@ -147,7 +146,10 @@ onUnmounted(() => {
     <!-- 就绪态：工作区顶栏 + 左媒体右字幕双栏（布局对齐原型，design §3.4） -->
     <template v-if="isSucceeded && taskView">
       <WorkspaceHeader :task-no="taskNo" data-animate="header" />
-      <main class="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <!-- overflow-clip：入场 y 位移让窗格瞬时下探出视口，h-screen 应用壳上会多出一条
+           文档滚动条（Windows 经典滚动条占宽挤压布局），动画结束再弹回；就绪态为固定
+           视口布局，窗格溢出一律是动画残影，剪在 main，header 下拉面板在壳层不受影响 -->
+      <main class="flex min-h-0 flex-1 flex-col overflow-clip lg:flex-row">
         <MediaPane
           data-animate="media"
           class="min-h-0 lg:basis-[58%] lg:flex-1"
@@ -167,9 +169,7 @@ onUnmounted(() => {
 
     <!-- 非就绪态：品牌顶栏 + 居中卡片（进度 / 失败 / 任务不存在 / 加载中） -->
     <template v-else>
-      <header class="flex h-14 shrink-0 items-center border-b border-border px-4 sm:px-6">
-        <BrandLogo />
-      </header>
+      <AppHeader />
       <main class="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-4 py-10 sm:px-6">
         <!-- 进度卡：SSE 阶段事件驱动，dayjs 显示提交时刻与已运行时长（AC7） -->
         <div v-if="isRunning" class="rounded-2xl border border-border bg-background p-5">

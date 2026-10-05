@@ -60,23 +60,39 @@ const first = items[0] ?? ''
 import router from '@/routes'
 ```
 
+## TypeScript 类型规范
+
+创建与使用类型的操作口径（2026-10-05 定调）：
+
+- 创建 `type` / `interface` 前，先搜索现有类型定义
+- 优先复用 `src/types`、模块内 `types.ts` 中的类型
+- 仅当前文件使用：局部定义，不加 `export`
+- 模块内共享：放模块 `types.ts`，加 `export`
+- 跨模块共享：放 `src/types`，加 `export`
+- 组件 Props / Emits 类型不加 `export`
+- 不要重复定义语义相同的类型
+- 纯类型导入使用 `import type`
+
 ## 类型定义放哪（两级类型策略，2026-10-03 定调）
 
 | 场景 | 位置 |
 |---|---|
 | 单组件内部使用 | 组件 `<script setup>` 内直接定义 |
 | **跨模块共享**（契约镜像、跨模块视图模型） | 全局 `src/types/`，按域一文件（`task.ts` / `media.ts` / `transcript.ts`）；**准入门槛 = 跨模块使用**，不是「类型就该集中」 |
-| 模块私有类型 | 留在模块内：就地内联，或确需成文件时建**模块内** `types/`（如 `api/types/`）；推断/派生类型（`ReturnType` 等）跟随源模块导出 |
-| store 相关 | 与 store 同文件导出 |
+| 仅当前文件 / 模块内共享 | 仅当前文件：就地内联，**不加 `export`**；模块内共享：模块内 `types.ts`（成规模扩为 `types/`，如 `api/types/`），加 `export`；推断/派生类型（`ReturnType` 等）跟随源模块 |
+| store 相关 | 与 store 同文件；有跨模块消费才导出 |
 | 后端接口契约 | `src/types/task.ts` / `src/types/media.ts`（字段名与 Java record / 枚举对齐；镜像规则见 [api.md](./api.md)） |
+| 契约枚举的运行时值（有比较消费） | `src/enums/`（`as const` 对象，键镜像后端枚举常量；`types/` 由此派生联合保持纯类型，规则见「类型写法」） |
 
 > 后端契约目前是 Java `record`（如 `TranscriptionSegment(beginTimeMs, endTimeMs, text)`）。前端镜像类型时**保持字段名一致**，便于对照排查。
 
 ## 类型写法
 
 - 对象结构优先用 `interface`，联合类型/工具类型用 `type`
+- 有**比较消费**的契约枚举：运行时值放 `src/enums/`（`as const` 对象，键镜像后端枚举常量，例 `enums/task.ts` 的 `TASK_STATUS`），类型联合在 `types/` 经 `import type` + `typeof` 派生（例 `TaskStatus`）——types/ 保持纯类型、构建期可整体擦除，比较处用命名常量不用裸字面量；不用 TS `enum` 语法。无比较消费的联合保持裸 `type`
+- `export` 即对外契约承诺，无消费方的导出会虚增公共面：仅当前文件使用的类型（含只被同文件其他类型引用的从属类型，如 `TaskView` 之下的 `TaskStatus`）一律不导出；各档定义位置与导出口径以「TypeScript 类型规范」为准
 - 不要用 `any`；确实无法确定时用 `unknown` 再收窄
-- 不要用 `as` 强转绕过类型错误——先确认类型定义是否写错了
+- 不要用 `as` 强转绕过类型错误——先确认类型定义是否写错了。**唯一例外**（2026-10-03 定调）：`src/api/request.ts` 类型化门面对 axios 方法返回值做 1 处 `as Promise<T>` 受控断言——axios ^1.19 的返回值是条件类型 `AxiosResponseResult`，第二个泛型位传泛型 T 时条件悬置，与泛型调用点的 `Promise<T>` 标注冲突；而运行时成功拦截器已统一解包 data，门面在唯一边界处掰直返回类型。断言只许出现在该文件门面边界，调用点仍零 `as`
 - 函数返回值显式标注（尤其是导出的函数）
 
 ## `env.d.ts`
@@ -96,7 +112,8 @@ npm run type-check   # vue-tsc --build
 | 不要做 | 原因 |
 |---|---|
 | 关掉 `noUncheckedIndexedAccess` 或加 `// @ts-ignore` 绕过 | 该项目显式开启，属于有意取舍 |
-| 用 `any` 或 `as` 消除报错 | 掩盖真实类型问题 |
+| 用 `any` 或 `as` 消除报错 | 掩盖真实类型问题（唯一例外：request.ts 门面边界的受控断言，见「类型写法」） |
 | 只改 `tsconfig` 或只改 `vite.config.ts` 的别名 | 两处必须同步，否则构建与类型检查行为不一致 |
 | 手机械复制后端契约时改字段名 | 破坏前后端对照 |
 | 用相对路径跨目录导入 | 统一 `@/` |
+| 仅当前文件使用却加 `export` 的 type / interface | 导出即对外契约，口径见「TypeScript 类型规范」 |

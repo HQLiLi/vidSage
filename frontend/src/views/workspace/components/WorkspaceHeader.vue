@@ -1,13 +1,14 @@
 <script setup lang="ts">
-// 工作区顶栏（页面私有组件）：品牌 / 返回 / 任务标题 / 按需翻译入口 / 产物下载面板。
+// 工作区顶栏（页面私有组件）：外壳用跨页公共组件 AppHeader，本组件只管页面差异内容——
+// 返回 / 任务标题 / 按需翻译入口 / 产物下载面板。
 // 翻译态机：就绪可点 → isTranslating 禁用显示「翻译中…」→ 已有译文隐藏（R6）；
 // 「产物」与翻译失败提示均为绝对定位小面板，document 点击外部收起（onScopeDispose 清监听）。
 import { computed, onMounted, onScopeDispose, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import axios from 'axios'
 
-import BrandLogo from '@/components/BrandLogo.vue'
+import AppHeader from '@/components/AppHeader.vue'
+import { ApiError } from '@/api/request'
 import { formatBytes } from '@/utils/format'
 import { useTaskStore } from '@/stores/task'
 
@@ -49,34 +50,18 @@ function toggleArtifacts(): void {
   artifactsOpen.value = !artifactsOpen.value
 }
 
-/** 后端错误响应体形状：`{ "error": 中文说明 }`（ApiExceptionHandler 的统一映射）。 */
-interface ErrorBody {
-  error: string
-}
-
-/** 判定未知响应体是否为后端错误体 `{ error: string }`。 */
-function isErrorBody(data: unknown): data is ErrorBody {
-  if (typeof data !== 'object' || data === null) return false
-  return 'error' in data && typeof data.error === 'string'
-}
-
-/** 从未知错误提取面向用户的中文说明：axios 错误读响应体 error 字段，其余退回通用文案。 */
-function extractTranslateError(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const data: unknown = error.response?.data
-    if (isErrorBody(data)) return data.error
-  }
-  return '翻译请求失败，请稍后重试'
-}
-
-/** 触发按需翻译：进行中防重入；失败写入内联提示，面板内「重试」或再点「翻译」均可重发。 */
+/**
+ * 触发按需翻译：进行中防重入；失败写入内联提示——拦截器已把错误归一为 ApiError，
+ * 直接读统一文案，非 ApiError（理论上不出现）退回通用文案。面板内「重试」或
+ * 再点「翻译」均可重发。
+ */
 async function startTranslate(): Promise<void> {
   if (isTranslating.value) return
   translateError.value = null
   try {
     await translate()
   } catch (error) {
-    translateError.value = extractTranslateError(error)
+    translateError.value = error instanceof ApiError ? error.message : '翻译请求失败，请稍后重试'
   }
 }
 
@@ -110,8 +95,7 @@ onScopeDispose(() => {
 </script>
 
 <template>
-  <header class="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
-    <BrandLogo />
+  <AppHeader>
     <button
       type="button"
       class="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-mist hover:text-foreground"
@@ -181,6 +165,7 @@ onScopeDispose(() => {
       </button>
       <div
         v-if="artifactsOpen"
+        id="artifacts_panel"
         class="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-border bg-background p-2 shadow-lg"
       >
         <p class="px-2 pb-1 pt-1.5 text-xs font-medium text-muted">产物清单</p>
@@ -201,5 +186,5 @@ onScopeDispose(() => {
         </p>
       </div>
     </div>
-  </header>
+  </AppHeader>
 </template>

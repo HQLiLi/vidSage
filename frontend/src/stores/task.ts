@@ -1,99 +1,25 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import axios from 'axios'
 
-import { getTask, translate as translateTask } from '@/api/tasks'
-import { request } from '@/api/request'
+import { fetchArtifactJson, getTask, translate as translateTask } from '@/api/tasks'
+import { ApiError } from '@/api/request'
 import { useTaskEvents } from '@/composables/useTaskEvents'
+import { TASK_STATUS, TRANSLATION_STATUS } from '@/enums/task'
+import { buildCues, pickSourceArtifact, pickTranslatedArtifact } from '@/utils/transcript'
 import type {
   SubtitleArtifactFile,
-  TaskArtifact,
   TaskProgressMessage,
   TaskView,
-  TranscriptionSegment,
   TranslatedArtifactFile,
-  TranslatedSegment,
 } from '@/types/task'
 import type { TranscriptCue } from '@/types/transcript'
 
 /**
  * 工作区加载失败态：404（任务不存在）与其他错误分列，工作区壳据此渲染不同引导卡。
- * 与 store 同文件导出（type-safety.md：store 相关类型随 store 导出）。
+ * 与 store 同文件（type-safety.md：store 相关类型随 store）；仅 store 内部使用不导出，
+ * 视图侧经 loadError 的推断类型取得形状。
  */
-export type TaskLoadError = { kind: 'not-found' } | { kind: 'error'; message: string }
-
-/** 后端错误响应体形状：`{ "error": 中文说明 }`（ApiExceptionHandler 的统一映射）。 */
-interface ErrorBody {
-  error: string
-}
-
-/** 判定未知响应体是否为后端错误体 `{ error: string }`。 */
-function isErrorBody(data: unknown): data is ErrorBody {
-  if (typeof data !== 'object' || data === null) return false
-  return 'error' in data && typeof data.error === 'string'
-}
-
-/** 从未知错误中提取面向用户的中文说明：axios 错误读响应体 error 字段，其余退回通用文案。 */
-function extractErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const data: unknown = error.response?.data
-    if (isErrorBody(data)) return data.error
-  }
-  return '加载失败，请稍后重试'
-}
-
-/**
- * 原文产物选择：artifacts 中的 segments-*.json（排除译文 -translate-），
- * 有 -clean. 后缀者优先（清洗后是展示口径），无清洗产物时取第一个。
- */
-function pickSourceArtifact(artifacts: TaskArtifact[]): TaskArtifact | null {
-  const candidates = artifacts.filter(
-    (a) => /^segments-.+\.json$/.test(a.name) && !a.name.includes('-translate-'),
-  )
-  return candidates.find((a) => a.name.includes('-clean.')) ?? candidates[0] ?? null
-}
-
-/** 译文产物选择：segments-*-translate-*.json；尚无翻译产物时为 null。 */
-function pickTranslatedArtifact(artifacts: TaskArtifact[]): TaskArtifact | null {
-  return artifacts.find((a) => /^segments-.+-translate-.+\.json$/.test(a.name)) ?? null
-}
-
-/**
- * 按下标合并原文与译文段落 → 字幕稿渲染模型。防御性取 min(两边长度)：后端契约保证
- * 逐条下标配对、时间戳一致，长度不等属后端缺陷，不扩散到渲染层。
- * 译文为 null / 与原文相同（无需翻译）的条目视为未翻译，保持单行。
- * id 用「下标-时间戳」复合值：下标是后端配对键（字幕顺序永不变化），时间戳保证可读唯一。
- */
-function buildCues(
-  source: TranscriptionSegment[],
-  translated: TranslatedSegment[] | null,
-): TranscriptCue[] {
-  const count = translated ? Math.min(source.length, translated.length) : source.length
-  const cues: TranscriptCue[] = []
-  for (let i = 0; i < count; i++) {
-    const segment = source[i]
-    if (!segment) continue
-    // translatedText 为 null / 空串 / 与原文相同 → 视为未翻译，不排双语第二行
-    const trans = translated?.[i]
-    const translatedText =
-      trans?.translatedText && trans.translatedText !== trans.sourceText
-        ? trans.translatedText
-        : undefined
-    cues.push({
-      id: `${i}-${segment.beginTimeMs}-${segment.endTimeMs}`,
-      startMs: segment.beginTimeMs,
-      endMs: segment.endTimeMs,
-      text: segment.text,
-      translatedText,
-    })
-  }
-  return cues
-}
-
-/** 经产物端点取 JSON（同源相对路径走 axios；下载链接才用原生 <a> 直连，design §3.2）。 */
-async function fetchArtifactJson<T>(taskNo: string, name: string): Promise<T> {
-  return (await request.get<T>(`/api/tasks/${taskNo}/artifacts/${name}`)).data
-}
+type TaskLoadError = { kind: 'not-found' } | { kind: 'error'; message: string }
 
 /**
  * 工作区任务 store：工作区页（壳 / header / 媒体面板 / 字幕稿）共用的唯一任务状态源。
@@ -120,19 +46,21 @@ export const useTaskStore = defineStore('task', () => {
   const status = computed(() => progress.value?.taskStatus ?? taskView.value?.status ?? null)
 
   /** 任务是否在跑（PENDING / RUNNING）——进度卡态。 */
-  const isRunning = computed(() => status.value === 'PENDING' || status.value === 'RUNNING')
+  const isRunning = computed(
+    () => status.value === TASK_STATUS.PENDING || status.value === TASK_STATUS.RUNNING,
+  )
 
   /** 任务是否成功——就绪双栏态。 */
-  const isSucceeded = computed(() => status.value === 'SUCCEEDED')
+  const isSucceeded = computed(() => status.value === TASK_STATUS.SUCCEEDED)
 
   /** 任务是否失败——失败卡态。 */
-  const isFailed = computed(() => status.value === 'FAILED')
+  const isFailed = computed(() => status.value === TASK_STATUS.FAILED)
 
   /** 翻译是否进行中（SSE 事件优先、退回快照）——「翻译」按钮禁用依据。 */
   const isTranslating = computed(
     () =>
       (progress.value?.translationStatus ?? taskView.value?.translationStatus ?? null) ===
-      'RUNNING',
+      TRANSLATION_STATUS.RUNNING,
   )
 
   /** 是否已有翻译产物（决定字幕稿双语行与翻译按钮可见性）。 */
@@ -141,9 +69,9 @@ export const useTaskStore = defineStore('task', () => {
   )
 
   /**
-   * 加载任务快照（GET /api/tasks/{taskNo}）：先重置既有状态；快照已是 SUCCEEDED 时
+   * 加载任务快照（GET /tasks/{taskNo}）：先重置既有状态；快照已是 SUCCEEDED 时
    * 直接拉产物建 cues。404 记为 not-found（任务不存在卡），其余错误记通用失败
-   * （优先取后端 error 文案）。
+   * （文案取归一化 ApiError 的 message，见 request.ts 拦截器）。
    */
   async function load(taskNo: string): Promise<void> {
     events.close()
@@ -154,16 +82,19 @@ export const useTaskStore = defineStore('task', () => {
     try {
       const view = await getTask(taskNo)
       taskView.value = view
-      if (view.status === 'SUCCEEDED') {
+      if (view.status === TASK_STATUS.SUCCEEDED) {
         // 产物 JSON 瞬时失败只静默跳过（不引 console）：任务本身已成功，
         // 不能把整页标成 loadError；下次进入页面经快照恢复
         await fetchCues().catch(() => undefined)
       }
     } catch (error) {
+      // 拦截器已把错误归一为 ApiError：404 记任务不存在卡，其余读归一化文案；
+      // 非 ApiError（理论上不出现）退回原兜底文案
+      const err = error instanceof ApiError ? error : null
       loadError.value =
-        axios.isAxiosError(error) && error.response?.status === 404
+        err?.status === 404
           ? { kind: 'not-found' }
-          : { kind: 'error', message: extractErrorMessage(error) }
+          : { kind: 'error', message: err?.message ?? '加载失败，请稍后重试' }
     }
   }
 
@@ -211,8 +142,8 @@ export const useTaskStore = defineStore('task', () => {
       return
     }
     const source =
-      (await fetchArtifactJson<SubtitleArtifactFile>(view.taskNo, sourceArtifact.name))
-        .segments ?? []
+      (await fetchArtifactJson<SubtitleArtifactFile>(view.taskNo, sourceArtifact.name)).segments ??
+      []
     const translatedArtifact = pickTranslatedArtifact(view.artifacts)
     const translated = translatedArtifact
       ? ((await fetchArtifactJson<TranslatedArtifactFile>(view.taskNo, translatedArtifact.name))
@@ -232,7 +163,7 @@ export const useTaskStore = defineStore('task', () => {
     try {
       const view = await getTask(taskNo)
       taskView.value = view
-      if (view.status === 'SUCCEEDED') await fetchCues()
+      if (view.status === TASK_STATUS.SUCCEEDED) await fetchCues()
     } catch {
       // 快照刷新失败：保持当前态，不弹错（终态本身已由 SSE 确认）
     }
@@ -244,8 +175,9 @@ export const useTaskStore = defineStore('task', () => {
     // 串台防御：只处理当前任务的事件
     if (message.taskNo !== taskView.value?.taskNo) return
     progress.value = message
-    const terminal = message.taskStatus === 'SUCCEEDED' || message.taskStatus === 'FAILED'
-    if (!terminal || message.translationStatus === 'RUNNING') return
+    const terminal =
+      message.taskStatus === TASK_STATUS.SUCCEEDED || message.taskStatus === TASK_STATUS.FAILED
+    if (!terminal || message.translationStatus === TRANSLATION_STATUS.RUNNING) return
     void refreshAfterTerminal()
   })
 

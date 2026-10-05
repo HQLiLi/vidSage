@@ -1,4 +1,6 @@
 import { onScopeDispose, ref } from 'vue'
+
+import { TASK_STATUS, TRANSLATION_STATUS } from '@/enums/task'
 import type { TaskProgressMessage } from '@/types/task'
 
 /**
@@ -7,8 +9,9 @@ import type { TaskProgressMessage } from '@/types/task'
  * 翻译事件的 taskStatus 恒为主状态 SUCCEEDED，只看主状态会把翻译进行中的连接提前收掉。
  */
 function isTerminalEvent(event: TaskProgressMessage): boolean {
-  const mainTerminal = event.taskStatus === 'SUCCEEDED' || event.taskStatus === 'FAILED'
-  return mainTerminal && event.translationStatus !== 'RUNNING'
+  const mainTerminal =
+    event.taskStatus === TASK_STATUS.SUCCEEDED || event.taskStatus === TASK_STATUS.FAILED
+  return mainTerminal && event.translationStatus !== TRANSLATION_STATUS.RUNNING
 }
 
 /**
@@ -22,7 +25,7 @@ function isTerminalEvent(event: TaskProgressMessage): boolean {
  * - 心跳是 SSE 注释行（:ping），不触发 progress 事件；作用域销毁时经 onScopeDispose
  *   自动 close，不留给调用方。
  *
- * 返回类型不就地标注：由文件尾的 `UseTaskEvents` 别名（ReturnType）承载，避免循环引用。
+ * 返回类型不具名标注：消费方经调用返回值推断取得（当前无具名消费需求）。
  */
 export function useTaskEvents() {
   const latest = ref<TaskProgressMessage | null>(null)
@@ -63,6 +66,3 @@ export function useTaskEvents() {
 
   return { latest, subscribe, close }
 }
-
-/** useTaskEvents 的返回类型：消费方以本类型引用订阅器（模块私有派生类型，不迁全局）。 */
-export type UseTaskEvents = ReturnType<typeof useTaskEvents>

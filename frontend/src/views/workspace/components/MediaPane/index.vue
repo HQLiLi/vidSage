@@ -5,6 +5,7 @@
 import { computed, useTemplateRef, watch } from 'vue'
 
 import { formatTime } from '@/utils/format'
+import AudioWaveform from '@/views/workspace/components/MediaPane/components/AudioWaveform.vue'
 import type { TranscriptPlayer } from '@/composables/useTranscriptPlayer'
 import type { TaskInputType } from '@/types/task'
 
@@ -45,45 +46,12 @@ watch(mediaEl, (el, old) => {
   if (el) props.player.attach(el)
 })
 
-// —— 装饰波形（音频卡）：确定性伪随机高度，点击按比例 seek ——
+/** 播放进度比例（0–1）：驱动波形点亮；时长未知（metadata 未就绪）时为 0。 */
+const waveProgress = computed(() => (duration.value ? currentTime.value / duration.value : 0))
 
-/** 单根波形的归一化高度（0.16–1）。 */
-interface WaveBar {
-  /** 位置序号即身份：静态装饰列表永不重排，作 v-for key。 */
-  id: number
-  /** 归一化高度比例 */
-  ratio: number
-}
-
-/** 波形几何常量：viewBox 288x64，72 根 * 4px 步进铺满，振幅 56（上下各留 4px）。 */
-const WAVE_BAR_COUNT = 72
-const WAVE_STEP = 4
-const WAVE_AMPLITUDE = 56
-const WAVE_MIN_RATIO = 0.16
-
-/** 72 根装饰波形：双正弦叠加取绝对值输出确定性高度，与 hero 横幅同一视觉语言。 */
-const waveBars = computed<WaveBar[]>(() => {
-  const bars: WaveBar[] = []
-  for (let i = 0; i < WAVE_BAR_COUNT; i++) {
-    const value = Math.abs(Math.sin(i * 5.7) * 0.5 + Math.sin(i * 2.3 + 0.8) * 0.5)
-    bars.push({ id: i, ratio: WAVE_MIN_RATIO + value * (1 - WAVE_MIN_RATIO) })
-  }
-  return bars
-})
-
-/** 已播放的波形根数：按 currentTime / duration 比例折算（时长未知时为 0）。 */
-const filledCount = computed(() => {
-  if (!duration.value) return 0
-  return Math.round((currentTime.value / duration.value) * WAVE_BAR_COUNT)
-})
-
-/** 波形点击 seek：点击横坐标折算为秒（媒体口径）；时长未知时不动作。 */
-function onWaveClick(event: MouseEvent): void {
-  if (!duration.value) return
-  const target = event.currentTarget
-  if (!(target instanceof Element)) return
-  const rect = target.getBoundingClientRect()
-  seek(((event.clientX - rect.left) / rect.width) * duration.value)
+/** 波形点击 seek：把组件回抛的横轴比例折算为秒（媒体口径）；时长未知时不动作。 */
+function onWaveSeek(ratio: number): void {
+  if (duration.value) seek(ratio * duration.value)
 }
 </script>
 
@@ -111,25 +79,7 @@ function onWaveClick(event: MouseEvent): void {
           </div>
         </div>
 
-        <svg
-          class="mt-5 h-16 w-full cursor-pointer"
-          viewBox="0 0 288 64"
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="播放进度波形"
-          @click="onWaveClick"
-        >
-          <rect
-            v-for="(bar, index) in waveBars"
-            :key="bar.id"
-            :x="index * WAVE_STEP"
-            :y="(64 - bar.ratio * WAVE_AMPLITUDE) / 2"
-            width="2.6"
-            :height="bar.ratio * WAVE_AMPLITUDE"
-            rx="1.3"
-            :class="index < filledCount ? 'fill-primary' : 'fill-border'"
-          />
-        </svg>
+        <AudioWaveform class="mt-5 h-16 w-full" :progress="waveProgress" @seek="onWaveSeek" />
 
         <div class="mt-3 flex items-center gap-3">
           <button
