@@ -1,6 +1,8 @@
 package com.vidsage.application.task;
 
 import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.StageEvent;
@@ -95,7 +97,7 @@ public class TaskService {
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
         MediaInput.RemoteUrl input = new MediaInput.RemoteUrl(url.trim());
-        String workspaceKey = WorkspaceService.shortHash(WorkspaceService.normalize(input));
+        WorkspaceKey workspaceKey = WorkspaceService.shortHash(WorkspaceService.normalize(input));
         rejectIfActive(workspaceKey);
         // 目录名公式单源在 WorkspaceService.dirName（sanitize(标签)-key）：
         // 管线阶段会用同一公式懒建出同一目录，落点天然一致
@@ -127,7 +129,7 @@ public class TaskService {
             Path temp = Files.createTempFile(root, TEMP_FILE_PREFIX, TEMP_FILE_SUFFIX);
             boolean settled = false;
             try {
-                String workspaceKey = streamToTemp(content, temp);
+                WorkspaceKey workspaceKey = streamToTemp(content, temp);
                 rejectIfActive(workspaceKey);
                 Path source = settleUpload(temp, originalFileName, workspaceKey);
                 settled = true;
@@ -200,7 +202,7 @@ public class TaskService {
      */
     public TaskProgressMessage snapshot(String taskNo) {
         VideoTask task = loadTask(taskNo);
-        return new TaskProgressMessage(task.getTaskNo(), task.getStatus(), stageEventOf(task),
+        return new TaskProgressMessage(task.getTaskNo().value(), task.getStatus(), stageEventOf(task),
                 task.getTranslationStatus());
     }
 
@@ -249,7 +251,7 @@ public class TaskService {
         if (!StringUtils.hasText(taskNo)) {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
-        return repository.findByTaskNo(taskNo)
+        return repository.findByTaskNo(new TaskNo(taskNo))
                 .orElseThrow(() -> new TaskNotFoundException(taskNo));
     }
 
@@ -314,13 +316,13 @@ public class TaskService {
      * source.mp4，从输入重算会写错 workspace_dir。
      */
     private TaskView submit(MediaInput input, TaskInputType inputType, String sourceUri,
-                            String workspaceKey, String dirName) {
+                            WorkspaceKey workspaceKey, String dirName) {
         VideoTask task = VideoTask.newPending(inputType, sourceUri, workspaceKey, dirName);
         VideoTask inserted = repository.insert(task);
         // 不打 workspaceDir：URL 路线的目录名内嵌 sanitize 后的 URL（查询串参数值原样保留），
         // 上传路线内嵌原始文件名——均属用户资源，踩日志脱敏红线；需要时按 taskNo 查库
         log.info("任务已创建: taskNo={}, inputType={}, status={}",
-                inserted.getTaskNo(), inserted.getInputType(), inserted.getStatus());
+                inserted.getTaskNo().value(), inserted.getInputType(), inserted.getStatus());
         pipelineService.execute(inserted.getTaskNo());
         return toView(inserted);
     }
@@ -328,7 +330,7 @@ public class TaskService {
     /**
      * 查重：同工作区 key 且 PENDING / RUNNING → 抛冲突异常（409，响应体附既有任务）。
      */
-    private void rejectIfActive(String workspaceKey) {
+    private void rejectIfActive(WorkspaceKey workspaceKey) {
         Optional<VideoTask> active = repository.findActiveByWorkspaceKey(workspaceKey);
         if (active.isPresent()) {
             throw new TaskConflictException(toView(active.get()));
@@ -336,14 +338,14 @@ public class TaskService {
     }
 
     /**
-     * 把上传流写进临时文件，边写边算 sha256，返回内容 key（摘要前 12 位十六进制）。
+     * 把上传流写进临时文件，边写边算 sha256，返回内容 key（摘要前 12 位十六进制的工作区短哈希）。
      */
-    private String streamToTemp(InputStream content, Path temp) throws IOException, NoSuchAlgorithmException {
+    private WorkspaceKey streamToTemp(InputStream content, Path temp) throws IOException, NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (DigestInputStream digesting = new DigestInputStream(content, digest)) {
             Files.copy(digesting, temp, StandardCopyOption.REPLACE_EXISTING);
         }
-        return HexFormat.of().formatHex(digest.digest()).substring(0, KEY_LENGTH);
+        return new WorkspaceKey(HexFormat.of().formatHex(digest.digest()).substring(0, KEY_LENGTH));
     }
 
     /**
@@ -351,7 +353,7 @@ public class TaskService {
      *
      * @return source.mp4 绝对路径（管线以它为 {@code value} 构造 {@code MediaInput.InWorkspace}）
      */
-    private Path settleUpload(Path temp, String originalFileName, String workspaceKey) throws IOException {
+    private Path settleUpload(Path temp, String originalFileName, WorkspaceKey workspaceKey) throws IOException {
         Path dir = workspaceService.workspaceFor(originalFileName, workspaceKey);
         Path source = dir.resolve(UPLOAD_SOURCE_FILE_NAME);
         Files.move(temp, source, StandardCopyOption.REPLACE_EXISTING);
@@ -363,10 +365,10 @@ public class TaskService {
      * 产物清单由工作区扫描得出（刚提交 / 目录缺失时为空表）。
      */
     private TaskView toView(VideoTask task) {
-        return new TaskView(task.getTaskNo(), task.getInputType(), task.getSourceUri(),
+        return new TaskView(task.getTaskNo().value(), task.getInputType(), task.getSourceUri(),
                 task.getStatus(), task.getTranslationStatus(), task.getCurrentStage(), task.getErrorMessage(),
                 task.getCreatedAt(), task.getStartedAt(), task.getFinishedAt(),
-                scanArtifacts(task.getTaskNo(), task.getWorkspaceDir()));
+                scanArtifacts(task.getTaskNo().value(), task.getWorkspaceDir()));
     }
 
     /**

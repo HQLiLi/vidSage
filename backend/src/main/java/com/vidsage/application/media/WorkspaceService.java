@@ -2,6 +2,7 @@ package com.vidsage.application.media;
 
 import com.vidsage.config.WorkspaceProperties;
 import com.vidsage.domain.media.MediaInput;
+import com.vidsage.domain.shared.WorkspaceKey;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -99,11 +100,11 @@ public class WorkspaceService {
      * <p>URL / 本地路径两条旧路线<b>不受影响</b>，仍走 {@link #workspaceFor(MediaInput)}。
      *
      * @param label 供人阅读的标签（上传原始文件名等）；可为 {@code null} 或空白
-     * @param key   内容寻址 key（12 位十六进制）；取值由调用方保证
+     * @param key   内容寻址 key（{@link WorkspaceKey}，12 位十六进制）；取值由调用方保证
      * @return 工作目录的绝对路径，已确保存在
      * @throws IllegalStateException 目录创建失败（根路径不可写等）
      */
-    public Path workspaceFor(String label, String key) {
+    public Path workspaceFor(String label, WorkspaceKey key) {
         return resolveAndCreate(dirName(label, key));
     }
 
@@ -113,11 +114,11 @@ public class WorkspaceService {
      * workspace_dir 必须与之逐字一致，公式单源化防「同公式各写一份」漂移。
      *
      * @param label 供人阅读的标签（可为 {@code null} 或空白，sanitize 后回退 {@link #FALLBACK_NAME}）
-     * @param key   内容寻址 key（12 位十六进制）；取值由调用方保证
+     * @param key   内容寻址 key（{@link WorkspaceKey}，12 位十六进制）；取值由调用方保证
      * @return 目录名（不含根路径，不含建目录副作用）
      */
-    public static String dirName(String label, String key) {
-        return sanitizeName(label) + "-" + key;
+    public static String dirName(String label, WorkspaceKey key) {
+        return sanitizeName(label) + "-" + key.value();
     }
 
     /**
@@ -286,18 +287,18 @@ public class WorkspaceService {
     }
 
     /**
-     * 取 sha256 的前 12 位十六进制（6 字节）。12 位已足够避免单机任务目录碰撞。
+     * 取 sha256 的前 12 位十六进制（6 字节），包成 {@link WorkspaceKey}。12 位已足够避免单机任务目录碰撞。
      *
      * <p>public static：TaskService 跨包复用，可直测（同一串稳定、不同串不同）。
      *
      * @param value 规范化输入串
-     * @return 12 位十六进制摘要
+     * @return 12 位十六进制摘要（工作区短哈希值对象）
      */
-    public static String shortHash(String value) {
+    public static WorkspaceKey shortHash(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(value.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest, 0, 6);
+            return new WorkspaceKey(HexFormat.of().formatHex(digest, 0, 6));
         } catch (NoSuchAlgorithmException e) {
             // 标准 JVM 必带 SHA-256，走到这里说明运行环境被裁剪过
             throw new IllegalStateException("当前 JVM 不支持 SHA-256，无法计算任务工作目录："

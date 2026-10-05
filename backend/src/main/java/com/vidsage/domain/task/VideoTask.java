@@ -1,5 +1,6 @@
 package com.vidsage.domain.task;
 
+import com.vidsage.domain.shared.WorkspaceKey;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -36,8 +37,8 @@ public class VideoTask {
     /** 数据库内部行 id；insert 回填，新建任务在落库前为 {@code null}。 */
     private Long id;
 
-    /** 对外任务号：32 位短 UUID（去掉连字符的随机 UUID，恰好装进 varchar(32)）。 */
-    private final String taskNo;
+    /** 对外任务号值对象：32 位短 UUID 语义（去掉连字符的随机 UUID，恰好装进 varchar(32)），见 {@link TaskNo}。 */
+    private final TaskNo taskNo;
 
     /** 输入类型。 */
     private final TaskInputType inputType;
@@ -45,8 +46,8 @@ public class VideoTask {
     /** 来源：URL 原文或上传文件原始名（日志不落原值）。 */
     private final String sourceUri;
 
-    /** 工作区短哈希（查重用）：URL / 本地路径取 normalize 串摘要，上传取内容 sha256 前 12 位。 */
-    private final String workspaceKey;
+    /** 工作区短哈希（查重用，见 {@link WorkspaceKey}）：URL / 本地路径取 normalize 串摘要，上传取内容 sha256 前 12 位。 */
+    private final WorkspaceKey workspaceKey;
 
     /** 工作区目录相对路径（相对 vidsage.workspace.root）。 */
     private final String workspaceDir;
@@ -81,8 +82,8 @@ public class VideoTask {
     /**
      * 私有构造：创建入口只有 {@link #newPending} 与 {@link #restore}。
      */
-    private VideoTask(Long id, String taskNo, TaskInputType inputType, String sourceUri,
-                      String workspaceKey, String workspaceDir, TaskStatus status, String currentStage,
+    private VideoTask(Long id, TaskNo taskNo, TaskInputType inputType, String sourceUri,
+                      WorkspaceKey workspaceKey, String workspaceDir, TaskStatus status, String currentStage,
                       TranslationStatus translationStatus, String errorMessage, LocalDateTime createdAt,
                       LocalDateTime updatedAt, LocalDateTime startedAt, LocalDateTime finishedAt) {
         this.id = id;
@@ -112,9 +113,9 @@ public class VideoTask {
      * @return 状态为 PENDING 的新任务（id 未落库，为 {@code null}）
      */
     public static VideoTask newPending(TaskInputType inputType, String sourceUri,
-                                       String workspaceKey, String workspaceDir) {
+                                       WorkspaceKey workspaceKey, String workspaceDir) {
         LocalDateTime now = LocalDateTime.now();
-        return new VideoTask(null, newTaskNo(), inputType, sourceUri, workspaceKey, workspaceDir,
+        return new VideoTask(null, new TaskNo(newTaskNo()), inputType, sourceUri, workspaceKey, workspaceDir,
                 TaskStatus.PENDING, null, null, null, now, now, null, null);
     }
 
@@ -123,8 +124,8 @@ public class VideoTask {
      *
      * @param translationStatus 翻译子状态；数据库 NULL（从未触发）以 {@code null} 传入
      */
-    public static VideoTask restore(Long id, String taskNo, TaskInputType inputType, String sourceUri,
-                                    String workspaceKey, String workspaceDir, TaskStatus status,
+    public static VideoTask restore(Long id, TaskNo taskNo, TaskInputType inputType, String sourceUri,
+                                    WorkspaceKey workspaceKey, String workspaceDir, TaskStatus status,
                                     String currentStage, TranslationStatus translationStatus,
                                     String errorMessage, LocalDateTime createdAt,
                                     LocalDateTime updatedAt, LocalDateTime startedAt, LocalDateTime finishedAt) {

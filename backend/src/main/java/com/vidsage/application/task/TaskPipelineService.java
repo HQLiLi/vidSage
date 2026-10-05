@@ -5,6 +5,7 @@ import com.vidsage.application.subtitle.SubtitleCleanupService;
 import com.vidsage.application.subtitle.SubtitleService;
 import com.vidsage.application.subtitle.SubtitleTranslationService;
 import com.vidsage.config.TaskProperties;
+import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.ProgressListener;
@@ -105,7 +106,7 @@ public class TaskPipelineService {
      *
      * @param taskNo 已落库任务的对外任务号
      */
-    public void execute(String taskNo) {
+    public void execute(TaskNo taskNo) {
         executor.execute(() -> run(taskNo));
     }
 
@@ -129,16 +130,16 @@ public class TaskPipelineService {
      * @throws TaskNotFoundException    任务不存在
      * @throws IllegalArgumentException 主任务尚未成功（字幕尚未就绪）
      */
-    public void translateTask(String taskNo) {
+    public void translateTask(TaskNo taskNo) {
         VideoTask task = repository.findByTaskNo(taskNo)
-                .orElseThrow(() -> new TaskNotFoundException(taskNo));
+                .orElseThrow(() -> new TaskNotFoundException(taskNo.value()));
         if (task.getStatus() != TaskStatus.SUCCEEDED) {
             throw new IllegalArgumentException("字幕尚未就绪：任务状态为 " + task.getStatus()
                     + "，翻译只能在任务成功（SUCCEEDED）后触发；请先等主管线完成（可查 "
-                    + "GET /api/tasks/" + taskNo + " 或订阅其 SSE 事件）再试");
+                    + "GET /api/tasks/" + taskNo.value() + " 或订阅其 SSE 事件）再试");
         }
         if (task.getTranslationStatus() == TranslationStatus.RUNNING) {
-            log.info("翻译进行中，重复触发不重入: taskNo={}", taskNo);
+            log.info("翻译进行中，重复触发不重入: taskNo={}", taskNo.value());
             return;
         }
         MediaInput input = toMediaInput(task);
@@ -162,18 +163,18 @@ public class TaskPipelineService {
         }
         repository.update(task);
         // 不打 workspaceDir：目录名内嵌 URL / 原始文件名（用户资源，脱敏红线），按 taskNo 可查库还原
-        log.info("翻译已触发: taskNo={}, inputType={}", task.getTaskNo(), task.getInputType());
+        log.info("翻译已触发: taskNo={}, inputType={}", task.getTaskNo().value(), task.getInputType());
         executor.execute(() -> runTranslation(task, input));
     }
 
     /**
      * 同步执行完整管线。包内可见——单测直接调它绕开虚拟线程的时序，生产路径走 {@link #execute}。
      */
-    void run(String taskNo) {
+    void run(TaskNo taskNo) {
         Optional<VideoTask> loaded = repository.findByTaskNo(taskNo);
         if (loaded.isEmpty()) {
             // 提交刚落库就执行，缺失说明存储出了问题：ERROR 可见，不让任务静默蒸发
-            log.error("任务记录缺失，管线放弃执行: taskNo={}", taskNo);
+            log.error("任务记录缺失，管线放弃执行: taskNo={}", taskNo.value());
             return;
         }
         VideoTask task = loaded.get();
@@ -182,7 +183,7 @@ public class TaskPipelineService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             // 排队被打断：保持 PENDING，重新提交同一输入即可再入队（内容寻址，代价低）
-            log.warn("任务等待执行配额时被中断，保持 PENDING: taskNo={}", taskNo);
+            log.warn("任务等待执行配额时被中断，保持 PENDING: taskNo={}", taskNo.value());
             return;
         }
         long start = System.currentTimeMillis();
@@ -191,18 +192,18 @@ public class TaskPipelineService {
                 task.start();
             } catch (IllegalStateException e) {
                 // 双重触发（同任务被 execute 两次）或状态已被推进：放弃本次执行，绝不把别人的执行打成 FAILED
-                log.warn("任务不处于 PENDING，放弃本次执行: taskNo={}, status={}", taskNo, task.getStatus());
+                log.warn("任务不处于 PENDING，放弃本次执行: taskNo={}, status={}", taskNo.value(), task.getStatus());
                 return;
             }
             repository.update(task);
             // 不打 workspaceDir：目录名内嵌 URL / 原始文件名（用户资源，脱敏红线），按 taskNo 可查库还原
             log.info("任务开始执行: taskNo={}, inputType={}",
-                    task.getTaskNo(), task.getInputType());
+                    task.getTaskNo().value(), task.getInputType());
             runStages(task);
             task.succeed();
             repository.update(task);
             broadcastTerminal(task);
-            log.info("任务执行成功: taskNo={}, cost={}ms", task.getTaskNo(), System.currentTimeMillis() - start);
+            log.info("任务执行成功: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - start);
         } catch (Exception e) {
             // 通过SSE广播任务失败
             failTask(task, e);
@@ -223,7 +224,7 @@ public class TaskPipelineService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             // 翻译已置 RUNNING 才排队，被打断不能吞状态：标记失败（可重新触发），广播终态收口
-            log.warn("翻译等待执行配额时被中断: taskNo={}", task.getTaskNo());
+            log.warn("翻译等待执行配额时被中断: taskNo={}", task.getTaskNo().value());
             failTranslation(task, "翻译在等待执行配额时被中断：请重新触发翻译", null);
             return;
         }
@@ -232,7 +233,7 @@ public class TaskPipelineService {
             task.translationSucceed();
             repository.update(task);
             broadcastTranslationTerminal(task);
-            log.info("任务翻译完成: taskNo={}, cost={}ms", task.getTaskNo(), System.currentTimeMillis() - start);
+            log.info("任务翻译完成: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - start);
         } catch (Exception e) {
             failTranslation(task, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), e);
         } finally {
@@ -261,11 +262,11 @@ public class TaskPipelineService {
     private ProgressListener progressListener(VideoTask task) {
         return event -> {
             log.debug("任务阶段事件: taskNo={}, stage={}, progress={}, state={}, message={}",
-                    task.getTaskNo(), event.stage(), event.progress(), event.state(), event.message());
+                    task.getTaskNo().value(), event.stage(), event.progress(), event.state(), event.message());
             task.updateStage(event.stage());
             repository.update(task);
-            subscriptionRegistry.broadcast(task.getTaskNo(), new TaskProgressMessage(
-                    task.getTaskNo(), task.getStatus(), event, task.getTranslationStatus()));
+            subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(
+                    task.getTaskNo().value(), task.getStatus(), event, task.getTranslationStatus()));
         };
     }
 
@@ -278,9 +279,9 @@ public class TaskPipelineService {
     private ProgressListener translationProgressListener(VideoTask task) {
         return event -> {
             log.debug("翻译阶段事件: taskNo={}, stage={}, progress={}, state={}, message={}",
-                    task.getTaskNo(), event.stage(), event.progress(), event.state(), event.message());
-            subscriptionRegistry.broadcast(task.getTaskNo(), new TaskProgressMessage(
-                    task.getTaskNo(), task.getStatus(), event, task.getTranslationStatus()));
+                    task.getTaskNo().value(), event.stage(), event.progress(), event.state(), event.message());
+            subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(
+                    task.getTaskNo().value(), task.getStatus(), event, task.getTranslationStatus()));
         };
     }
 
@@ -291,10 +292,10 @@ public class TaskPipelineService {
      */
     private void broadcastTerminal(VideoTask task) {
         try {
-            subscriptionRegistry.broadcast(task.getTaskNo(), new TaskProgressMessage(task.getTaskNo(),
+            subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(task.getTaskNo().value(),
                     task.getStatus(), TaskService.stageEventOf(task), task.getTranslationStatus()));
         } finally {
-            subscriptionRegistry.complete(task.getTaskNo());
+            subscriptionRegistry.complete(task.getTaskNo().value());
         }
     }
 
@@ -306,10 +307,10 @@ public class TaskPipelineService {
      */
     private void broadcastTranslationTerminal(VideoTask task) {
         try {
-            subscriptionRegistry.broadcast(task.getTaskNo(), new TaskProgressMessage(task.getTaskNo(),
+            subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(task.getTaskNo().value(),
                     task.getStatus(), TaskService.translationStageEventOf(task), task.getTranslationStatus()));
         } finally {
-            subscriptionRegistry.complete(task.getTaskNo());
+            subscriptionRegistry.complete(task.getTaskNo().value());
         }
     }
 
@@ -328,11 +329,11 @@ public class TaskPipelineService {
             task.fail(message);
             repository.update(task);
             broadcastTerminal(task);
-            log.error("任务执行失败: taskNo={}, status={}, message={}", task.getTaskNo(), task.getStatus(), message,
-                    cause);
+            log.error("任务执行失败: taskNo={}, status={}, message={}", task.getTaskNo().value(), task.getStatus(),
+                    message, cause);
         } catch (RuntimeException e) {
             log.error("任务失败状态落库失败，任务可能停留在 RUNNING: taskNo={}, reason={}",
-                    task.getTaskNo(), e.getMessage(), e);
+                    task.getTaskNo().value(), e.getMessage(), e);
         }
     }
 
@@ -351,14 +352,14 @@ public class TaskPipelineService {
             repository.update(task);
             broadcastTranslationTerminal(task);
             if (cause == null) {
-                log.warn("任务翻译失败: taskNo={}, message={}", task.getTaskNo(), message);
+                log.warn("任务翻译失败: taskNo={}, message={}", task.getTaskNo().value(), message);
             } else {
                 log.error("任务翻译失败: taskNo={}, status={}, message={}",
-                        task.getTaskNo(), task.getStatus(), message, cause);
+                        task.getTaskNo().value(), task.getStatus(), message, cause);
             }
         } catch (RuntimeException e) {
             log.error("翻译失败状态落库失败，任务可能停留在翻译 RUNNING: taskNo={}, reason={}",
-                    task.getTaskNo(), e.getMessage(), e);
+                    task.getTaskNo().value(), e.getMessage(), e);
         }
     }
 

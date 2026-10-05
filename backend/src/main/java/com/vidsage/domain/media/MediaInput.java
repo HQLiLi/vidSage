@@ -1,5 +1,6 @@
 package com.vidsage.domain.media;
 
+import com.vidsage.domain.shared.WorkspaceKey;
 import java.nio.file.Path;
 
 /**
@@ -39,8 +40,8 @@ public sealed interface MediaInput {
      *
      * @param value        媒体文件路径（已在工作区内，如 {@code <工作区>/source.mp4}）；调用方保证存在
      * @param workspaceDir 已解析的工作区目录（绝对路径），与 value 所在目录一致
-     * @param workspaceKey 内容寻址 key（12 位十六进制），即 workspaceDir 目录名的 key 后缀
+     * @param workspaceKey 内容寻址 key（{@link WorkspaceKey}，12 位十六进制），即 workspaceDir 目录名的 key 后缀
      */
-    record InWorkspace(Path value, Path workspaceDir, String workspaceKey) implements MediaInput {
+    record InWorkspace(Path value, Path workspaceDir, WorkspaceKey workspaceKey) implements MediaInput {
     }
 }

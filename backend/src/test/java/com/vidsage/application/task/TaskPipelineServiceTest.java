@@ -22,6 +22,8 @@ import com.vidsage.application.subtitle.SubtitleService;
 import com.vidsage.application.subtitle.SubtitleTranslationService;
 import com.vidsage.config.TaskProperties;
 import com.vidsage.config.WorkspaceProperties;
+import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.ProgressListener;
@@ -115,7 +117,8 @@ class TaskPipelineServiceTest {
 
     @Test
     void reconstructsUploadedSourcePathFromPersistedWorkspaceDir() {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "demo.mp4-a1b2c3d4e5f6");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4",
+                new WorkspaceKey("a1b2c3d4e5f6"), "demo.mp4-a1b2c3d4e5f6");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         TaskPipelineService pipeline = service(2);
 
@@ -130,7 +133,7 @@ class TaskPipelineServiceTest {
         assertEquals(expectedDir.resolve("source.mp4"), in.value(),
                 "上传任务必须按持久化的 workspace_dir 定位 source.mp4，不能从输入重算 key");
         assertEquals(expectedDir, in.workspaceDir(), "InWorkspace 必须携带已解析的工作区目录，下游零重算");
-        assertEquals("a1b2c3d4e5f6", in.workspaceKey(), "内容 key 应随输入携带");
+        assertEquals("a1b2c3d4e5f6", in.workspaceKey().value(), "内容 key 应随输入携带");
     }
 
     @Test
@@ -211,7 +214,7 @@ class TaskPipelineServiceTest {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
-        registry.subscribe(task.getTaskNo(), received::add);
+        registry.subscribe(task.getTaskNo().value(), received::add);
         // prepare 收到的是 remap(composite, 0, 70) 后的 listener：直接回调 50 → 广播出去应为 35
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
@@ -225,7 +228,7 @@ class TaskPipelineServiceTest {
         // 阶段事件 + 成功后的终态广播
         assertEquals(2, received.size(), () -> "阶段事件应组 TaskProgressMessage 广播给订阅者：" + received);
         TaskProgressMessage event = received.get(0);
-        assertEquals(task.getTaskNo(), event.taskNo());
+        assertEquals(task.getTaskNo().value(), event.taskNo());
         assertEquals(TaskStatus.RUNNING, event.taskStatus());
         assertNull(event.translationStatus(), "主管线事件的翻译子状态为 null（从未触发）");
         assertEquals("extract-audio", event.stage().stage());
@@ -238,7 +241,7 @@ class TaskPipelineServiceTest {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
-        registry.subscribe(task.getTaskNo(), received::add);
+        registry.subscribe(task.getTaskNo().value(), received::add);
         TaskPipelineService pipeline = service(2);
 
         pipeline.run(task.getTaskNo());
@@ -247,8 +250,8 @@ class TaskPipelineServiceTest {
         TaskProgressMessage event = received.get(0);
         assertEquals(TaskStatus.SUCCEEDED, event.taskStatus());
         // complete 清空了订阅者：终态之后再广播该任务的事件无人可收
-        registry.broadcast(task.getTaskNo(),
-                new TaskProgressMessage(task.getTaskNo(), TaskStatus.FAILED, null, null));
+        registry.broadcast(task.getTaskNo().value(),
+                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(1, received.size(), "终态收口后注册表不得再向订阅者投递事件");
     }
 
@@ -257,7 +260,7 @@ class TaskPipelineServiceTest {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
-        registry.subscribe(task.getTaskNo(), received::add);
+        registry.subscribe(task.getTaskNo().value(), received::add);
         when(subtitleService.prepare(any(MediaInput.class), any(ProgressListener.class)))
                 .thenThrow(new IllegalStateException("quota exceeded"));
         TaskPipelineService pipeline = service(2);
@@ -268,8 +271,8 @@ class TaskPipelineServiceTest {
         TaskProgressMessage event = received.get(0);
         assertEquals(TaskStatus.FAILED, event.taskStatus());
         assertEquals("任务执行失败：quota exceeded", event.stage().message(), "终态事件的消息应携带错误信息");
-        registry.broadcast(task.getTaskNo(),
-                new TaskProgressMessage(task.getTaskNo(), TaskStatus.FAILED, null, null));
+        registry.broadcast(task.getTaskNo().value(),
+                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(1, received.size(), "终态收口后注册表不得再向订阅者投递事件");
     }
 
@@ -278,10 +281,10 @@ class TaskPipelineServiceTest {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
-        registry.subscribe(task.getTaskNo(), event -> {
+        registry.subscribe(task.getTaskNo().value(), event -> {
             throw new IllegalStateException("写入失败（模拟断连的 emitter）");
         });
-        registry.subscribe(task.getTaskNo(), received::add);
+        registry.subscribe(task.getTaskNo().value(), received::add);
         TaskPipelineService pipeline = service(2);
 
         pipeline.run(task.getTaskNo());
@@ -295,9 +298,9 @@ class TaskPipelineServiceTest {
 
     @Test
     void missingTaskRecordAbortsBeforeAnyStage() {
-        when(repository.findByTaskNo("ghost")).thenReturn(Optional.empty());
+        when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
-        service(2).run("ghost");
+        service(2).run(new TaskNo("ghost"));
 
         verify(subtitleService, never()).prepare(any(), any());
         verify(repository, never()).update(any());
@@ -328,16 +331,16 @@ class TaskPipelineServiceTest {
                 "主任务未 SUCCEEDED 时触发翻译必须被拒（错在调用方触发太早 → 400）");
 
         assertTrue(e.getMessage().contains("字幕尚未就绪"), e.getMessage());
-        assertTrue(e.getMessage().contains(pending.getTaskNo()), e.getMessage());
+        assertTrue(e.getMessage().contains(pending.getTaskNo().value()), e.getMessage());
         verify(translationService, never()).hasTranslationArtifact(any());
         verify(translationService, never()).translate(any(), any());
     }
 
     @Test
     void translateTaskThrowsNotFoundWhenTaskMissing() {
-        when(repository.findByTaskNo("ghost")).thenReturn(Optional.empty());
+        when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
-        assertThrows(TaskNotFoundException.class, () -> service(2).translateTask("ghost"));
+        assertThrows(TaskNotFoundException.class, () -> service(2).translateTask(new TaskNo("ghost")));
     }
 
     @Test
@@ -402,7 +405,7 @@ class TaskPipelineServiceTest {
             return null;
         }).when(translationService).translate(any(MediaInput.class), any(ProgressListener.class));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
-        registry.subscribe(task.getTaskNo(), received::add);
+        registry.subscribe(task.getTaskNo().value(), received::add);
         TaskPipelineService pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
@@ -431,8 +434,8 @@ class TaskPipelineServiceTest {
         assertEquals(StageEvent.StageState.SUCCEEDED, terminal.stage().state());
 
         // 终态收口后注册表不再投递
-        registry.broadcast(task.getTaskNo(),
-                new TaskProgressMessage(task.getTaskNo(), TaskStatus.FAILED, null, null));
+        registry.broadcast(task.getTaskNo().value(),
+                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(2, received.size(), "翻译终态 complete 后订阅者应已清空");
     }
 
@@ -448,7 +451,7 @@ class TaskPipelineServiceTest {
             throw new IllegalStateException("LLM 返回掉行");
         }).when(translationService).translate(any(MediaInput.class), any(ProgressListener.class));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
-        registry.subscribe(task.getTaskNo(), received::add);
+        registry.subscribe(task.getTaskNo().value(), received::add);
         TaskPipelineService pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
@@ -467,8 +470,8 @@ class TaskPipelineServiceTest {
         assertEquals("翻译失败：LLM 返回掉行", terminal.stage().message(),
                 "翻译失败终态事件的消息携带失败原因（SSE 上唯一的错误出口）");
 
-        registry.broadcast(task.getTaskNo(),
-                new TaskProgressMessage(task.getTaskNo(), TaskStatus.FAILED, null, null));
+        registry.broadcast(task.getTaskNo().value(),
+                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(2, received.size(), "翻译终态 complete 后订阅者应已清空");
     }
 
@@ -515,7 +518,7 @@ class TaskPipelineServiceTest {
     // ---------- 工厂 ----------
 
     private static VideoTask urlTask(String url) {
-        return VideoTask.newPending(TaskInputType.URL, url, "a1b2c3d4e5f6", "dir-a1b2c3d4e5f6");
+        return VideoTask.newPending(TaskInputType.URL, url, new WorkspaceKey("a1b2c3d4e5f6"), "dir-a1b2c3d4e5f6");
     }
 
     /** 主任务已成功的任务（自动管线跑完、翻译从未触发）——按需翻译用例的起点。 */

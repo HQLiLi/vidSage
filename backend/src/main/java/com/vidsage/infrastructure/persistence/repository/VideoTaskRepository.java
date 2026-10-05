@@ -1,6 +1,8 @@
 package com.vidsage.infrastructure.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.TaskStatus;
 import com.vidsage.infrastructure.persistence.entity.VideoTaskEntity;
@@ -47,12 +49,12 @@ public class VideoTaskRepository {
     /**
      * 按对外任务号查询（task_no 唯一索引）。
      *
-     * @param taskNo 对外任务号
+     * @param taskNo 对外任务号（值对象；查询条件取其 {@code value} 落到 DB 列）
      * @return 任务；不存在时为空
      */
-    public Optional<VideoTask> findByTaskNo(String taskNo) {
+    public Optional<VideoTask> findByTaskNo(TaskNo taskNo) {
         VideoTaskEntity entity = mapper.selectOne(
-                Wrappers.<VideoTaskEntity>lambdaQuery().eq(VideoTaskEntity::getTaskNo, taskNo));
+                Wrappers.<VideoTaskEntity>lambdaQuery().eq(VideoTaskEntity::getTaskNo, taskNo.value()));
         return entity == null ? Optional.empty() : Optional.of(toDomain(entity));
     }
 
@@ -60,12 +62,12 @@ public class VideoTaskRepository {
      * 查同工作区且<b>仍在进行中</b>（PENDING / RUNNING）的任务：提交查重用——
      * 命中即说明同一输入已有任务在排队或执行，重复提交应被 409 拒绝（design.md 数据流节）。
      *
-     * @param workspaceKey 工作区短哈希
+     * @param workspaceKey 工作区短哈希（值对象；查询条件取其 {@code value} 落到 DB 列）
      * @return 进行中的既有任务；没有时为空
      */
-    public Optional<VideoTask> findActiveByWorkspaceKey(String workspaceKey) {
+    public Optional<VideoTask> findActiveByWorkspaceKey(WorkspaceKey workspaceKey) {
         VideoTaskEntity entity = mapper.selectOne(Wrappers.<VideoTaskEntity>lambdaQuery()
-                .eq(VideoTaskEntity::getWorkspaceKey, workspaceKey)
+                .eq(VideoTaskEntity::getWorkspaceKey, workspaceKey.value())
                 .in(VideoTaskEntity::getStatus, List.of(TaskStatus.PENDING, TaskStatus.RUNNING))
                 .last("LIMIT 1"));
         return entity == null ? Optional.empty() : Optional.of(toDomain(entity));
@@ -81,26 +83,26 @@ public class VideoTaskRepository {
     }
 
     /**
-     * 实体 → 领域对象。
+     * 实体 → 领域对象：taskNo / workspaceKey 两列在此包装成值对象（String → 值对象的转换点只此一处）。
      */
     private static VideoTask toDomain(VideoTaskEntity entity) {
-        return VideoTask.restore(entity.getId(), entity.getTaskNo(), entity.getInputType(),
-                entity.getSourceUri(), entity.getWorkspaceKey(), entity.getWorkspaceDir(),
+        return VideoTask.restore(entity.getId(), new TaskNo(entity.getTaskNo()), entity.getInputType(),
+                entity.getSourceUri(), new WorkspaceKey(entity.getWorkspaceKey()), entity.getWorkspaceDir(),
                 entity.getStatus(), entity.getCurrentStage(), entity.getTranslationStatus(),
                 entity.getErrorMessage(),
                 entity.getCreatedAt(), entity.getUpdatedAt(), entity.getStartedAt(), entity.getFinishedAt());
     }
 
     /**
-     * 领域对象 → 实体。
+     * 领域对象 → 实体：值对象在此取回 {@code value} 落到 DB 列（值对象 → String 的转换点只此一处）。
      */
     private static VideoTaskEntity toEntity(VideoTask task) {
         VideoTaskEntity entity = new VideoTaskEntity();
         entity.setId(task.getId());
-        entity.setTaskNo(task.getTaskNo());
+        entity.setTaskNo(task.getTaskNo().value());
         entity.setInputType(task.getInputType());
         entity.setSourceUri(task.getSourceUri());
-        entity.setWorkspaceKey(task.getWorkspaceKey());
+        entity.setWorkspaceKey(task.getWorkspaceKey().value());
         entity.setWorkspaceDir(task.getWorkspaceDir());
         entity.setStatus(task.getStatus());
         entity.setCurrentStage(task.getCurrentStage());

@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.TaskInputType;
 import com.vidsage.domain.task.TaskStatus;
@@ -46,7 +48,8 @@ class VideoTaskRepositoryTest {
 
     @Test
     void insertMapsDomainFieldsOntoEntityAndBackfillsId() {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "演示视频.mp4", "a1b2c3d4e5f6", "dir-a1b2c3d4e5f6");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "演示视频.mp4",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir-a1b2c3d4e5f6");
         when(mapper.insert(any(VideoTaskEntity.class))).thenAnswer(invocation -> {
             invocation.getArgument(0, VideoTaskEntity.class).setId(42L);
             return 1;
@@ -58,7 +61,7 @@ class VideoTaskRepositoryTest {
         ArgumentCaptor<VideoTaskEntity> captor = ArgumentCaptor.forClass(VideoTaskEntity.class);
         verify(mapper).insert(captor.capture());
         VideoTaskEntity entity = captor.getValue();
-        assertEquals(task.getTaskNo(), entity.getTaskNo());
+        assertEquals(task.getTaskNo().value(), entity.getTaskNo());
         assertEquals(TaskInputType.UPLOAD, entity.getInputType());
         assertEquals("演示视频.mp4", entity.getSourceUri());
         assertEquals("a1b2c3d4e5f6", entity.getWorkspaceKey());
@@ -85,15 +88,15 @@ class VideoTaskRepositoryTest {
         entity.setErrorMessage(null);
         when(mapper.selectOne(any())).thenReturn(entity);
 
-        Optional<VideoTask> found = repository.findByTaskNo("abc123");
+        Optional<VideoTask> found = repository.findByTaskNo(new TaskNo("abc123"));
 
         assertTrue(found.isPresent());
         VideoTask task = found.get();
         assertEquals(7L, task.getId());
-        assertEquals("abc123", task.getTaskNo());
+        assertEquals("abc123", task.getTaskNo().value());
         assertEquals(TaskInputType.URL, task.getInputType());
         assertEquals("https://example.com/v", task.getSourceUri());
-        assertEquals("a1b2c3d4e5f6", task.getWorkspaceKey());
+        assertEquals("a1b2c3d4e5f6", task.getWorkspaceKey().value());
         assertEquals("dir-a1b2c3d4e5f6", task.getWorkspaceDir());
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals("transcribe", task.getCurrentStage());
@@ -108,7 +111,7 @@ class VideoTaskRepositoryTest {
     void findByTaskNoReturnsEmptyWhenMissing() {
         when(mapper.selectOne(any())).thenReturn(null);
 
-        assertTrue(repository.findByTaskNo("nope").isEmpty());
+        assertTrue(repository.findByTaskNo(new TaskNo("nope")).isEmpty());
     }
 
     // ---------- 查重查询 ----------
@@ -117,7 +120,7 @@ class VideoTaskRepositoryTest {
     void activeWorkspaceKeyQueryFiltersBySameKeyAndPendingOrRunningStatus() {
         when(mapper.selectOne(any())).thenReturn(null);
 
-        repository.findActiveByWorkspaceKey("a1b2c3d4e5f6");
+        repository.findActiveByWorkspaceKey(new WorkspaceKey("a1b2c3d4e5f6"));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<AbstractWrapper<VideoTaskEntity, ?, ?>> captor =
@@ -136,8 +139,8 @@ class VideoTaskRepositoryTest {
 
     @Test
     void updateWritesMutatedDomainStateBackToEntity() {
-        VideoTask task = VideoTask.restore(9L, "abc123", TaskInputType.URL, "https://example.com/v",
-                "a1b2c3d4e5f6", "dir", TaskStatus.RUNNING, "clean", null, null,
+        VideoTask task = VideoTask.restore(9L, new TaskNo("abc123"), TaskInputType.URL, "https://example.com/v",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.RUNNING, "clean", null, null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), null);
         task.fail("翻译失败：请检查 DEEPSEEK_API_KEY");
@@ -155,8 +158,8 @@ class VideoTaskRepositoryTest {
 
     @Test
     void updateCarriesTranslationStatusTransition() {
-        VideoTask task = VideoTask.restore(11L, "def456", TaskInputType.URL, "https://example.com/v",
-                "a1b2c3d4e5f6", "dir", TaskStatus.SUCCEEDED, "clean", null, null,
+        VideoTask task = VideoTask.restore(11L, new TaskNo("def456"), TaskInputType.URL, "https://example.com/v",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, "clean", null, null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now());
         task.translationStart();

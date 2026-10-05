@@ -12,6 +12,8 @@ import static org.mockito.Mockito.when;
 
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.config.WorkspaceProperties;
+import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.task.TaskInputType;
@@ -79,15 +81,15 @@ class TaskServiceTest {
         assertEquals(TaskInputType.URL, inserted.getInputType());
         assertEquals("https://example.com/watch/1", inserted.getSourceUri());
         assertEquals(TaskStatus.PENDING, inserted.getStatus());
-        assertTrue(inserted.getTaskNo().matches("[0-9a-f]{32}"));
+        assertTrue(inserted.getTaskNo().value().matches("[0-9a-f]{32}"));
         // 目录名与 WorkspaceService 同公式：sanitize(url)-hash12（非法字符替换为下划线）
-        String expectedKey = WorkspaceService.shortHash(WorkspaceService.normalize(
+        WorkspaceKey expectedKey = WorkspaceService.shortHash(WorkspaceService.normalize(
                 new com.vidsage.domain.media.MediaInput.RemoteUrl("https://example.com/watch/1")));
-        String expectedDir = WorkspaceService.sanitizeName("https://example.com/watch/1") + "-" + expectedKey;
+        String expectedDir = WorkspaceService.sanitizeName("https://example.com/watch/1") + "-" + expectedKey.value();
         assertEquals(expectedDir, inserted.getWorkspaceDir());
 
         verify(pipelineService).execute(inserted.getTaskNo());
-        assertEquals(inserted.getTaskNo(), view.taskNo());
+        assertEquals(inserted.getTaskNo().value(), view.taskNo());
         assertEquals(TaskStatus.PENDING, view.status());
         assertEquals(TaskInputType.URL, view.inputType());
     }
@@ -103,13 +105,13 @@ class TaskServiceTest {
     @Test
     void submitUrlConflictsWithActiveTaskAndCarriesExistingView() {
         VideoTask existing = VideoTask.newPending(TaskInputType.URL, "https://example.com/watch/1",
-                "a1b2c3d4e5f6", "dir");
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         when(repository.findActiveByWorkspaceKey(any())).thenReturn(Optional.of(existing));
 
         TaskConflictException e = assertThrows(TaskConflictException.class,
                 () -> service().submitUrl("https://example.com/watch/1"));
 
-        assertEquals(existing.getTaskNo(), e.getExistingTask().taskNo());
+        assertEquals(existing.getTaskNo().value(), e.getExistingTask().taskNo());
         assertEquals(TaskStatus.PENDING, e.getExistingTask().status());
         assertTrue(e.getMessage().contains("请勿重复提交"));
         verify(repository, never()).insert(any());
@@ -139,10 +141,10 @@ class TaskServiceTest {
         VideoTask inserted = captor.getValue();
         assertEquals(TaskInputType.UPLOAD, inserted.getInputType());
         assertEquals("我的 视频.mp4", inserted.getSourceUri());
-        assertEquals(expectedKey, inserted.getWorkspaceKey());
+        assertEquals(expectedKey, inserted.getWorkspaceKey().value());
         assertEquals("我的 视频.mp4-" + expectedKey, inserted.getWorkspaceDir());
         verify(pipelineService).execute(inserted.getTaskNo());
-        assertEquals(inserted.getTaskNo(), view.taskNo());
+        assertEquals(inserted.getTaskNo().value(), view.taskNo());
     }
 
     @Test
@@ -160,7 +162,7 @@ class TaskServiceTest {
 
     @Test
     void submitUploadConflictCleansTempFileAndLeavesNoOrphanDirectory() throws Exception {
-        VideoTask existing = VideoTask.newPending(TaskInputType.UPLOAD, "a.mp4", "a1b2c3d4e5f6", "dir");
+        VideoTask existing = VideoTask.newPending(TaskInputType.UPLOAD, "a.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         when(repository.findActiveByWorkspaceKey(any())).thenReturn(Optional.of(existing));
         byte[] media = "duplicate-content".getBytes(StandardCharsets.UTF_8);
 
@@ -188,13 +190,13 @@ class TaskServiceTest {
 
     @Test
     void findByTaskNoReturnsViewWithoutInternalFields() {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskView view = service().findByTaskNo(task.getTaskNo());
+        TaskView view = service().findByTaskNo(task.getTaskNo().value());
 
-        assertEquals(task.getTaskNo(), view.taskNo());
+        assertEquals(task.getTaskNo().value(), view.taskNo());
         assertEquals(TaskStatus.RUNNING, view.status());
         assertEquals(TaskInputType.UPLOAD, view.inputType());
         assertEquals("demo.mp4", view.sourceUri());
@@ -203,7 +205,7 @@ class TaskServiceTest {
 
     @Test
     void findByTaskNoThrowsWithActionableMessageWhenMissing() {
-        when(repository.findByTaskNo("nope")).thenReturn(Optional.empty());
+        when(repository.findByTaskNo(new TaskNo("nope"))).thenReturn(Optional.empty());
 
         TaskNotFoundException e = assertThrows(TaskNotFoundException.class,
                 () -> service().findByTaskNo("nope"));
@@ -222,24 +224,24 @@ class TaskServiceTest {
     @Test
     void snapshotForPendingTaskWithoutStageHasNullStage() {
         VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
-                "a1b2c3d4e5f6", "dir-a1b2c3d4e5f6");
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir-a1b2c3d4e5f6");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
-        assertEquals(task.getTaskNo(), event.taskNo());
+        assertEquals(task.getTaskNo().value(), event.taskNo());
         assertEquals(TaskStatus.PENDING, event.taskStatus());
         assertNull(event.stage(), "尚无阶段事件时 stage 为 null，形状仍合法");
     }
 
     @Test
     void snapshotForRunningTaskCarriesRunningStageEvent() {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
         task.updateStage("transcribe");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TaskStatus.RUNNING, event.taskStatus());
         assertEquals("transcribe", event.stage().stage());
@@ -249,13 +251,13 @@ class TaskServiceTest {
 
     @Test
     void snapshotForSucceededTaskCarriesCompletedStageEvent() {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
         task.updateStage("translate");
         task.succeed();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TaskStatus.SUCCEEDED, event.taskStatus());
         assertEquals("translate", event.stage().stage());
@@ -265,13 +267,13 @@ class TaskServiceTest {
 
     @Test
     void snapshotForFailedTaskCarriesErrorMessageInStageEvent() {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
         task.updateStage("clean");
         task.fail("任务在 clean 阶段失败：boom");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TaskStatus.FAILED, event.taskStatus());
         assertEquals(StageEvent.StageState.FAILED, event.stage().state());
@@ -281,7 +283,7 @@ class TaskServiceTest {
 
     @Test
     void snapshotThrowsNotFoundWhenTaskMissing() {
-        when(repository.findByTaskNo("ghost")).thenReturn(Optional.empty());
+        when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
         assertThrows(TaskNotFoundException.class, () -> service().snapshot("ghost"));
     }
@@ -293,7 +295,7 @@ class TaskServiceTest {
         VideoTask task = succeededWithTranslation(TranslationStatus.RUNNING, null);
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TaskStatus.SUCCEEDED, event.taskStatus(), "主状态不被翻译子状态改写");
         assertEquals(TranslationStatus.RUNNING, event.translationStatus(),
@@ -308,7 +310,7 @@ class TaskServiceTest {
         VideoTask task = succeededWithTranslation(TranslationStatus.SUCCEEDED, null);
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TranslationStatus.SUCCEEDED, event.translationStatus());
         assertEquals("translate", event.stage().stage());
@@ -321,7 +323,7 @@ class TaskServiceTest {
         VideoTask task = succeededWithTranslation(TranslationStatus.FAILED, "翻译失败：LLM 返回掉行");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TranslationStatus.FAILED, event.translationStatus());
         assertEquals(StageEvent.StageState.FAILED, event.stage().state());
@@ -333,13 +335,13 @@ class TaskServiceTest {
     void snapshotWithoutTranslationKeepsMainPipelineStageEvent() {
         // 主任务成功且翻译从未触发：快照仍是主管线形状（阶段取 current_stage 的粗粒度完成位）
         VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
-                "a1b2c3d4e5f6", "dir");
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
         task.updateStage("clean");
         task.succeed();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskProgressMessage event = service().snapshot(task.getTaskNo());
+        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertNull(event.translationStatus(), "从未触发翻译 → 翻译子状态为 null");
         assertEquals("clean", event.stage().stage(), "不受翻译分支影响");
@@ -356,10 +358,10 @@ class TaskServiceTest {
                 .thenReturn(Optional.of(before))
                 .thenReturn(Optional.of(succeededWithTranslation(TranslationStatus.RUNNING, null)));
 
-        TaskView view = service().translate(before.getTaskNo());
+        TaskView view = service().translate(before.getTaskNo().value());
 
         verify(pipelineService).translateTask(before.getTaskNo());
-        assertEquals(before.getTaskNo(), view.taskNo());
+        assertEquals(before.getTaskNo().value(), view.taskNo());
         assertEquals(TaskStatus.SUCCEEDED, view.status());
         assertEquals(TranslationStatus.RUNNING, view.translationStatus(),
                 "视图应反映触发后的翻译子状态（重读而非触发前的陈旧副本）");
@@ -367,7 +369,7 @@ class TaskServiceTest {
 
     @Test
     void translateThrowsNotFoundWhenTaskMissing() {
-        when(repository.findByTaskNo("ghost")).thenReturn(Optional.empty());
+        when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
         assertThrows(TaskNotFoundException.class, () -> service().translate("ghost"));
         verify(pipelineService, never()).translateTask(any());
@@ -383,14 +385,14 @@ class TaskServiceTest {
 
     @Test
     void openArtifactReturnsFileInsideWorkspace() throws Exception {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir-artifact");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir-artifact");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         Path dir = tempDir.resolve("works").resolve("dir-artifact");
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("subtitles-cloud-translate-ja.srt"), "srt-content");
         byte[] expected = Files.readAllBytes(dir.resolve("subtitles-cloud-translate-ja.srt"));
 
-        TaskArtifactFile artifact = service().openArtifact(task.getTaskNo(), "subtitles-cloud-translate-ja.srt");
+        TaskArtifactFile artifact = service().openArtifact(task.getTaskNo().value(), "subtitles-cloud-translate-ja.srt");
 
         assertEquals("subtitles-cloud-translate-ja.srt", artifact.name());
         assertEquals(expected.length, artifact.sizeBytes());
@@ -400,26 +402,26 @@ class TaskServiceTest {
 
     @Test
     void openArtifactRejectsDotDotTraversal() throws Exception {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir-traverse");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir-traverse");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         Files.createDirectories(tempDir.resolve("works").resolve("dir-traverse"));
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service().openArtifact(task.getTaskNo(), "../secret.txt"));
+                () -> service().openArtifact(task.getTaskNo().value(), "../secret.txt"));
 
         assertTrue(e.getMessage().contains("非法产物路径"), e.getMessage());
     }
 
     @Test
     void openArtifactRejectsAbsoluteWindowsPath() throws Exception {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir-abs");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir-abs");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         Files.createDirectories(tempDir.resolve("works").resolve("dir-abs"));
         // 绝对路径入参 resolve 会整条替换基准目录，必须被 startsWith 校验拦下
         Path outside = Files.createTempFile("vidsage-escape", ".txt");
         try {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                    () -> service().openArtifact(task.getTaskNo(), outside.toString()));
+                    () -> service().openArtifact(task.getTaskNo().value(), outside.toString()));
             assertTrue(e.getMessage().contains("非法产物路径"), e.getMessage());
         } finally {
             Files.deleteIfExists(outside);
@@ -428,53 +430,53 @@ class TaskServiceTest {
 
     @Test
     void openArtifactRejectsBackslashTraversal() throws Exception {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir-backslash");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir-backslash");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         Files.createDirectories(tempDir.resolve("works").resolve("dir-backslash"));
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service().openArtifact(task.getTaskNo(), "..\\secret.txt"));
+                () -> service().openArtifact(task.getTaskNo().value(), "..\\secret.txt"));
 
         assertTrue(e.getMessage().contains("非法产物路径"), e.getMessage());
     }
 
     @Test
     void openArtifactTreatsEncodedTraversalAsNonexistentArtifact() throws Exception {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir-encoded");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir-encoded");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         Files.createDirectories(tempDir.resolve("works").resolve("dir-encoded"));
 
         // URL 编码产物在服务层只是普通文件名：不构成逃逸，落「产物不存在」分支
         for (String name : new String[] {"%2e%2e%2fsecret.txt", "%2e%2e/secret.txt"}) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                    () -> service().openArtifact(task.getTaskNo(), name), () -> "name=" + name);
+                    () -> service().openArtifact(task.getTaskNo().value(), name), () -> "name=" + name);
             assertTrue(e.getMessage().contains("产物不存在"), () -> "name=" + name + ", msg=" + e.getMessage());
         }
     }
 
     @Test
     void openArtifactRejectsMissingFile() throws Exception {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir-missing");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir-missing");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         Files.createDirectories(tempDir.resolve("works").resolve("dir-missing"));
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service().openArtifact(task.getTaskNo(), "ghost.srt"));
+                () -> service().openArtifact(task.getTaskNo().value(), "ghost.srt"));
 
         assertTrue(e.getMessage().contains("产物不存在"), e.getMessage());
     }
 
     @Test
     void openArtifactRejectsBlankFileName() {
-        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", "a1b2c3d4e5f6", "dir");
+        VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        assertThrows(IllegalArgumentException.class, () -> service().openArtifact(task.getTaskNo(), " "));
+        assertThrows(IllegalArgumentException.class, () -> service().openArtifact(task.getTaskNo().value(), " "));
     }
 
     @Test
     void openArtifactThrowsNotFoundWhenTaskMissing() {
-        when(repository.findByTaskNo("ghost")).thenReturn(Optional.empty());
+        when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
         assertThrows(TaskNotFoundException.class,
                 () -> service().openArtifact("ghost", "whatever.srt"));
@@ -490,8 +492,8 @@ class TaskServiceTest {
      * 主任务已成功、翻译子状态随给定值构造的任务（errorMessage 由调用方给，模拟翻译失败落库的形状）。
      */
     private static VideoTask succeededWithTranslation(TranslationStatus translationStatus, String errorMessage) {
-        return VideoTask.restore(7L, "abc123def456abc123def456abc123de", TaskInputType.URL,
-                "https://example.com/v", "a1b2c3d4e5f6", "dir", TaskStatus.SUCCEEDED, "clean",
+        return VideoTask.restore(7L, new TaskNo("abc123def456abc123def456abc123de"), TaskInputType.URL,
+                "https://example.com/v", new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, "clean",
                 translationStatus, errorMessage,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now());

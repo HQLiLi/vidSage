@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.vidsage.domain.shared.WorkspaceKey;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 
@@ -22,10 +23,12 @@ class VideoTaskTest {
 
     @Test
     void newPendingStartsAsPendingWithGeneratedTaskNo() {
-        VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v", "a1b2c3d4e5f6", "dir-a1b2c3d4e5f6");
+        VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir-a1b2c3d4e5f6");
 
         assertEquals(TaskStatus.PENDING, task.getStatus());
-        assertTrue(task.getTaskNo().matches("[0-9a-f]{32}"), () -> "taskNo 应为 32 位十六进制：" + task.getTaskNo());
+        assertTrue(task.getTaskNo().value().matches("[0-9a-f]{32}"),
+                () -> "taskNo 应为 32 位十六进制：" + task.getTaskNo().value());
         assertNull(task.getId(), "未落库前 id 应为 null");
         assertNotNull(task.getCreatedAt());
         assertEquals(task.getCreatedAt(), task.getUpdatedAt());
@@ -39,8 +42,8 @@ class VideoTaskTest {
     @Test
     void restoreRebuildsPersistedFieldsVerbatim() {
         LocalDateTime created = LocalDateTime.of(2026, 9, 30, 10, 0);
-        VideoTask task = VideoTask.restore(7L, "abc123", TaskInputType.UPLOAD, "demo.mp4",
-                "a1b2c3d4e5f6", "dir", TaskStatus.FAILED, "translate", TranslationStatus.RUNNING,
+        VideoTask task = VideoTask.restore(7L, new TaskNo("abc123"), TaskInputType.UPLOAD, "demo.mp4",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.FAILED, "translate", TranslationStatus.RUNNING,
                 "翻译失败", created,
                 created.plusMinutes(5), created.plusSeconds(1), created.plusMinutes(5));
 
@@ -264,7 +267,8 @@ class VideoTaskTest {
     // ---------- 工厂 ----------
 
     private static VideoTask newPending() {
-        return VideoTask.newPending(TaskInputType.URL, "https://example.com/v", "a1b2c3d4e5f6", "dir");
+        return VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir");
     }
 
     private static VideoTask running() {

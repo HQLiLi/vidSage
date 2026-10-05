@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.config.WorkspaceProperties;
 import com.vidsage.domain.media.MediaInput;
+import com.vidsage.domain.shared.WorkspaceKey;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -179,10 +180,10 @@ class WorkspaceServiceTest {
 
     @Test
     void shortHashIsStableTwelveHexChars() {
-        String hash = WorkspaceService.shortHash("https://example.com/x");
+        WorkspaceKey hash = WorkspaceService.shortHash("https://example.com/x");
 
-        assertEquals(12, hash.length());
-        assertTrue(hash.matches("[0-9a-f]{12}"), hash);
+        assertEquals(12, hash.value().length());
+        assertTrue(hash.value().matches("[0-9a-f]{12}"), hash.value());
         assertEquals(hash, WorkspaceService.shortHash("https://example.com/x"));
         assertNotEquals(hash, WorkspaceService.shortHash("https://example.com/y"));
     }
@@ -207,7 +208,7 @@ class WorkspaceServiceTest {
 
     @Test
     void explicitKeyEntryCreatesDirectoryWithSanitizedLabelAndGivenKey() {
-        Path dir = service().workspaceFor("上传 视频:mp4", "a1b2c3d4e5f6");
+        Path dir = service().workspaceFor("上传 视频:mp4", new WorkspaceKey("a1b2c3d4e5f6"));
 
         assertEquals("上传 视频_mp4-a1b2c3d4e5f6", dir.getFileName().toString(),
                 "目录名 = sanitize(标签)-<显式 key>，key 原样使用、不重算");
@@ -217,9 +218,9 @@ class WorkspaceServiceTest {
     @Test
     void explicitKeyEntryFallsBackLabelForBlankOrNull() {
         assertEquals(WorkspaceService.FALLBACK_NAME + "-a1b2c3d4e5f6",
-                service().workspaceFor("  ", "a1b2c3d4e5f6").getFileName().toString());
+                service().workspaceFor("  ", new WorkspaceKey("a1b2c3d4e5f6")).getFileName().toString());
         assertEquals(WorkspaceService.FALLBACK_NAME + "-a1b2c3d4e5f6",
-                service().workspaceFor(null, "a1b2c3d4e5f6").getFileName().toString());
+                service().workspaceFor(null, new WorkspaceKey("a1b2c3d4e5f6")).getFileName().toString());
     }
 
     @Test
