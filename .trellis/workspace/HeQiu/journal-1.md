@@ -605,3 +605,25 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 21: 派发工作流提速协议落地（10-05-workflow-dispatch-tuning）
+<!-- trellis-session: v=2 fp=a8663edd3dc1313f -->
+
+**Date**: 2026-10-05
+**Task**: 派发工作流提速协议落地（10-05-workflow-dispatch-tuning）
+**Branch**: `dev`
+
+### Summary
+
+按 10-03 实测基线落地派发协议调优：正典 dispatch-protocol.md（并行默认/检查拆面/减轮数/档位判据/worktree 仪式/台账/工具适配层）+ workflow.md 与两个 SKILL.md 英文镜像（SYNC MARKER）+ tools/trellis-worktree.sh 幂等脚本 + .codex/agents/trellis-mechanic.toml。三检查面并行核对 AC1–AC7 全过，修复 2P0+2P1+4P2；ZCode 不热加载新 agent 类型，mechanic 按 §7 降级全高档，新会话复测（台账 research/execution-log.md）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f7459d2` | docs(trellis): 派发协议并行化落地（10-05-workflow-dispatch-tuning） |
+
+### Status
+
+[OK] **Completed**
