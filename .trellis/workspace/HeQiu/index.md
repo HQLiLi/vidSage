@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 18
-- **Last Active**: 2026-10-02
+- **Total Sessions**: 20
+- **Last Active**: 2026-10-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~560 | Active |
+| `journal-1.md` | ~607 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 20 | 2026-10-05 | 前端 v0 两态页面落地与审查期收敛 | `0b14df0`, `9ba3868` | `dev` |
 | 18 | 2026-10-02 | MVP-1 异步任务管线落地 + 翻译按需触发拆分 | `3357a55`, `60c67db`, `60cc039`, `a508766`, `c5c1444` | `dev` |
 | 17 | 2026-09-30 | 官方译名接入翻译提示词：deepseek 基线对照与双语种实测 | `97af795`, `c6d49a7`, `981a80d`, `3cdbd92` | `dev` |
 | 16 | 2026-09-29 | 术语官方译名联网查证：实现、重改与换代验收 | `893a959`, `eb0a559` | `feature/subtitle-term-official-lookup` |
