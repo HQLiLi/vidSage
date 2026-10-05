@@ -1,7 +1,7 @@
 package com.vidsage.web.controller;
 
-import com.vidsage.model.process.ExternalToolReport;
-import com.vidsage.service.ToolDiagnosticsService;
+import com.vidsage.infrastructure.process.ExternalToolReport;
+import com.vidsage.application.diagnostics.ToolDiagnosticsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
@@ -17,7 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
  * 异步管线落地收编删除（见本任务 {@code research/acceptance-evidence.md}）——媒体与字幕的
  * 业务入口只有 {@code TaskController} 一处；本控制器只保留长久的诊断端点。
  *
- * <p>本类只做「接收 → 委托 → 返回」，不写业务逻辑；依赖 {@code service/}，不直接依赖 {@code provider/}。
+ * <p>本类只做「接收 → 委托 → 返回」，不写业务逻辑；依赖 {@code application/}，除诊断响应直读
+ * {@code ExternalToolReport}（design.md 豁免清单 b）外，不直接依赖 {@code infrastructure/} 的出站实现。
  */
 @Slf4j
 @Tag(name = "媒体与音频", description = "外部工具诊断（只读）")

@@ -19,17 +19,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.vidsage.model.progress.StageEvent;
-import com.vidsage.model.progress.TaskProgressMessage;
-import com.vidsage.model.task.TaskArtifactFile;
-import com.vidsage.model.task.TaskInputType;
-import com.vidsage.model.task.TaskStatus;
-import com.vidsage.model.task.TaskView;
-import com.vidsage.model.task.TranslationStatus;
-import com.vidsage.service.TaskConflictException;
-import com.vidsage.service.TaskNotFoundException;
-import com.vidsage.service.TaskService;
-import com.vidsage.subscribe.TaskSubscriptionRegistry;
+import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.TaskArtifactFile;
+import com.vidsage.domain.task.TaskInputType;
+import com.vidsage.domain.task.TaskStatus;
+import com.vidsage.application.task.TaskView;
+import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.application.task.TaskConflictException;
+import com.vidsage.application.task.TaskNotFoundException;
+import com.vidsage.application.task.TaskService;
+import com.vidsage.application.task.TaskSubscriptionRegistry;
 import com.vidsage.web.sse.TaskSseHub;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

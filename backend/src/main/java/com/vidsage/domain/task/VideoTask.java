@@ -1,16 +1,12 @@
 package com.vidsage.domain.task;
 
-import com.vidsage.model.task.TaskInputType;
-import com.vidsage.model.task.TaskStatus;
-import com.vidsage.model.task.TranslationStatus;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 /**
- * 视频任务：任务生命周期<b>状态机</b>的载体。放进 {@code domain/}（与 model/ 并存、不合并）正是
+ * 视频任务：任务生命周期<b>状态机</b>的载体。放进 {@code domain/task/} 正是
  * directory-structure.md 预告的升级触发条件——这里有会<b>拒绝非法状态迁移</b>的行为方法，
  * 如 SUCCEEDED → RUNNING。
  *

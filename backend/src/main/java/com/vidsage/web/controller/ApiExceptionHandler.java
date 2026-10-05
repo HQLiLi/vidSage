@@ -1,7 +1,7 @@
 package com.vidsage.web.controller;
 
-import com.vidsage.service.TaskConflictException;
-import com.vidsage.service.TaskNotFoundException;
+import com.vidsage.application.task.TaskConflictException;
+import com.vidsage.application.task.TaskNotFoundException;
 import com.vidsage.web.dto.TaskConflictResponse;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
