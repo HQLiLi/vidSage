@@ -91,6 +91,14 @@ mm.add('(prefers-reduced-motion: no-preference)', () => {
 
 入场动画的起始态用 `gsap.from()` / `fromTo()` / `gsap.set()` 写在 context 内，**不要在 CSS 里预写"待动画"的隐藏态**（如 `.card { opacity: 0 }`）——JS 失败或 reduced-motion 降级时页面仍完整可见。`from()` / `fromTo()` 默认 `immediateRender: true`，创建即应用起始态，天然防闪烁。
 
+## 固定视口壳上的入场位移：先给溢出兜底
+
+`h-screen` 固定应用壳（页面自身不滚动，如工作区）上用 `y` 位移做入场动画时，目标元素会瞬时偏出视口底部——transform 盒计入文档可滚动溢出，经典滚动条平台（Windows 默认）会闪出滚动条挤压布局、动画结束又弹回，表现为动画首尾各一次布局跳动。
+
+约定：**固定壳上的入场位移动画，在溢出的产生层剪掉**——给动画目标所在容器加 `overflow-clip`（如就绪态 `<main>`；壳层 header 里的下拉面板不受影响）。可滚动页面（`min-h-screen`，如上传页）**不得**整体剪裁——会砍掉合法滚动；其内容离视口底足够远时无需处理。
+
+参照：`frontend/src/views/workspace/index.vue` 就绪态 `<main>` 的 `overflow-clip` 及注记。
+
 ## 时序：timeline + labels
 
 两段以上有先后关系的动画用 `gsap.timeline()` 编排，用 labels 标记章节；**禁止用一串递增的裸 `delay` 数字拼接**（改一个时间全盘手调）。单段动画的单一 `delay` 不受限。
@@ -140,6 +148,7 @@ tl.to(a, { y: 0 }).to(b, { y: 0 }, '-=0.15')
 | 只建 tween 不 `revert()` | 泄漏 + 幽灵动画（硬规则 3） |
 | tween `width`/`top` 等布局属性 | 官方 Do Not，触发 layout |
 | CSS 预写 `opacity: 0` 等待 JS 播放 | JS 失败 / 降级时页面空白 |
+| 固定视口壳上做 `y` 入场不加溢出剪裁 | 滚动条闪现 + 布局首尾两次跳动（本文「固定视口壳」节） |
 | 递增 `delay` 拼接时序 | 维护灾难，用 timeline |
 | 无 reduced-motion 分支 | 本文强制条款 |
 | tween store state / 表单值 | 数据层边界 |

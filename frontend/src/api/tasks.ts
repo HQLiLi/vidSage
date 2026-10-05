@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { SubmitUrlRequest, TaskView } from './types'
+import type { SubmitUrlRequest, TaskView } from '@/types/task'
 
 /**
  * 提交 URL 任务（202 Accepted）：后端异步执行到原文字幕就绪，立即返回 PENDING 视图，
@@ -7,21 +7,36 @@ import type { SubmitUrlRequest, TaskView } from './types'
  * 错误响应体为 TaskConflictResponse（含既有任务视图）。
  */
 export async function submitUrl(data: SubmitUrlRequest): Promise<TaskView> {
-  return (await request.post<TaskView>('/api/tasks', data)).data
+  return request.post<TaskView>('/tasks', data)
 }
 
 /**
  * 上传本地视频 / 音频文件提交任务（202 Accepted）：multipart 字段名固定为 `file`，
  * 后端流式落盘、按内容寻址（同一文件重复上传命中同一工作区，409 时返回既有任务）。
+ *
+ * - `onUploadProgress`：可选上传进度回调。axios 进度事件每次触发时把 `loaded / total`
+ *   换算成 0–100 整数百分比上抛，供上传页驱动进度条；total 未知（响应无
+ *   Content-Length）时拿不到确定百分比，跳过该次回调。
+ * - 不手动设置 `Content-Type`：data 为 FormData 时须由浏览器自动生成带 boundary
+ *   的请求头，显式覆写会丢失 boundary 而被后端拒绝。
+ * - 本请求覆写 `timeout: 0`（禁用超时）：实例全局 15s 超时对上限 2GB 的大文件上传
+ *   必然误伤，仅此请求放开。
  */
-export async function submitUpload(file: File): Promise<TaskView> {
+export async function submitUpload(
+  file: File,
+  onUploadProgress?: (percent: number) => void,
+): Promise<TaskView> {
   const form = new FormData()
   form.append('file', file)
-  return (
-    await request.post<TaskView>('/api/tasks/upload', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-  ).data
+  return request.post<TaskView>('/tasks/upload', form, {
+    timeout: 0,
+    // 上传进度，通过axios的钩子触发回调
+    onUploadProgress: (event) => {
+      if (!onUploadProgress || !event.total) return
+      // 钳制到 0–100：浮点换算的防御性收边
+      onUploadProgress(Math.min(100, Math.max(0, Math.round((event.loaded / event.total) * 100))))
+    },
+  })
 }
 
 /**
@@ -29,12 +44,20 @@ export async function submitUpload(file: File): Promise<TaskView> {
  * taskNo 不存在时后端返回 404。
  */
 export async function getTask(taskNo: string): Promise<TaskView> {
-  return (await request.get<TaskView>(`/api/tasks/${taskNo}`)).data
+  return request.get<TaskView>(`/tasks/${taskNo}`)
+}
+
+/**
+ * 经产物端点取 JSON（同源相对路径走 axios；下载链接才用原生 <a> 直连，design §3.2）。
+ * 泛型 T 由调用方按产物类型标注（信封结构见 @/types/task 的 SubtitleArtifactFile 等）。
+ */
+export async function fetchArtifactJson<T>(taskNo: string, name: string): Promise<T> {
+  return request.get<T>(`/tasks/${taskNo}/artifacts/${name}`)
 }
 
 /**
  * 触发翻译（202 Accepted）：仅当任务 SUCCEEDED 后可调；对已完成翻译重复调用幂等收敛。
  */
 export async function translate(taskNo: string): Promise<TaskView> {
-  return (await request.post<TaskView>(`/api/tasks/${taskNo}/translate`)).data
+  return request.post<TaskView>(`/tasks/${taskNo}/translate`)
 }

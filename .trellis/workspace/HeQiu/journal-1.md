@@ -582,3 +582,26 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 20: 前端 v0 两态页面落地与审查期收敛
+<!-- trellis-session: v=2 fp=9cd991384d821335 -->
+
+**Date**: 2026-10-05
+**Task**: 前端 v0 两态页面落地与审查期收敛
+**Branch**: `dev`
+
+### Summary
+
+前端 v0 全程收口：0b14df0 按原型落地上传/工作区两态页面，接通提交（本地/链接/409 冲突跳转）、SSE 进度与终态、按需翻译与产物下载契约；随后审查期 14 批改动收敛——baseURL 收敛进 request（frontend/.env 注入 VITE_API_BASE_URL=/api，非 axios 出口保留全路径双拼）、ApiError 拦截器归一错误（status/message/existingTask）、成功响应统一解包 + 类型化门面 {get,post}（门面边界受控 as 为 no-as 唯一例外）；纯函数入 utils/transcript、fetchArtifactJson 归 api 层；枚举值迁 enums/task.ts（as const 键镜像后端，types/ 经 import type+typeof 保持纯类型）；HeroWave/AudioWaveform 装饰波形抽页面私有组件，MediaPane 按同名文件夹规则提升（index.vue+components/），AppHeader 抽跨页共享组件统一三处 header（bg-surface、px-4 sm:px-6 口径取设计令牌注释意图）；修 workspace 入场动画滚动条闪烁（h-screen 固定壳上 y 位移瞬时溢出，就绪态 main overflow-clip，Playwright rAF 采样 665 帧实测溢出与滚动条占宽恒 0）；type-safety.md 增补 TypeScript 类型规范 8 条、animation.md 增补固定视口壳入场位移约定；三命令全绿，Range 206 已实证。遗留 P2：终态谓词两处编码统一、SSE 重连 404 静默、进度条 SCSS 两页重复。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0b14df0` | feat(frontend): 按原型落地两态页面，接通提交/SSE/翻译/产物契约 |
+| `9ba3868` | refactor(frontend): 审查期修复与架构收敛（baseURL/ApiError/解包门面、enums·utils 分层、组件抽取与 AppHeader 共享、入场滚动条修复） |
+
+### Status
+
+[OK] **Completed**

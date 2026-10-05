@@ -1,1 +1,39 @@
 @import 'tailwindcss';
+
+/*
+ * 设计令牌 —— 黑白灰单色方向（按原型验证的方案重写，非搬运）。
+ * UI 一律无彩色：黑即强调色，深绿仅作为氛围素材（hero 横幅、封面卡）使用，不进 UI 强调。
+ * 组件里只允许引用这些 token（bg-primary、text-muted 等），不要散写具体色值。
+ */
+@theme {
+  --color-background: #ffffff; /* 页面底 */
+  --color-surface: #fafafa; /* 顶栏/侧栏底 */
+  --color-mist: #f5f5f5; /* hover 底、当前句底 */
+  --color-border: #e5e5e5; /* 全部描边 */
+  --color-foreground: #0a0a0a; /* 标题、主文字 */
+  --color-ink: #404040; /* 次级正文 */
+  --color-muted: #737373; /* 时间码、辅助文字 */
+  --color-faint: #a3a3a3; /* 占位、禁用 */
+  --color-primary: #0a0a0a; /* 主按钮、播放态标识（黑即强调色） */
+  --color-primary-hover: #2e2e2e; /* 主按钮 hover，随主色走 */
+
+  /*
+   * 深绿氛围色（仅视觉素材，不做 UI 强调色）。
+   * 定稿：2026-10-02，主色 #3d5a48（hsl 143/19/30），梯度由主色派生规则生成。
+   */
+  --color-sage-50: #eceeed;
+  --color-sage-100: #d2dad5;
+  --color-sage-300: #92af9d;
+  --color-sage-500: #5d896d;
+  --color-sage-700: #446450;
+  --color-sage-900: #293d31;
+  --color-sage-950: #1a2820;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+}

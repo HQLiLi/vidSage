@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "技术栈基线、常用命令与提交前检查口径，动手前必读"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "新增文件落位（views 子包/公共组件/stores/utils）与路由约定，含原型重写规则"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "script setup、button type、v-for key、composables 抽取与副作用清理约定"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Pinia Setup Store 写法与 storeToRefs 规则，task store 按此实现"}
+{"file": ".trellis/spec/frontend/styling.md", "reason": "Tailwind 4 CSS-first 与 SCSS 分工，设计令牌写入 tailwind.css 的依据"}
+{"file": ".trellis/spec/frontend/animation.md", "reason": "GSAP 硬规则：统一导入、context/revert、reduced-motion、性能分层、缓动基线"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "axios 唯一实例与 SSE 边界（SSE 走 composables 不进 api/）"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TS 严格模式约束与类型组织，契约镜像类型按此写"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "双 linter、注释硬要求（每函数注释），完成定义"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "从原型重写（而非搬运）时的复用判断框架"}
