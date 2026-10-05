@@ -1,7 +1,8 @@
 # 数据库与持久化规范
 
-> 2026-09-30 随 MVP-1 落库重建（此前因「没有任何持久化依赖」删除）。三层职责与可见性见
-> [directory-structure.md](./directory-structure.md)「持久化三层」，本文只管数据库侧契约。
+> 2026-09-30 随 MVP-1 落库重建（此前因「没有任何持久化依赖」删除）；2026-10-05 DDD 四层化起，三层代码
+> （entity / mapper / repository）位于 `infrastructure/persistence/`。分层职责与可见性见
+> [directory-structure.md](./directory-structure.md)，本文只管数据库侧契约。
 
 ## 环境与依赖
 
@@ -32,7 +33,8 @@
 ## MyBatis-Plus 用法
 
 - 只用第一档 `BaseMapper<T>`；**禁** `IService` / `ServiceImpl` 继承（理由见 directory-structure.md 反模式表）。
-- MP 类型（`BaseMapper` / `LambdaQueryWrapper` / `IPage`）不越出 `persistence/` 包。
+- MP 类型（`BaseMapper` / `LambdaQueryWrapper` / `IPage`）不越出 `infrastructure/persistence/` 包。
+- **值对象 ↔ String 列**：领域侧 `VideoTask` 的 `taskNo` / `workspaceKey` 已是值对象（`domain/task/TaskNo`、`domain/shared/WorkspaceKey`）；实体 `VideoTaskEntity` 保持 `String` 列，转换收敛在 `VideoTaskRepository` 的实体↔领域映射边界——schema / SQL / Mapper 层对该转换无感知。
 - Mapper 注册依赖 starter 自动配置 + `@Mapper` 注解，**不写 @MapperScan**。
 - 枚举持久化按名映射（`@TableName` 实体字段直接用 Java enum）。
 
@@ -64,7 +66,7 @@ spring.sql.init.mode: always   # CREATE TABLE IF NOT EXISTS 幂等，启动即�
 
 ## 测试策略
 
-- **单测不连真库**：`VideoTaskRepositoryTest` mock 全部 Mapper，断言实体↔契约双向转换与查询条件。
+- **单测不连真库**：`VideoTaskRepositoryTest` mock 全部 Mapper，断言实体↔领域对象双向转换（含 `TaskNo` / `WorkspaceKey` 值对象与 String 列的互转）与查询条件。
 - **真库连通由冒烟测试承担**：`VidSageApplicationTests` 标 `@ActiveProfiles("local")`（测试类路径的
   application.yml 会遮蔽主配置且不带 `spring.profiles.default`——不显式激活，数据源配置根本不加载，
   报「Failed to determine a suitable driver class」，2026-09-30 实测踩过）。

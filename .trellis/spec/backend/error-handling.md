@@ -9,7 +9,7 @@
 
 在方法开头集中校验所有前置条件，**先失败再干活**，不要在业务流程中间零散判空。
 
-参照：`provider/asr/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` —— 前置校验（API key、来源非空、URL/路径合法性）连续排在最前面，之后才是 SDK 调用。
+参照：`infrastructure/provider/asr/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` —— 前置校验（API key、来源非空、URL/路径合法性）连续排在最前面，之后才是 SDK 调用。
 
 ```java
 if (!StringUtils.hasText(properties.apiKey())) {
@@ -41,9 +41,9 @@ return switch (source) {
 上一张表回答「种类」，这条回答「**归属**」——同一个非法值，来源不同就该是不同的异常：
 
 - **调用方产生**（请求体 / URL / 路径）→ 在 **HTTP 边界卫语句**里拦下，抛 `IllegalArgumentException` → **400 + WARN**
-- **服务端自己算出** → 在 `model/` 类型的**紧凑构造器不变量**里拦下，抛 `IllegalStateException` → **500 + ERROR**
+- **服务端自己算出** → 在 `domain/` 值对象的**紧凑构造器不变量**里拦下，抛 `IllegalStateException` → **500 + ERROR**（先例：`domain/task/TaskNo`、`domain/shared/WorkspaceKey` 的紧凑构造器对空白值抛 `IllegalStateException`）
 
-**落地规则：任何「拿调用方的值构造 `model/` 类型」的代码，必须先有一个边界卫语句。** 构造器那层是**最后防线**——它触发即意味着边界漏了。
+**落地规则：任何「拿调用方的值构造 `domain/` 值对象」的代码，必须先有一个边界卫语句。** 构造器那层是**最后防线**——它触发即意味着边界漏了。
 
 **为何必须分两处**：`AudioSpec` 的构造器只看得到「`audioTrackIndex` 是负的」，**看不到这个负值是客户端传的还是服务端算的**。「谁之过」只能在知道来源的地方决定。
 
@@ -55,7 +55,7 @@ return switch (source) {
 
 源**可**获取时两者才同为 400。故守卫的**位置**（边界，早于任何服务调用）与守卫的**存在**同等重要：把卫语句「整理」进服务层，会让客户端错误重新变得**取决于环境是否就绪**。
 
-**同一个值被检查两次不是冗余**：「调用方给的合法吗？」（边界）与「我们内部造出来的符合不变量吗？」（构造器）是**两问两答**——同一谓词、不同失败含义，而**含义决定状态码**。本项目实例：`MediaController.toAudioSpec` 与 `AudioSpec` 紧凑构造器各查一次 `audioTrackIndex < 0`，消息文本一致，异常类型分别是 IAE / ISE。
+**同一个值被检查两次不是冗余**：「调用方给的合法吗？」（边界）与「我们内部造出来的符合不变量吗？」（构造器）是**两问两答**——同一谓词、不同失败含义，而**含义决定状态码**。本项目实例：`TaskService.loadTask` 对入参 taskNo 先做 `StringUtils.hasText` 卫语句（IAE → 400），`TaskNo` 紧凑构造器再查一次空白（ISE → 500），同一谓词、异常类型随归属不同。
 
 **残留风险（有意接受）**：边界卫语句若漏写，客户端错误会被构造器报成 **500**。取舍理由是**失败方向反转**——旧形态是服务端 bug **伪装成 400 / WARN 静默存活**，新形态把服务端疏漏**喊成 500 / ERROR，可见**。宁可大声暴露服务端缺陷，也不要藏进「用户错误」里。
 
@@ -73,7 +73,7 @@ if (!StringUtils.hasText(command.language())) {
 }
 ```
 
-参照：`provider/asr/dashscope/DashScopeAsrProvider.java`
+参照：`infrastructure/provider/asr/dashscope/DashScopeAsrProvider.java`
 
 ## 错误信息写法
 
@@ -156,7 +156,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 
 ## REST 层错误映射（已建立，且已提取为全局）
 
-第一个 Controller（`web/controller/AsrController.java`）确立了模式；第二个 Controller（`web/controller/MediaController.java`）落地时局部处理开始重复，**按原规范预告的条件提取成了全局处理器** `web/controller/ApiExceptionHandler`（`@RestControllerAdvice`）。后续 Controller **不必再写局部 `@ExceptionHandler`**。
+模式由首个 Controller 确立（该类已于 2026-10-02 收编旧同步端点时移除）；第二个 Controller（`web/controller/MediaController.java`）落地时局部处理开始重复，**按原规范预告的条件提取成了全局处理器** `web/controller/ApiExceptionHandler`（`@RestControllerAdvice`）。后续 Controller **不必再写局部 `@ExceptionHandler`**。
 
 - **入参校验用卫语句**：Controller 层判空白/越界即抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
 - **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）

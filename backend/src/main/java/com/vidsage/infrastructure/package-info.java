@@ -4,7 +4,7 @@
  * {@code provider}（asr / audio / download / llm 各适配器实现）。
  *
  * <p>依赖规则：本层依赖 domain（实现端口、使用领域词汇），不依赖 application / web。
- * 豁免（design.md 豁免清单，刻意不做接口脱壳）：
+ * 豁免（directory-structure.md「依赖规则与豁免清单」正典，刻意不做接口脱壳）：
  * <ul>
  *   <li>a. application 可直接引用本层具体类：{@code VideoTaskRepository}、诊断编排经
  *       {@code ToolDiagnosticsService} 引用 {@code ExternalToolDiagnostics} / {@code ExternalToolReport}、

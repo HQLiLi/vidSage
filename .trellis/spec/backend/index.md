@@ -9,7 +9,7 @@
 
 | 文档 | 内容 | 何时读 |
 |------|------|--------|
-| [directory-structure.md](./directory-structure.md) | 包结构、按技术分层、类与文件命名 | 新增模块或类时 |
+| [directory-structure.md](./directory-structure.md) | 四层结构（domain / application / infrastructure / web）、依赖规则与豁免清单、类与文件命名 | 新增模块或类时 |
 | [provider-pattern.md](./provider-pattern.md) | Provider 抽象 + 条件装配 + record 配置属性 | 新增或切换本地/云端实现时 |
 | [error-handling.md](./error-handling.md) | 卫语句、异常类型选择、错误信息写法与语言 | 写任何校验与失败路径时 |
 | [quality-guidelines.md](./quality-guidelines.md) | 契约设计、注释要求、测试写法、依赖原则、主流选型 | 写任何代码前 |
@@ -17,13 +17,12 @@
 
 ---
 
-## 尚未落地的规范
+## 已删除规范的重建记录
 
-以下模板文件**已删除**，因为代码库中还没有对应实现。相应功能落地后再重建：
+模板文件会因代码库中还没有对应实现而先删除，相应功能落地后再重建：
 
-- **`database-guidelines.md`** —— `backend/pom.xml` 目前没有任何持久化依赖（无 MyBatis-Plus、无 JPA、无 Redis starter），也不存在实体或 Repository 代码。主 PRD 规划的 MyBatis-Plus + Redis/pgvector 尚未动工。
-
-`logging-guidelines.md` 已于 2026-09-24 随日志功能落地而重建。
+- `logging-guidelines.md` —— 2026-09-24 随首个日志实现落地重建。
+- `database-guidelines.md` —— 2026-09-30 随任务持久化（MyBatis-Plus + entity / mapper / repository，现居 `infrastructure/persistence/`）落库，规范重建提交落在 2026-10-02；Redis / pgvector 尚未动工，待落地后再扩写。
 
 > 不要在功能落地前凭空补这些规范。子 agent 会照着规范写代码，写了不存在的模式比不写更糟。
 
@@ -43,7 +42,7 @@
 现有依赖（`pom.xml`）：
 
 - `spring-boot-starter-web`
-- `springdoc-openapi-starter-webmvc-ui:3.1.1` —— 接口文档（OpenAPI 3 + Swagger UI，零配置）。Boot 4（Framework 7）必须用 springdoc **3.x**，2.x 启动报错；knife4j 尚未适配 Boot 4，故未引入。接口描述用 Swagger 注解（`@Tag`/`@Operation`/`@Schema`，方案 A），中文且与 Javadoc 语义一致；**直接充当对外契约的模型**（JSON 形状可直接暴露者，如 `ExternalToolReport`、`TranscriptionResult`）字段都要有 `@Schema` 描述，**需展平而自持于 `web/dto/` 的 HTTP 契约 record 同理**——归属判据见 [directory-structure.md](./directory-structure.md) 的「契约类的位置」
+- `springdoc-openapi-starter-webmvc-ui:3.1.1` —— 接口文档（OpenAPI 3 + Swagger UI，零配置）。Boot 4（Framework 7）必须用 springdoc **3.x**，2.x 启动报错；knife4j 尚未适配 Boot 4，故未引入。接口描述用 Swagger 注解（`@Tag`/`@Operation`/`@Schema`，方案 A），中文且与 Javadoc 语义一致；**直接充当对外契约的模型**（JSON 形状可直接暴露者，如 `infrastructure/process/` 的 `ExternalToolReport`、`domain/transcription/` 的 `TranscriptionResult`）字段都要有 `@Schema` 描述，**需展平而自持于 `web/dto/` 的 HTTP 契约 record 同理**——归属判据见 [directory-structure.md](./directory-structure.md)
 - `spring-ai-starter-model-deepseek`
 - `dashscope-sdk-java:2.20.6` —— 已排除 `slf4j-simple`，理由见 pom 内注释（与 Spring Boot 的 Logback 冲突）
 - `lombok`（`optional`，且已从 boot jar 打包中排除）
