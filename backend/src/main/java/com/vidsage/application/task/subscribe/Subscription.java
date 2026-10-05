@@ -1,4 +1,4 @@
-package com.vidsage.application.task;
+package com.vidsage.application.task.subscribe;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;

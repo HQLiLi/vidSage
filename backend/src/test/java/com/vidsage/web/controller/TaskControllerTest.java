@@ -21,15 +21,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.application.task.TaskProgressMessage;
-import com.vidsage.application.task.TaskArtifactFile;
+import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.domain.task.TaskInputType;
 import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.application.task.TaskView;
+import com.vidsage.application.task.query.TaskView;
 import com.vidsage.domain.task.TranslationStatus;
-import com.vidsage.application.task.TaskConflictException;
-import com.vidsage.application.task.TaskNotFoundException;
+import com.vidsage.application.task.exception.TaskConflictException;
+import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.TaskService;
-import com.vidsage.application.task.TaskSubscriptionRegistry;
+import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.web.sse.TaskSseHub;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

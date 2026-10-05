@@ -1,4 +1,4 @@
-package com.vidsage.application.task;
+package com.vidsage.application.task.query;
 
 import java.nio.file.Path;
 

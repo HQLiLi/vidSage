@@ -1,11 +1,12 @@
 /**
- * 任务应用服务：任务提交/查询/管线编排与读模型——{@code TaskService}（提交与查询唯一入口）、
- * {@code TaskPipelineService}（异步阶段编排）、读模型 {@code TaskView} / {@code TaskArtifact}
- * / {@code TaskArtifactFile}、应用→web 的进度消息 {@code TaskProgressMessage}、
- * 异常 {@code TaskConflictException} / {@code TaskNotFoundException}、
- * 中立发布-订阅 {@code TaskSubscriptionRegistry} / {@code Subscription}。
+ * 任务应用服务：任务提交 / 查询 / 管线编排（2026-10-05 起按角色分角色子包，根只留服务门面与跨角色消息）。
+ * 根包：{@code TaskService}（提交与查询唯一入口）、{@code TaskPipelineService}（异步阶段编排）、
+ * 应用→web 的进度消息 {@code TaskProgressMessage}。
  *
- * <p>订阅注册表由 web 层注册消费者（如「写 SSE emitter」的回调），但本包禁止出现任何 HTTP 类型
- * （{@code SseEmitter} 等只活在 web/sse/）——包内只认识「按 taskNo 把事件交给 Consumer」的中立契约。
+ * <p>子包按角色划分：{@code query/} 装读模型（{@code TaskView} / {@code TaskArtifact} /
+ * {@code TaskArtifactFile}，面向查询与 HTTP 的应用层投影）；{@code exception/} 装应用异常
+ * （{@code TaskConflictException} → 409、{@code TaskNotFoundException} → 404）；{@code subscribe/}
+ * 装中立发布-订阅（{@code TaskSubscriptionRegistry} / {@code Subscription}，由 web 层注册
+ * 「写 SSE emitter」等回调；包内禁 HTTP 类型的承诺见该子包包说明）。
  */
 package com.vidsage.application.task;

@@ -1,4 +1,4 @@
-package com.vidsage.application.task;
+package com.vidsage.application.task.exception;
 
 /**
  * taskNo 对应的任务不存在：查询 / SSE 订阅 / 产物下载三个按 taskNo 取任务的端点统一抛出，

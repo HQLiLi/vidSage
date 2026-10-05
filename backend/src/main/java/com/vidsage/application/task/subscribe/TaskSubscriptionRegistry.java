@@ -1,5 +1,6 @@
-package com.vidsage.application.task;
+package com.vidsage.application.task.subscribe;
 
+import com.vidsage.application.task.TaskProgressMessage;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;

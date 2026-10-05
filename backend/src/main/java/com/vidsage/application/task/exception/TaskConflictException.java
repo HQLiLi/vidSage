@@ -1,5 +1,6 @@
-package com.vidsage.application.task;
+package com.vidsage.application.task.exception;
 
+import com.vidsage.application.task.query.TaskView;
 
 /**
  * 同一输入已有进行中（PENDING / RUNNING）的任务：提交查重命中。HTTP 层把它映射为

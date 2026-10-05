@@ -71,6 +71,8 @@ com.vidsage
 - **应用消息 / 应用异常**：`TaskProgressMessage`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`。
 - **中立订阅机制**：`TaskSubscriptionRegistry` / `Subscription`——application 层管线广播事件、web 层挂「写 emitter」回调，两边都依赖它。判据是「写得出它不许装什么」：**禁 HTTP 类型**（`SseEmitter` 只活 `web/sse/`，此 Javadoc 承诺原样保持）、**禁业务编排**；与 `shared/` 同类「机制包」先例。（历史注：该机制 2026-09-30 曾定调为顶层 `subscribe/` 包，2026-10-05 四层化归入 `application/task/`；升级条件随之带入——出现多传输协议（SSE + WebSocket）并存或包内构件 ≥3 时再议拆分。）
 
+上述四类构件在 `application/task/` 内按角色子包落位（2026-10-05）：服务门面与 `TaskProgressMessage` 留根，读模型进 `query/`、应用异常进 `exception/`、中立订阅机制进 `subscribe/`（禁 HTTP 类型的承诺随迁入其包说明）；判据见下文[二级包怎么分](#二级包怎么分)。
+
 **`infrastructure/`（persistence / process / provider）**：
 
 - `persistence/`：MyBatis-Plus 三件套（见[持久化三层](#持久化三层entity--mapper--repository)）。
@@ -102,7 +104,7 @@ com.vidsage
 
 三条轴各管各的，**不要互相推导**：
 
-- **`domain/`、`application/` 按限界上下文分**：`task/`、`media/`、`transcription/`、`subtitle/`（application 另有 `diagnostics/`）。上下文是领域概念的家；跨上下文词汇进 `domain/shared/` 共享内核。
+- **`domain/`、`application/` 按限界上下文分**：`task/`、`media/`、`transcription/`、`subtitle/`（application 另有 `diagnostics/`）。上下文是领域概念的家；跨上下文词汇进 `domain/shared/` 共享内核。上下文包内的**角色子包随 mass 出现**（`query/`、`exception/`、`subscribe/`…）：1–3 类的小上下文平铺即可，类多且角色分明再分子包；现行实例是 `application/task/`（根留服务门面与 `TaskProgressMessage`，`query/` 装读模型、`exception/` 装应用异常、`subscribe/` 装中立订阅机制）。
 - **`web/` 按角色（构件类型）分**（现有三个：`controller/`、`dto/`、`sse/`，第三个 2026-09-30 随 MVP-1 加入）。`TaskController`（入站适配构件）与 `SubmitUrlRequest`（HTTP 契约构件）是**两种构件**，不是一个领域的两个层次——把它们堆进同一包才会混杂。这与上下文轴是**两条独立判据**。
 - **`infrastructure/` 按构件类型 + 能力域分**：`persistence/` 内按构件类型分三子包（见[持久化三层](#持久化三层entity--mapper--repository)）；`provider/` 按能力域 → 实现短名两级分（`asr/dashscope/`、`download/ytdlp/`）——契约类名与实现配置类名（`TranscriptionCommand` / `DashScopeProperties`）**不带机制前缀**，平铺后必然混杂。
 
@@ -207,7 +209,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 |---|---|---|
 | `ExternalToolReport` | `infrastructure/process/` | 字段全是 `String` / `boolean`，形状可直接对外 → `MediaController` 诊断端点直接返回（依赖规则[豁免清单](#依赖规则与豁免清单) b） |
 | `TranscriptionResult` | `domain/transcription/` | 字段为 `List<TranscriptionSegment>` + `String`，形状可直接对外 → 直接充当对外契约，补 `@Schema` |
-| `TaskView` / `TaskArtifact` / `TaskProgressMessage` | `application/task/` | 任务查询 / SSE 端点的直接出参（读模型与应用消息）→ 补 `@Schema`；流式下载出参 `TaskArtifactFile` 字段走响应头不进 JSON，**不补 @Schema** |
+| `TaskView` / `TaskArtifact` / `TaskProgressMessage` | `application/task/query/`（读模型）、`application/task/`（`TaskProgressMessage`） | 任务查询 / SSE 端点的直接出参（读模型与应用消息）→ 补 `@Schema`；流式下载出参 `TaskArtifactFile`（同在 `query/`）字段走响应头不进 JSON，**不补 @Schema** |
 | `SubmitUrlRequest` | `web/dto/` | 入参契约，需展开成 `MediaInput`（domain/media）等领域词汇才能进应用层 |
 | `TaskConflictResponse` | `web/dto/` | HTTP 专属组合形状（错误说明 + 既有任务视图），由 `ApiExceptionHandler` 从 application 异常映射 |
 

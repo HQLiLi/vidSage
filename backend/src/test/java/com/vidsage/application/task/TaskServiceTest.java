@@ -11,6 +11,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.task.exception.TaskConflictException;
+import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.query.TaskArtifactFile;
+import com.vidsage.application.task.query.TaskView;
 import com.vidsage.config.WorkspaceProperties;
 import com.vidsage.domain.shared.WorkspaceKey;
 import com.vidsage.domain.task.TaskNo;

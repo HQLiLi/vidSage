@@ -1,9 +1,10 @@
-package com.vidsage.application.task;
+package com.vidsage.application.task.subscribe;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.task.TaskStatus;
 import java.util.List;

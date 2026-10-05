@@ -1,13 +1,13 @@
 package com.vidsage.web.controller;
 
 import com.vidsage.application.task.TaskProgressMessage;
-import com.vidsage.application.task.TaskArtifactFile;
+import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.application.task.TaskView;
+import com.vidsage.application.task.query.TaskView;
 import com.vidsage.domain.task.TranslationStatus;
 import com.vidsage.application.task.TaskService;
-import com.vidsage.application.task.Subscription;
-import com.vidsage.application.task.TaskSubscriptionRegistry;
+import com.vidsage.application.task.subscribe.Subscription;
+import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.web.dto.SubmitUrlRequest;
 import com.vidsage.web.sse.TaskSseHub;
 import io.swagger.v3.oas.annotations.Operation;
@@ -89,7 +89,7 @@ public class TaskController {
      * @param request 请求体（url 必填）
      * @return 新任务的 PENDING 视图（拿 taskNo 去查询 / 订阅进度）
      * @throws IllegalArgumentException url 为空白（400）
-     * @throws com.vidsage.application.task.TaskConflictException 同 URL 已有进行中任务（409，响应体附既有任务）
+     * @throws com.vidsage.application.task.exception.TaskConflictException 同 URL 已有进行中任务（409，响应体附既有任务）
      */
     @Operation(summary = "提交 URL 任务",
             description = "异步执行到原文字幕就绪（下载 → 抽音频 → 转写 → 清洗），立即返回 202 与任务视图；"
@@ -114,7 +114,7 @@ public class TaskController {
      * @param file 上传的媒体文件（multipart 字段名 file）；不能为空
      * @return 新任务的 PENDING 视图
      * @throws IllegalArgumentException 文件缺失或为空（400）
-     * @throws com.vidsage.application.task.TaskConflictException 同内容文件已有进行中任务（409）
+     * @throws com.vidsage.application.task.exception.TaskConflictException 同内容文件已有进行中任务（409）
      * @throws IllegalStateException    读取上传流失败 / 落盘失败（500）
      */
     @Operation(summary = "上传本地文件提交任务",
@@ -141,7 +141,7 @@ public class TaskController {
      * @param taskNo 提交响应返回的任务号
      * @return 任务视图（artifacts 为工作区内可见产物）
      * @throws IllegalArgumentException taskNo 为空（400）
-     * @throws com.vidsage.application.task.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "查询任务状态",
             description = "按 taskNo 返回任务视图（状态 / 当前阶段 / 错误信息 / 产物清单）；不存在返回 404 与中文说明")
@@ -162,7 +162,7 @@ public class TaskController {
      * @param taskNo 提交响应返回的任务号
      * @return 挂起中的 SSE 连接（text/event-stream）
      * @throws IllegalArgumentException taskNo 为空（400）
-     * @throws com.vidsage.application.task.TaskNotFoundException 任务不存在（404，此时不留悬挂连接）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404，此时不留悬挂连接）
      */
     @Operation(summary = "订阅任务进度（SSE）",
             description = "text/event-stream；事件名 progress，data 为 TaskProgressMessage JSON。"
@@ -203,7 +203,7 @@ public class TaskController {
      * @param taskNo 提交响应返回的任务号
      * @return 触发后的任务视图（translationStatus 反映翻译子状态；正常触发为 RUNNING）
      * @throws IllegalArgumentException taskNo 为空（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
-     * @throws com.vidsage.application.task.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "触发字幕翻译（按需）",
             description = "主任务成功（SUCCEEDED）后可触发；202 返回触发后的任务视图。幂等：已有翻译产物"
@@ -226,7 +226,7 @@ public class TaskController {
      * @param fileName 产物文件名（清单里的 name）
      * @return 产物文件流（application/octet-stream，附件下载）
      * @throws IllegalArgumentException taskNo / fileName 为空、越出工作区或产物不存在（400）
-     * @throws com.vidsage.application.task.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "下载任务产物",
             description = "流式返回产物文件；fileName 从任务视图 artifacts 清单里取，"

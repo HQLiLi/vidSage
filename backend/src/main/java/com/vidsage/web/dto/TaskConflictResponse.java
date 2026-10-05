@@ -1,6 +1,6 @@
 package com.vidsage.web.dto;
 
-import com.vidsage.application.task.TaskView;
+import com.vidsage.application.task.query.TaskView;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**

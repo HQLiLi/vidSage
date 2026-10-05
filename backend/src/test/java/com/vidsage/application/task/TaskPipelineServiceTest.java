@@ -20,6 +20,8 @@ import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.subtitle.SubtitleCleanupService;
 import com.vidsage.application.subtitle.SubtitleService;
 import com.vidsage.application.subtitle.SubtitleTranslationService;
+import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.config.TaskProperties;
 import com.vidsage.config.WorkspaceProperties;
 import com.vidsage.domain.shared.WorkspaceKey;

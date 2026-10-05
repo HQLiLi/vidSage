@@ -1,4 +1,4 @@
-package com.vidsage.application.task;
+package com.vidsage.application.task.query;
 
 import com.vidsage.domain.task.TaskInputType;
 import com.vidsage.domain.task.TaskStatus;
@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * 任务视图：任务提交与查询的 HTTP 响应契约（JSON 形状即可直接对外，故按 directory-structure.md
- * 「契约类的位置」判据 1 落在 application/task/ 并补 @Schema）。
+ * 「契约类的位置」判据 1 落在 application/task/query/ 并补 @Schema）。
  *
  * <p>刻意不含数据库自增 {@code id} 与 workspace_key / workspace_dir 等内部字段——对外只暴露 taskNo；
  * SSE 快照形状是 {@code application/task/TaskProgressMessage}，两者按用途分开。
