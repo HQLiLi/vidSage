@@ -66,7 +66,7 @@ spring.sql.init.mode: always   # CREATE TABLE IF NOT EXISTS 幂等，启动即�
 
 ## 测试策略
 
-- **单测不连真库**：`VideoTaskRepositoryTest` mock 全部 Mapper，断言实体↔领域对象双向转换（含 `TaskNo` / `WorkspaceKey` 值对象与 String 列的互转）与查询条件。
+- **单测不连真库**：`MybatisVideoTaskRepositoryTest` mock 全部 Mapper，断言实体↔领域对象双向转换（含 `TaskNo` / `WorkspaceKey` 值对象与 String 列的互转）与查询条件。
 - **真库连通由冒烟测试承担**：`VidSageApplicationTests` 标 `@ActiveProfiles("local")`（测试类路径的
   application.yml 会遮蔽主配置且不带 `spring.profiles.default`——不显式激活，数据源配置根本不加载，
   报「Failed to determine a suitable driver class」，2026-09-30 实测踩过）。

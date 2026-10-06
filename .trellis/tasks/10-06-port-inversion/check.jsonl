@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "逐条核对代码与分层规则是否一致：端口落位、依赖方向、命名、无豁免残留"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对反模式清单与注入/测试约定；并核验「不预先抽接口」条目的改写是否与代码事实相符"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "核对新端口是否违反接口纯净性反模式表（框架注解、SDK 类型进签名）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "端口化不得改变异常类型与映射口径，核对无回归"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查端口抽取后是否出现重复定义（如出参 record 两份形状）"}
