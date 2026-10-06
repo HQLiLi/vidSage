@@ -14,7 +14,7 @@ import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.query.TaskArtifactFile;
-import com.vidsage.application.task.query.TaskView;
+import com.vidsage.application.task.query.TaskSnapshot;
 import com.vidsage.config.WorkspaceProperties;
 import com.vidsage.domain.shared.WorkspaceDir;
 import com.vidsage.domain.shared.WorkspaceKey;
@@ -79,7 +79,7 @@ class TaskServiceTest {
     void submitUrlInsertsPendingTaskAndStartsPipeline() {
         when(repository.findActiveByWorkspaceKey(any())).thenReturn(Optional.empty());
 
-        TaskView view = service().submitUrl("https://example.com/watch/1");
+        TaskSnapshot view = service().submitUrl("https://example.com/watch/1");
 
         ArgumentCaptor<VideoTask> captor = ArgumentCaptor.forClass(VideoTask.class);
         verify(repository).insert(captor.capture());
@@ -132,7 +132,7 @@ class TaskServiceTest {
         byte[] media = "fake-video-bytes-0123456789".getBytes(StandardCharsets.UTF_8);
         String expectedKey = sha256Prefix(media);
 
-        TaskView view = service().submitUpload(new ByteArrayInputStream(media), "我的 视频.mp4");
+        TaskSnapshot view = service().submitUpload(new ByteArrayInputStream(media), "我的 视频.mp4");
 
         Path dir = tempDir.resolve("works").resolve("我的 视频.mp4-" + expectedKey);
         Path source = dir.resolve("source.mp4");
@@ -200,7 +200,7 @@ class TaskServiceTest {
         task.start();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskView view = service().findByTaskNo(task.getTaskNo().value());
+        TaskSnapshot view = service().findByTaskNo(task.getTaskNo().value());
 
         assertEquals(task.getTaskNo().value(), view.taskNo());
         assertEquals(TaskStatus.RUNNING, view.status());
@@ -364,7 +364,7 @@ class TaskServiceTest {
                 .thenReturn(Optional.of(before))
                 .thenReturn(Optional.of(succeededWithTranslation(TranslationStatus.RUNNING, null)));
 
-        TaskView view = service().translate(before.getTaskNo().value());
+        TaskSnapshot view = service().translate(before.getTaskNo().value());
 
         verify(pipelineService).translateTask(before.getTaskNo());
         assertEquals(before.getTaskNo().value(), view.taskNo());

@@ -68,7 +68,7 @@ com.vidsage
 **`application/`（五个上下文）**——用例编排的家，四类一等构件：
 
 - **用例编排**：`@Service` 服务（`TaskService`、`TaskPipelineService`、`MediaAcquisitionService`、`TranscriptionService`、`SubtitleService` 等），组装契约、委托端口，不出现适配器实现类与 SDK 类型。
-- **读模型**：`TaskView` / `TaskArtifact` / `TaskArtifactFile`——面向查询与 HTTP 的应用层投影。
+- **读模型**：`TaskSnapshot` / `TaskArtifact` / `TaskArtifactFile`——面向查询的应用层投影，**零 web 注解**（2026-10-06 读模型拆分：对外 @Schema 集中到 `web/dto/TaskResponse`，见[契约类的位置](#契约类的位置)判据 2）。
 - **应用消息 / 应用异常**：`TaskProgressMessage`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`。
 - **中立订阅机制**：`TaskSubscriptionRegistry` / `Subscription`——application 层管线广播事件、web 层挂「写 emitter」回调，两边都依赖它。判据是「写得出它不许装什么」：**禁 HTTP 类型**（`SseEmitter` 只活 `web/sse/`，此 Javadoc 承诺原样保持）、**禁业务编排**；与 `shared/` 同类「机制包」先例。（历史注：该机制 2026-09-30 曾定调为顶层 `subscribe/` 包，2026-10-05 四层化归入 `application/task/`；升级条件随之带入——出现多传输协议（SSE + WebSocket）并存或包内构件 ≥3 时再议拆分。）
 
@@ -204,13 +204,17 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 - **是** → 直接充当 HTTP 契约，类型留在它所属层的家（`domain/<上下文>/`、`application/<上下文>/`、`infrastructure/process/` 皆可能），字段补 `@Schema`（[两处例外](#分层归属判据)之一）
 - **否**（含需**展平**、需组合的 HTTP 专属形状）→ 在 `web/dto/` 自持顶层 `record`，从各层类型映射
 
+**判据 2（对外响应类的命名与落位，2026-10-06 读模型拆分定，对未来新增端点生效）**：对外响应类命名 `XXResponse`、落 `web/dto/`、`@Schema` 集中于此；由应用层读模型组装的响应，读模型本体**零 web 注解**、落 `<上下文>/query/`，web 侧以静态工厂 `from(读模型)` 纯映射、Controller 调用（`TaskResponse.from(TaskSnapshot)` 为首例）。**响应内嵌的清单元素类型同理**（`TaskArtifactResponse.from(TaskArtifact)`）。请求类命名沿用 `XXRequest`（`SubmitUrlRequest` 已符合）。判据 1 的「直接对外」分支对既有落位类型（`ExternalToolReport` / `TranscriptionResult` / `TaskProgressMessage`）维持原状，不据此新造。
+
 **现有代码已按此判据运行，本节只是把既有事实写成规则**：
 
 | 类型 | 位置 | 为什么 |
 |---|---|---|
 | `ExternalToolReport` | `infrastructure/process/` | 字段全是 `String` / `boolean`，形状可直接对外 → `MediaController` 诊断端点直接返回（依赖规则[豁免清单](#依赖规则与豁免清单) b） |
 | `TranscriptionResult` | `domain/transcription/` | 字段为 `List<TranscriptionSegment>` + `String`，形状可直接对外 → 直接充当对外契约，补 `@Schema` |
-| `TaskView` / `TaskArtifact` / `TaskProgressMessage` | `application/task/query/`（读模型）、`application/task/`（`TaskProgressMessage`） | 任务查询 / SSE 端点的直接出参（读模型与应用消息）→ 补 `@Schema`；流式下载出参 `TaskArtifactFile`（同在 `query/`）字段走响应头不进 JSON，**不补 @Schema** |
+| `TaskSnapshot` / `TaskArtifact` | `application/task/query/` | 任务查询的应用层读模型（查询期产物扫描随行）→ **零 web 注解**（判据 2）；对外 @Schema 在 `web/dto/TaskResponse` 与元素级 `web/dto/TaskArtifactResponse`。流式下载出参 `TaskArtifactFile`（同在 `query/`）字段走响应头不进 JSON，**不补 @Schema** |
+| `TaskResponse` / `TaskArtifactResponse` | `web/dto/` | 任务提交 / 查询端点的对外响应（判据 2）：@Schema 齐全（自原 `TaskView` / `TaskArtifact` 逐条迁入，注解参数未改写），静态工厂 `from(读模型)` 纯映射，JSON 字段名 / 类型与拆分前逐一一致 |
+| `TaskProgressMessage` | `application/task/` | SSE 端点的直接出参（应用消息，非读模型）→ 补 `@Schema`（判据 1 既有落位维持） |
 | `SubmitUrlRequest` | `web/dto/` | 入参契约，需展开成 `MediaInput`（domain/media）等领域词汇才能进应用层 |
 | `TaskConflictResponse` | `web/dto/` | HTTP 专属组合形状（错误说明 + 既有任务视图），由 `ApiExceptionHandler` 从 application 异常映射 |
 

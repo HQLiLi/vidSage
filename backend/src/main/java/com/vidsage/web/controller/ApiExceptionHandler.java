@@ -3,6 +3,7 @@ package com.vidsage.web.controller;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.web.dto.TaskConflictResponse;
+import com.vidsage.web.dto.TaskResponse;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -63,17 +64,18 @@ public class ApiExceptionHandler {
      * 同一输入重复提交（错在调用方）→ 409，记 WARN。
      *
      * <p>响应体是 {@code { "error": ... }} 的有意扩展（{@link TaskConflictResponse}）：冲突的可操作
-     * 出路是「改用既有任务」，光有文字说明不够，把既有任务视图一并返回。例外原因与引入时机见
-     * {@link TaskConflictException} 的类注释。
+     * 出路是「改用既有任务」，光有文字说明不够，把既有任务视图一并返回。异常载荷是应用层读模型
+     * {@code TaskSnapshot}（零 web 注解），经 {@link TaskResponse#from} 映射为对外响应。
+     * 例外原因与引入时机见 {@link TaskConflictException} 的类注释。
      *
-     * @param e 提交查重命中的冲突异常（携带既有任务视图）
+     * @param e 提交查重命中的冲突异常（携带既有任务快照）
      * @return 冲突体：错误说明 + 既有任务视图
      */
     @ExceptionHandler(TaskConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public TaskConflictResponse handleTaskConflict(TaskConflictException e) {
         log.warn("任务重复提交被拒绝: {}", errorMessage(e));
-        return new TaskConflictResponse(errorMessage(e), e.getExistingTask());
+        return new TaskConflictResponse(errorMessage(e), TaskResponse.from(e.getExistingTask()));
     }
 
     /**

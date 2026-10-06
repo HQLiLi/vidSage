@@ -2,12 +2,12 @@ package com.vidsage.web.controller;
 
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
-import com.vidsage.application.task.query.TaskView;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.application.task.TaskService;
 import com.vidsage.application.task.subscribe.Subscription;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.web.dto.SubmitUrlRequest;
+import com.vidsage.web.dto.TaskResponse;
 import com.vidsage.web.sse.TaskSseHub;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -96,14 +96,14 @@ public class TaskController {
                     + "同一 URL 已有排队 / 执行中任务时返回 409")
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public TaskView submitUrl(@RequestBody SubmitUrlRequest request) {
+    public TaskResponse submitUrl(@RequestBody SubmitUrlRequest request) {
         // 卫语句先于一切 I/O（error-handling.md）：url 缺失在边界拦下，不进服务层
         if (request == null || !StringUtils.hasText(request.url())) {
             throw new IllegalArgumentException("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
         log.info("收到任务提交: sourceType=URL");
-        return taskService.submitUrl(request.url());
+        return TaskResponse.from(taskService.submitUrl(request.url()));
     }
 
     /**
@@ -121,14 +121,14 @@ public class TaskController {
                     + "上限见 spring.servlet.multipart.max-file-size（默认 2GB）")
     @PostMapping("/upload")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public TaskView submitUpload(@RequestParam("file") MultipartFile file) {
+    public TaskResponse submitUpload(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空：请选择本地视频 / 音频文件后再提交");
         }
         // 原始文件名是用户资源，不落日志；字节数是度量，可以记
         log.info("收到任务提交: sourceType=UPLOAD, sizeBytes={}", file.getSize());
         try (InputStream in = file.getInputStream()) {
-            return taskService.submitUpload(in, file.getOriginalFilename());
+            return TaskResponse.from(taskService.submitUpload(in, file.getOriginalFilename()));
         } catch (IOException e) {
             throw new IllegalStateException("读取上传文件流失败：" + e.getMessage() + "；请重试或换一个文件", e);
         }
@@ -145,12 +145,12 @@ public class TaskController {
     @Operation(summary = "查询任务状态",
             description = "按 taskNo 返回任务视图（状态 / 当前阶段 / 错误信息 / 产物清单）；不存在返回 404 与中文说明")
     @GetMapping("/{taskNo}")
-    public TaskView getTask(@PathVariable String taskNo) {
+    public TaskResponse getTask(@PathVariable String taskNo) {
         if (!StringUtils.hasText(taskNo)) {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
         log.info("查询任务: taskNo={}", taskNo);
-        return taskService.findByTaskNo(taskNo);
+        return TaskResponse.from(taskService.findByTaskNo(taskNo));
     }
 
     /**
@@ -210,12 +210,12 @@ public class TaskController {
                     + "不重复调用 LLM，翻译进行中重复触发返回当前视图；主任务未成功返回 400（字幕尚未就绪）")
     @PostMapping("/{taskNo}/translate")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public TaskView translate(@PathVariable String taskNo) {
+    public TaskResponse translate(@PathVariable String taskNo) {
         if (!StringUtils.hasText(taskNo)) {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
         log.info("触发字幕翻译: taskNo={}", taskNo);
-        return taskService.translate(taskNo);
+        return TaskResponse.from(taskService.translate(taskNo));
     }
 
     /**

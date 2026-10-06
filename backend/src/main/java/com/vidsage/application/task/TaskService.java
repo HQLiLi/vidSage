@@ -5,7 +5,7 @@ import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
-import com.vidsage.application.task.query.TaskView;
+import com.vidsage.application.task.query.TaskSnapshot;
 import com.vidsage.domain.shared.SourceUri;
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.shared.WorkspaceDir;
@@ -91,7 +91,7 @@ public class TaskService {
      * @throws IllegalArgumentException url 为空白
      * @throws TaskConflictException    同 URL 已有进行中任务（409）
      */
-    public TaskView submitUrl(String url) {
+    public TaskSnapshot submitUrl(String url) {
         if (!StringUtils.hasText(url)) {
             throw new IllegalArgumentException("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                     + "上传本地文件请走 POST /api/tasks/upload");
@@ -120,7 +120,7 @@ public class TaskService {
      * @throws TaskConflictException    同内容已有进行中任务（409）
      * @throws IllegalStateException    落盘失败（工作区根不可写等）
      */
-    public TaskView submitUpload(InputStream content, String originalFileName) {
+    public TaskSnapshot submitUpload(InputStream content, String originalFileName) {
         if (content == null) {
             throw new IllegalArgumentException("上传内容不能为空：请重新选择文件后再提交");
         }
@@ -165,8 +165,8 @@ public class TaskService {
      * @throws IllegalArgumentException taskNo 为空白（HTTP 边界映射 400）
      * @throws TaskNotFoundException    任务不存在（HTTP 边界映射 404）
      */
-    public TaskView findByTaskNo(String taskNo) {
-        return toView(loadTask(taskNo));
+    public TaskSnapshot findByTaskNo(String taskNo) {
+        return toSnapshot(loadTask(taskNo));
     }
 
     /**
@@ -181,12 +181,12 @@ public class TaskService {
      * @throws IllegalArgumentException taskNo 为空白（400）或字幕尚未就绪（400）
      * @throws TaskNotFoundException    任务不存在（404）
      */
-    public TaskView translate(String taskNo) {
+    public TaskSnapshot translate(String taskNo) {
         VideoTask task = loadTask(taskNo);
         pipelineService.translateTask(task.getTaskNo());
         return repository.findByTaskNo(task.getTaskNo())
-                .map(this::toView)
-                .orElseGet(() -> toView(task));
+                .map(this::toSnapshot)
+                .orElseGet(() -> toSnapshot(task));
     }
 
     /**
@@ -318,7 +318,7 @@ public class TaskService {
      * dirName 由路线显式传入：上传路线的目录标签是原始文件名、LocalPath 输入的标签却是
      * source.mp4，从输入重算会写错 workspace_dir。
      */
-    private TaskView submit(MediaInput input, TaskInputType inputType, String sourceUri,
+    private TaskSnapshot submit(MediaInput input, TaskInputType inputType, String sourceUri,
                             WorkspaceKey workspaceKey, String dirName) {
         VideoTask task = VideoTask.newPending(inputType, sourceUri, workspaceKey, dirName);
         VideoTask inserted = repository.insert(task);
@@ -327,7 +327,7 @@ public class TaskService {
         log.info("任务已创建: taskNo={}, inputType={}, status={}",
                 inserted.getTaskNo().value(), inserted.getInputType(), inserted.getStatus());
         pipelineService.execute(inserted.getTaskNo());
-        return toView(inserted);
+        return toSnapshot(inserted);
     }
 
     /**
@@ -336,7 +336,7 @@ public class TaskService {
     private void rejectIfActive(WorkspaceKey workspaceKey) {
         Optional<VideoTask> active = repository.findActiveByWorkspaceKey(workspaceKey);
         if (active.isPresent()) {
-            throw new TaskConflictException(toView(active.get()));
+            throw new TaskConflictException(toSnapshot(active.get()));
         }
     }
 
@@ -366,11 +366,12 @@ public class TaskService {
     }
 
     /**
-     * 领域对象 → 对外视图。内部字段（id / workspace_key / workspace_dir）不出境；
+     * 领域对象 → 应用层读模型快照（零 web 注解；对外契约注解集中在 {@code web/dto/TaskResponse}，
+     * 由其静态工厂映射）。内部字段（id / workspace_key / workspace_dir）不出境；
      * 产物清单由工作区扫描得出（刚提交 / 目录缺失时为空表）。
      */
-    private TaskView toView(VideoTask task) {
-        return new TaskView(task.getTaskNo().value(), task.getInputType(), task.getSourceUri(),
+    private TaskSnapshot toSnapshot(VideoTask task) {
+        return new TaskSnapshot(task.getTaskNo().value(), task.getInputType(), task.getSourceUri(),
                 task.getStatus(), task.getTranslationStatus(), task.getCurrentStage(), task.getErrorMessage(),
                 task.getCreatedAt(), task.getStartedAt(), task.getFinishedAt(),
                 scanArtifacts(task.getTaskNo().value(), task.getWorkspaceDir()));
