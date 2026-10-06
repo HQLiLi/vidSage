@@ -627,3 +627,28 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 22: DDD 四层化重构：机械迁移 + 值对象 + 角色子包 + spec 重写
+<!-- trellis-session: v=2 fp=7ffe6506aad1cb03 -->
+
+**Date**: 2026-10-06
+**Task**: DDD 四层化重构：机械迁移 + 值对象 + 角色子包 + spec 重写
+**Branch**: `feature/ddd-four-layer`
+
+### Summary
+
+完成 10-05-ddd-four-layer-refactor 全部四个 Phase：Phase 1 机械迁移（111 git mv，四层结构落地，零逻辑变更）；Phase 2 值对象 TaskNo/WorkspaceKey（domain/shared 共享内核）+ 17 个 package-info；Phase 3 backend spec 七文档重写（豁免清单正典落 directory-structure.md）；Phase 4 application/task 角色子包（query/exception/subscribe，所有者选定范围）。每批三读面质检 + mvn clean test 441 全绿 + 旧 FQN grep 零残留；13+ 次子代理派发按派发协议并行/串行切批，台账在任务 research/execution-log.md。归档前按所有者要求补记「DDD 规则与现行规范冲突记录」（design.md §8 六项定案，含读模型落位与 @Schema 保留的证据核验）。执行期异常：一次来源不可归因的 TaskPipelineService 无用 import 删除（疑似 research 子代理越权写），已还原到已验证提交态。遗留：feature/ddd-four-layer 四 commit 待所有者审阅合并 dev；新任务 10-06-domain-logic-sink（业务逻辑下沉）规划完成待批准实施。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43e852c` | refactor(backend): DDD 四层化 Phase 1——机械迁移（纯移动+import 重写） |
+| `de004d9` | refactor(backend): DDD 四层化 Phase 2——值对象增量与层 package-info |
+| `4327563` | docs(spec): DDD 四层化 Phase 3——backend spec 重写与旧路径清零 |
+| `e97f2a6` | refactor(backend): DDD 四层化 Phase 4——application/task 角色子包 |
+
+### Status
+
+[OK] **Completed**

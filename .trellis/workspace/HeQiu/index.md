@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
-- **Last Active**: 2026-10-05
+- **Total Sessions**: 22
+- **Last Active**: 2026-10-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~629 | Active |
+| `journal-1.md` | ~654 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 22 | 2026-10-06 | DDD 四层化重构：机械迁移 + 值对象 + 角色子包 + spec 重写 | `43e852c`, `de004d9`, `4327563`, `e97f2a6` | `feature/ddd-four-layer` |
 | 21 | 2026-10-05 | 派发工作流提速协议落地（10-05-workflow-dispatch-tuning） | `f7459d2` | `dev` |
 | 20 | 2026-10-05 | 前端 v0 两态页面落地与审查期收敛 | `0b14df0`, `9ba3868` | `dev` |
 | 18 | 2026-10-02 | MVP-1 异步任务管线落地 + 翻译按需触发拆分 | `3357a55`, `60c67db`, `60cc039`, `a508766`, `c5c1444` | `dev` |
