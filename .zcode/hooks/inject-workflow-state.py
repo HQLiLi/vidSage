@@ -202,8 +202,8 @@ def get_active_task(
 # Supports STATUS values with letters, digits, underscores, hyphens
 # (so "in-review" / "blocked-by-team" work alongside "in_progress").
 _TAG_RE = re.compile(
-    r"\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n(.*?)\n\s*\[/workflow-state:\1\]",
-    re.DOTALL,
+    r"^\[workflow-state:([A-Za-z0-9_-]+)\][ \t]*\r?\n(.*?)^\[/workflow-state:\1\][ \t]*\r?$",
+    re.DOTALL | re.MULTILINE,
 )
 
 def load_breadcrumbs(root: Path) -> dict[str, str]:
