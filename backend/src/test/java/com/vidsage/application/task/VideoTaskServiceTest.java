@@ -41,28 +41,28 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 
 /**
- * {@link TaskService} 的纯单元测试：仓储与管线用 Mockito mock，工作区用真实实例 + 临时目录
+ * {@link VideoTaskService} 的纯单元测试：仓储与管线用 Mockito mock，工作区用真实实例 + 临时目录
  * （目录公式单源在 domain/shared，{@code WorkspaceService} 真实落盘——真跑比 mock 更能钉住路径约定）。
  *
  * <p>覆盖「URL 路线落库与启动管线」「上传路线流式落盘按内容寻址」「查重 409 与孤儿文件清理」「查询」。
  */
-class TaskServiceTest {
+class VideoTaskServiceTest {
 
     @TempDir(cleanup = CleanupMode.NEVER)
     Path tempDir;
 
     private final VideoTaskRepository repository = org.mockito.Mockito.mock(VideoTaskRepository.class);
-    private final TaskPipelineService pipelineService = org.mockito.Mockito.mock(TaskPipelineService.class);
+    private final VideoTaskPipeline pipeline = org.mockito.Mockito.mock(VideoTaskPipeline.class);
 
     /**
      * 工作区用真实实例（目录公式单源在 domain/shared，workspaceFor 真实落盘，真跑比 mock
      * 更能钉住路径约定）。{@code @TempDir} 在字段初始化之后才注入，故只能方法内构造，
      * 不能在字段初始化器里引用。
      */
-    private TaskService service() {
-        return new TaskService(repository,
+    private VideoTaskService service() {
+        return new VideoTaskService(repository,
                 new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString())),
-                pipelineService);
+                pipeline);
     }
 
     @org.junit.jupiter.api.BeforeEach
@@ -94,7 +94,7 @@ class TaskServiceTest {
         String expectedDir = WorkspaceDir.sanitizeName("https://example.com/watch/1") + "-" + expectedKey.value();
         assertEquals(expectedDir, inserted.getWorkspaceDir());
 
-        verify(pipelineService).execute(inserted.getTaskNo());
+        verify(pipeline).execute(inserted.getTaskNo());
         assertEquals(inserted.getTaskNo().value(), view.taskNo());
         assertEquals(TaskStatus.PENDING, view.status());
         assertEquals(TaskInputType.URL, view.inputType());
@@ -105,7 +105,7 @@ class TaskServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service().submitUrl("   "));
 
         verify(repository, never()).insert(any());
-        verify(pipelineService, never()).execute(any());
+        verify(pipeline, never()).execute(any());
     }
 
     @Test
@@ -121,7 +121,7 @@ class TaskServiceTest {
         assertEquals(TaskStatus.PENDING, e.getExistingTask().status());
         assertTrue(e.getMessage().contains("请勿重复提交"));
         verify(repository, never()).insert(any());
-        verify(pipelineService, never()).execute(any());
+        verify(pipeline, never()).execute(any());
     }
 
     // ---------- 上传路线 ----------
@@ -149,7 +149,7 @@ class TaskServiceTest {
         assertEquals("我的 视频.mp4", inserted.getSourceUri());
         assertEquals(expectedKey, inserted.getWorkspaceKey().value());
         assertEquals("我的 视频.mp4-" + expectedKey, inserted.getWorkspaceDir());
-        verify(pipelineService).execute(inserted.getTaskNo());
+        verify(pipeline).execute(inserted.getTaskNo());
         assertEquals(inserted.getTaskNo().value(), view.taskNo());
     }
 
@@ -366,7 +366,7 @@ class TaskServiceTest {
 
         TaskSnapshot view = service().translate(before.getTaskNo().value());
 
-        verify(pipelineService).translateTask(before.getTaskNo());
+        verify(pipeline).translateTask(before.getTaskNo());
         assertEquals(before.getTaskNo().value(), view.taskNo());
         assertEquals(TaskStatus.SUCCEEDED, view.status());
         assertEquals(TranslationStatus.RUNNING, view.translationStatus(),
@@ -378,13 +378,13 @@ class TaskServiceTest {
         when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
         assertThrows(TaskNotFoundException.class, () -> service().translate("ghost"));
-        verify(pipelineService, never()).translateTask(any());
+        verify(pipeline, never()).translateTask(any());
     }
 
     @Test
     void translateRejectsBlankTaskNo() {
         assertThrows(IllegalArgumentException.class, () -> service().translate(" "));
-        verify(pipelineService, never()).translateTask(any());
+        verify(pipeline, never()).translateTask(any());
     }
 
     // ---------- 产物下载（含路径穿越防护） ----------

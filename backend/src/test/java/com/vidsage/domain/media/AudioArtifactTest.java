@@ -6,7 +6,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link AudioArtifact#fileName} 规格指纹命名的纯单元测试（自 AudioPreparationServiceTest 随命名
+ * {@link AudioArtifact#fileName} 规格指纹命名的纯单元测试（自 AudioPreparationStageTest 随命名
  * 规则迁入，断言值不变）：指纹覆盖所有影响产物内容的参数，不同规格不得映射到同一文件名。
  */
 class AudioArtifactTest {

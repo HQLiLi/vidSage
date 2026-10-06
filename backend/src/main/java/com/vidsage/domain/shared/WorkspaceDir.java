@@ -37,7 +37,7 @@ public record WorkspaceDir(String value) {
 
     /**
      * 目录名公式：{@code sanitize(标签)-key}。{@code WorkspaceService.workspaceFor} 的两条路线与
-     * TaskService 落库 workspace_dir 共用这一处——URL 路线的工作目录由管线按本公式懒建，
+     * VideoTaskService 落库 workspace_dir 共用这一处——URL 路线的工作目录由管线按本公式懒建，
      * 提交时落库的 workspace_dir 必须与之逐字一致，公式单源化防「同公式各写一份」漂移。
      *
      * @param label 供人阅读的标签（可为 {@code null} 或空白，sanitize 后回退 {@link #FALLBACK_NAME}）
@@ -53,7 +53,7 @@ public record WorkspaceDir(String value) {
      * 结果为空或命中 Windows 保留名时回退成 {@link #FALLBACK_NAME}。
      *
      * <p>保留名判定只看第一个点之前的基名，因此 {@code CON.txt} 也命中保留名。
-     * TaskServiceTest（application/task）跨包复用公式断言。
+     * VideoTaskServiceTest（application/task）跨包复用公式断言。
      *
      * @param raw 原始候选名；可为 {@code null} 或空白
      * @return 安全化的名字，非空且不含非法字符

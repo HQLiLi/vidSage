@@ -132,7 +132,7 @@ public class WorkspaceService {
      * 输入的规范化身份：内容寻址的哈希输入，按 {@code MediaInput} 变体分派到 {@link SourceUri}
      * 的两条公式（URL 原文 / 本地三元组）。
      *
-     * <p>public static：TaskService（application/task）落库 workspace_key 跨包复用；测试可直接断言
+     * <p>public static：VideoTaskService（application/task）落库 workspace_key 跨包复用；测试可直接断言
      * 「同一输入同串、不同输入不同串」，不必落盘。
      *
      * @param input 媒体输入（不可为 {@code null}）

@@ -2,7 +2,7 @@ package com.vidsage.web.controller;
 
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
-import com.vidsage.application.task.TaskService;
+import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.subscribe.Subscription;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.web.dto.SubmitUrlRequest;
@@ -53,7 +53,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/tasks")
 public class TaskController {
 
-    private final TaskService taskService;
+    private final VideoTaskService taskService;
 
     private final TaskSseHub sseHub;
 
@@ -66,7 +66,7 @@ public class TaskController {
      * @param sseHub               SSE 连接管理（emitter 持有 / 心跳 / 清理，仅本层可见 HTTP 细节）
      * @param subscriptionRegistry 中立订阅注册表（管线广播的落点）
      */
-    public TaskController(TaskService taskService, TaskSseHub sseHub,
+    public TaskController(VideoTaskService taskService, TaskSseHub sseHub,
                           TaskSubscriptionRegistry subscriptionRegistry) {
         this.taskService = taskService;
         this.sseHub = sseHub;

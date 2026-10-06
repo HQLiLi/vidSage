@@ -7,10 +7,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 /**
- * 输入获取的分派服务：按 {@link MediaInput} 子类型挑出支持的 {@link MediaAcquirer} 并委托。
+ * 输入获取的分派阶段：按 {@link MediaInput} 子类型挑出支持的 {@link MediaAcquirer} 并委托。
  *
  * <p><b>两个适配器同时驻留容器</b>（由输入类型决定用哪个，不由配置决定），选择逻辑收敛在这里，
  * 因此 {@code application/} 层不出现任何实现类名（{@code YtDlpMediaAcquirer} / {@code LocalFileMediaAcquirer}
@@ -20,8 +20,8 @@ import org.springframework.stereotype.Service;
  * 「产物是否已存在且可复用」，不会触发下载。
  */
 @Slf4j
-@Service
-public class MediaAcquisitionService {
+@Component
+public class MediaAcquisitionStage {
 
     private final List<MediaAcquirer> acquirers;
 
@@ -34,7 +34,7 @@ public class MediaAcquisitionService {
      * @param acquirers 容器里的全部适配器；两个实现的 {@code supports} 互斥，
      *                  故 {@link #select} 用 {@code findFirst()} 取到的总是唯一那个
      */
-    public MediaAcquisitionService(List<MediaAcquirer> acquirers) {
+    public MediaAcquisitionStage(List<MediaAcquirer> acquirers) {
         this.acquirers = List.copyOf(acquirers);
     }
 

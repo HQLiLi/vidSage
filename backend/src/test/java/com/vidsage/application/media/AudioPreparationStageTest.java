@@ -30,17 +30,17 @@ import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * AudioPreparationService 的纯单元测试：<b>不起 Spring 容器</b>，Mockito 替掉工作目录 / 输入获取 /
+ * AudioPreparationStage 的纯单元测试：<b>不起 Spring 容器</b>，Mockito 替掉工作目录 / 输入获取 /
  * 音频抽取，只验证阶段编排、断点复用判定、事件序列与失败路径。
  */
-class AudioPreparationServiceTest {
+class AudioPreparationStageTest {
 
     // 本类会真的写音频产物文件，沿用 implement.md 记录的环境性清理规避：不清理临时目录。
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
 
     private final WorkspaceService workspaceService = mock(WorkspaceService.class);
-    private final MediaAcquisitionService acquisitionService = mock(MediaAcquisitionService.class);
+    private final MediaAcquisitionStage acquisitionStage = mock(MediaAcquisitionStage.class);
     private final AudioExtractor audioExtractor = mock(AudioExtractor.class);
     private final RecordingListener listener = new RecordingListener();
 
@@ -51,8 +51,8 @@ class AudioPreparationServiceTest {
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
     }
 
-    private AudioPreparationService service() {
-        return new AudioPreparationService(workspaceService, acquisitionService, audioExtractor);
+    private AudioPreparationStage service() {
+        return new AudioPreparationStage(workspaceService, acquisitionStage, audioExtractor);
     }
 
     private AcquiredMedia acquiredMedia() {
@@ -66,8 +66,8 @@ class AudioPreparationServiceTest {
         AcquiredMedia media = acquiredMedia();
         Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
         var artifact = new AudioArtifact(audioPath, AudioSpec.WAV_PCM_16K_MONO, 12);
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.empty());
-        when(acquisitionService.acquire(input, workDir)).thenReturn(media);
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.empty());
+        when(acquisitionStage.acquire(input, workDir)).thenReturn(media);
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO)).thenReturn(artifact);
 
         AudioArtifact result = service().prepare(input, AudioSpec.WAV_PCM_16K_MONO, listener);
@@ -84,7 +84,7 @@ class AudioPreparationServiceTest {
     void usesM4aFileNameForM4aSpec() {
         AcquiredMedia media = acquiredMedia();
         Path audioPath = workDir.resolve("audio-16k1ch48k-t0.m4a");
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.M4A_AAC_48K_MONO))
                 .thenReturn(new AudioArtifact(audioPath, AudioSpec.M4A_AAC_48K_MONO, 9));
 
@@ -104,13 +104,13 @@ class AudioPreparationServiceTest {
     void skipsAcquireWhenMediaCanBeReused() {
         AcquiredMedia media = acquiredMedia();
         Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(any(), any(), any()))
                 .thenReturn(new AudioArtifact(audioPath, AudioSpec.WAV_PCM_16K_MONO, 8));
 
         service().prepare(input, AudioSpec.WAV_PCM_16K_MONO, listener);
 
-        verify(acquisitionService, never()).acquire(any(), any());
+        verify(acquisitionStage, never()).acquire(any(), any());
         assertEquals(List.of("acquire/SKIPPED", "extract-audio/RUNNING", "extract-audio/SUCCEEDED"),
                 states());
         assertEquals(50, listener.events().getFirst().progress(), "跳过的 acquire 进度取该阶段终点值");
@@ -120,7 +120,7 @@ class AudioPreparationServiceTest {
     void skipsExtractWhenAudioAlreadyExists() throws IOException {
         AcquiredMedia media = acquiredMedia();
         Files.write(workDir.resolve("audio-16k1ch-t0.wav"), new byte[5]);
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
 
         AudioArtifact result = service().prepare(input, AudioSpec.WAV_PCM_16K_MONO, listener);
 
@@ -136,7 +136,7 @@ class AudioPreparationServiceTest {
         AcquiredMedia media = acquiredMedia();
         Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
         Files.write(audioPath, new byte[0]);
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO))
                 .thenReturn(new AudioArtifact(audioPath, AudioSpec.WAV_PCM_16K_MONO, 7));
 
@@ -152,7 +152,7 @@ class AudioPreparationServiceTest {
     @Test
     void emitsFailedAndRethrowsWhenExtractorFails() {
         AcquiredMedia media = acquiredMedia();
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(any(), any(), any()))
                 .thenThrow(new IllegalStateException("ffmpeg 抽音频失败（exit=1）：boom"));
 
@@ -167,8 +167,8 @@ class AudioPreparationServiceTest {
 
     @Test
     void emitsFailedAndRethrowsWhenAcquireFails() {
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.empty());
-        when(acquisitionService.acquire(input, workDir))
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.empty());
+        when(acquisitionStage.acquire(input, workDir))
                 .thenThrow(new IllegalArgumentException("本地媒体文件不存在或不可读：F:/x.mp4"));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
@@ -182,7 +182,7 @@ class AudioPreparationServiceTest {
 
     @Test
     void emitsFailedAndRethrowsWhenReuseCheckFails() {
-        when(acquisitionService.reuseExisting(input, workDir))
+        when(acquisitionStage.reuseExisting(input, workDir))
                 .thenThrow(new IllegalStateException("扫描下载工作目录失败"));
 
         var error = assertThrows(IllegalStateException.class,
@@ -198,7 +198,7 @@ class AudioPreparationServiceTest {
     void overloadWithoutListenerDoesNotThrow() {
         AcquiredMedia media = acquiredMedia();
         Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO))
                 .thenReturn(new AudioArtifact(audioPath, AudioSpec.WAV_PCM_16K_MONO, 3));
 

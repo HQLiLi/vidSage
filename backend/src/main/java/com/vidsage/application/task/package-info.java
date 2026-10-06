@@ -1,6 +1,6 @@
 /**
- * 任务应用服务：任务提交 / 查询 / 管线编排（2026-10-05 起按角色分角色子包，根只留服务门面与跨角色消息）。
- * 根包：{@code TaskService}（提交与查询唯一入口）、{@code TaskPipelineService}（异步阶段编排）、
+ * 任务应用层：任务提交 / 查询 / 管线编排（2026-10-05 起按角色分角色子包，根只留服务门面、管线本体与跨角色消息）。
+ * 根包：{@code VideoTaskService}（提交与查询唯一入口）、{@code VideoTaskPipeline}（异步管线本体）、
  * 应用→web 的进度消息 {@code TaskProgressMessage}。
  *
  * <p>子包按角色划分：{@code query/} 装读模型（{@code TaskSnapshot} / {@code TaskArtifact} /

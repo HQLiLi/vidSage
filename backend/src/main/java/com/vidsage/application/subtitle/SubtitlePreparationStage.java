@@ -1,8 +1,8 @@
 package com.vidsage.application.subtitle;
 
-import com.vidsage.application.media.AudioPreparationService;
+import com.vidsage.application.media.AudioPreparationStage;
 import com.vidsage.application.media.WorkspaceService;
-import com.vidsage.application.transcription.TranscriptionService;
+import com.vidsage.application.transcription.TranscriptionStage;
 import com.vidsage.domain.transcription.AudioSource;
 import com.vidsage.domain.transcription.TranscriptionResult;
 import com.vidsage.domain.media.AudioArtifact;
@@ -22,7 +22,7 @@ import com.vidsage.shared.subtitle.SubtitleArtifactNames;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -37,9 +37,9 @@ import tools.jackson.databind.ObjectMapper;
  * <p><b>断点复用判据</b>：{@code segments-<路线>.json} 存在且字节数 &gt; 0 即跳过音频准备与转写，
  * 直接反序列化已有 JSON 返回。为什么检查点是 JSON 而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当
  * 检查点会导致空转写永远判「未完成」→ 反复重跑的死循环（design 决策 4）——语义单源在
- * {@link CheckpointPolicy}。文件名规则只有本服务知道，故复用判据也由本服务判（design §六）。
+ * {@link CheckpointPolicy}。文件名规则只有本阶段知道，故复用判据也由本阶段判（design §六）。
  *
- * <p>进度权重是<b>过渡态</b>：2a 的 {@code 0..100} 被本服务线性映射进 {@code 0..60}，自己的
+ * <p>进度权重是<b>过渡态</b>：2a 的 {@code 0..100} 被本阶段线性映射进 {@code 0..60}，自己的
  * {@code transcribe} 占 60→95、{@code write-subtitles} 占 95→100。真正形状应以 MVP-1 的
  * SSE payload 定锤，本映射不构成未来约束（design 决策 6）。
  *
@@ -47,8 +47,8 @@ import tools.jackson.databind.ObjectMapper;
  * （{@code "segments":[]}），发 SUCCEEDED，记 WARN（design 决策 5）。
  */
 @Slf4j
-@Service
-public class SubtitleService {
+@Component
+public class SubtitlePreparationStage {
 
     /** 转写阶段名。 */
     static final String STAGE_TRANSCRIBE = "transcribe";
@@ -69,28 +69,28 @@ public class SubtitleService {
     private static final int WRITE_DONE = 100;
 
     private final WorkspaceService workspaceService;
-    private final AudioPreparationService audioPreparationService;
-    private final TranscriptionService transcriptionService;
+    private final AudioPreparationStage audioPreparationStage;
+    private final TranscriptionStage transcriptionStage;
     private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param workspaceService          工作目录解析
-     * @param audioPreparationService   音频准备（复用 2a，本服务不碰 ffmpeg）
-     * @param transcriptionService  转写（复用云 provider）
-     * @param asrProvider           当前装配的 ASR provider（用来问规格与路线）
-     * @param objectMapper          Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
+     * @param workspaceService       工作目录解析
+     * @param audioPreparationStage  音频准备（复用 2a，本阶段不碰 ffmpeg）
+     * @param transcriptionStage     转写（复用云 provider）
+     * @param asrProvider            当前装配的 ASR provider（用来问规格与路线）
+     * @param objectMapper           Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      */
-    public SubtitleService(WorkspaceService workspaceService,
-                           AudioPreparationService audioPreparationService,
-                           TranscriptionService transcriptionService,
-                           ASRProvider asrProvider,
-                           ObjectMapper objectMapper) {
+    public SubtitlePreparationStage(WorkspaceService workspaceService,
+                                    AudioPreparationStage audioPreparationStage,
+                                    TranscriptionStage transcriptionStage,
+                                    ASRProvider asrProvider,
+                                    ObjectMapper objectMapper) {
         this.workspaceService = workspaceService;
-        this.audioPreparationService = audioPreparationService;
-        this.transcriptionService = transcriptionService;
+        this.audioPreparationStage = audioPreparationStage;
+        this.transcriptionStage = transcriptionStage;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
     }
@@ -145,9 +145,9 @@ public class SubtitleService {
 
         // 音频准备 + 转写（2a 的 0..100 映射进 0..60；映射逻辑上提至 ProgressMapper——
         // MVP-1 管线对 clean 的区间映射是第二个使用者，2026-10-02 两段式后翻译不再经映射）
-        AudioArtifact audio = audioPreparationService.prepare(input, spec, ProgressMapper.remap(listener, 0, ACQUIRE_END));
+        AudioArtifact audio = audioPreparationStage.prepare(input, spec, ProgressMapper.remap(listener, 0, ACQUIRE_END));
         emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_START, "开始转写", StageEvent.StageState.RUNNING);
-        TranscriptionResult result = transcriptionService.transcribe(
+        TranscriptionResult result = transcriptionStage.transcribe(
                 new AudioSource.AudioFilePath(audio.audioPath().toString()), null);
         emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_DONE, "转写完成", StageEvent.StageState.SUCCEEDED);
 
