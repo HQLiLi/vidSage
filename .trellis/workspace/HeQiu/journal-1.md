@@ -652,3 +652,25 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 23: workflow-state 解析修复与面包屑瘦身
+<!-- trellis-session: v=2 fp=d60a46d139627c25 -->
+
+**Date**: 2026-10-06
+**Task**: workflow-state 解析修复与面包屑瘦身
+**Branch**: `feature/domain-logic-sink`
+
+### Summary
+
+诊断并根修 trellis 面包屑故障：workflow.md:149 行尾裸标签 × 未锚定正则 = 幻影匹配吞掉 5/8 状态块（每轮降级文案）。两份 hook _TAG_RE 行首锚定；in_progress 3378B→594B、in_progress-inline 2689B→522B（中文硬门+指针）；新建 spec/guides/trellis-update-patches.md 补丁台账（含 trellis update 后复查项与编辑纪律）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ff39880` | fix(trellis): workflow-state 解析正则行首锚定，in_progress 面包屑瘦身（3378B→594B） |
+
+### Status
+
+[OK] **Completed**
