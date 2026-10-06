@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-10-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~676 | Active |
+| `journal-1.md` | ~701 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-10-06 | 业务逻辑下沉 domain：四批重构 + 读模型拆分 | `efe80ae`, `7afe71f`, `48dabe7`, `6743a3e` | `feature/domain-logic-sink` |
 | 23 | 2026-10-06 | workflow-state 解析修复与面包屑瘦身 | `ff39880` | `feature/domain-logic-sink` |
 | 22 | 2026-10-06 | DDD 四层化重构：机械迁移 + 值对象 + 角色子包 + spec 重写 | `43e852c`, `de004d9`, `4327563`, `e97f2a6` | `feature/ddd-four-layer` |
 | 21 | 2026-10-05 | 派发工作流提速协议落地（10-05-workflow-dispatch-tuning） | `f7459d2` | `dev` |

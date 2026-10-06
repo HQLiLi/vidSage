@@ -674,3 +674,28 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 24: 业务逻辑下沉 domain：四批重构 + 读模型拆分
+<!-- trellis-session: v=2 fp=38df5fd512dac1f1 -->
+
+**Date**: 2026-10-06
+**Task**: 业务逻辑下沉 domain：四批重构 + 读模型拆分
+**Branch**: `feature/domain-logic-sink`
+
+### Summary
+
+执行任务 10-06-domain-logic-sink：application 业务规则下沉 domain，service 瘦身为纯编排。Phase A（efe80ae）SourceUri/WorkspaceDir 值对象 + WorkspaceKey.ofHash 单源 key 宽度；Phase B（7afe71f）Bcp47Language/TermVerification/CheckpointPolicy 三政策件，检查点判据四服务合流，STAGE_TRANSLATE 归位 StageEvent；Phase C（48dabe7）VideoTask.isEventSettled/ACTIVE_STATUSES 谓词单源、TaskArtifactScan 产物可见性、MediaInput.ofTaskInput、AudioArtifact.fileName 指纹命名 + spec 同步；Phase D（6743a3e）读模型拆分 TaskSnapshot（application 零注解）/TaskResponse+TaskArtifactResponse（web/dto @Schema），4 端点与 409 载荷切换。每批 trellis-implement 实现 + trellis-check 独立核查全 PASS；mvn clean test 465 全绿（基线 441）；三零改动服务 diff 为空；对外 JSON/SSE 零变化，前端 types/task.ts 零改动。测试净增 24 条，断言随迁不改值。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `efe80ae` | refactor(backend): 业务下沉 Phase A——Workspace 寻址家族归 domain/shared |
+| `7afe71f` | refactor(backend): 业务下沉 Phase B——字幕语种/术语/检查点政策归 domain/subtitle |
+| `48dabe7` | refactor(backend): 业务下沉 Phase C——零散谓词与工厂单源化 + spec 同步 |
+| `6743a3e` | refactor(backend): 读模型拆分 Phase D——TaskView 拆为 TaskSnapshot/TaskResponse |
+
+### Status
+
+[OK] **Completed**
