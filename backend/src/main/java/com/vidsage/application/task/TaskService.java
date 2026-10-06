@@ -16,7 +16,7 @@ import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.task.TaskInputType;
 import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.infrastructure.persistence.repository.VideoTaskRepository;
+import com.vidsage.domain.task.VideoTaskRepository;
 import com.vidsage.shared.fs.ArtifactFiles;
 import java.io.IOException;
 import java.io.InputStream;
@@ -72,7 +72,7 @@ public class TaskService {
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param repository       任务持久化入口（application/ 唯一可见的持久化门面）
+     * @param repository       任务持久化端口（实现在 infrastructure/persistence/repository/）
      * @param workspaceService 工作区根解析与显式 key 建目录
      * @param pipelineService  异步管线（insert 成功后异步启动）
      */

@@ -26,16 +26,16 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * {@link VideoTaskRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>
+ * {@link MybatisVideoTaskRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>
  * （真库连通由 {@code VidSageApplicationTests} 上下文冒烟在 local profile 下验证）。
  *
  * <p>覆盖「实体 ↔ 领域对象双向转换的逐字段对齐」「insert 回填自增 id」「查重查询的过滤条件」。
  * LambdaQueryWrapper 解析列名依赖 TableInfo 缓存，纯单测需先手工初始化。
  */
-class VideoTaskRepositoryTest {
+class MybatisVideoTaskRepositoryTest {
 
     private final VideoTaskMapper mapper = org.mockito.Mockito.mock(VideoTaskMapper.class);
-    private final VideoTaskRepository repository = new VideoTaskRepository(mapper);
+    private final MybatisVideoTaskRepository repository = new MybatisVideoTaskRepository(mapper);
 
     @BeforeAll
     static void initTableInfoOnce() {

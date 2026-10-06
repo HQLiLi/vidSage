@@ -4,7 +4,10 @@
  * {@code TranslatedTrack} / {@code TranslatedSegment} / {@code SubtitleArtifact}）、
  * 路线 {@code SubtitleRoute}、跨批上下文 {@code SubtitleContext}、术语查证
  * {@code TermLookupCommand} / {@code TermLookupResult} / {@code VerifiedTerm} / {@code VerifiedTerms}；
- * 端口接口 {@code TermLookupProvider}。
+ * 端口接口 {@code TermLookupProvider} / {@code SubtitleCleanser} / {@code SubtitleTranslator} /
+ * {@code SubtitleContextSummarizer}（2026-10-06 端口倒置：三个原本被 application 直接引用的
+ * infrastructure 具体类改为定义在此、由 {@code infrastructure/provider/llm/} 的 {@code Llm*} 实现），
+ * 后两者与 {@code SubtitleCleanser} 的出参 {@code CleanseResult} / {@code TranslateResult} 一并在本包。
  *
  * <p>纯函数领域政策（2026-10-06 业务逻辑下沉 Phase B 落地，无状态、零 I/O，事实由应用层采集、
  * 判据单源在此）：{@code Bcp47Language}（语种政策：resolve 目标语种/源语种、主语言子标签比较、

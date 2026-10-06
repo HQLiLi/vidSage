@@ -1,6 +1,7 @@
 package com.vidsage.infrastructure.provider.llm;
 
 import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.subtitle.SubtitleContextSummarizer;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -19,14 +20,16 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>只碰计算、不碰 I/O</b>：上下文要不要落盘、落哪个文件、断点怎么判，全在 service 层。
  * 本类不读也不写任何产物文件（见 design §3.2）。
+ *
+ * <p>实现领域端口 {@link SubtitleContextSummarizer}——上层只认那个接口，不认识本类。
  */
 @Slf4j
 @Component
-public class SubtitleContextSummarizer {
+public class LlmSubtitleContextSummarizer implements SubtitleContextSummarizer {
 
     private final ChatClient summarizer;
 
-    public SubtitleContextSummarizer(@Qualifier("ContentSummarizer") ChatClient summarizer) {
+    public LlmSubtitleContextSummarizer(@Qualifier("ContentSummarizer") ChatClient summarizer) {
         this.summarizer = summarizer;
     }
 

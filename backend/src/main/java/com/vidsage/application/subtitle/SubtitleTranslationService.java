@@ -18,8 +18,9 @@ import com.vidsage.domain.subtitle.TranslatedTrack;
 import com.vidsage.domain.subtitle.VerifiedTerm;
 import com.vidsage.domain.subtitle.VerifiedTerms;
 import com.vidsage.domain.transcription.ASRProvider;
-import com.vidsage.infrastructure.provider.llm.SubtitleContextSummarizer;
-import com.vidsage.infrastructure.provider.llm.SubtitleTranslator;
+import com.vidsage.domain.subtitle.SubtitleContextSummarizer;
+import com.vidsage.domain.subtitle.SubtitleTranslator;
+import com.vidsage.domain.subtitle.TranslateResult;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.subtitle.SrtRenderer;
 import com.vidsage.shared.subtitle.SubtitleArtifactNames;
@@ -245,7 +246,7 @@ public class SubtitleTranslationService {
                     sourceLanguage, targetLanguage, segments.size());
         } else {
             List<VerifiedTerm> officialTerms = readOfficialTerms(termsFile);
-            SubtitleTranslator.TranslateResult result =
+            TranslateResult result =
                     subtitleTranslator.translate(segments, context, targetLanguage, officialTerms, listener);
             track = new TranslatedTrack(route, sourceLanguage, targetLanguage, false, result.segments());
             retrySteps = result.retrySteps();

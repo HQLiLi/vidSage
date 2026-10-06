@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.domain.transcription.TranscriptionSegment;
+import com.vidsage.domain.subtitle.CleanseResult;
 import com.vidsage.domain.subtitle.SubtitleContext;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 
 /**
- * {@link SubtitleCleanser} 的纯单元测试：<b>不起 Spring 容器</b>，也不打网络。
+ * {@link LlmSubtitleCleanser} 的纯单元测试：<b>不起 Spring 容器</b>，也不打网络。
  *
  * <p>手法是「真 {@code ChatClient} + 桩 {@code ChatModel}」：装一个只回剧本台词的 {@code ChatModel}，
  * 把 Spring AI 真正发出去的 {@link Prompt} 抓下来断言。这样既走到了真实的组装流程
@@ -35,7 +36,7 @@ import org.springframework.ai.chat.prompt.Prompt;
  * <p>重点钉的是<b>重试的多轮消息形态</b>：模型上次的回复要作为 assistant 消息留在历史里、
  * 后面再追一条 user 反馈，而不是把反馈拼成文本重发同一条提示词。
  */
-class SubtitleCleanserTest {
+class LlmSubtitleCleanserTest {
 
     private static final String SYS = "SYS-纠错指令";
 
@@ -62,12 +63,12 @@ class SubtitleCleanserTest {
     private static final SubtitleCleanupProperties PROPS =
             new SubtitleCleanupProperties(8000L, 600, 20, 3, 0.7, 0.3, 20000, false);
 
-    private static SubtitleCleanser cleanserOver(ScriptedChatModel model) {
+    private static LlmSubtitleCleanser cleanserOver(ScriptedChatModel model) {
         return cleanserOver(model, PROPS);
     }
 
-    private static SubtitleCleanser cleanserOver(ScriptedChatModel model, SubtitleCleanupProperties props) {
-        return new SubtitleCleanser(ChatClient.builder(model).defaultSystem(SYS).build(), props);
+    private static LlmSubtitleCleanser cleanserOver(ScriptedChatModel model, SubtitleCleanupProperties props) {
+        return new LlmSubtitleCleanser(ChatClient.builder(model).defaultSystem(SYS).build(), props);
     }
 
     /** 一批一句，用来造多批场景；跨批历史上限由用例指定。 */
@@ -96,7 +97,7 @@ class SubtitleCleanserTest {
     void 首轮只有一条任务消息_格式说明钉在它后面() {
         ScriptedChatModel model = new ScriptedChatModel(
                 "{\"1\": \"今天天气很好\", \"2\": \"我们去公园\"}");
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("今天天气很号", "我们去公园"), SubtitleContext.empty(), "");
 
         assertEquals(1, result.correctedCount(), "应有一条被修正");
@@ -118,7 +119,7 @@ class SubtitleCleanserTest {
         ScriptedChatModel model = new ScriptedChatModel(
                 bad, "{\"1\": \"今天天气很好\", \"2\": \"我们去公园\", \"3\": \"好吗\"}");
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("今天天气很号", "我们去公园", "好吗"), SubtitleContext.empty(), "");
 
         assertEquals(1, result.retrySteps(), "第一轮该被打回");
@@ -138,7 +139,7 @@ class SubtitleCleanserTest {
     void 连模型回复的原文都拿不到时_不伪造assistant轮次() {
         ScriptedChatModel model = new ScriptedChatModel("", "", "");   // 每轮都回空
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("今天天气很号"), SubtitleContext.empty(), "");
 
         assertEquals("今天天气很号", result.segments().get(0).text(), "全败要保留原文");
@@ -155,7 +156,7 @@ class SubtitleCleanserTest {
         ScriptedChatModel model = new ScriptedChatModel(
                 "```json\n{\"1\": \"今天天气很好\"}\n```");
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("今天天气很号"), SubtitleContext.empty(), "");
 
         assertEquals(1, result.correctedCount(), "围栏应被剥掉，JSON 应解析成功");
@@ -166,7 +167,7 @@ class SubtitleCleanserTest {
     void 重试用尽仍不合法_保留原文() {
         ScriptedChatModel model = new ScriptedChatModel("不是 JSON", "还是不是", "依然不是");
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("今天天气很号", "我们去公园"), SubtitleContext.empty(), "");
 
         assertEquals(0, result.correctedCount(), "全败不该有任何改动");
@@ -186,7 +187,7 @@ class SubtitleCleanserTest {
                 "{\"1\": \"今天天气很好\"}",
                 "{\"1\": \"我们去公园\"}");
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model, onePerBatch(20000))
+        CleanseResult result = cleanserOver(model, onePerBatch(20000))
                 .clean(segments("今天天气很号", "我们去公园"), SubtitleContext.empty(), "");
 
         assertEquals(1, result.correctedCount());
@@ -245,7 +246,7 @@ class SubtitleCleanserTest {
         ScriptedChatModel model = new ScriptedChatModel(
                 "不是 JSON", "还是不是", "依然不是", "{\"1\": \"好吗\"}");
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model,
+        CleanseResult result = cleanserOver(model,
                         new SubtitleCleanupProperties(8000L, 600, 2, 3, 0.7, 0.3, 20000, false))
                 .clean(segments("今天天气很号", "我们去公园", "好吗"), SubtitleContext.empty(), "");
 
@@ -303,7 +304,7 @@ class SubtitleCleanserTest {
         SubtitleContext ctx = contextWith(
                 new SubtitleContext.Term("米特号", "Mittelhau", "ASR 把德语术语记成了中文音译"));
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("米特号是其中记载最少的一种斩击"), ctx, "");
 
         assertEquals(0, result.retrySteps(), "正确的术语替换不该被判改太狠");
@@ -319,7 +320,7 @@ class SubtitleCleanserTest {
         SubtitleContext ctx = contextWith(
                 new SubtitleContext.Term("这个展", "这个斩", "同音误写"));
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("这个展办得挺热闹"), ctx, "");
 
         assertEquals(0, result.retrySteps(), "保留原写法不该触发重试");
@@ -340,7 +341,7 @@ class SubtitleCleanserTest {
                 new SubtitleContext.Term("乌波号", "Oberhau", "x"),
                 new SubtitleContext.Term("翁特号", "Unterhau", "y"));
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("乌波号与翁特号都是基础的斩击"), ctx, "");
 
         assertEquals(0, result.retrySteps(), "保留原文不该被判改太狠");
@@ -359,7 +360,7 @@ class SubtitleCleanserTest {
                 new SubtitleContext.Term("乌波号", "Oberhau", "x"),
                 new SubtitleContext.Term("翁特号", "Unterhau", "y"));
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("乌波号与翁特号都是基础的斩击"), ctx, "");
 
         assertEquals(0, result.retrySteps(), "部分替换应能过校验");
@@ -374,7 +375,7 @@ class SubtitleCleanserTest {
                 new SubtitleContext.Term("乌波号", "Oberhau", "x"),
                 new SubtitleContext.Term("帕姆", "Pommel", "y"));
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("乌波号与帕姆"), ctx, "");
 
         assertEquals(2, result.termHits(), "两条命中");
@@ -388,7 +389,7 @@ class SubtitleCleanserTest {
         SubtitleContext ctx = contextWith(
                 new SubtitleContext.Term("日耳曼剑术", "日耳曼剑术", "本来就写对了"));
 
-        SubtitleCleanser.CleanseResult result = cleanserOver(model)
+        CleanseResult result = cleanserOver(model)
                 .clean(segments("日耳曼剑术"), ctx, "");
 
         assertEquals(0, result.termHits(), "无需替换的条目不该计入命中");
@@ -429,7 +430,7 @@ class SubtitleCleanserTest {
     // ------------------------------------------------------------------
 
     /** 只为直接调 {@code validate} 造个实例，不起容器也不发请求。 */
-    private static SubtitleCleanser validator() {
+    private static LlmSubtitleCleanser validator() {
         return cleanserOver(new ScriptedChatModel());
     }
 
@@ -449,10 +450,10 @@ class SubtitleCleanserTest {
         Map<String, String> candidate = new LinkedHashMap<>();
         candidate.put("1", "今天天气很好");
 
-        SubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
+        LlmSubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
 
         assertNotNull(failure);
-        assertEquals(SubtitleCleanser.ValidationFailure.FailureKind.KEY_SET, failure.kind());
+        assertEquals(LlmSubtitleCleanser.ValidationFailure.FailureKind.KEY_SET, failure.kind());
         assertTrue(failure.detail().contains("缺少条目 2"), "detail 要保留原有文案");
     }
 
@@ -464,10 +465,10 @@ class SubtitleCleanserTest {
         candidate.put("1", "今天天气很好");
         candidate.put("2", "多出来的一条");
 
-        SubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
+        LlmSubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
 
         assertNotNull(failure);
-        assertEquals(SubtitleCleanser.ValidationFailure.FailureKind.KEY_SET, failure.kind());
+        assertEquals(LlmSubtitleCleanser.ValidationFailure.FailureKind.KEY_SET, failure.kind());
         assertTrue(failure.detail().contains("多余条目 2"));
     }
 
@@ -478,10 +479,10 @@ class SubtitleCleanserTest {
         Map<String, String> candidate = new LinkedHashMap<>();
         candidate.put("1", "xyzxyzxyzxy");                // 与原文无公共字符，相似度 0
 
-        SubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
+        LlmSubtitleCleanser.ValidationFailure failure = validator().validate(original, candidate, List.of());
 
         assertNotNull(failure);
-        assertEquals(SubtitleCleanser.ValidationFailure.FailureKind.TOO_MUCH_EDIT, failure.kind());
+        assertEquals(LlmSubtitleCleanser.ValidationFailure.FailureKind.TOO_MUCH_EDIT, failure.kind());
         assertTrue(failure.detail().contains("改动过大"), "detail 要保留原有文案");
     }
 }

@@ -1,9 +1,12 @@
-package com.vidsage.infrastructure.process;
+package com.vidsage.application.diagnostics;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * 单个外部工具的诊断报告。
+ * 单个工具链的诊断报告。
+ *
+ * <p>形状直接对外（诊断端点就返回它），故按 directory-structure.md「契约类的位置」判据 1
+ * 留在所属层并带 {@code @Schema}。
  *
  * @param toolName  工具名（如 "yt-dlp" / "ffmpeg" / "ffprobe"）
  * @param available 是否找到可用二进制
@@ -12,8 +15,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param hint      提示语：不可用时为「缺什么 + 怎么补」；可用但版本过期时为新鲜度告警；
  *                  其余情况为 {@code null}
  */
-@Schema(description = "单个外部工具的诊断报告")
-public record ExternalToolReport(
+@Schema(description = "单个工具链的诊断报告")
+public record ToolDiagnosticReport(
         @Schema(description = "工具名", example = "yt-dlp")
         String toolName,
         @Schema(description = "是否找到可用二进制", example = "true")

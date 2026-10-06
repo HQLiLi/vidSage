@@ -6,7 +6,7 @@ import com.vidsage.domain.media.AudioSpec;
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import com.vidsage.domain.media.AudioExtractor;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
-import com.vidsage.infrastructure.process.ExternalToolDiagnostics;
+import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.text.TextTail;
@@ -52,7 +52,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
     private static final String UNKNOWN_ENCODER_MARKER = "Unknown encoder";
 
     private final ExternalProcessRunner runner;
-    private final ExternalToolDiagnostics tools;
+    private final ProcessToolDiagnostics tools;
     private final ExternalToolProperties properties;
 
     /**
@@ -62,7 +62,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
      * @param tools      工具路径解析（ffmpeg 路径一处配置、两处使用的同一入口）
      * @param properties 外部工具配置（取默认超时）
      */
-    public FfmpegAudioExtractor(ExternalProcessRunner runner, ExternalToolDiagnostics tools,
+    public FfmpegAudioExtractor(ExternalProcessRunner runner, ProcessToolDiagnostics tools,
                                 ExternalToolProperties properties) {
         this.runner = runner;
         this.tools = tools;

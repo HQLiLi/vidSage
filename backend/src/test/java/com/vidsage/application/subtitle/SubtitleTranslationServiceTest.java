@@ -28,8 +28,9 @@ import com.vidsage.domain.subtitle.TranslatedTrack;
 import com.vidsage.domain.subtitle.VerifiedTerm;
 import com.vidsage.domain.subtitle.VerifiedTerms;
 import com.vidsage.domain.transcription.ASRProvider;
-import com.vidsage.infrastructure.provider.llm.SubtitleContextSummarizer;
-import com.vidsage.infrastructure.provider.llm.SubtitleTranslator;
+import com.vidsage.domain.subtitle.SubtitleContextSummarizer;
+import com.vidsage.domain.subtitle.SubtitleTranslator;
+import com.vidsage.domain.subtitle.TranslateResult;
 import com.vidsage.domain.subtitle.TermLookupProvider;
 import com.vidsage.shared.subtitle.SubtitleArtifactNames;
 import java.nio.file.Files;
@@ -95,7 +96,7 @@ class SubtitleTranslationServiceTest {
             List<TranslatedSegment> out = in.stream()
                     .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), "译文:" + s.text()))
                     .toList();
-            return new SubtitleTranslator.TranslateResult(out, retrySteps, untranslated);
+            return new TranslateResult(out, retrySteps, untranslated);
         }).when(subtitleTranslator).translate(any(), any(), any(), any(), any());
     }
 
@@ -406,7 +407,7 @@ class SubtitleTranslationServiceTest {
             List<TranslatedSegment> out = in.stream()
                     .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), "译文:" + s.text()))
                     .toList();
-            return new SubtitleTranslator.TranslateResult(out, 0, 0);
+            return new TranslateResult(out, 0, 0);
         }).when(subtitleTranslator).translate(any(), any(), any(), any(), any());
         List<StageEvent> events = new ArrayList<>();
 

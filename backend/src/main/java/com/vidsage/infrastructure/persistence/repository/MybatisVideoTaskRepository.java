@@ -4,21 +4,21 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.vidsage.domain.shared.WorkspaceKey;
 import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
+import com.vidsage.domain.task.VideoTaskRepository;
 import com.vidsage.infrastructure.persistence.entity.VideoTaskEntity;
 import com.vidsage.infrastructure.persistence.mapper.VideoTaskMapper;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
 
 /**
- * {@code task} 表对上（application/）的<b>唯一</b>持久化入口：包装 {@link VideoTaskMapper}，
- * 做「实体 ↔ 领域对象」的双向转换（转换点全项目只此一处）。
+ * {@code task} 表的 MyBatis-Plus 实现：包装 {@link VideoTaskMapper}，做「实体 ↔ 领域对象」
+ * 的双向转换（转换点全项目只此一处）。
  *
- * <p>{@code @Repository} 具体类、不抽接口——单一存储实现下抽接口属于为以后可能用到的过度设计
- * （directory-structure.md「持久化三层」）。本类只做存取与转换，不写业务规则；
- * Wrapper 等 MP 类型不出本包。
+ * <p>实现的是领域端口 {@link VideoTaskRepository}——上层（application）只认那个接口，
+ * 不认识本类。本类只做存取与转换，不写业务规则；Wrapper 等 MP 类型不出本包。
  */
 @Repository
-public class VideoTaskRepository {
+public class MybatisVideoTaskRepository implements VideoTaskRepository {
 
     private final VideoTaskMapper mapper;
 
@@ -27,7 +27,7 @@ public class VideoTaskRepository {
      *
      * @param mapper task 表数据访问接口（MP BaseMapper）
      */
-    public VideoTaskRepository(VideoTaskMapper mapper) {
+    public MybatisVideoTaskRepository(VideoTaskMapper mapper) {
         this.mapper = mapper;
     }
 

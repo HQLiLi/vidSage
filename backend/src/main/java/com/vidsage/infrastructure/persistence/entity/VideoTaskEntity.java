@@ -12,7 +12,7 @@ import lombok.Setter;
 
 /**
  * {@code task} 表的行结构（建表语句见 resources/schema.sql）。仅 persistence/ 内部可见，
- * 对上由 {@code VideoTaskRepository} 转换为领域对象 {@code VideoTask}，转换点只此一处
+ * 对上由 {@code MybatisVideoTaskRepository} 转换为领域对象 {@code VideoTask}，转换点只此一处
  * （directory-structure.md「持久化三层」）。
  *
  * <p>普通类 + Lombok {@code @Getter/@Setter}（主 PRD 对实体类的既定形态，不用 {@code @Data}——

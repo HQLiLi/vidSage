@@ -4,6 +4,8 @@
  * 供 web 收口与 repository 查重引用）、状态枚举 {@code TaskStatus} / {@code TaskInputType} /
  * {@code TranslationStatus}、任务号值对象 {@code TaskNo}、产物可见性政策
  * {@code TaskArtifactScan}（白名单：{@code *.srt} 与 {@code segments-*.json} 对外可见，
- * 2026-10-06 业务逻辑下沉 Phase C 落地）。
+ * 2026-10-06 业务逻辑下沉 Phase C 落地）；端口接口 {@code VideoTaskRepository}
+ * （2026-10-06 端口倒置：原为 infrastructure 的具体类，现改为定义在此、由
+ * {@code infrastructure/persistence/repository/MybatisVideoTaskRepository} 实现）。
  */
 package com.vidsage.domain.task;

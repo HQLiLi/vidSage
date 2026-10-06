@@ -127,7 +127,7 @@ double best = Math.max(
 
 必测点：**必须有一条钉住「双目标」的用例**——造一条长句（阈值 0.7）且模型保留原文，此时 `ratio(基线, 原文)` 只有 0.432；若有人把实现简化成「只比基线」，这条立刻变红。只测「不替换也不被拦」是**恒真**的（`ratio(原文, 原文) = 1.0`），钉不住任何东西。
 
-参照：`infrastructure/provider/llm/SubtitleCleanser#validate` / `#baselineOf`，用例见 `SubtitleCleanserTest`。
+参照：`infrastructure/provider/llm/LlmSubtitleCleanser#validate` / `#baselineOf`，用例见 `LlmSubtitleCleanserTest`。
 
 ### 字幕术语表契约（`SubtitleContext.Term`）
 
@@ -146,9 +146,13 @@ double best = Math.max(
 
 ### 不预先抽接口
 
-不为「以后可能用到」给具体类预先抽接口：只有对着真实的可替换缝才引入。现有四个端口（`ASRProvider` / `MediaAcquirer` / `AudioExtractor` / `TermLookupProvider`，居 `domain/<上下文>/`）各自有明确的多实现或替身需求；`VideoTaskRepository`（`infrastructure/persistence/`）与 `infrastructure/provider/llm/` 的 LLM worker 保持具体类，等出现第二个存储实现或本地模型部署时再评估正统化。
+**上层需要不依赖某个具体实现类时，就为它抽端口**——多实现是抽端口的常见理由，不是必要条件。端口落在哪一层、叫什么名字，判据见 [directory-structure.md](./directory-structure.md) 的[依赖规则](./directory-structure.md#依赖规则)与[端口归属判据](./directory-structure.md#端口归属判据)。
 
-DDD 四层的依赖规则与跨层豁免清单以 [directory-structure.md](./directory-structure.md) 为正典。
+> **2026-10-06 改判**。原表述是「只有对着真实的可替换缝才引入；现有四个端口各自有明确的多实现或替身需求」——这句对 `domain/media/AudioExtractor` 是**失实的**：它一直只有一个实现（`FfmpegAudioExtractor`），其 Javadoc 明写「接口保留是为了让上层不依赖实现类」。新判据只是把一直隐含的规则写成明文，并把 `VideoTaskRepository` 与 `infrastructure/provider/llm/` 的三个 LLM worker 一并纳入（端口在 `domain/`，实现在 `infrastructure/`；详见任务 `10-06-port-inversion`）。
+>
+> **它仍然反对的是**「为以后可能用到」而造的抽象：抽端口要有**当下的上层可见性需求**做依据，不是「将来可能有第二个实现」。
+
+DDD 四层的依赖规则以 [directory-structure.md](./directory-structure.md) 为正典。
 
 ## 五、Lombok 的使用边界
 

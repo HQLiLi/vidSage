@@ -12,7 +12,7 @@
 已落地：`ASRProvider`
 规划中（见主 PRD 与 `docs/prd/local-model-deployment.md`）：`EmbeddingProvider`
 
-> **`LLMProvider` 不建（2026-09-28 定）**：LLM 的供应商缝已由 Spring AI 的 `ChatClient` / `ChatModel` 承担——换 starter / base-url 即换来源，Java 零改动；且本地 Ollama 与云端 DeepSeek 都是 OpenAI 兼容协议，同一套集成覆盖两个来源。再抽接口是抽象套抽象，两个实现都是对 ChatClient 的零价值包装。**翻案条件**：本地来源不走 OpenAI 兼容协议（如 FunASR 式自研协议微服务），或需要逐请求的多源路由 / 兜底降级——出现任一再抽缝。`infrastructure/provider/llm/` 的终态是具体 worker 类（见 [directory-structure.md](./directory-structure.md)）；2026-10-05 DDD 四层化落地时复核：llm worker 具体类（`SubtitleCleanser` / `SubtitleTranslator` / `SubtitleContextSummarizer` / `MessageHistory`）不抽端口，与该决策同一精神。
+> **`LLMProvider` 不建（2026-09-28 定）**：LLM 的供应商缝已由 Spring AI 的 `ChatClient` / `ChatModel` 承担——换 starter / base-url 即换来源，Java 零改动；且本地 Ollama 与云端 DeepSeek 都是 OpenAI 兼容协议，同一套集成覆盖两个来源。再抽接口是抽象套抽象，两个实现都是对 ChatClient 的零价值包装。**翻案条件**：本地来源不走 OpenAI 兼容协议（如 FunASR 式自研协议微服务），或需要逐请求的多源路由 / 兜底降级——出现任一再抽缝。`infrastructure/provider/llm/` 的三个 LLM worker 于 **2026-10-06 补抽了领域端口**（`LlmSubtitleCleanser` / `LlmSubtitleTranslator` / `LlmSubtitleContextSummarizer` 各实现 `domain/subtitle/` 的同名端口），包私有的 `MessageHistory` 仍不抽。**这与本节决策不冲突**：本节反对的是「给 `ChatClient` 再套一层供应商抽象」，补抽的是**上层可见性缝**（application 不再直接依赖 infrastructure 具体类）——判据见 [quality-guidelines.md](./quality-guidelines.md)「不预先抽接口」一节。
 
 ---
 
@@ -27,7 +27,7 @@
 | 配置属性 | 该实现专用的配置，`record` + `@DefaultValue`，与实现类同包 | `infrastructure/provider/asr/dashscope/DashScopeProperties.java` |
 | 契约 | 入参 `Command` / 出参 `Result`，全部 `record`，与端口接口同一上下文 | `domain/transcription/Transcription*` |
 
-已落地的四个端口接口及其领域位置：`ASRProvider` → `domain/transcription/`，`MediaAcquirer` / `AudioExtractor` → `domain/media/`，`TermLookupProvider` → `domain/subtitle/`。（2026-10-05 DDD 四层化前，接口与实现同居顶层 `provider/`；端口上移进领域层、适配器移入 `infrastructure/provider/` 即本次落地的结构变更。）
+已落地的端口接口及其位置：`ASRProvider` → `domain/transcription/`，`MediaAcquirer` / `AudioExtractor` → `domain/media/`，`TermLookupProvider` / `SubtitleCleanser` / `SubtitleTranslator` / `SubtitleContextSummarizer` → `domain/subtitle/`，`VideoTaskRepository` → `domain/task/`；**`ToolDiagnostics` → `application/diagnostics/`**（业务无关的运维能力，端口归 application——见 [directory-structure.md](./directory-structure.md) 的[端口归属判据](./directory-structure.md#端口归属判据)）。（2026-10-05 DDD 四层化前，接口与实现同居顶层 `provider/`；端口上移进领域层、适配器移入 `infrastructure/provider/` 即本次落地的结构变更。2026-10-06 端口倒置补齐了其余四类被上层直接引用的具体类。）
 
 ### 1. 接口保持纯净
 

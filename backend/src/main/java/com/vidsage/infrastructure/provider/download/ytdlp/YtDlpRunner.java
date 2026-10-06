@@ -2,7 +2,7 @@ package com.vidsage.infrastructure.provider.download.ytdlp;
 
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
-import com.vidsage.infrastructure.process.ExternalToolDiagnostics;
+import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -31,7 +31,7 @@ import org.springframework.util.StringUtils;
 public class YtDlpRunner {
 
     private final ExternalProcessRunner runner;
-    private final ExternalToolDiagnostics tools;
+    private final ProcessToolDiagnostics tools;
     private final ExternalToolProperties toolProperties;
     private final YtDlpProperties ytDlpProperties;
 
@@ -43,7 +43,7 @@ public class YtDlpRunner {
      * @param toolProperties  外部工具配置（取默认超时、判断 ffmpeg 是否已配置）
      * @param ytDlpProperties yt-dlp 专用配置（cookies 文件）
      */
-    public YtDlpRunner(ExternalProcessRunner runner, ExternalToolDiagnostics tools,
+    public YtDlpRunner(ExternalProcessRunner runner, ProcessToolDiagnostics tools,
                        ExternalToolProperties toolProperties, YtDlpProperties ytDlpProperties) {
         this.runner = runner;
         this.tools = tools;
