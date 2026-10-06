@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "本任务的改动正典：命名约定表（Spring 组件 stereotype 行要为 XxxStage 增一档）、application/ 层构件说明（区分用例服务与管线阶段）、契约类位置参照行、值对象段里的 TaskService 引用 —— 全部要按设计 §4.1 对账"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "改名不得引入反模式；公共类型与公共方法的 Javadoc 是硬规范，改名后交叉引用必须仍然指向存在的类型（否则 Javadoc 断链）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "待对账点：同一值检查两次段里的 TaskService.loadTask。同时是零行为变化的核对依据 —— 异常类型与 HTTP 映射口径一行都不许动"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "待对账点：首行依据列表与日志级别表的 TranscriptionService 两处。同时确认日志文案 / 级别零变化（R4）"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "确认端口与适配器命名不受本次改动影响（LlmSubtitleCleanser 等已在 10-06 端口倒置后定名），排除漏网引用"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "分支从 dev 开、逐门批准提交/合并、不自行归档 —— 本任务的收尾门禁按此执行"}

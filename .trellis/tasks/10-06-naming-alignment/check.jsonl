@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "逐条核对：① grep 无旧类名残留；② 七个管线构件（VideoTaskPipeline + 六个 XxxStage）确为 @Component、两个真服务（VideoTaskService / WorkspaceService）仍为 @Service，与 stereotype 四档判据一致；③ 新增的构件说明（管线构件 vs 服务、服务前缀对齐聚合根、管线构件后缀规则）与代码事实相符；④ 依赖规则未被本次改动破坏（无新增跨层 import）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对改名后无 Javadoc 悬空链接（@link 指向不存在的类）、无新增反模式、公共 API 的 Javadoc 完整性未被破坏"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对异常类型与映射口径零回归：diff 中不得出现 IllegalArgumentException / TaskNotFoundException / IllegalStateException 等的新增、删除或替换"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对日志文案、级别与脱敏红线零回归：diff 中不得出现 log.info/warn/error/debug 的文案或占位符改动"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "核对收尾门禁：是否只停在汇报、未自行 commit/push/merge/归档"}
