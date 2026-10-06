@@ -1,0 +1,5 @@
+{"file": "docs/ddd-refactor-handoff.md", "reason": "对照 §2 目标结构与 §3 映射表核查迁移完整性（90 类一个不漏、六个旧包位消失）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核对迁移后结构与规范一致性；Phase 3 后该文档应已重写为四层结构"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "核对端口接口新位置（domain/<上下文>/）与四件套描述一致、路径引用零残留"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对豁免清单（仓库/LLM worker 不接口化）未被违反，依赖规则符合 quality 条款"}
+{"file": ".trellis/spec/backend/index.md", "reason": "门禁命令核对（mvn test、旧包名 grep）"}
