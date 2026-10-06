@@ -53,8 +53,8 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SubtitleTranslator {
 
-    /** 本类承担的管线阶段名（StageEvent.stage 同词表；翻译的批级事件用它标注）。 */
-    public static final String STAGE_TRANSLATE = "translate";
+    // 本类承担的管线阶段名（"translate"）单源在 StageEvent.STAGE_TRANSLATE——阶段词表是
+    // domain/shared 的进度词汇，不住实现类里（2026-10-06 随逻辑下沉归位）。
 
     private final ChatClient translator;
 
@@ -118,7 +118,7 @@ public class SubtitleTranslator {
      * @param officialTerms  术语官方译名查证产物（{@code terms-<route>-<target>.json} 的内容），可为空表：
      *                       命中术语里查到译名的按「给定的译名照翻」渲染进提示词，弃权（空串）与没查的
      *                       按「保留原样」渲染
-     * @param listener       批级进度回调；每批翻译完成后回调一次（stage={@link #STAGE_TRANSLATE}，
+     * @param listener       批级进度回调；每批翻译完成后回调一次（stage={@link StageEvent#STAGE_TRANSLATE}，
      *                       进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」），批数为 0 时无批级事件；
      *                       不可为 {@code null}——不关心进度用四参重载
      * @return 逐条双语段落 + 重试轮数 + 未翻译段数
@@ -197,11 +197,11 @@ public class SubtitleTranslator {
     }
 
     /**
-     * 发一条批级进度事件（stage 固定 {@link #STAGE_TRANSLATE}，state 为 RUNNING）。
+     * 发一条批级进度事件（stage 固定 {@link StageEvent#STAGE_TRANSLATE}，state 为 RUNNING）。
      * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
      */
     private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
-        listener.onEvent(new StageEvent(STAGE_TRANSLATE, batchNo * 100 / totalBatches,
+        listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, batchNo * 100 / totalBatches,
                 "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
     }
 

@@ -177,7 +177,7 @@ class SubtitleCleanupServiceTest {
         // 真实批级事件来自 SubtitleCleanser；本层只验「批级事件原样透传 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(3);
-            listener.onEvent(new StageEvent(SubtitleCleanser.STAGE_CLEAN, 100, "第 1/1 批",
+            listener.onEvent(new StageEvent(StageEvent.STAGE_CLEAN, 100, "第 1/1 批",
                     StageEvent.StageState.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             return new SubtitleCleanser.CleanseResult(in, 0, 0, 0, 0);
@@ -187,7 +187,7 @@ class SubtitleCleanupServiceTest {
         service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
-        assertEquals(SubtitleCleanser.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
         assertEquals(0, events.get(0).progress());
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
         assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
@@ -207,7 +207,7 @@ class SubtitleCleanupServiceTest {
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
         assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
         assertEquals(100, events.get(0).progress());
-        assertEquals(SubtitleCleanser.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
     }
 
     @Test
@@ -219,7 +219,7 @@ class SubtitleCleanupServiceTest {
                 () -> service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add));
 
         assertEquals(1, events.size(), () -> "失败前应已发「开始清洗」：" + events);
-        assertEquals(SubtitleCleanser.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
     }
 

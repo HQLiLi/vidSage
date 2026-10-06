@@ -402,7 +402,7 @@ class TaskPipelineServiceTest {
         when(translationService.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent(SubtitleTranslator.STAGE_TRANSLATE, 40, "第 1/2 批",
+            listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, 40, "第 1/2 批",
                     StageEvent.StageState.RUNNING));
             return null;
         }).when(translationService).translate(any(MediaInput.class), any(ProgressListener.class));
@@ -425,13 +425,13 @@ class TaskPipelineServiceTest {
                 "翻译事件的 taskStatus 恒为主状态 SUCCEEDED");
         assertEquals(TranslationStatus.RUNNING, progress.translationStatus(),
                 "进度事件携带进行中的翻译子状态（SSE 终态判定据此不收口连接）");
-        assertEquals(SubtitleTranslator.STAGE_TRANSLATE, progress.stage().stage());
+        assertEquals(StageEvent.STAGE_TRANSLATE, progress.stage().stage());
         assertEquals(40, progress.stage().progress(), "翻译事件自成 0..100 段，直通不 remap");
 
         TaskProgressMessage terminal = received.get(1);
         assertEquals(TaskStatus.SUCCEEDED, terminal.taskStatus(), "翻译终态广播的 taskStatus 用主状态");
         assertEquals(TranslationStatus.SUCCEEDED, terminal.translationStatus());
-        assertEquals(SubtitleTranslator.STAGE_TRANSLATE, terminal.stage().stage());
+        assertEquals(StageEvent.STAGE_TRANSLATE, terminal.stage().stage());
         assertEquals(100, terminal.stage().progress());
         assertEquals(StageEvent.StageState.SUCCEEDED, terminal.stage().state());
 
@@ -448,7 +448,7 @@ class TaskPipelineServiceTest {
         when(translationService.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent(SubtitleTranslator.STAGE_TRANSLATE, 40, "第 1/2 批",
+            listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, 40, "第 1/2 批",
                     StageEvent.StageState.RUNNING));
             throw new IllegalStateException("LLM 返回掉行");
         }).when(translationService).translate(any(MediaInput.class), any(ProgressListener.class));

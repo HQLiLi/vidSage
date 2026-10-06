@@ -8,6 +8,7 @@ import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.ProgressListener;
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.shared.StageEvent.StageState;
+import com.vidsage.domain.subtitle.CheckpointPolicy;
 import com.vidsage.domain.media.AudioExtractor;
 import com.vidsage.shared.fs.ArtifactFiles;
 import java.nio.file.Path;
@@ -155,7 +156,9 @@ public class AudioPreparationService {
         try {
             Path audioPath = workDir.resolve(audioFileName(spec));
             long existingSize = ArtifactFiles.sizeOrZero(audioPath);
-            if (existingSize > 0) {
+            // 断点判据语义单源在 CheckpointPolicy（非空 = 已完成、0 字节 = 未完成）：
+            // 与三字幕服务的 JSON 检查点是同一条「产物非空才算完成」政策
+            if (CheckpointPolicy.isCompleted(existingSize)) {
                 log.info("extract 阶段跳过（断点复用）: file={}, sizeBytes={}",
                         audioPath.getFileName(), existingSize);
                 emit(listener, STAGE_EXTRACT, EXTRACT_DONE, "已有音频产物，跳过抽取", StageState.SKIPPED);

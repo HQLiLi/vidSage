@@ -10,6 +10,7 @@ import com.vidsage.domain.media.AudioSpec;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.ProgressListener;
 import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.domain.subtitle.CheckpointPolicy;
 import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.SubtitleRoute;
 import com.vidsage.domain.subtitle.SubtitleTrack;
@@ -35,8 +36,8 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>断点复用判据</b>：{@code segments-<路线>.json} 存在且字节数 &gt; 0 即跳过音频准备与转写，
  * 直接反序列化已有 JSON 返回。为什么检查点是 JSON 而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当
- * 检查点会导致空转写永远判「未完成」→ 反复重跑的死循环（design 决策 4）。文件名规则只有本服务
- * 知道，故复用判据也由本服务判（design §六）。
+ * 检查点会导致空转写永远判「未完成」→ 反复重跑的死循环（design 决策 4）——语义单源在
+ * {@link CheckpointPolicy}。文件名规则只有本服务知道，故复用判据也由本服务判（design §六）。
  *
  * <p>进度权重是<b>过渡态</b>：2a 的 {@code 0..100} 被本服务线性映射进 {@code 0..60}，自己的
  * {@code transcribe} 占 60→95、{@code write-subtitles} 占 95→100。真正形状应以 MVP-1 的
@@ -168,10 +169,11 @@ public class SubtitleService {
      * 读断点：segments JSON 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。
      *
      * <p>只读 JSON，不看 SRT——SRT 是 JSON 的派生视图，即使 SRT 在而 JSON 不在也必须重跑
-     * （design 决策 4，回归测试守着这条）。
+     * （design 决策 4，回归测试守着这条）。判据语义（JSON 非空 = 完成、0 字节 = 未完成、
+     * SRT 不参与幂等）单源在 {@link CheckpointPolicy}。
      */
     private SubtitleTrack readCheckpoint(Path segmentsPath) {
-        if (!ArtifactFiles.isNonEmpty(segmentsPath)) {
+        if (!CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(segmentsPath))) {
             return null;
         }
         try {

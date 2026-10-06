@@ -9,6 +9,7 @@ import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.ProgressListener;
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.subtitle.CleanedSubtitle;
+import com.vidsage.domain.subtitle.CheckpointPolicy;
 import com.vidsage.domain.subtitle.SubtitleContext;
 import com.vidsage.domain.subtitle.SubtitleRoute;
 import com.vidsage.domain.subtitle.SubtitleTrack;
@@ -37,7 +38,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>断点复用判据</b>：{@code -clean.json} 存在且字节数 &gt; 0 即跳过切分与纠错，直接反序列化返回。
  * 为什么拿 JSON 当检查点而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当检查点会让空清洗永远判「未完成」
- * （同 {@link SubtitleService} design 决策 4）。
+ * ——该语义单源在 {@link CheckpointPolicy}（design 决策 4，同 {@link SubtitleService}）。
  *
  * <p><b>不碰 2b 原始产物</b>：读 {@code segments-<route>.json}（原始，只读，必须已存在）、写 {@code -clean}。
  */
@@ -145,11 +146,11 @@ public class SubtitleCleanupService {
         if (existing != null) {
             log.info("字幕清洗断点复用跳过: clean={}", cleanSeg.getFileName());
             // 断点复用不重跑，本趟统计一律为 0（含术语指标），语义与 correctedCount 一致
-            emit(listener, SubtitleCleanser.STAGE_CLEAN, STAGE_DONE, "已有清洗产物，跳过清洗",
+            emit(listener, StageEvent.STAGE_CLEAN, STAGE_DONE, "已有清洗产物，跳过清洗",
                     StageEvent.StageState.SKIPPED);
             return toCleaned(existing, cleanSeg, cleanSrt, 0, 0, 0, 0);
         }
-        emit(listener, SubtitleCleanser.STAGE_CLEAN, STAGE_BEGIN, "开始清洗", StageEvent.StageState.RUNNING);
+        emit(listener, StageEvent.STAGE_CLEAN, STAGE_BEGIN, "开始清洗", StageEvent.StageState.RUNNING);
 
         // 原始缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
         // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮接受 500：它是「服务端状态缺失」，
@@ -164,23 +165,23 @@ public class SubtitleCleanupService {
         // 媒体内容
         List<TranscriptionSegment> segments = raw.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
-        // 内容的主题、源语种和从中提取出的术语：先读缓存，没有才摘要。
+        // 内容的主题、源语种和从中提取出的术语：先读缓存，没有才摘要；摘要成功才落盘、空摘要绝不落盘
+        // ——裁决单源在 CheckpointPolicy（与翻译服务同一份，2026-10-06 两处近逐字重复合流于此）。
         // 断点分支留在本层（不在 SubtitleContextSummarizer 里）——与 -clean 断点判据同处，见 design §3.2。
         Path ctxFile = workDir.resolve(SubtitleArtifactNames.contextFileName(route));
-        SubtitleContext subtitleContext = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
-        if (subtitleContext == null) {
-            subtitleContext = contextSummarizer.summarize(radioContent).orElse(null);
-            if (subtitleContext != null) {
-                // 摘要成功才落盘：降级出的空上下文绝不能写文件，否则下次会命中这份空缓存，
-                // 摘要永久丢失且不报错（design 决策 5）。
+        SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
+        CheckpointPolicy.ContextResolution contextResolution =
+                CheckpointPolicy.resolveContext(cached, () -> contextSummarizer.summarize(radioContent));
+        SubtitleContext subtitleContext = contextResolution.context();
+        switch (contextResolution.source()) {
+            // 摘要成功才落盘：降级出的空上下文绝不能写文件，否则下次会命中这份空缓存，
+            // 摘要永久丢失且不报错（design 决策 5）。
+            case FRESH_SUMMARY -> {
                 ArtifactFiles.writeJsonAtomically(subtitleContext, objectMapper, ctxFile);
                 log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
-            } else {
-                subtitleContext = SubtitleContext.empty();   // 降级，且不写文件
-                log.debug("字幕摘要失败，降级为空上下文（不落盘）");
             }
-        } else {
-            log.debug("字幕上下文缓存命中: file={}", ctxFile.getFileName());
+            case DEGRADED_EMPTY -> log.debug("字幕摘要失败，降级为空上下文（不落盘）");
+            case CACHE_HIT -> log.debug("字幕上下文缓存命中: file={}", ctxFile.getFileName());
         }
 
         // 切分
@@ -191,7 +192,7 @@ public class SubtitleCleanupService {
 
         SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments());
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换
-        emit(listener, SubtitleCleanser.STAGE_CLEAN, STAGE_DONE, "清洗完成", StageEvent.StageState.SUCCEEDED);
+        emit(listener, StageEvent.STAGE_CLEAN, STAGE_DONE, "清洗完成", StageEvent.StageState.SUCCEEDED);
         log.info("字幕清洗完成: route={}, segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
                 route.name(), result.segments().size(), result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());
@@ -202,9 +203,10 @@ public class SubtitleCleanupService {
     /**
      * 读断点：{@code -clean.json} 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。
      * 解析失败当未完成重跑（同 {@link SubtitleService}）。
+     * 判据语义（JSON 非空 = 完成、0 字节 = 未完成）单源在 {@link CheckpointPolicy}。
      */
     private SubtitleTrack readCheckpoint(Path cleanSeg) {
-        if (!ArtifactFiles.isNonEmpty(cleanSeg)) {
+        if (!CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(cleanSeg))) {
             return null;
         }
         try {

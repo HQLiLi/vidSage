@@ -52,6 +52,10 @@ import tools.jackson.databind.ObjectMapper;
  * 失败分流、产物落盘）→ 交给 {@link SubtitleTranslator} → 写 -translate 产物。摘要器、翻译器与
  * 查证 provider 都是 mock/桩。
  *
+ * <p>语种政策与查证政策的<b>纯函数断言</b>已随逻辑下沉（2026-10-06 Phase B）迁到
+ * {@code domain/subtitle/} 的 Bcp47LanguageTest / TermVerificationTest / CheckpointPolicyTest；
+ * 本类保留的是「服务确实按政策接线」的编排用例（断点、跳过、查证触发与落盘的端到端路径）。
+ *
  * <p><b>翻译算法本身（分批、校验、重试、回退原文）不在这里测</b>——它的覆盖在
  * {@code SubtitleTranslatorTest}：真 ChatClient + 桩 ChatModel。
  */
@@ -293,26 +297,8 @@ class SubtitleTranslationServiceTest {
 
     // ------------------------------------------------------------------
     // 目标语种：卫语句须早于 I/O（error-handling.md 的硬规则）
+    // （语种归一化与守卫本身的断言在 domain/subtitle/Bcp47LanguageTest）
     // ------------------------------------------------------------------
-
-    @Test
-    void resolveTargetLanguageNormalizes() {
-        assertEquals("zh", SubtitleTranslationService.resolveTargetLanguage(props(" ZH ")));
-    }
-
-    @Test
-    void resolveTargetLanguageBlankThrows() {
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> SubtitleTranslationService.resolveTargetLanguage(props("  ")));
-        assertTrue(e.getMessage().contains("vidsage.subtitle.translate.target-language"),
-                "消息应指明配置键");
-    }
-
-    @Test
-    void resolveTargetLanguageNullThrows() {
-        assertThrows(IllegalStateException.class,
-                () -> SubtitleTranslationService.resolveTargetLanguage(props(null)));
-    }
 
     /**
      * 这次修复真正要钉住的东西：配置里语种为空时，<b>一个字节的 I/O 都不该发生</b>——
@@ -414,7 +400,7 @@ class SubtitleTranslationServiceTest {
         // 真实批级事件来自 SubtitleTranslator；本层只验「批级事件原样透传 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(4);
-            listener.onEvent(new StageEvent(SubtitleTranslator.STAGE_TRANSLATE, 100, "第 1/1 批",
+            listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, 100, "第 1/1 批",
                     StageEvent.StageState.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             List<TranslatedSegment> out = in.stream()
@@ -427,7 +413,7 @@ class SubtitleTranslationServiceTest {
         service().translate(new MediaInput.RemoteUrl("https://x"), events::add);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
-        assertEquals(SubtitleTranslator.STAGE_TRANSLATE, events.get(0).stage());
+        assertEquals(StageEvent.STAGE_TRANSLATE, events.get(0).stage());
         assertEquals(0, events.get(0).progress());
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
         assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
@@ -447,7 +433,7 @@ class SubtitleTranslationServiceTest {
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
         assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
         assertEquals(100, events.get(0).progress());
-        assertEquals(SubtitleTranslator.STAGE_TRANSLATE, events.get(0).stage());
+        assertEquals(StageEvent.STAGE_TRANSLATE, events.get(0).stage());
     }
 
     @Test
@@ -471,31 +457,6 @@ class SubtitleTranslationServiceTest {
         writeCleanTrack();
         assertThrows(IllegalArgumentException.class,
                 () -> service().translate(new MediaInput.RemoteUrl("https://x"), null));
-    }
-
-    @Test
-    void mainLanguageSubtagComparisonIgnoresRegionAndCase() {
-        assertTrue(SubtitleTranslationService.isSameMainLanguage("zh-CN", "zh"));
-        assertTrue(SubtitleTranslationService.isSameMainLanguage("zh-Hant", "ZH"));
-        assertTrue(SubtitleTranslationService.isSameMainLanguage(" zh ", "zh"));
-        assertTrue(SubtitleTranslationService.isSameMainLanguage("zh-tw", "zh-cn"));
-        assertFalse(SubtitleTranslationService.isSameMainLanguage("zh", "en"));
-        assertFalse(SubtitleTranslationService.isSameMainLanguage("", "zh"));
-        assertFalse(SubtitleTranslationService.isSameMainLanguage("zh", "zhx"));
-        // 两边都取不到语种：「未知 vs 未知」不是「同一门语言」——判成同一门会导致静默漏译
-        assertFalse(SubtitleTranslationService.isSameMainLanguage("", ""));
-        assertFalse(SubtitleTranslationService.isSameMainLanguage(null, null));
-        assertFalse(SubtitleTranslationService.isSameMainLanguage("  ", null));
-    }
-
-    @Test
-    void sourceLanguageResolvesFromContextFirstThenTrack() {
-        assertEquals("de", SubtitleTranslationService.resolveSourceLanguage(
-                contextWithLanguage("de"), "zh"), "摘要给的语种优先");
-        assertEquals("zh", SubtitleTranslationService.resolveSourceLanguage(
-                SubtitleContext.empty(), "zh"), "摘要为空时回退 ASR 语种");
-        assertEquals("", SubtitleTranslationService.resolveSourceLanguage(
-                SubtitleContext.empty(), null), "两者皆空时为空串");
     }
 
     // ------------------------------------------------------------------

@@ -44,8 +44,8 @@ import java.util.*;
 @Component
 public class SubtitleCleanser {
 
-    /** 本类承担的管线阶段名（StageEvent.stage 同词表；清洗的批级事件用它标注）。 */
-    public static final String STAGE_CLEAN = "clean";
+    // 本类承担的管线阶段名（"clean"）单源在 StageEvent.STAGE_CLEAN——阶段词表是
+    // domain/shared 的进度词汇，不住实现类里（2026-10-06 随逻辑下沉归位）。
 
     private final ChatClient cleanser;
 
@@ -102,7 +102,7 @@ public class SubtitleCleanser {
      * {@code history}——每批被采纳的「批次原文 + 纠正结果」留成一对多轮往返，带给后续所有批次。
      * 历史比前窗更强：前窗给的是上一批<b>未清洗</b>的原文，历史给的是<b>已被采纳的纠正</b>。
      *
-     * <p>每批清洗完成后向 {@code listener} 发一条批级进度（stage={@link #STAGE_CLEAN}，
+     * <p>每批清洗完成后向 {@code listener} 发一条批级进度（stage={@link StageEvent#STAGE_CLEAN}，
      * 进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）；批数为 0（空清单）时无批级事件。
      *
      * @param segments  拆分后的字幕列表
@@ -196,11 +196,11 @@ public class SubtitleCleanser {
     }
 
     /**
-     * 发一条批级进度事件（stage 固定 {@link #STAGE_CLEAN}，state 为 RUNNING）。
+     * 发一条批级进度事件（stage 固定 {@link StageEvent#STAGE_CLEAN}，state 为 RUNNING）。
      * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
      */
     private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
-        listener.onEvent(new StageEvent(STAGE_CLEAN, batchNo * 100 / totalBatches,
+        listener.onEvent(new StageEvent(StageEvent.STAGE_CLEAN, batchNo * 100 / totalBatches,
                 "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
     }
 

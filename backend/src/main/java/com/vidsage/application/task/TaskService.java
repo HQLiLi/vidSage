@@ -16,7 +16,6 @@ import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.task.TaskInputType;
 import com.vidsage.domain.task.TaskStatus;
 import com.vidsage.infrastructure.persistence.repository.VideoTaskRepository;
-import com.vidsage.infrastructure.provider.llm.SubtitleTranslator;
 import com.vidsage.shared.fs.ArtifactFiles;
 import java.io.IOException;
 import java.io.InputStream;
@@ -304,11 +303,11 @@ public class TaskService {
      */
     static StageEvent translationStageEventOf(VideoTask task) {
         return switch (task.getTranslationStatus()) {
-            case RUNNING -> new StageEvent(SubtitleTranslator.STAGE_TRANSLATE, 0, "翻译进行中",
+            case RUNNING -> new StageEvent(StageEvent.STAGE_TRANSLATE, 0, "翻译进行中",
                     StageEvent.StageState.RUNNING);
-            case SUCCEEDED -> new StageEvent(SubtitleTranslator.STAGE_TRANSLATE, 100, "翻译完成",
+            case SUCCEEDED -> new StageEvent(StageEvent.STAGE_TRANSLATE, 100, "翻译完成",
                     StageEvent.StageState.SUCCEEDED);
-            case FAILED -> new StageEvent(SubtitleTranslator.STAGE_TRANSLATE, 0,
+            case FAILED -> new StageEvent(StageEvent.STAGE_TRANSLATE, 0,
                     StringUtils.hasText(task.getErrorMessage()) ? task.getErrorMessage() : "翻译已失败",
                     StageEvent.StageState.FAILED);
         };
