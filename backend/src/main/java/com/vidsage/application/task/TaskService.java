@@ -6,11 +6,13 @@ import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskView;
+import com.vidsage.domain.shared.SourceUri;
+import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.domain.shared.WorkspaceDir;
 import com.vidsage.domain.shared.WorkspaceKey;
 import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.MediaInput;
-import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.task.TaskInputType;
 import com.vidsage.domain.task.TaskStatus;
 import com.vidsage.infrastructure.persistence.repository.VideoTaskRepository;
@@ -24,7 +26,6 @@ import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -38,7 +39,7 @@ import org.springframework.util.StringUtils;
  *
  * <p>两条提交路线收敛到 {@link #submit}：
  * <ul>
- *   <li><b>URL</b>（POST /api/tasks）：workspace_key = {@code WorkspaceService.normalize + shortHash}，
+ *   <li><b>URL</b>（POST /api/tasks）：workspace_key = {@code WorkspaceService.normalize → WorkspaceKey.ofHash}，
  *       <b>只算 key 不触发建目录</b>——目录由管线内的各阶段服务按同一公式懒创建；</li>
  *   <li><b>上传</b>（POST /api/tasks/upload）：流式写盘<b>边写边算 sha256</b>，key = 内容摘要前 12 位，
  *       工作区 = {@code sanitize(原始文件名)-<key>/source.mp4}（断点复用按内容寻址，比「路径+时间戳」指纹稳），
@@ -66,9 +67,6 @@ public class TaskService {
 
     /** 临时文件名后缀：明确「未归位」语义，也便于排查残留。 */
     private static final String TEMP_FILE_SUFFIX = ".part";
-
-    /** sha256 摘要取前多少位做 workspace_key / 目录后缀（与 WorkspaceService.shortHash 同宽）。 */
-    private static final int KEY_LENGTH = 12;
 
     private final VideoTaskRepository repository;
     private final WorkspaceService workspaceService;
@@ -102,11 +100,12 @@ public class TaskService {
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
         MediaInput.RemoteUrl input = new MediaInput.RemoteUrl(url.trim());
-        WorkspaceKey workspaceKey = WorkspaceService.shortHash(WorkspaceService.normalize(input));
+        SourceUri identity = WorkspaceService.normalize(input);
+        WorkspaceKey workspaceKey = WorkspaceKey.ofHash(identity.value());
         rejectIfActive(workspaceKey);
-        // 目录名公式单源在 WorkspaceService.dirName（sanitize(标签)-key）：
+        // 目录名公式单源在 WorkspaceDir.of（sanitize(标签)-key）：
         // 管线阶段会用同一公式懒建出同一目录，落点天然一致
-        String dirName = WorkspaceService.dirName(input.value(), workspaceKey);
+        String dirName = WorkspaceDir.of(input.value(), workspaceKey).value();
         return submit(input, TaskInputType.URL, input.value(), workspaceKey, dirName);
     }
 
@@ -343,14 +342,15 @@ public class TaskService {
     }
 
     /**
-     * 把上传流写进临时文件，边写边算 sha256，返回内容 key（摘要前 12 位十六进制的工作区短哈希）。
+     * 把上传流写进临时文件，边写边算 sha256，返回内容 key（摘要前 12 位十六进制的工作区短哈希，
+     * 宽度与格式单源在 {@link WorkspaceKey#ofDigest}）。
      */
     private WorkspaceKey streamToTemp(InputStream content, Path temp) throws IOException, NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (DigestInputStream digesting = new DigestInputStream(content, digest)) {
             Files.copy(digesting, temp, StandardCopyOption.REPLACE_EXISTING);
         }
-        return new WorkspaceKey(HexFormat.of().formatHex(digest.digest()).substring(0, KEY_LENGTH));
+        return WorkspaceKey.ofDigest(digest.digest());
     }
 
     /**

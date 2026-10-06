@@ -16,6 +16,7 @@ import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskView;
 import com.vidsage.config.WorkspaceProperties;
+import com.vidsage.domain.shared.WorkspaceDir;
 import com.vidsage.domain.shared.WorkspaceKey;
 import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
@@ -41,7 +42,7 @@ import org.mockito.ArgumentCaptor;
 
 /**
  * {@link TaskService} 的纯单元测试：仓储与管线用 Mockito mock，工作区用真实实例 + 临时目录
- * （{@code WorkspaceService} 的目录公式是静态纯函数 + 真实落盘，真跑比 mock 更能钉住路径约定）。
+ * （目录公式单源在 domain/shared，{@code WorkspaceService} 真实落盘——真跑比 mock 更能钉住路径约定）。
  *
  * <p>覆盖「URL 路线落库与启动管线」「上传路线流式落盘按内容寻址」「查重 409 与孤儿文件清理」「查询」。
  */
@@ -54,8 +55,9 @@ class TaskServiceTest {
     private final TaskPipelineService pipelineService = org.mockito.Mockito.mock(TaskPipelineService.class);
 
     /**
-     * 工作区用真实实例（目录公式是静态纯函数 + 真实落盘，真跑比 mock 更能钉住路径约定）。
-     * {@code @TempDir} 在字段初始化之后才注入，故只能方法内构造，不能在字段初始化器里引用。
+     * 工作区用真实实例（目录公式单源在 domain/shared，workspaceFor 真实落盘，真跑比 mock
+     * 更能钉住路径约定）。{@code @TempDir} 在字段初始化之后才注入，故只能方法内构造，
+     * 不能在字段初始化器里引用。
      */
     private TaskService service() {
         return new TaskService(repository,
@@ -86,10 +88,10 @@ class TaskServiceTest {
         assertEquals("https://example.com/watch/1", inserted.getSourceUri());
         assertEquals(TaskStatus.PENDING, inserted.getStatus());
         assertTrue(inserted.getTaskNo().value().matches("[0-9a-f]{32}"));
-        // 目录名与 WorkspaceService 同公式：sanitize(url)-hash12（非法字符替换为下划线）
-        WorkspaceKey expectedKey = WorkspaceService.shortHash(WorkspaceService.normalize(
-                new com.vidsage.domain.media.MediaInput.RemoteUrl("https://example.com/watch/1")));
-        String expectedDir = WorkspaceService.sanitizeName("https://example.com/watch/1") + "-" + expectedKey.value();
+        // 目录名与 WorkspaceDir 同公式：sanitize(url)-hash12（非法字符替换为下划线）
+        WorkspaceKey expectedKey = WorkspaceKey.ofHash(WorkspaceService.normalize(
+                new com.vidsage.domain.media.MediaInput.RemoteUrl("https://example.com/watch/1")).value());
+        String expectedDir = WorkspaceDir.sanitizeName("https://example.com/watch/1") + "-" + expectedKey.value();
         assertEquals(expectedDir, inserted.getWorkspaceDir());
 
         verify(pipelineService).execute(inserted.getTaskNo());
@@ -160,7 +162,7 @@ class TaskServiceTest {
         service().submitUpload(new ByteArrayInputStream(media), "  ");
 
         Path dir = tempDir.resolve("works").resolve(
-                WorkspaceService.FALLBACK_NAME + "-" + sha256Prefix(media));
+                WorkspaceDir.FALLBACK_NAME + "-" + sha256Prefix(media));
         assertTrue(Files.isRegularFile(dir.resolve("source.mp4")), "空白原始名应回退 media 标签并照常归位");
     }
 
