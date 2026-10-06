@@ -22,8 +22,9 @@ import com.vidsage.domain.subtitle.SubtitleContext;
 import com.vidsage.domain.subtitle.SubtitleRoute;
 import com.vidsage.domain.subtitle.SubtitleTrack;
 import com.vidsage.domain.transcription.ASRProvider;
-import com.vidsage.infrastructure.provider.llm.SubtitleCleanser;
-import com.vidsage.infrastructure.provider.llm.SubtitleContextSummarizer;
+import com.vidsage.domain.subtitle.CleanseResult;
+import com.vidsage.domain.subtitle.SubtitleCleanser;
+import com.vidsage.domain.subtitle.SubtitleContextSummarizer;
 import com.vidsage.shared.subtitle.SubtitleArtifactNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,7 +69,7 @@ class SubtitleCleanupServiceTest {
         doAnswer(invocation -> {
             cleanserCalls.incrementAndGet();
             List<TranscriptionSegment> in = invocation.getArgument(0);
-            return new SubtitleCleanser.CleanseResult(in, 0, 0, 0, 0);
+            return new CleanseResult(in, 0, 0, 0, 0);
         }).when(subtitleCleanser).clean(any(), any(), any(), any());
     }
 
@@ -180,7 +181,7 @@ class SubtitleCleanupServiceTest {
             listener.onEvent(new StageEvent(StageEvent.STAGE_CLEAN, 100, "第 1/1 批",
                     StageEvent.StageState.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
-            return new SubtitleCleanser.CleanseResult(in, 0, 0, 0, 0);
+            return new CleanseResult(in, 0, 0, 0, 0);
         }).when(subtitleCleanser).clean(any(), any(), any(), any());
         List<StageEvent> events = new ArrayList<>();
 

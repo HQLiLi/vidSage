@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.vidsage.application.diagnostics.ToolDiagnosticReport;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -15,21 +16,21 @@ import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ExternalToolDiagnostics 的纯单元测试：不起 Spring 容器、不拉起真实外部进程。
+ * ProcessToolDiagnostics 的纯单元测试：不起 Spring 容器、不拉起真实外部进程。
  * 版本解析与新鲜度用包级 static 方法直接喂真实输出字符串；路径解析用受控 PATH。
  *
  * <p>本类的 {@code @TempDir} 一律用 {@code CleanupMode.NEVER}：Windows 上偶发
  * 环境性句柄占用会让清理失败并把测试判红（本仓库已两次独立复现），宁可留下临时目录，
  * 也不要让环境问题影响测试判定。
  */
-class ExternalToolDiagnosticsTest {
+class ProcessToolDiagnosticsTest {
 
     @Test
     void reportsUnavailableWhenConfiguredPathMissing() {
         var diagnostics = diagnosticsWith(
                 new ExternalToolProperties("/definitely/missing/yt-dlp", "", "", 300, 90));
 
-        ExternalToolReport report = diagnostics.diagnoseYtDlp();
+        ToolDiagnosticReport report = diagnostics.diagnoseYtDlp();
 
         assertFalse(report.available());
         assertNull(report.version());
@@ -41,9 +42,9 @@ class ExternalToolDiagnosticsTest {
 
     @Test
     void doesNotFindBinaryWhenAbsentFromPath(@TempDir(cleanup = CleanupMode.NEVER) Path emptyDir) {
-        assertTrue(ExternalToolDiagnostics.findInPath("ffmpeg", emptyDir.toString(), false).isEmpty());
-        assertTrue(ExternalToolDiagnostics.findInPath("ffmpeg", "", false).isEmpty());
-        assertTrue(ExternalToolDiagnostics.findInPath("ffmpeg", null, false).isEmpty());
+        assertTrue(ProcessToolDiagnostics.findInPath("ffmpeg", emptyDir.toString(), false).isEmpty());
+        assertTrue(ProcessToolDiagnostics.findInPath("ffmpeg", "", false).isEmpty());
+        assertTrue(ProcessToolDiagnostics.findInPath("ffmpeg", null, false).isEmpty());
     }
 
     @Test
@@ -53,7 +54,7 @@ class ExternalToolDiagnosticsTest {
         Path other = dir.resolve("junk");
 
         assertEquals(binary,
-                ExternalToolDiagnostics.findInPath("ffmpeg", dir + java.io.File.pathSeparator + other, false)
+                ProcessToolDiagnostics.findInPath("ffmpeg", dir + java.io.File.pathSeparator + other, false)
                         .orElseThrow());
     }
 
@@ -63,12 +64,12 @@ class ExternalToolDiagnosticsTest {
         Files.writeString(binary, "not a real binary");
 
         assertEquals(binary,
-                ExternalToolDiagnostics.findInPath("ffprobe", dir.toString(), true).orElseThrow());
+                ProcessToolDiagnostics.findInPath("ffprobe", dir.toString(), true).orElseThrow());
     }
 
     @Test
     void parsesYtDlpVersion() {
-        assertEquals("2026.08.19", ExternalToolDiagnostics.parseYtDlpVersion("2026.08.19\n"));
+        assertEquals("2026.08.19", ProcessToolDiagnostics.parseYtDlpVersion("2026.08.19\n"));
     }
 
     @Test
@@ -77,32 +78,32 @@ class ExternalToolDiagnosticsTest {
                 + "Copyright (c) 2000-2025 the FFmpeg developers\nbuilt with gcc 15.1.0\n";
 
         assertEquals("9.0.2-essentials_build-www.gyan.dev",
-                ExternalToolDiagnostics.parseBannerVersion(banner));
+                ProcessToolDiagnostics.parseBannerVersion(banner));
     }
 
     @Test
     void returnsNullWhenVersionUnparsable() {
-        assertNull(ExternalToolDiagnostics.parseYtDlpVersion(""));
-        assertNull(ExternalToolDiagnostics.parseYtDlpVersion(null));
-        assertNull(ExternalToolDiagnostics.parseBannerVersion("not a version banner"));
+        assertNull(ProcessToolDiagnostics.parseYtDlpVersion(""));
+        assertNull(ProcessToolDiagnostics.parseYtDlpVersion(null));
+        assertNull(ProcessToolDiagnostics.parseBannerVersion("not a version banner"));
     }
 
     @Test
     void computesDaysSinceRelease() {
         assertEquals(37,
-                ExternalToolDiagnostics.daysSinceRelease("2026.08.19", LocalDate.of(2026, 9, 25))
+                ProcessToolDiagnostics.daysSinceRelease("2026.08.19", LocalDate.of(2026, 9, 25))
                         .orElseThrow());
     }
 
     @Test
     void returnsEmptyDaysForNonDateVersion() {
-        assertTrue(ExternalToolDiagnostics.daysSinceRelease("stable", LocalDate.of(2026, 9, 25)).isEmpty());
-        assertTrue(ExternalToolDiagnostics.daysSinceRelease(null, LocalDate.of(2026, 9, 25)).isEmpty());
+        assertTrue(ProcessToolDiagnostics.daysSinceRelease("stable", LocalDate.of(2026, 9, 25)).isEmpty());
+        assertTrue(ProcessToolDiagnostics.daysSinceRelease(null, LocalDate.of(2026, 9, 25)).isEmpty());
     }
 
     @Test
     void warnsWhenYtDlpVersionOlderThanThreshold() {
-        Optional<String> warning = ExternalToolDiagnostics.freshnessWarning(
+        Optional<String> warning = ProcessToolDiagnostics.freshnessWarning(
                 "2026.05.01", LocalDate.of(2026, 9, 25), 90);
 
         assertTrue(warning.isPresent(), "stale yt-dlp must produce a warning");
@@ -112,9 +113,9 @@ class ExternalToolDiagnosticsTest {
 
     @Test
     void doesNotWarnWhenYtDlpFresh() {
-        assertTrue(ExternalToolDiagnostics.freshnessWarning(
+        assertTrue(ProcessToolDiagnostics.freshnessWarning(
                 "2026.08.19", LocalDate.of(2026, 9, 25), 90).isEmpty());
-        assertTrue(ExternalToolDiagnostics.freshnessWarning(
+        assertTrue(ProcessToolDiagnostics.freshnessWarning(
                 "stable", LocalDate.of(2026, 9, 25), 90).isEmpty());
     }
 
@@ -122,9 +123,9 @@ class ExternalToolDiagnosticsTest {
     void missingHintExplainsWhatToConfigure() {
         assertEquals("未找到 ffmpeg：请设置 vidsage.tools.ffmpeg-path 或加入 PATH；"
                         + "该路径同时供 Java 抽音频与 yt-dlp --ffmpeg-location 使用",
-                ExternalToolDiagnostics.missingHint(ExternalToolDiagnostics.TOOL_FFMPEG, ""));
+                ProcessToolDiagnostics.missingHint(ProcessToolDiagnostics.TOOL_FFMPEG, ""));
 
-        String ytDlpHint = ExternalToolDiagnostics.missingHint(ExternalToolDiagnostics.TOOL_YT_DLP, "");
+        String ytDlpHint = ProcessToolDiagnostics.missingHint(ProcessToolDiagnostics.TOOL_YT_DLP, "");
         assertTrue(ytDlpHint.contains("vidsage.tools.yt-dlp-path"), ytDlpHint);
         assertTrue(ytDlpHint.contains("tools/yt-dlp.exe"), ytDlpHint);
     }
@@ -132,8 +133,8 @@ class ExternalToolDiagnosticsTest {
     @Test
     void missingHintPointsAtBrokenConfiguredPath() {
         String configuredPath = "/missing/yt-dlp";
-        String hint = ExternalToolDiagnostics.missingHint(
-                ExternalToolDiagnostics.TOOL_YT_DLP, configuredPath);
+        String hint = ProcessToolDiagnostics.missingHint(
+                ProcessToolDiagnostics.TOOL_YT_DLP, configuredPath);
 
         assertTrue(hint.contains(Path.of(configuredPath).toAbsolutePath().toString()), hint);
         assertTrue(hint.contains("vidsage.tools.yt-dlp-path"), hint);
@@ -142,8 +143,8 @@ class ExternalToolDiagnosticsTest {
     /**
      * 诊断对象只在路径解析与提示语路径上被测：这些用例不会真正拉起外部进程。
      */
-    private static ExternalToolDiagnostics diagnosticsWith(ExternalToolProperties properties) {
-        return new ExternalToolDiagnostics(new ExternalProcessRunner(), properties);
+    private static ProcessToolDiagnostics diagnosticsWith(ExternalToolProperties properties) {
+        return new ProcessToolDiagnostics(new ExternalProcessRunner(), properties);
     }
 
     @Test

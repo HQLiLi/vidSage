@@ -5,6 +5,8 @@ import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.domain.transcription.TranscriptionSegment;
 import com.vidsage.domain.shared.ProgressListener;
 import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.domain.subtitle.CleanseResult;
+import com.vidsage.domain.subtitle.SubtitleCleanser;
 import com.vidsage.domain.subtitle.SubtitleContext;
 import com.vidsage.shared.subtitle.TermMatcher;
 import com.vidsage.shared.subtitle.TextSimilarity;
@@ -39,10 +41,13 @@ import java.util.*;
  * （进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）——批边界只有本类知道（切批判据在本类），
  * 回调依赖 {@code domain/shared} 是 ProgressListener 注释明确许可的中立方向。批次边界
  * 一次性算出（{@link #batchRanges}），总数与切批用同一份边界，进度百分比不会漂移。
+ *
+ * <p>实现领域端口 {@link SubtitleCleanser}——上层只认那个接口，不认识本类。上层用不到的三参
+ * 便捷重载与包级可见的测试钩子留在本类，不进端口。
  */
 @Slf4j
 @Component
-public class SubtitleCleanser {
+public class LlmSubtitleCleanser implements SubtitleCleanser {
 
     // 本类承担的管线阶段名（"clean"）单源在 StageEvent.STAGE_CLEAN——阶段词表是
     // domain/shared 的进度词汇，不住实现类里（2026-10-06 随逻辑下沉归位）。
@@ -74,8 +79,8 @@ public class SubtitleCleanser {
      */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    public SubtitleCleanser(@Qualifier("subtitleCleanupChatClient") ChatClient cleanser,
-                            SubtitleCleanupProperties prop
+    public LlmSubtitleCleanser(@Qualifier("subtitleCleanupChatClient") ChatClient cleanser,
+                               SubtitleCleanupProperties prop
     ) {
         this.cleanser = cleanser;
         this.prop = prop;
@@ -112,6 +117,7 @@ public class SubtitleCleanser {
      * @return 清洗结果
      * @throws IllegalArgumentException segments 或 listener 为 {@code null}
      */
+    @Override
     public CleanseResult clean(List<TranscriptionSegment> segments,
                                SubtitleContext context,
                                String reference,
@@ -614,22 +620,6 @@ public class SubtitleCleanser {
         return s == null ? "" : s;
     }
 
-
-    /**
-     * 清洗结果
-     *
-     * @param segments       清洗后的列表
-     * @param correctedCount 本趟实际改变文本的段数
-     * @param retrySteps     本趟触发的校验重试轮数
-     * @param termHits       本趟命中（渲染进术语参考）的术语数，跨批次累计
-     * @param termApplied    本趟已替换的术语数，跨批次累计；口径见 {@link #termMetrics}
-     */
-    public record CleanseResult(List<TranscriptionSegment> segments,
-                                int correctedCount,
-                                int retrySteps,
-                                int termHits,
-                                int termApplied) {
-    }
 
     /**
      * agent loop 单次调用的产物：采纳的纠正 + 本轮重试次数 + 本批命中术语。

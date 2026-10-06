@@ -2,8 +2,9 @@ package com.vidsage.application.subtitle;
 
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.config.SubtitleCleanupProperties;
-import com.vidsage.infrastructure.provider.llm.SubtitleCleanser;
-import com.vidsage.infrastructure.provider.llm.SubtitleContextSummarizer;
+import com.vidsage.domain.subtitle.CleanseResult;
+import com.vidsage.domain.subtitle.SubtitleCleanser;
+import com.vidsage.domain.subtitle.SubtitleContextSummarizer;
 import com.vidsage.domain.transcription.TranscriptionSegment;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.ProgressListener;
@@ -188,7 +189,7 @@ public class SubtitleCleanupService {
         List<TranscriptionSegment> split = new SubtitleSegmentSplitter(props.maxSegmentMs()).split(segments);
 
         // 清洗（分批 + 每批带主题/术语/后窗/跨批历史）；批级进度由 cleanser 直接回调 listener
-        SubtitleCleanser.CleanseResult result = subtitleCleanser.clean(split, subtitleContext, reference, listener);
+        CleanseResult result = subtitleCleanser.clean(split, subtitleContext, reference, listener);
 
         SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments());
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换

@@ -5,7 +5,7 @@ import com.vidsage.domain.media.MediaInput;
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import com.vidsage.domain.media.MediaAcquirer;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
-import com.vidsage.infrastructure.process.ExternalToolDiagnostics;
+import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.text.TextTail;
@@ -39,7 +39,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
     private static final int STDERR_TAIL_LINES = 20;
 
     private final ExternalProcessRunner runner;
-    private final ExternalToolDiagnostics tools;
+    private final ProcessToolDiagnostics tools;
     private final ExternalToolProperties properties;
 
     /**
@@ -49,7 +49,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
      * @param tools      工具路径解析（ffprobe 路径的唯一入口）
      * @param properties 外部工具配置（取默认超时）
      */
-    public LocalFileMediaAcquirer(ExternalProcessRunner runner, ExternalToolDiagnostics tools,
+    public LocalFileMediaAcquirer(ExternalProcessRunner runner, ProcessToolDiagnostics tools,
                                   ExternalToolProperties properties) {
         this.runner = runner;
         this.tools = tools;

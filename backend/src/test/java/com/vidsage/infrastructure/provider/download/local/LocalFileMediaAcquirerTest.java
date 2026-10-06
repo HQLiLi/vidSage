@@ -13,7 +13,7 @@ import com.vidsage.domain.media.AcquiredMedia;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
-import com.vidsage.infrastructure.process.ExternalToolDiagnostics;
+import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,7 +41,7 @@ class LocalFileMediaAcquirerTest {
     Path tempDir;
 
     private final ExternalProcessRunner runner = mock(ExternalProcessRunner.class);
-    private final ExternalToolDiagnostics tools = mock(ExternalToolDiagnostics.class);
+    private final ProcessToolDiagnostics tools = mock(ProcessToolDiagnostics.class);
     private final ExternalToolProperties properties =
             new ExternalToolProperties(null, null, FFPROBE.toString(), DEFAULT_TIMEOUT_SECONDS, 90);
     private final AtomicReference<List<String>> capturedCommand = new AtomicReference<>();

@@ -1,5 +1,8 @@
 package com.vidsage.infrastructure.process;
 
+import com.vidsage.application.diagnostics.ToolDiagnosticReport;
+import com.vidsage.application.diagnostics.ToolDiagnostics;
+
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -27,11 +30,16 @@ import org.springframework.util.StringUtils;
  * 不静默回退到 PATH，避免「以为在用自带的那个，其实跑的是另一个」。
  *
  * <p>诊断只在被调用时探测，<b>不在应用启动时强校验</b>，否则缺工具的机器起不来服务。
+ *
+ * <p>实现 application 层定义的出站端口 {@link ToolDiagnostics}——这是全项目唯一一处
+ * infrastructure → application 的依赖，窄口只开在「实现端口」这一件事上。
+ * {@code requireFfmpeg} / {@code requireFfprobe} / {@code requireYtDlp} 三个「要路径」的方法
+ * <b>不在端口上</b>，只给同层的 {@code FfmpegAudioExtractor} / {@code YtDlpRunner} 用。
  */
 @Slf4j
 @Component
 @EnableConfigurationProperties(ExternalToolProperties.class)
-public class ExternalToolDiagnostics {
+public class ProcessToolDiagnostics implements ToolDiagnostics {
 
     static final String TOOL_YT_DLP = "yt-dlp";
     static final String TOOL_FFMPEG = "ffmpeg";
@@ -49,7 +57,7 @@ public class ExternalToolDiagnostics {
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      */
-    public ExternalToolDiagnostics(ExternalProcessRunner runner, ExternalToolProperties properties) {
+    public ProcessToolDiagnostics(ExternalProcessRunner runner, ExternalToolProperties properties) {
         this.runner = runner;
         this.properties = properties;
     }
@@ -59,7 +67,8 @@ public class ExternalToolDiagnostics {
      *
      * @return yt-dlp / ffmpeg / ffprobe 三份报告，顺序固定
      */
-    public List<ExternalToolReport> diagnoseAll() {
+    @Override
+    public List<ToolDiagnosticReport> diagnoseAll() {
         return List.of(
                 diagnoseYtDlp(),
                 diagnose(TOOL_FFMPEG, properties.ffmpegPath(), "-version"),
@@ -71,7 +80,7 @@ public class ExternalToolDiagnostics {
      *
      * @return yt-dlp 的诊断报告
      */
-    ExternalToolReport diagnoseYtDlp() {
+    ToolDiagnosticReport diagnoseYtDlp() {
         return diagnose(TOOL_YT_DLP, properties.ytDlpPath(), "--version");
     }
 
@@ -83,21 +92,21 @@ public class ExternalToolDiagnostics {
      * @param versionFlag    探测版本的命令行开关（yt-dlp 是 --version，ffmpeg/ffprobe 是 -version）
      * @return 诊断报告；不可用时 hint 给出「缺什么 + 怎么补」
      */
-    ExternalToolReport diagnose(String toolName, String configuredPath, String versionFlag) {
+    ToolDiagnosticReport diagnose(String toolName, String configuredPath, String versionFlag) {
         Optional<Path> resolved = resolveBinary(toolName, configuredPath);
         if (resolved.isEmpty()) {
-            return new ExternalToolReport(toolName, false, null, null, missingHint(toolName, configuredPath));
+            return new ToolDiagnosticReport(toolName, false, null, null, missingHint(toolName, configuredPath));
         }
         Path binary = resolved.get().toAbsolutePath();
         Optional<String> version = probeVersion(toolName, binary, versionFlag);
         if (version.isEmpty()) {
-            return new ExternalToolReport(toolName, true, null, binary.toString(),
+            return new ToolDiagnosticReport(toolName, true, null, binary.toString(),
                     "已找到 " + toolName + "（" + binary + "）但无法解析版本：请确认该二进制可独立执行");
         }
         String hint = TOOL_YT_DLP.equals(toolName)
                 ? freshnessWarning(version.get(), LocalDate.now(), properties.ytDlpFreshnessWarnDays()).orElse(null)
                 : null;
-        return new ExternalToolReport(toolName, true, version.get(), binary.toString(), hint);
+        return new ToolDiagnosticReport(toolName, true, version.get(), binary.toString(), hint);
     }
 
     /**

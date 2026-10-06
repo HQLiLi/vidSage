@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
-import com.vidsage.infrastructure.process.ExternalToolDiagnostics;
+import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -38,7 +38,7 @@ class YtDlpRunnerTest {
     Path tempDir;
 
     private final ExternalProcessRunner runner = mock(ExternalProcessRunner.class);
-    private final ExternalToolDiagnostics tools = mock(ExternalToolDiagnostics.class);
+    private final ProcessToolDiagnostics tools = mock(ProcessToolDiagnostics.class);
     private final AtomicReference<List<String>> capturedCommand = new AtomicReference<>();
 
     @Test

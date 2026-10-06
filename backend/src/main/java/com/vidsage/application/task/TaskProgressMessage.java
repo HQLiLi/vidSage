@@ -3,6 +3,7 @@ package com.vidsage.application.task;
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.task.TaskStatus;
 import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.domain.task.VideoTask;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
@@ -35,4 +36,19 @@ public record TaskProgressMessage(
         @Schema(description = "最近阶段事件；终态广播或尚无阶段事件时为 null") StageEvent stage,
         @Schema(description = "翻译子状态；从未触发时为 null（翻译按需触发，事件自成 0..100 段）")
         TranslationStatus translationStatus) {
+
+    /**
+     * 任务是不是走到终态了（不再有任何后续事件）——主状态终态、且翻译不在进行中。
+     *
+     * <p>判据单源在 {@link VideoTask#isEventSettled}，这里只是转个手：web 层（SSE 收口判定）
+     * 因此不必认识 {@code VideoTask} 等领域类型。
+     *
+     * <p><b>方法名刻意不用 {@code isSettled} 这种 getter 形状</b>——本 record 直接序列化成 SSE 的
+     * data，Jackson 会把 {@code isXxx()} 当成属性写进 JSON，凭空多出一个字段，那是契约变更。
+     *
+     * @return 已到终态为 {@code true}
+     */
+    public boolean settled() {
+        return VideoTask.isEventSettled(taskStatus, translationStatus);
+    }
 }

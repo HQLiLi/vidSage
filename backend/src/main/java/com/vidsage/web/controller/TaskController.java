@@ -2,7 +2,6 @@ package com.vidsage.web.controller;
 
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
-import com.vidsage.domain.task.VideoTask;
 import com.vidsage.application.task.TaskService;
 import com.vidsage.application.task.subscribe.Subscription;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
@@ -187,8 +186,8 @@ public class TaskController {
         // 会经它再写一遍给幸存连接（真实运行证据抓到的重复推送缺陷，见 research/acceptance-evidence.md）。
         // close 幂等，与上方终态分支的 close 并发安全。
         emitter.onCompletion(subscription::close);
-        // 终态判定单源在 VideoTask.isEventSettled（主状态终态且翻译不在 RUNNING）
-        if (VideoTask.isEventSettled(snapshot.taskStatus(), snapshot.translationStatus())) {
+        // 终态判定走 TaskProgressMessage.settled()（判据单源在 VideoTask.isEventSettled）
+        if (snapshot.settled()) {
             // 订阅时任务已终态：快照即最后一条，注册表不会再有 complete 调用，主动退订防泄漏
             subscription.close();
         }

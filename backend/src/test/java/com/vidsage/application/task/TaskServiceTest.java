@@ -24,7 +24,7 @@ import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.task.TaskInputType;
 import com.vidsage.domain.task.TaskStatus;
 import com.vidsage.domain.task.TranslationStatus;
-import com.vidsage.infrastructure.persistence.repository.VideoTaskRepository;
+import com.vidsage.domain.task.VideoTaskRepository;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

@@ -5,6 +5,8 @@ import com.vidsage.domain.transcription.TranscriptionSegment;
 import com.vidsage.domain.shared.ProgressListener;
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.subtitle.SubtitleTranslator;
+import com.vidsage.domain.subtitle.TranslateResult;
 import com.vidsage.domain.subtitle.TranslatedSegment;
 import com.vidsage.domain.subtitle.VerifiedTerm;
 import com.vidsage.shared.subtitle.TermMatcher;
@@ -35,7 +37,7 @@ import tools.jackson.databind.ObjectMapper;
  * 意义。没过就带着原因重试，最多 maxSteps 轮；全败整批回退原文（宁可没译，不可乱译），并把回退的
  * 段数计进 {@link TranslateResult#untranslatedCount()}。
  *
- * <p>与 {@link SubtitleCleanser} <b>刻意各自独立</b>，本期不抽公共骨架（design 决策 8）：要抽的正是
+ * <p>与 {@link LlmSubtitleCleanser} <b>刻意各自独立</b>，本期不抽公共骨架（design 决策 8）：要抽的正是
  * 「切批判据」与「校验循环」，而这两套东西现在都还处于待审状态，抽了会返工。唯一共用的是一条已定型的
  * 纯函数判定——跨批历史的按对裁剪（{@link MessageHistory}）。
  *
@@ -48,10 +50,13 @@ import tools.jackson.databind.ObjectMapper;
  * （进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）——批边界只有本类知道（切批判据在本类），
  * 回调依赖 {@code domain/shared} 是 ProgressListener 注释明确许可的中立方向。批次边界
  * 一次性算出（{@link #batchRanges}），总数与切批用同一份边界，进度百分比不会漂移。
+ *
+ * <p>实现领域端口 {@link SubtitleTranslator}——上层只认那个接口，不认识本类。上层用不到的三参 /
+ * 四参便捷重载与包级可见的测试钩子留在本类，不进端口。
  */
 @Slf4j
 @Component
-public class SubtitleTranslator {
+public class LlmSubtitleTranslator implements SubtitleTranslator {
 
     // 本类承担的管线阶段名（"translate"）单源在 StageEvent.STAGE_TRANSLATE——阶段词表是
     // domain/shared 的进度词汇，不住实现类里（2026-10-06 随逻辑下沉归位）。
@@ -66,7 +71,7 @@ public class SubtitleTranslator {
     /**
      * 结构化输出的「格式说明 + 解析器」。
      *
-     * <p>与 {@link SubtitleCleanser} 同一套路：不用 {@code .entity()}，因为它只给解析结果、不给原文，
+     * <p>与 {@link LlmSubtitleCleanser} 同一套路：不用 {@code .entity()}，因为它只给解析结果、不给原文，
      * 而重试历史里要放的正是模型回复的原文。所以把「拼格式说明」与「解析」两步显式提出来自己做。
      */
     private static final BeanOutputConverter<Map<String, String>> FORMAT =
@@ -81,8 +86,8 @@ public class SubtitleTranslator {
      */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    public SubtitleTranslator(@Qualifier("subtitleTranslateChatClient") ChatClient translator,
-                              SubtitleTranslateProperties prop) {
+    public LlmSubtitleTranslator(@Qualifier("subtitleTranslateChatClient") ChatClient translator,
+                                 SubtitleTranslateProperties prop) {
         this.translator = translator;
         this.prop = prop;
     }
@@ -124,6 +129,7 @@ public class SubtitleTranslator {
      * @return 逐条双语段落 + 重试轮数 + 未翻译段数
      * @throws IllegalArgumentException segments 或 listener 为 {@code null}
      */
+    @Override
     public TranslateResult translate(List<TranscriptionSegment> segments,
                                      SubtitleContext context,
                                      String targetLanguage,
@@ -544,18 +550,6 @@ public class SubtitleTranslator {
         return s == null ? "" : s;
     }
 
-
-    /**
-     * 翻译结果。
-     *
-     * @param segments          逐条双语段落，时间轴与输入逐条一致
-     * @param retrySteps        本趟触发的校验重试轮数
-     * @param untranslatedCount 本趟回退原文（用尽重试仍没拿到可用译文）的段数；跨批次累计
-     */
-    public record TranslateResult(List<TranslatedSegment> segments,
-                                  int retrySteps,
-                                  int untranslatedCount) {
-    }
 
     /**
      * agent loop 单次调用的产物。

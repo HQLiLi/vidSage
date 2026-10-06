@@ -15,7 +15,7 @@ import com.vidsage.domain.media.AudioContainer;
 import com.vidsage.domain.media.AudioSpec;
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
-import com.vidsage.infrastructure.process.ExternalToolDiagnostics;
+import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,7 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * FfmpegAudioExtractor 的纯单元测试：<b>不起 Spring 容器</b>，用 Mockito 替掉
- * {@link ExternalProcessRunner} 与 {@link ExternalToolDiagnostics}，只断言命令组装、
+ * {@link ExternalProcessRunner} 与 {@link ProcessToolDiagnostics}，只断言命令组装、
  * 原子落盘与失败路径。真实 ffmpeg 的端到端证据在实现期单独实测（见报告）。
  */
 class FfmpegAudioExtractorTest {
@@ -46,7 +46,7 @@ class FfmpegAudioExtractorTest {
     Path tempDir;
 
     private final ExternalProcessRunner runner = mock(ExternalProcessRunner.class);
-    private final ExternalToolDiagnostics tools = mock(ExternalToolDiagnostics.class);
+    private final ProcessToolDiagnostics tools = mock(ProcessToolDiagnostics.class);
     private final ExternalToolProperties properties =
             new ExternalToolProperties(null, null, null, DEFAULT_TIMEOUT_SECONDS, 90);
 

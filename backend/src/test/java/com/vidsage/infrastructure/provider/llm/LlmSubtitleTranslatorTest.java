@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.domain.transcription.TranscriptionSegment;
 import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.subtitle.TranslateResult;
 import com.vidsage.domain.subtitle.VerifiedTerm;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 
 /**
- * {@link SubtitleTranslator} 的纯单元测试：<b>不起 Spring 容器</b>，也不打网络。
+ * {@link LlmSubtitleTranslator} 的纯单元测试：<b>不起 Spring 容器</b>，也不打网络。
  *
  * <p>手法对照 {@code SubtitleCleanserTest}：装一个只回剧本台词的 {@code ChatModel}，
  * 把 Spring AI 真正发出去的 {@link Prompt} 抓下来断言。
@@ -34,7 +35,7 @@ import org.springframework.ai.chat.prompt.Prompt;
  * <p>重点钉两件事：多轮重试的消息形态（失败往返只留在批内、不进跨批历史），
  * 以及「用尽重试回退原文并如实计数」这条可观测性。
  */
-class SubtitleTranslatorTest {
+class LlmSubtitleTranslatorTest {
 
     private static final String SYS = "SYS-翻译指令";
 
@@ -61,13 +62,13 @@ class SubtitleTranslatorTest {
     private static final SubtitleTranslateProperties PROPS =
             new SubtitleTranslateProperties("zh", 12, 400, 3, 20000);
 
-    private static SubtitleTranslator translatorOver(ScriptedChatModel model) {
+    private static LlmSubtitleTranslator translatorOver(ScriptedChatModel model) {
         return translatorOver(model, PROPS);
     }
 
-    private static SubtitleTranslator translatorOver(ScriptedChatModel model,
+    private static LlmSubtitleTranslator translatorOver(ScriptedChatModel model,
                                                      SubtitleTranslateProperties props) {
-        return new SubtitleTranslator(ChatClient.builder(model).defaultSystem(SYS).build(), props);
+        return new LlmSubtitleTranslator(ChatClient.builder(model).defaultSystem(SYS).build(), props);
     }
 
     /** 一批一句，用来造多批场景；跨批历史上限由用例指定。 */
@@ -100,7 +101,7 @@ class SubtitleTranslatorTest {
     void 正常翻译逐条产出_译文与原文不同() {
         ScriptedChatModel model = new ScriptedChatModel("{\"1\": \"Hello\"}");
 
-        SubtitleTranslator.TranslateResult result = translatorOver(model)
+        TranslateResult result = translatorOver(model)
                 .translate(segments("你好"), SubtitleContext.empty(), "en");
 
         assertEquals(0, result.retrySteps(), "一次过，不该有重试");
@@ -118,7 +119,7 @@ class SubtitleTranslatorTest {
         ScriptedChatModel model = new ScriptedChatModel(
                 bad, "{\"1\": \"Hello\", \"2\": \"World\"}");
 
-        SubtitleTranslator.TranslateResult result = translatorOver(model)
+        TranslateResult result = translatorOver(model)
                 .translate(segments("你好", "世界"), SubtitleContext.empty(), "en");
 
         assertEquals(1, result.retrySteps(), "第一轮该被打回");
@@ -140,7 +141,7 @@ class SubtitleTranslatorTest {
                 "{\"1\": \"\", \"2\": \"World\"}",                  // 1 号给了空译文
                 "{\"1\": \"Hello\", \"2\": \"World\"}");
 
-        SubtitleTranslator.TranslateResult result = translatorOver(model)
+        TranslateResult result = translatorOver(model)
                 .translate(segments("你好", "世界"), SubtitleContext.empty(), "en");
 
         assertEquals(1, result.retrySteps(), "空译文该被打回");
@@ -153,7 +154,7 @@ class SubtitleTranslatorTest {
     void 模型套了markdown围栏也照样解析() {
         ScriptedChatModel model = new ScriptedChatModel("```json\n{\"1\": \"Hello\"}\n```");
 
-        SubtitleTranslator.TranslateResult result = translatorOver(model)
+        TranslateResult result = translatorOver(model)
                 .translate(segments("你好"), SubtitleContext.empty(), "en");
 
         assertEquals("Hello", result.segments().get(0).translatedText());
@@ -164,7 +165,7 @@ class SubtitleTranslatorTest {
     void 用尽重试回退原文并计未翻译数() {
         ScriptedChatModel model = new ScriptedChatModel("不是 JSON", "还是不是", "依然不是");
 
-        SubtitleTranslator.TranslateResult result = translatorOver(model)
+        TranslateResult result = translatorOver(model)
                 .translate(segments("你好", "世界"), SubtitleContext.empty(), "en");
 
         assertEquals(3, result.retrySteps(), "maxSteps=3，三轮都算重试");
@@ -360,7 +361,7 @@ class SubtitleTranslatorTest {
         Map<String, String> original = new LinkedHashMap<>();
         original.put("1", "你好");
 
-        assertNull(SubtitleTranslator.validate(original, new LinkedHashMap<>(original)));
+        assertNull(LlmSubtitleTranslator.validate(original, new LinkedHashMap<>(original)));
     }
 
     @Test
@@ -371,7 +372,7 @@ class SubtitleTranslatorTest {
         Map<String, String> candidate = new LinkedHashMap<>();
         candidate.put("1", "Hello");
 
-        String failure = SubtitleTranslator.validate(original, candidate);
+        String failure = LlmSubtitleTranslator.validate(original, candidate);
 
         assertNotNull(failure);
         assertTrue(failure.contains("缺少条目 2"));
@@ -384,7 +385,7 @@ class SubtitleTranslatorTest {
         Map<String, String> candidate = new LinkedHashMap<>();
         candidate.put("1", "   ");
 
-        String failure = SubtitleTranslator.validate(original, candidate);
+        String failure = LlmSubtitleTranslator.validate(original, candidate);
 
         assertNotNull(failure);
         assertTrue(failure.contains("译文为空"));
