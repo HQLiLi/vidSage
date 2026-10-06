@@ -10,9 +10,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.application.media.AudioPreparationService;
+import com.vidsage.application.media.AudioPreparationStage;
 import com.vidsage.application.media.WorkspaceService;
-import com.vidsage.application.transcription.TranscriptionService;
+import com.vidsage.application.transcription.TranscriptionStage;
 import com.vidsage.domain.transcription.AudioSource;
 import com.vidsage.domain.transcription.TranscriptionResult;
 import com.vidsage.domain.transcription.TranscriptionSegment;
@@ -36,12 +36,12 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * SubtitleService 的纯单元测试：不起 Spring 容器，只 new 被测对象；编排路径的依赖用
+ * SubtitlePreparationStage 的纯单元测试：不起 Spring 容器，只 new 被测对象；编排路径的依赖用
  * mock 注入。纯变换（时间格式 / SRT 渲染 / 产物名）已随方法搬到 {@code shared/subtitle/} 下的
  * 镜像测试类，本类只留服务编排用例（断点复用、进度映射、异常路径）。
  * 会写文件的用例用 {@code @TempDir(CleanupMode.NEVER)}——Windows 上清理偶发失败。
  */
-class SubtitleServiceTest {
+class SubtitlePreparationStageTest {
 
     private static final SubtitleRoute ROUTE = SubtitleRoute.ASR_CLOUD;
 
@@ -77,9 +77,9 @@ class SubtitleServiceTest {
         Files.writeString(segmentsPath, mapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(track));
 
-        var audioPrep = mock(AudioPreparationService.class);
-        var transcribe = mock(TranscriptionService.class);
-        var service = new SubtitleService(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        var audioPrep = mock(AudioPreparationStage.class);
+        var transcribe = mock(TranscriptionStage.class);
+        var service = new SubtitlePreparationStage(tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, ROUTE, AudioSpec.M4A_AAC_48K_MONO), mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
@@ -98,14 +98,14 @@ class SubtitleServiceTest {
         Files.writeString(tempDir.resolve(SubtitleArtifactNames.srtFileName(ROUTE)),
                 SrtRenderer.toSrt(List.of(new TranscriptionSegment(0, 1440, "陈旧 SRT。"))));
 
-        var audioPrep = mock(AudioPreparationService.class);
-        var transcribe = mock(TranscriptionService.class);
+        var audioPrep = mock(AudioPreparationStage.class);
+        var transcribe = mock(TranscriptionStage.class);
         var audioSpec = AudioSpec.M4A_AAC_48K_MONO;
         when(audioPrep.prepare(any(), any(), any())).thenReturn(new AudioArtifact(
                 tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(
                 new TranscriptionResult(List.of(new TranscriptionSegment(0, 1440, "新转写。")), "zh"));
-        var service = new SubtitleService(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        var service = new SubtitlePreparationStage(tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, ROUTE, audioSpec), mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
@@ -121,15 +121,15 @@ class SubtitleServiceTest {
     }
 
     /** 组装被测服务：除特意留出的依赖外全用真实 mock，编排路径覆盖静态断言。 */
-    private static SubtitleService serviceWith(
+    private static SubtitlePreparationStage serviceWith(
             Path tempDir, SubtitleRoute route, AudioSpec audioSpec,
             List<TranscriptionSegment> segments, String language, ObjectMapper mapper) {
-        var audioPrep = mock(AudioPreparationService.class);
-        var transcribe = mock(TranscriptionService.class);
+        var audioPrep = mock(AudioPreparationStage.class);
+        var transcribe = mock(TranscriptionStage.class);
         when(audioPrep.prepare(any(), any(), any())).thenReturn(
                 new AudioArtifact(tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(new TranscriptionResult(segments, language));
-        return new SubtitleService(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        return new SubtitlePreparationStage(tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, route, audioSpec), mapper);
     }
 

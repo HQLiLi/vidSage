@@ -8,7 +8,7 @@ package com.vidsage.domain.task;
  * 本判据是<b>白名单</b>而非黑名单：只有命中上述两种形状的文件可见，其余一律不进；将来新增面向
  * 使用者的产物形状时在此放行，而不是在调用方加特例。
  *
- * <p>原 {@code TaskService.scanArtifacts} 内联的过滤谓词，2026-10-06 业务逻辑下沉单源于此；
+ * <p>原 {@code VideoTaskService.scanArtifacts} 内联的过滤谓词，2026-10-06 业务逻辑下沉单源于此；
  * 列举目录、量字节数是应用层的事——调用方以 {@code Files.list} 等技术原语取事实，再逐名交给
  * 本类裁决。
  */

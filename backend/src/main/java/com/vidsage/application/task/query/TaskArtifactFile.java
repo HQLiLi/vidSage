@@ -3,7 +3,7 @@ package com.vidsage.application.task.query;
 import java.nio.file.Path;
 
 /**
- * 产物文件（下载用内部契约）：{@code TaskService.openArtifact} 的返回值，
+ * 产物文件（下载用内部契约）：{@code VideoTaskService.openArtifact} 的返回值，
  * 携带已通过路径穿越校验的绝对路径，供 web 层流式读取。
  *
  * <p><b>不是对外契约</b>：{@code path} 指向服务端工作区内部位置，绝不进 JSON——

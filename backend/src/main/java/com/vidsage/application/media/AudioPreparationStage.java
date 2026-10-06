@@ -13,7 +13,7 @@ import com.vidsage.shared.fs.ArtifactFiles;
 import java.nio.file.Path;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 /**
  * 音频准备编排：把「一条 {@link MediaInput} + 一个 {@link AudioSpec}」变成一份音频产物。
@@ -24,9 +24,9 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>断点复用</b>（产物存在且大小 &gt; 0 即跳过，0 字节视为不存在、必须重跑）：
  * <ul>
- *   <li>acquire 阶段由 {@link MediaAcquisitionService#reuseExisting} 判断——只有适配器知道
+ *   <li>acquire 阶段由 {@link MediaAcquisitionStage#reuseExisting} 判断——只有适配器知道
  *       {@code source.<ext>} 的推导规则与 info json 的解析；</li>
- *   <li>extract 阶段由本服务判断——音频产物名由 {@link AudioArtifact#fileName} 按规格指纹给出
+ *   <li>extract 阶段由本阶段判断——音频产物名由 {@link AudioArtifact#fileName} 按规格指纹给出
  *       （命名规则单源在 domain），且<b>先校验 spec 再判断点</b>，不放过「非法 spec + 文件恰好存在」
  *       这条路径。</li>
  * </ul>
@@ -37,8 +37,8 @@ import org.springframework.stereotype.Service;
  * 异步管线 / SSE payload 定锤，届时以那边为准。
  */
 @Slf4j
-@Service
-public class AudioPreparationService {
+@Component
+public class AudioPreparationStage {
 
     /** acquire 阶段名。 */
     static final String STAGE_ACQUIRE = "acquire";
@@ -59,21 +59,21 @@ public class AudioPreparationService {
     static final int EXTRACT_DONE = 100;
 
     private final WorkspaceService workspaceService;
-    private final MediaAcquisitionService acquisitionService;
+    private final MediaAcquisitionStage acquisitionStage;
     private final AudioExtractor audioExtractor;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
      * @param workspaceService   工作目录解析
-     * @param acquisitionService 媒体获取分派（不感知任何适配器实现类）
+     * @param acquisitionStage 媒体获取分派（不感知任何适配器实现类）
      * @param audioExtractor     音频抽取（不感知 ffmpeg 实现类）
      */
-    public AudioPreparationService(WorkspaceService workspaceService,
-                                   MediaAcquisitionService acquisitionService,
-                                   AudioExtractor audioExtractor) {
+    public AudioPreparationStage(WorkspaceService workspaceService,
+                                 MediaAcquisitionStage acquisitionStage,
+                                 AudioExtractor audioExtractor) {
         this.workspaceService = workspaceService;
-        this.acquisitionService = acquisitionService;
+        this.acquisitionStage = acquisitionStage;
         this.audioExtractor = audioExtractor;
     }
 
@@ -131,14 +131,14 @@ public class AudioPreparationService {
      */
     private AcquiredMedia runAcquireStage(MediaInput input, Path workDir, ProgressListener listener) {
         try {
-            Optional<AcquiredMedia> existing = acquisitionService.reuseExisting(input, workDir);
+            Optional<AcquiredMedia> existing = acquisitionStage.reuseExisting(input, workDir);
             if (existing.isPresent()) {
                 log.info("acquire 阶段跳过（断点复用）: media={}", existing.get().mediaPath().getFileName());
                 emit(listener, STAGE_ACQUIRE, ACQUIRE_DONE, "已有本地媒体，跳过获取", StageState.SKIPPED);
                 return existing.get();
             }
             emit(listener, STAGE_ACQUIRE, ACQUIRE_START, "开始获取媒体", StageState.RUNNING);
-            AcquiredMedia media = acquisitionService.acquire(input, workDir);
+            AcquiredMedia media = acquisitionStage.acquire(input, workDir);
             emit(listener, STAGE_ACQUIRE, ACQUIRE_DONE, "媒体获取完成", StageState.SUCCEEDED);
             return media;
         } catch (RuntimeException e) {
@@ -158,7 +158,7 @@ public class AudioPreparationService {
             Path audioPath = workDir.resolve(AudioArtifact.fileName(spec));
             long existingSize = ArtifactFiles.sizeOrZero(audioPath);
             // 断点判据语义单源在 CheckpointPolicy（非空 = 已完成、0 字节 = 未完成）：
-            // 与三字幕服务的 JSON 检查点是同一条「产物非空才算完成」政策
+            // 与三个字幕阶段的 JSON 检查点是同一条「产物非空才算完成」政策
             if (CheckpointPolicy.isCompleted(existingSize)) {
                 log.info("extract 阶段跳过（断点复用）: file={}, sizeBytes={}",
                         audioPath.getFileName(), existingSize);

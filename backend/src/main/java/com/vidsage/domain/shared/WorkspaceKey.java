@@ -13,7 +13,7 @@ import org.springframework.util.StringUtils;
  * domain/task → domain/media 的跨上下文依赖。
  *
  * <p>生成入口只有本类的两个静态工厂（原 {@code WorkspaceService.shortHash} 与
- * {@code TaskService.KEY_LENGTH} 两条同宽公式于此合一）：常规路线 {@link #ofHash}
+ * {@code VideoTaskService.KEY_LENGTH} 两条同宽公式于此合一）：常规路线 {@link #ofHash}
  * （身份串 → sha256 → key）与上传路线 {@link #ofDigest}（流式边写边算出的摘要 → key）。
  *
  * <p>值的来源：URL / 本地路径路线取「规范化输入串摘要前 12 位」，上传路线取「文件内容 sha256

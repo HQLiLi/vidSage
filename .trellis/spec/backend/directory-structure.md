@@ -62,17 +62,36 @@ com.vidsage
 - 领域词汇：`record` / `enum` / `sealed` 接口等中立契约（如 `TranscriptionCommand` / `TranscriptionResult`、`MediaInput`、`CleanedSubtitle`）。
 - 状态机与业务规则：出现「随调用改变状态、并拒绝非法变化」的对象才进 `domain/`——如 `domain/task/VideoTask`（`PENDING → RUNNING → SUCCEEDED/FAILED`，非法迁移抛 `IllegalStateException`）。只有字段约束的数据（`record` + 紧凑构造器）同样是 domain 居民，但它们是**领域词汇**，不是状态机；两类并存，不互相冒充。（历史注：2026-09-30 MVP-1 时 `domain/` 曾与顶层 `model/` 并存——「有状态机的进 domain、纯数据的留 model」；2026-10-05 四层化后 `model/` 整体并入 `domain/`，判据收敛为「领域的东西都进 domain」。）
 - **端口接口**（六边形原则：端口属于六边形内部，适配器在 infrastructure）：`ASRProvider` → `domain/transcription/`；`MediaAcquirer` / `AudioExtractor` → `domain/media/`；`TermLookupProvider` / `SubtitleCleanser` / `SubtitleTranslator` / `SubtitleContextSummarizer` → `domain/subtitle/`；`VideoTaskRepository` → `domain/task/`。均无框架注解、纯契约，与领域层 purity 一致。**端口也可以定义在 application**（`ToolDiagnostics` → `application/diagnostics/`），归属判据见[端口归属判据](#端口归属判据)。
-- **值对象**：单一上下文使用的进该上下文（`TaskNo` → `domain/task/`）；**跨上下文共用的词汇进共享内核 `domain/shared/`**——`WorkspaceKey`（`VideoTask`（task）持有、`TaskService`（application/task）计算、`MediaInput`（media）携带、`VideoTaskRepository` 按它查询，放共享内核避免 `domain/task → domain/media` 依赖）与进度词汇 `StageEvent` / `ProgressListener`（task / transcription / subtitle 三处共用）。**第二批值对象已按同判据落地（2026-10-06 业务逻辑下沉 Phase A）**：`SourceUri`（输入身份规范化串：URL 原文 / 本地路径按 path|size|mtime 定身份）与 `WorkspaceDir`（目录名公式 `sanitize(标签)-key` + Windows 保留名安全化），同为 task 与 media 两上下文共用，随行的 `sanitizeName` / 保留名规则一并入域。
+- **值对象**：单一上下文使用的进该上下文（`TaskNo` → `domain/task/`）；**跨上下文共用的词汇进共享内核 `domain/shared/`**——`WorkspaceKey`（`VideoTask`（task）持有、`VideoTaskService`（application/task）计算、`MediaInput`（media）携带、`VideoTaskRepository` 按它查询，放共享内核避免 `domain/task → domain/media` 依赖）与进度词汇 `StageEvent` / `ProgressListener`（task / transcription / subtitle 三处共用）。**第二批值对象已按同判据落地（2026-10-06 业务逻辑下沉 Phase A）**：`SourceUri`（输入身份规范化串：URL 原文 / 本地路径按 path|size|mtime 定身份）与 `WorkspaceDir`（目录名公式 `sanitize(标签)-key` + Windows 保留名安全化），同为 task 与 media 两上下文共用，随行的 `sanitizeName` / 保留名规则一并入域。
 - **纯函数领域政策**（2026-10-06 业务逻辑下沉 Phase B/C 落地）：无状态、零 I/O 的规则判据收进 domain——应用层持事实（量字节、读文件、查库），域做裁决；政策对象是**值对象 / 纯函数领域服务，不是技术端口**。现行归属：`domain/subtitle/Bcp47Language`（语种政策）、`domain/subtitle/TermVerification`（术语查证触发与记账）、`domain/subtitle/CheckpointPolicy`（检查点语义 + 上下文缓存-or-摘要）；`domain/task/TaskArtifactScan`（产物可见性白名单）；`domain/media/AudioArtifact.fileName`（音频规格指纹命名）、`domain/media/MediaInput.ofTaskInput`（TaskInputType → 变体重建工厂 + `source.mp4` 落盘名）；`domain/task/VideoTask` 上的查询谓词 `isEventSettled`（终态判定，web 收口引用）与 `ACTIVE_STATUSES`（active 判据，repository 查重引用）。
 
-**`application/`（五个上下文）**——用例编排的家，四类一等构件：
+**`application/`（五个上下文）**——用例编排的家，五类一等构件：
 
-- **用例编排**：`@Service` 服务（`TaskService`、`TaskPipelineService`、`MediaAcquisitionService`、`TranscriptionService`、`SubtitleService` 等），组装契约、委托端口，不出现适配器实现类与 SDK 类型。
+- **用例服务**：`@Service` 编排类，**有 web 调用面**（`VideoTaskService`——`TaskController` 唯一注入的应用服务）或**被多处方共用的横切能力**（`WorkspaceService`，被 6 处注入）。组装契约、委托端口，不出现适配器实现类与 SDK 类型。
+- **管线构件**：`@Component` 编排类，**没有 web 调用面**——`VideoTaskPipeline`（管线的所有者：配额、虚拟线程、阶段顺序、进度广播、终态收口）与六个 `XxxStage`（管线的一步，只被上级管线按顺序调用一次）。判据、命名与「为什么不下沉 domain」见下节[构件说明](#构件说明服务与管线构件)。
 - **读模型**：`TaskSnapshot` / `TaskArtifact` / `TaskArtifactFile`——面向查询的应用层投影，**零 web 注解**（2026-10-06 读模型拆分：对外 @Schema 集中到 `web/dto/TaskResponse`，见[契约类的位置](#契约类的位置)判据 2）。
 - **应用消息 / 应用异常**：`TaskProgressMessage`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`。
 - **中立订阅机制**：`TaskSubscriptionRegistry` / `Subscription`——application 层管线广播事件、web 层挂「写 emitter」回调，两边都依赖它。判据是「写得出它不许装什么」：**禁 HTTP 类型**（`SseEmitter` 只活 `web/sse/`，此 Javadoc 承诺原样保持）、**禁业务编排**；与 `shared/` 同类「机制包」先例。（历史注：该机制 2026-09-30 曾定调为顶层 `subscribe/` 包，2026-10-05 四层化归入 `application/task/`；升级条件随之带入——出现多传输协议（SSE + WebSocket）并存或包内构件 ≥3 时再议拆分。）
 
-上述四类构件在 `application/task/` 内按角色子包落位（2026-10-05）：服务门面与 `TaskProgressMessage` 留根，读模型进 `query/`、应用异常进 `exception/`、中立订阅机制进 `subscribe/`（禁 HTTP 类型的承诺随迁入其包说明）；判据见下文[二级包怎么分](#二级包怎么分)。
+上述五类构件在 `application/task/` 内按角色子包落位（2026-10-05）：服务门面与 `TaskProgressMessage` 留根，读模型进 `query/`、应用异常进 `exception/`、中立订阅机制进 `subscribe/`（禁 HTTP 类型的承诺随迁入其包说明）；判据见下文[二级包怎么分](#二级包怎么分)。
+
+### 构件说明：服务与管线构件
+
+`application/` 下的编排类分两档，**判据是「有没有 web 调用面」**：
+
+| 档 | 注解 | 是什么 | 现行成员 |
+|---|---|---|---|
+| **服务** | `@Service` | 有 web 调用面，或被多处方共用的横切能力 | `VideoTaskService`（`TaskController` 唯一注入的应用服务）、`WorkspaceService`（被 6 处共用） |
+| **管线构件** | `@Component` | 没有 web 调用面，只被上级管线按顺序调用 | `VideoTaskPipeline`（管线的所有者）、六个 `XxxStage`（管线的一步） |
+
+命名跟着分两条：
+
+- **服务类前缀与聚合根对齐**——聚合根是 `VideoTask`，故 `TaskService` → `VideoTaskService`、`TaskPipelineService` → `VideoTaskPipeline`（2026-10-06 命名对齐）。**对外契约与值对象不跟这个前缀**：「任务」是对外概念（路由就是 `/api/tasks`，前端也这么叫），加 `Video` 只变长不消歧义。故 `VideoTaskService` 返回 `TaskSnapshot` 是**已知且可接受**的不一致——口径是「服务与聚合根对齐，读模型与对外契约沿用对外概念」。
+- **管线构件后缀按角色取**——**管线的所有者不带后缀**（`VideoTaskPipeline`）；**管线的一步以既有领域词 `Stage` 结尾**（`current_stage` / `StageEvent` 是本项目既有词汇），一个阶段对应一个执行类。`Service` 后缀**不许**再出现在管线构件上：它在本项目的含义是「用例入口 / 横切服务」，而管线构件两者都不是。（2026-10-06 命名对齐前，六个阶段类叫 `SubtitleService` / `SubtitleCleanupService` / …，名不副实。）
+
+**为什么管线构件不下沉 `domain/`**：它们全是 I/O 密集（读工作区、调端口、写产物文件），而 `domain → shared` 禁止、`domain` 的紧凑构造器不许做 I/O；纯业务判据已下沉完（`CheckpointPolicy` / `TermVerification` / `Bcp47Language` / `TaskArtifactScan` 等）。**问题不在分层，在名字。**
+
+> 判据的来历（2026-10-06 命名对齐）：旧口径下这两档都叫 `XxxService`，但全项目**只有 `VideoTaskService` 有 web 调用面**，其余每一个的调用者都恰好只有一个——没有一个是独立用例（`WorkspaceService` 是唯一的横切例外）。名字在撒谎，故按「有没有 web 调用面」重划，并让 stereotype 跟着判据走。
 
 **`infrastructure/`（persistence / process / provider）**：
 
@@ -222,7 +241,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | 配置属性 | 实现方名 + `Properties` | `DashScopeProperties` |
 | 契约 | 动作名 + `Command` / `Result` | `TranscriptionCommand` / `TranscriptionResult` |
 | 契约子结构 | 语义名，不叫 `DTO` / `VO` | `TranscriptionSegment` |
-| Spring 组件 | **按包选 stereotype**：`web/controller/`→`@RestController`、`application/` 服务→`@Service`（订阅注册表等机制类→`@Component`）、`infrastructure/`→`@Component`、`infrastructure/persistence/`→`@Repository`、`web/sse/`→`@Component` | `TaskController`、`TaskService`、`DashScopeAsrProvider`、`VideoTaskRepository` |
+| Spring 组件 | **按包选 stereotype**：`web/controller/`→`@RestController`、`application/` **用例服务与横切服务**→`@Service`、`application/` **管线构件**（`XxxPipeline` / `XxxStage`）与机制类→`@Component`、`infrastructure/`→`@Component`、`infrastructure/persistence/`→`@Repository`、`web/sse/`→`@Component` | `TaskController`、`VideoTaskService`、`VideoTaskPipeline`、`SubtitlePreparationStage`、`DashScopeAsrProvider` |
 | Controller | 业务名 + `Controller`，平铺在 `web/controller/` | `MediaController`、`TaskController` |
 
 > `ASRProvider` 是全大写缩写开头，与 Spring 常见的 `AsrProvider` 写法不同。**跟随现有代码**，不要"顺手改正"。
@@ -267,7 +286,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 > **为何 `dto/` 作 `web/` 的子包可以、作顶层包不可以**：`web/dto/` 有明确且**唯一的**职责边界（「需展平的 HTTP 请求/响应契约」），填得满[分层归属判据](#分层归属判据)的职责表，故不是桶式包；而顶层的 `dto/` 没有归属语境，写不出「这个包不许装什么」。**判据是「能否写出它不许装什么」，不是「包名是不是分类词」。** 构件层（有职责边界、填得满职责表）不受本条限制；`config/` 是另一例，见上。
 
-参照：`domain/transcription/`（端口与契约同居上下文包）、`infrastructure/provider/asr/dashscope/`（适配器 + 配置）、`application/task/TaskService.java`、`web/controller/TaskController.java`、`web/dto/`。
+参照：`domain/transcription/`（端口与契约同居上下文包）、`infrastructure/provider/asr/dashscope/`（适配器 + 配置）、`application/task/VideoTaskService.java`、`web/controller/TaskController.java`、`web/dto/`。
 
 ## shared/：共享工具层
 
@@ -287,10 +306,10 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 ## 应用服务层与 HTTP 入口
 
-- **应用服务（`XxxService`）放 `application/<上下文>/`**：对上屏蔽端口装配细节，组装契约后委托端口，不出现适配器实现类与 SDK 类型
+- **应用服务（`XxxService`）与管线构件（`XxxPipeline` / `XxxStage`）都放 `application/<上下文>/`**：对上屏蔽端口装配细节，组装契约后委托端口，不出现适配器实现类与 SDK 类型。两者的区别与命名判据见[构件说明](#构件说明服务与管线构件)
 - **Controller 放 `web/controller/`**：**main 源码**只依赖 application 层，不直接依赖 `infrastructure/` 或 `domain/`（跨层规则见[依赖规则](#依赖规则)；`web/` 的 **test 源码**为构造夹具允许 import `domain`）
 - **请求体与响应体契约放 `web/dto/`**——除非该类型的 JSON 形状本就可直接对外，那种情形留在所属层包并补 `@Schema`。归属判据见[契约类的位置](#契约类的位置)的判据 1。**响应体与请求体同判据**：不要因为「响应是应用层返回的」就默认它属于应用层契约
-- `TaskService` 用 `@Service`，Controller 只做「接收 → 卫语句 → 委托 → 返回」，不写业务逻辑
+- `VideoTaskService` 用 `@Service`（`application/` 的用例服务；管线构件用 `@Component`，判据见[构件说明](#构件说明服务与管线构件)），Controller 只做「接收 → 卫语句 → 委托 → 返回」，不写业务逻辑
 - **模型 ↔ HTTP 契约的转换逻辑留在 `web/controller/`，不为它另开第三个子包**：这部分代码大半是 HTTP 输入校验，而「校验」本就归 Controller（见上一行）；真正「不属于 HTTP」的只有末尾构造那几行，不值得为它单独开包
 
 ## 测试包结构

@@ -1,9 +1,9 @@
 package com.vidsage.application.task;
 
 import com.vidsage.application.media.WorkspaceService;
-import com.vidsage.application.subtitle.SubtitleCleanupService;
-import com.vidsage.application.subtitle.SubtitleService;
-import com.vidsage.application.subtitle.SubtitleTranslationService;
+import com.vidsage.application.subtitle.SubtitleCleanupStage;
+import com.vidsage.application.subtitle.SubtitlePreparationStage;
+import com.vidsage.application.subtitle.SubtitleTranslationStage;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.config.TaskProperties;
@@ -20,17 +20,17 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 /**
- * 异步任务管线：按阶段顺序编排既有服务，把「一条已落库的任务」跑成终态。
+ * 异步任务管线：按阶段顺序编排各阶段构件，把「一条已落库的任务」跑成终态。
  *
  * <p>阶段顺序（design.md「数据流·执行」；区间为任务级进度权重；2026-10-02 两段式裁定后管线
  * 到清洗 / 原文字幕为止，翻译拆出为按需触发，见 {@link #translateTask}）：
  * <ol>
- *   <li>{@code SubtitleService.prepare}（0..70，内部含 acquire / extract-audio / transcribe /
+ *   <li>{@code SubtitlePreparationStage.prepare}（0..70，内部含 acquire / extract-audio / transcribe /
  *       write-subtitles 四个阶段，阶段事件由回调驱动）</li>
- *   <li>{@code SubtitleCleanupService.clean}（70..100，批级进度 0..100 由 remap 压进该区间）</li>
+ *   <li>{@code SubtitleCleanupStage.clean}（70..100，批级进度 0..100 由 remap 压进该区间）</li>
  * </ol>
  *
  * <p>进度回调是<b>复合监听器</b>：① 更新 DB {@code current_stage}（先落库再广播——订阅者看到的
@@ -40,7 +40,7 @@ import org.springframework.stereotype.Service;
  * 复合监听器里落库的异常刻意不吞：落库失败说明存储不可用，继续跑只会产出「库与实况脱节」的任务。
  *
  * <p>终态收口：SUCCEEDED / FAILED 落库后广播一条终态 {@link TaskProgressMessage}（阶段形状与
- * {@code TaskService} 的快照同源），再 {@link TaskSubscriptionRegistry#complete} 清空该任务全部
+ * {@code VideoTaskService} 的快照同源），再 {@link TaskSubscriptionRegistry#complete} 清空该任务全部
  * 订阅者——SSE 连接的收口由订阅方（web/sse/TaskSseHub）看到终态事件后自行完成。
  *
  * <p>执行模型：每次执行占一根虚拟线程（项目已全局开启虚拟线程，阻塞等待不占平台线程）；
@@ -51,8 +51,8 @@ import org.springframework.stereotype.Service;
  * 全部完成 → SUCCEEDED + finished_at。产物按阶段落工作区，失败后重新提交同一输入自动断点复用。
  */
 @Slf4j
-@Service
-public class TaskPipelineService {
+@Component
+public class VideoTaskPipeline {
 
     /** prepare 全包阶段（acquire / extract-audio / transcribe / write-subtitles）映射进 0..70。 */
     private static final int PREPARE_END = 70;
@@ -63,9 +63,9 @@ public class TaskPipelineService {
 
     private final VideoTaskRepository repository;
     private final WorkspaceService workspaceService;
-    private final SubtitleService subtitleService;
-    private final SubtitleCleanupService cleanupService;
-    private final SubtitleTranslationService translationService;
+    private final SubtitlePreparationStage subtitlePreparationStage;
+    private final SubtitleCleanupStage cleanupStage;
+    private final SubtitleTranslationStage translationStage;
     private final TaskSubscriptionRegistry subscriptionRegistry;
     private final Semaphore semaphore;
     private final ExecutorService executor;
@@ -73,27 +73,27 @@ public class TaskPipelineService {
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param repository          任务持久化入口（管线按 taskNo 装载任务并回写状态）
-     * @param workspaceService    工作区根解析（上传路线按持久化的 workspace_dir 还原媒体路径）
-     * @param subtitleService     阶段 1：音频准备 + 转写 + 写原始字幕
-     * @param cleanupService      阶段 2：字幕清洗（管线的最后一个自动阶段）
-     * @param translationService  按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
-     * @param subscriptionRegistry 中立订阅注册表（进度事件的广播落点）
-     * @param properties          管线配置（并发上限）
+     * @param repository               任务持久化入口（管线按 taskNo 装载任务并回写状态）
+     * @param workspaceService         工作区根解析（上传路线按持久化的 workspace_dir 还原媒体路径）
+     * @param subtitlePreparationStage 阶段 1：音频准备 + 转写 + 写原始字幕
+     * @param cleanupStage             阶段 2：字幕清洗（管线的最后一个自动阶段）
+     * @param translationStage         按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
+     * @param subscriptionRegistry     中立订阅注册表（进度事件的广播落点）
+     * @param properties               管线配置（并发上限）
      */
-    public TaskPipelineService(VideoTaskRepository repository, WorkspaceService workspaceService,
-                               SubtitleService subtitleService, SubtitleCleanupService cleanupService,
-                               SubtitleTranslationService translationService,
-                               TaskSubscriptionRegistry subscriptionRegistry, TaskProperties properties) {
+    public VideoTaskPipeline(VideoTaskRepository repository, WorkspaceService workspaceService,
+                             SubtitlePreparationStage subtitlePreparationStage, SubtitleCleanupStage cleanupStage,
+                             SubtitleTranslationStage translationStage,
+                             TaskSubscriptionRegistry subscriptionRegistry, TaskProperties properties) {
         if (properties.maxConcurrent() < 1) {
             throw new IllegalStateException("vidsage.task.max-concurrent 必须 ≥ 1：当前为 "
                     + properties.maxConcurrent() + "；请修正配置");
         }
         this.repository = repository;
         this.workspaceService = workspaceService;
-        this.subtitleService = subtitleService;
-        this.cleanupService = cleanupService;
-        this.translationService = translationService;
+        this.subtitlePreparationStage = subtitlePreparationStage;
+        this.cleanupStage = cleanupStage;
+        this.translationStage = translationStage;
         this.subscriptionRegistry = subscriptionRegistry;
         this.semaphore = new Semaphore(properties.maxConcurrent());
         // 命名虚拟线程：日志与线程转储里能认出「这是哪个任务的管线」
@@ -107,7 +107,7 @@ public class TaskPipelineService {
      * @param taskNo 已落库任务的对外任务号
      */
     public void execute(TaskNo taskNo) {
-        executor.execute(() -> run(taskNo));
+        executor.execute(() -> runPipeline(taskNo));
     }
 
     /**
@@ -143,9 +143,8 @@ public class TaskPipelineService {
             return;
         }
         MediaInput input = toMediaInput(task);
-        if (translationService.hasTranslationArtifact(input)) {
-            // 检查点已在（检查点非空 = 翻译已完成，断点哲学同 SubtitleTranslationService）：
-            // 幂等收敛为 SUCCEEDED，绝不发 LLM——不看翻译的人不花钱，看过的人不重复花钱
+        if (translationStage.hasTranslationArtifact(input)) {
+            // 检查点已在,收敛为SUCCEEDED，不看翻译的人不花钱，看过的人不重复花钱
             if (task.getTranslationStatus() != TranslationStatus.SUCCEEDED) {
                 task.translationSucceed();
                 repository.update(task);
@@ -164,13 +163,13 @@ public class TaskPipelineService {
         repository.update(task);
         // 不打 workspaceDir：目录名内嵌 URL / 原始文件名（用户资源，脱敏红线），按 taskNo 可查库还原
         log.info("翻译已触发: taskNo={}, inputType={}", task.getTaskNo().value(), task.getInputType());
-        executor.execute(() -> runTranslation(task, input));
+        executor.execute(() -> runTranslationPipeline(task, input));
     }
 
     /**
      * 同步执行完整管线。包内可见——单测直接调它绕开虚拟线程的时序，生产路径走 {@link #execute}。
      */
-    void run(TaskNo taskNo) {
+    void runPipeline(TaskNo taskNo) {
         Optional<VideoTask> loaded = repository.findByTaskNo(taskNo);
         if (loaded.isEmpty()) {
             // 提交刚落库就执行，缺失说明存储出了问题：ERROR 可见，不让任务静默蒸发
@@ -199,7 +198,7 @@ public class TaskPipelineService {
             // 不打 workspaceDir：目录名内嵌 URL / 原始文件名（用户资源，脱敏红线），按 taskNo 可查库还原
             log.info("任务开始执行: taskNo={}, inputType={}",
                     task.getTaskNo().value(), task.getInputType());
-            runStages(task);
+            prepareAndClean(task);
             task.succeed();
             repository.update(task);
             broadcastTerminal(task);
@@ -217,7 +216,7 @@ public class TaskPipelineService {
      * 翻译阶段事件自成 0..100 段直通广播（无区间映射——主任务的 0..100 已在主管线跑完，
      * 翻译是独立的第二段）；翻译事件的 taskStatus 恒为主状态 SUCCEEDED。
      */
-    private void runTranslation(VideoTask task, MediaInput input) {
+    private void runTranslationPipeline(VideoTask task, MediaInput input) {
         long start = System.currentTimeMillis();
         try {
             semaphore.acquire();
@@ -229,7 +228,7 @@ public class TaskPipelineService {
             return;
         }
         try {
-            translationService.translate(input, translationProgressListener(task));
+            translationStage.translate(input, translationProgressListener(task));
             task.translationSucceed();
             repository.update(task);
             broadcastTranslationTerminal(task);
@@ -245,13 +244,13 @@ public class TaskPipelineService {
      * 按阶段顺序执行；prepare 的阶段事件与 clean 的批级事件都由回调驱动
      * （composite listener 落库 + 广播），各阶段自报的 0..100 进度按权重 remap 进任务级区间。
      */
-    private void runStages(VideoTask task) {
+    private void prepareAndClean(VideoTask task) {
         MediaInput input = toMediaInput(task);
         ProgressListener listener = progressListener(task);
         // 阶段 1：prepare 全包（0..70），阶段事件由 remap 后的回调驱动
-        subtitleService.prepare(input, ProgressMapper.remap(listener, 0, PREPARE_END));
-        // 阶段 2：清洗（70..100），批级进度事件来自 SubtitleCleanser，开始 / 跳过 / 完成事件来自服务层
-        cleanupService.clean(input, "", ProgressMapper.remap(listener, CLEAN_START, CLEAN_END));
+        subtitlePreparationStage.prepare(input, ProgressMapper.remap(listener, 0, PREPARE_END));
+        // 阶段 2：清洗（70..100），批级进度事件来自 SubtitleCleanser，开始 / 跳过 / 完成事件来自阶段构件
+        cleanupStage.clean(input, "", ProgressMapper.remap(listener, CLEAN_START, CLEAN_END));
     }
 
     /**
@@ -273,7 +272,7 @@ public class TaskPipelineService {
     /**
      * 翻译进度回调（广播专用）：翻译阶段事件自成 0..100 段直通广播，<b>刻意不落 current_stage</b>——
      * current_stage 是主管线阶段词表的落点（updateStage 的 RUNNING 守卫也不允许主状态终态后推进）；
-     * 重连快照的翻译子状态由 DB 的 translation_status 粗粒度还原（{@code TaskService.stageEventOf}），
+     * 重连快照的翻译子状态由 DB 的 translation_status 粗粒度还原（{@code VideoTaskService.stageEventOf}），
      * 精确进度由本回调的实时事件携带。
      */
     private ProgressListener translationProgressListener(VideoTask task) {
@@ -286,14 +285,14 @@ public class TaskPipelineService {
     }
 
     /**
-     * 终态收口：广播一条终态 {@link TaskProgressMessage}（阶段形状与 {@link TaskService} 的快照同源——
+     * 终态收口：广播一条终态 {@link TaskProgressMessage}（阶段形状与 {@link VideoTaskService} 的快照同源——
      * 在线订阅者与重连订阅者看到的终态渲染一致），随后清空该任务全部订阅者。
      * 广播在前、complete 在后（finally）：哪怕广播路径抛了意外异常，订阅关系也必须清掉。
      */
     private void broadcastTerminal(VideoTask task) {
         try {
             subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(task.getTaskNo().value(),
-                    task.getStatus(), TaskService.stageEventOf(task), task.getTranslationStatus()));
+                    task.getStatus(), VideoTaskService.stageEventOf(task), task.getTranslationStatus()));
         } finally {
             subscriptionRegistry.complete(task.getTaskNo().value());
         }
@@ -302,13 +301,13 @@ public class TaskPipelineService {
     /**
      * 翻译终态收口（复用 {@link #broadcastTerminal} 模式）：终态 TaskProgressMessage 的 taskStatus
      * 用主状态 SUCCEEDED（主状态机不受翻译影响）、stage 用 translate（形状与快照的翻译子状态同源，
-     * 见 {@code TaskService.translationStageEventOf}），translationStatus 携带终态子状态；
+     * 见 {@code VideoTaskService.translationStageEventOf}），translationStatus 携带终态子状态；
      * 推完即清空该任务全部订阅者——翻译终态后任务再无任何事件，连接到此自然结束。
      */
     private void broadcastTranslationTerminal(VideoTask task) {
         try {
             subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(task.getTaskNo().value(),
-                    task.getStatus(), TaskService.translationStageEventOf(task), task.getTranslationStatus()));
+                    task.getStatus(), VideoTaskService.translationStageEventOf(task), task.getTranslationStatus()));
         } finally {
             subscriptionRegistry.complete(task.getTaskNo().value());
         }

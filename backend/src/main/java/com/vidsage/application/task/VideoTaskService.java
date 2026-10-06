@@ -35,9 +35,9 @@ import org.springframework.util.StringUtils;
 
 /**
  * 任务提交与查询的唯一入口：校验、查重、落库、上传落盘（design.md「数据流」）。
- * 异步执行不在这里——落库后委托 {@link TaskPipelineService#execute} 启动管线，HTTP 秒级返回。
+ * 异步执行不在这里——落库后委托 {@link VideoTaskPipeline#execute} 启动管线，HTTP 秒级返回。
  *
- * <p>两条提交路线收敛到 {@link #submit}：
+ * <p>两条提交路线收敛到 {@link #handleSubmit}：
  * <ul>
  *   <li><b>URL</b>（POST /api/tasks）：workspace_key = {@code WorkspaceService.normalize → WorkspaceKey.ofHash}，
  *       <b>只算 key 不触发建目录</b>——目录由管线内的各阶段服务按同一公式懒创建；</li>
@@ -57,7 +57,7 @@ import org.springframework.util.StringUtils;
  */
 @Slf4j
 @Service
-public class TaskService {
+public class VideoTaskService {
 
     /** 临时文件名前缀：上传先落根目录临时文件算内容摘要，再按 key 归位。 */
     private static final String TEMP_FILE_PREFIX = "upload-";
@@ -67,20 +67,20 @@ public class TaskService {
 
     private final VideoTaskRepository repository;
     private final WorkspaceService workspaceService;
-    private final TaskPipelineService pipelineService;
+    private final VideoTaskPipeline pipeline;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
      * @param repository       任务持久化端口（实现在 infrastructure/persistence/repository/）
      * @param workspaceService 工作区根解析与显式 key 建目录
-     * @param pipelineService  异步管线（insert 成功后异步启动）
+     * @param pipeline         异步管线（insert 成功后异步启动）
      */
-    public TaskService(VideoTaskRepository repository, WorkspaceService workspaceService,
-                       TaskPipelineService pipelineService) {
+    public VideoTaskService(VideoTaskRepository repository, WorkspaceService workspaceService,
+                            VideoTaskPipeline pipeline) {
         this.repository = repository;
         this.workspaceService = workspaceService;
-        this.pipelineService = pipelineService;
+        this.pipeline = pipeline;
     }
 
     /**
@@ -103,7 +103,7 @@ public class TaskService {
         // 目录名公式单源在 WorkspaceDir.of（sanitize(标签)-key）：
         // 管线阶段会用同一公式懒建出同一目录，落点天然一致
         String dirName = WorkspaceDir.of(input.value(), workspaceKey).value();
-        return submit(input, TaskInputType.URL, input.value(), workspaceKey, dirName);
+        return handleSubmit(input, TaskInputType.URL, input.value(), workspaceKey, dirName);
     }
 
     /**
@@ -140,7 +140,7 @@ public class TaskService {
                 // MediaInput.ofTaskInput，管线重建走同一工厂，两个时机的输入身份必然一致
                 MediaInput input = MediaInput.ofTaskInput(TaskInputType.UPLOAD, originalFileName,
                         source.getParent(), workspaceKey);
-                return submit(input, TaskInputType.UPLOAD, originalFileName, workspaceKey,
+                return handleSubmit(input, TaskInputType.UPLOAD, originalFileName, workspaceKey,
                         source.getParent().getFileName().toString());
             } finally {
                 if (!settled) {
@@ -171,7 +171,7 @@ public class TaskService {
 
     /**
      * 按需触发翻译（2026-10-02 两段式）：主任务 SUCCEEDED 后由用户显式触发——不看翻译的人不花
-     * LLM 钱。判定与幂等语义在 {@link TaskPipelineService#translateTask}（未知任务 404、
+     * LLM 钱。判定与幂等语义在 {@link VideoTaskPipeline#translateTask}（未知任务 404、
      * 未就绪 400、翻译中不重入、检查点已在则幂等收敛不发 LLM）；本方法只做装载、委托与
      * <b>重读回视图</b>——translateTask 内部可能已推进翻译子状态（启动 RUNNING / 幂等收敛
      * SUCCEEDED），重读保证 202 响应的视图反映触发后的状态。
@@ -183,7 +183,7 @@ public class TaskService {
      */
     public TaskSnapshot translate(String taskNo) {
         VideoTask task = loadTask(taskNo);
-        pipelineService.translateTask(task.getTaskNo());
+        pipeline.translateTask(task.getTaskNo());
         return repository.findByTaskNo(task.getTaskNo())
                 .map(this::toSnapshot)
                 .orElseGet(() -> toSnapshot(task));
@@ -269,7 +269,7 @@ public class TaskService {
      * 必为 null（翻译只能在主状态 SUCCEEDED 后触发），不受本分支影响。
      *
      * <p>两个使用者共用一份形状：SSE 快照（{@link #snapshot}）与管线的终态广播
-     * （{@code TaskPipelineService}，包内可见 static）——在线订阅者与重连订阅者看到的
+     * （{@code VideoTaskPipeline}，包内可见 static）——在线订阅者与重连订阅者看到的
      * 终态渲染因此一致。
      */
     static StageEvent stageEventOf(VideoTask task) {
@@ -296,7 +296,7 @@ public class TaskService {
      * 精确进度由增量事件携带，快照 / 终态广播只保证形状合法。
      *
      * <p>两个使用者共用一份形状：SSE 快照（经 {@link #stageEventOf} 分派）与管线的翻译终态广播
-     * （{@code TaskPipelineService}，包内可见 static）。
+     * （{@code VideoTaskPipeline}，包内可见 static）。
      *
      * <p>前置条件：{@code task.getTranslationStatus() != null}（调用点已保证——主管线终态广播时
      * 翻译从未触发，走不到这里）。
@@ -318,7 +318,7 @@ public class TaskService {
      * dirName 由路线显式传入：上传路线的目录标签是原始文件名、LocalPath 输入的标签却是
      * source.mp4，从输入重算会写错 workspace_dir。
      */
-    private TaskSnapshot submit(MediaInput input, TaskInputType inputType, String sourceUri,
+    private TaskSnapshot handleSubmit(MediaInput input, TaskInputType inputType, String sourceUri,
                             WorkspaceKey workspaceKey, String dirName) {
         VideoTask task = VideoTask.newPending(inputType, sourceUri, workspaceKey, dirName);
         VideoTask inserted = repository.insert(task);
@@ -326,7 +326,7 @@ public class TaskService {
         // 上传路线内嵌原始文件名——均属用户资源，踩日志脱敏红线；需要时按 taskNo 查库
         log.info("任务已创建: taskNo={}, inputType={}, status={}",
                 inserted.getTaskNo().value(), inserted.getInputType(), inserted.getStatus());
-        pipelineService.execute(inserted.getTaskNo());
+        pipeline.execute(inserted.getTaskNo());
         return toSnapshot(inserted);
     }
 

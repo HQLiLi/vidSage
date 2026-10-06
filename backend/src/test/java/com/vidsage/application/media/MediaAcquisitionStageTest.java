@@ -19,10 +19,10 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * MediaAcquisitionService 的纯单元测试：<b>不起 Spring 容器</b>，用 Mockito 造两个互斥的适配器，
+ * MediaAcquisitionStage 的纯单元测试：<b>不起 Spring 容器</b>，用 Mockito 造两个互斥的适配器，
  * 验证「按 supports 分派」「无匹配时报错」「两个方法各自委托」。
  */
-class MediaAcquisitionServiceTest {
+class MediaAcquisitionStageTest {
 
     private static final Path WORK_DIR = Path.of("C:", "works", "task");
     private static final MediaInput.RemoteUrl REMOTE = new MediaInput.RemoteUrl("https://example.com/v");
@@ -33,10 +33,10 @@ class MediaAcquisitionServiceTest {
     private final MediaAcquirer remoteAcquirer = mock(MediaAcquirer.class);
     private final MediaAcquirer localAcquirer = mock(MediaAcquirer.class);
 
-    private MediaAcquisitionService service() {
+    private MediaAcquisitionStage service() {
         when(remoteAcquirer.supports(any())).thenAnswer(i -> i.getArgument(0) instanceof MediaInput.RemoteUrl);
         when(localAcquirer.supports(any())).thenAnswer(i -> i.getArgument(0) instanceof MediaInput.LocalPath);
-        return new MediaAcquisitionService(List.of(remoteAcquirer, localAcquirer));
+        return new MediaAcquisitionStage(List.of(remoteAcquirer, localAcquirer));
     }
 
     @Test
@@ -79,7 +79,7 @@ class MediaAcquisitionServiceTest {
     void throwsWhenNoAcquirerSupportsInput() {
         MediaAcquirer unsupported = mock(MediaAcquirer.class);
         when(unsupported.supports(any())).thenReturn(false);
-        var service = new MediaAcquisitionService(List.of(unsupported));
+        var service = new MediaAcquisitionStage(List.of(unsupported));
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> service.acquire(REMOTE, WORK_DIR));

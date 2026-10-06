@@ -27,7 +27,7 @@ import org.springframework.util.StringUtils;
  *
  * <p><b>生命周期</b>：任务到达终态（SUCCEEDED / FAILED）后管线先广播终态事件、再调
  * {@link #complete} 清空该 taskNo 的全部订阅者——事件不落库，订阅关系也不为死任务保留；
- * 迟来的订阅者拿 DB 快照（{@code TaskService.snapshot}）即可恢复进度。
+ * 迟来的订阅者拿 DB 快照（{@code VideoTaskService.snapshot}）即可恢复进度。
  */
 @Slf4j
 @Component

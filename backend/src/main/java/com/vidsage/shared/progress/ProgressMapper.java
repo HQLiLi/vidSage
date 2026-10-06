@@ -7,7 +7,7 @@ import com.vidsage.domain.shared.StageEvent;
  * 进度区间线性映射：把某段服务自报的 {@code 0..100} 进度压缩进管线分配给它的子区间
  * {@code [from, to]}。纯函数（无状态、无 I/O、无 Spring 类型），符合 utils 的准入判据。
  *
- * <p>从 {@code SubtitleService} 的私有 {@code remap} 上提（2026-09-30，MVP-1）：MVP-1 的异步管线
+ * <p>从 {@code SubtitlePreparationStage} 的私有 {@code remap} 上提（2026-09-30，MVP-1）：MVP-1 的异步管线
  * 是第二个使用者（对 clean 做区间映射；2026-10-02 两段式后翻译事件自成 0..100 段、不再经过映射），
  * 符合「同一判据只有一份」的搬迁判据——搬的是纯函数，不是流程骨架。
  *

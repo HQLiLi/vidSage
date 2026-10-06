@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -39,13 +39,13 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>断点复用判据</b>：{@code -clean.json} 存在且字节数 &gt; 0 即跳过切分与纠错，直接反序列化返回。
  * 为什么拿 JSON 当检查点而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当检查点会让空清洗永远判「未完成」
- * ——该语义单源在 {@link CheckpointPolicy}（design 决策 4，同 {@link SubtitleService}）。
+ * ——该语义单源在 {@link CheckpointPolicy}（design 决策 4，同 {@link SubtitlePreparationStage}）。
  *
  * <p><b>不碰 2b 原始产物</b>：读 {@code segments-<route>.json}（原始，只读，必须已存在）、写 {@code -clean}。
  */
 @Slf4j
-@Service
-public class SubtitleCleanupService {
+@Component
+public class SubtitleCleanupStage {
 
     /** 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 70..100）。 */
     private static final int STAGE_BEGIN = 0;
@@ -72,12 +72,12 @@ public class SubtitleCleanupService {
      * @param contextSummarizer 内容总结器（摘要出主题与术语，供跨批上下文用）
      * @param subtitleCleanser 字幕清洗器（持有清洗专用的 ChatClient）
      */
-    public SubtitleCleanupService(WorkspaceService workspaceService,
-                                  ASRProvider asrProvider,
-                                  ObjectMapper objectMapper,
-                                  SubtitleCleanupProperties props,
-                                  SubtitleContextSummarizer contextSummarizer,
-                                  SubtitleCleanser subtitleCleanser) {
+    public SubtitleCleanupStage(WorkspaceService workspaceService,
+                                ASRProvider asrProvider,
+                                ObjectMapper objectMapper,
+                                SubtitleCleanupProperties props,
+                                SubtitleContextSummarizer contextSummarizer,
+                                SubtitleCleanser subtitleCleanser) {
         this.workspaceService = workspaceService;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
@@ -167,7 +167,7 @@ public class SubtitleCleanupService {
         List<TranscriptionSegment> segments = raw.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
         // 内容的主题、源语种和从中提取出的术语：先读缓存，没有才摘要；摘要成功才落盘、空摘要绝不落盘
-        // ——裁决单源在 CheckpointPolicy（与翻译服务同一份，2026-10-06 两处近逐字重复合流于此）。
+        // ——裁决单源在 CheckpointPolicy（与翻译阶段同一份，2026-10-06 两处近逐字重复合流于此）。
         // 断点分支留在本层（不在 SubtitleContextSummarizer 里）——与 -clean 断点判据同处，见 design §3.2。
         Path ctxFile = workDir.resolve(SubtitleArtifactNames.contextFileName(route));
         SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
@@ -203,7 +203,7 @@ public class SubtitleCleanupService {
 
     /**
      * 读断点：{@code -clean.json} 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。
-     * 解析失败当未完成重跑（同 {@link SubtitleService}）。
+     * 解析失败当未完成重跑（同 {@link SubtitlePreparationStage}）。
      * 判据语义（JSON 非空 = 完成、0 字节 = 未完成）单源在 {@link CheckpointPolicy}。
      */
     private SubtitleTrack readCheckpoint(Path cleanSeg) {

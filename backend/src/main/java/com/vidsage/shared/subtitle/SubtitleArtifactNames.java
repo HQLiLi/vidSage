@@ -119,7 +119,7 @@ public final class SubtitleArtifactNames {
      * <p><b>为空时直接抛错，不兜底</b>：空语种若落成 {@code translate-.json} 之类的名字，任何两个
      * 未配置或配置为空的语种都会撞到同一份产物，正是上面要防的静默冲突；这里用早失败替代它。
      *
-     * <p><b>正常路径上这道守卫够不到</b>：{@code SubtitleTranslationService} 已在入口用
+     * <p><b>正常路径上这道守卫够不到</b>：{@code SubtitleTranslationStage} 已在入口用
      * {@code resolveTargetLanguage} 提前挡下空语种（早于建工作目录的 I/O）。这里保留作<b>防御性兜底</b>
      * ——只兜「有人绕过 service 直接拼名」的情况，不是第一道防线。
      *

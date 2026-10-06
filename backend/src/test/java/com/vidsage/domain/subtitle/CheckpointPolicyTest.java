@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * CheckpointPolicy 的纯单元测试：检查点语义与上下文政策断言随逻辑自
- * {@code SubtitleServiceTest}（L51/L70/L94）、{@code SubtitleCleanupServiceTest}（L116/L265）与
- * {@code SubtitleTranslationServiceTest} 迁入/对应，断言值不变（2026-10-06 Phase B 四服务合流）。
+ * {@code SubtitlePreparationStageTest}（L51/L70/L94）、{@code SubtitleCleanupStageTest}（L116/L265）与
+ * {@code SubtitleTranslationStageTest} 迁入/对应，断言值不变（2026-10-06 Phase B 四服务合流）。
  *
  * <p>政策是纯函数、不做文件 I/O：字节数由调用方量好传入。文件级的等价护栏仍留在各服务测试里——
  * 特别是「只有 SRT 在而 JSON 不在必须重跑」那条（{@code srtAloneDoesNotCountAsCheckpoint}），

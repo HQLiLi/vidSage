@@ -28,7 +28,7 @@ import com.vidsage.application.task.query.TaskSnapshot;
 import com.vidsage.domain.task.TranslationStatus;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
-import com.vidsage.application.task.TaskService;
+import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.web.sse.TaskSseHub;
 import java.nio.charset.StandardCharsets;
@@ -66,7 +66,7 @@ class TaskControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private TaskService taskService;
+    private VideoTaskService taskService;
 
     @Autowired
     private TaskSseHub sseHub;
@@ -368,7 +368,7 @@ class TaskControllerTest {
 
     @Test
     void downloadArtifactMapsPathGuardRejectionToBadRequest() throws Exception {
-        // 穿越检测本体在 TaskServiceTest（../、绝对路径、反斜杠、URL 编码四个形态）；
+        // 穿越检测本体在 VideoTaskServiceTest（../、绝对路径、反斜杠、URL 编码四个形态）；
         // 这里只钉「服务层拒绝 → 400」的映射。注意：URL 里裸写 ../ 会被容器规范化成 404，
         // 到不了控制器——这正是编码绕过必须在服务层 resolve 后校验的原因。
         // fileName 的具体解码形态随 servlet 实现而异，用 anyString() 只锚定映射关系。
