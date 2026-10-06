@@ -21,7 +21,7 @@ public final class SubtitleArtifactNames {
     /**
      * 枚举名 → 产物 token：{@code ASR_CLOUD → asr-cloud}。
      *
-     * <p>对照 {@code AudioPreparationService.audioFileName} 从 {@code name()} 派生扩展名——
+     * <p>对照 {@code AudioArtifact.fileName} 从 {@code name()} 派生扩展名——
      * 派生规则只有定名字的人知道，不写进契约类型。token 用 kebab（与 JSON 里的枚举名风格不同
      * 不是疏忽，与 {@code AudioContainer} 同名同源、两种媒材各自的惯例，design 决策 4）。
      *

@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 
 import com.vidsage.domain.media.AcquiredMedia;
 import com.vidsage.domain.media.AudioArtifact;
-import com.vidsage.domain.media.AudioContainer;
 import com.vidsage.domain.media.AudioSpec;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.ProgressListener;
@@ -94,44 +93,10 @@ class AudioPreparationServiceTest {
         verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.M4A_AAC_48K_MONO);
     }
 
-    @Test
-    void namesAudioFileWithFullSpecFingerprint() {
-        // 有损容器（M4A）带码率段；无损容器（WAV）不带码率段
-        assertEquals("audio-16k1ch48k-t0.m4a",
-                AudioPreparationService.audioFileName(AudioSpec.M4A_AAC_48K_MONO));
-        assertEquals("audio-16k1ch-t0.wav",
-                AudioPreparationService.audioFileName(AudioSpec.WAV_PCM_16K_MONO));
-        // 轨号 0 也照写 -t0（不做省略特例）；-t 始终带连字符，与 M4A 的 -t0 保持同一形状
-        assertEquals("audio-16k1ch-t1.wav",
-                AudioPreparationService.audioFileName(new AudioSpec(AudioContainer.WAV, 16000, 1, 0, 1)));
-        // 非整千赫兹保留小数，避免与其它采样率截断成同一名字
-        assertEquals("audio-44.1k1ch-t0.wav",
-                AudioPreparationService.audioFileName(new AudioSpec(AudioContainer.WAV, 44100, 1, 0, 0)));
-    }
-
-    @Test
-    void differentSpecsMapToDifferentAudioPaths() {
-        // 改 1 的回归：同一输入、仅轨号（或采样率）不同的 spec，不得映射到同一文件，
-        // 否则第二次会命中第一次的产物被断点复用跳过，静默返回与请求规格不符的音频。
-        AcquiredMedia media = acquiredMedia();
-        when(acquisitionService.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
-        when(audioExtractor.extract(any(), any(), any())).thenAnswer(invocation ->
-                new AudioArtifact(invocation.getArgument(1), invocation.getArgument(2), 1));
-
-        AudioSpec track0 = new AudioSpec(AudioContainer.WAV, 16000, 1, 0, 0);
-        AudioSpec track1 = new AudioSpec(AudioContainer.WAV, 16000, 1, 0, 1);
-        AudioSpec rate8k = new AudioSpec(AudioContainer.WAV, 8000, 1, 0, 0);
-
-        Path p0 = service().prepare(input, track0, listener).audioPath();
-        Path p1 = service().prepare(input, track1, listener).audioPath();
-        Path p8 = service().prepare(input, rate8k, listener).audioPath();
-
-        assertEquals(workDir.resolve("audio-16k1ch-t0.wav"), p0);
-        assertEquals(workDir.resolve("audio-16k1ch-t1.wav"), p1);
-        assertEquals(workDir.resolve("audio-8k1ch-t0.wav"), p8);
-        assertEquals(3, List.of(p0, p1, p8).stream().distinct().count(),
-                () -> "不同规格必须映射到不同文件，否则断点复用会静默跳过：" + List.of(p0, p1, p8));
-    }
+    // namesAudioFileWithFullSpecFingerprint 与 differentSpecsMapToDifferentAudioPaths 已随命名规则
+    // 迁往 domain/media/AudioArtifactTest（2026-10-06 音频指纹命名下沉 AudioArtifact.fileName，
+    // 断言值逐字随迁不变）；usesM4aFileNameForM4aSpec 留在此处——它钉的是「服务按指纹命名解析
+    // 抽取目标」这条服务↔命名规则的接缝（verify extract 调用路径），仍由本测试守护。
 
     // ---------- 断点复用 ----------
 

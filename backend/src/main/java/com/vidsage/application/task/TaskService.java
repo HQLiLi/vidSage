@@ -10,6 +10,7 @@ import com.vidsage.domain.shared.SourceUri;
 import com.vidsage.domain.shared.StageEvent;
 import com.vidsage.domain.shared.WorkspaceDir;
 import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.task.TaskArtifactScan;
 import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.MediaInput;
@@ -57,9 +58,6 @@ import org.springframework.util.StringUtils;
 @Slf4j
 @Service
 public class TaskService {
-
-    /** 上传路线在工作区落盘的固定文件名（design.md「依赖与配置」）。 */
-    static final String UPLOAD_SOURCE_FILE_NAME = "source.mp4";
 
     /** 临时文件名前缀：上传先落根目录临时文件算内容摘要，再按 key 归位。 */
     private static final String TEMP_FILE_PREFIX = "upload-";
@@ -138,8 +136,10 @@ public class TaskService {
                 settled = true;
                 // 以 InWorkspace 直通下游（design.md 权衡记录）：LocalPath 会被各阶段服务按
                 // 「路径+大小+mtime」重算出另一个目录——任务 workspace_dir 与产物落点分家，
-                // 且 mtime 随重传漂移、断点复用失效
-                MediaInput input = new MediaInput.InWorkspace(source, source.getParent(), workspaceKey);
+                // 且 mtime 随重传漂移、断点复用失效。变体选择与 source.mp4 落点单源在
+                // MediaInput.ofTaskInput，管线重建走同一工厂，两个时机的输入身份必然一致
+                MediaInput input = MediaInput.ofTaskInput(TaskInputType.UPLOAD, originalFileName,
+                        source.getParent(), workspaceKey);
                 return submit(input, TaskInputType.UPLOAD, originalFileName, workspaceKey,
                         source.getParent().getFileName().toString());
             } finally {
@@ -353,13 +353,14 @@ public class TaskService {
     }
 
     /**
-     * 临时文件归位：建内容寻址工作区目录，临时文件改名成 {@code source.mp4}（同一根下，rename 语义）。
+     * 临时文件归位：建内容寻址工作区目录，临时文件改名成 {@code MediaInput.UPLOAD_SOURCE_FILE_NAME}
+     * （同一根下，rename 语义；文件名单源在 {@link MediaInput}）。
      *
-     * @return source.mp4 绝对路径（管线以它为 {@code value} 构造 {@code MediaInput.InWorkspace}）
+     * @return source.mp4 绝对路径（管线重建输入时按同一名字定位）
      */
     private Path settleUpload(Path temp, String originalFileName, WorkspaceKey workspaceKey) throws IOException {
         Path dir = workspaceService.workspaceFor(originalFileName, workspaceKey);
-        Path source = dir.resolve(UPLOAD_SOURCE_FILE_NAME);
+        Path source = dir.resolve(MediaInput.UPLOAD_SOURCE_FILE_NAME);
         Files.move(temp, source, StandardCopyOption.REPLACE_EXISTING);
         return source;
     }
@@ -376,9 +377,7 @@ public class TaskService {
     }
 
     /**
-     * 扫描任务工作区，收集对外可见的产物清单：{@code *.srt}（各阶段字幕）与
-     * {@code segments-*.json}（检查点）。terms- / context- 等 LLM 中间产物刻意不进清单——
-     * 它们是内部缓存，不面向使用者。
+     * 扫描任务工作区，收集对外可见的产物清单（可见性判据单源在 {@link TaskArtifactScan}）。
      *
      * <p>目录不存在（URL 任务尚未建目录 / 环境差异）或列举失败时返回空表：清单是展示信息，
      * 读不出来不该把整个任务查询打挂。
@@ -398,8 +397,7 @@ public class TaskService {
             return entries
                     .filter(Files::isRegularFile)
                     .map(path -> path.getFileName().toString())
-                    .filter(name -> name.endsWith(".srt")
-                            || (name.startsWith("segments-") && name.endsWith(".json")))
+                    .filter(TaskArtifactScan::isVisible)
                     .sorted()
                     .map(name -> new TaskArtifact(name, ArtifactFiles.sizeOrZero(dir.resolve(name))))
                     .toList();

@@ -2,6 +2,7 @@ package com.vidsage.domain.task;
 
 import com.vidsage.domain.shared.WorkspaceKey;
 import java.time.LocalDateTime;
+import java.util.Set;
 import java.util.UUID;
 
 import lombok.Getter;
@@ -232,6 +233,32 @@ public class VideoTask {
         translationStatus = TranslationStatus.FAILED;
         this.errorMessage = errorMessage;
         updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 「进行中」状态集合（PENDING / RUNNING）：提交查重的 active 判据单源——同一输入已有任务在
+     * 排队或执行即视为冲突，终态任务不算 active（重新提交同一输入是断点复用的正常路径）。
+     * {@code VideoTaskRepository.findActiveByWorkspaceKey} 的 SQL 过滤据此构造，规则只有这一处定义
+     * （2026-10-06 自 repository 内联字面量下沉：业务谓词不写在 infrastructure 里）。
+     */
+    public static final Set<TaskStatus> ACTIVE_STATUSES = Set.of(TaskStatus.PENDING, TaskStatus.RUNNING);
+
+    /**
+     * 事件流是否已收敛（终态谓词）：主状态终态（SUCCEEDED / FAILED）<b>且</b>翻译子状态不在进行中，
+     * 任务才真正不再有后续事件。SSE 连接的收口判据——翻译事件的 taskStatus 恒为主状态 SUCCEEDED
+     * （主状态机不受翻译影响），若只看主状态，第一条翻译进度事件就会把还活着的翻译连接提前收掉。
+     *
+     * <p>原 TaskController.isTerminal 与 TaskSseHub.send 各写一遍、注释互指的终态判定，2026-10-06
+     * 单源于此，两处只剩调用。以「状态对」为入参而非实例方法：web 层的判定发生在已展平的
+     * {@code TaskProgressMessage}（taskStatus + translationStatus）上，手头没有聚合实例可调。
+     *
+     * @param mainStatus        任务主状态
+     * @param translationStatus 翻译子状态；从未触发为 {@code null}
+     * @return 主状态终态且翻译不在 RUNNING（事件流不会再有后续事件）
+     */
+    public static boolean isEventSettled(TaskStatus mainStatus, TranslationStatus translationStatus) {
+        boolean mainTerminal = mainStatus == TaskStatus.SUCCEEDED || mainStatus == TaskStatus.FAILED;
+        return mainTerminal && translationStatus != TranslationStatus.RUNNING;
     }
 
     /**

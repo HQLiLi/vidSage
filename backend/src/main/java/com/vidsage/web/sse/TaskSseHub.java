@@ -1,8 +1,7 @@
 package com.vidsage.web.sse;
 
 import com.vidsage.application.task.TaskProgressMessage;
-import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.domain.task.VideoTask;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
@@ -111,12 +110,10 @@ public class TaskSseHub {
         if (targets == null) {
             return;
         }
-        // 终态判定（2026-10-02 两段式）：主状态终态且翻译子状态不在进行中，任务才真正不再有后续事件。
-        // 翻译事件的 taskStatus 恒为主状态 SUCCEEDED（主管线终态）——若只看主状态，第一条翻译进度
-        // 事件就会把连接收掉；连接必须保持到翻译终态。与 TaskController.isTerminal 同一判据。
-        boolean mainTerminal =
-                event.taskStatus() == TaskStatus.SUCCEEDED || event.taskStatus() == TaskStatus.FAILED;
-        boolean terminal = mainTerminal && event.translationStatus() != TranslationStatus.RUNNING;
+        // 终态判定（2026-10-02 两段式）单源在 VideoTask.isEventSettled：主状态终态且翻译子状态
+        // 不在进行中，任务才真正不再有后续事件——翻译事件的 taskStatus 恒为主状态 SUCCEEDED
+        // （主管线终态），若只看主状态，第一条翻译进度事件就会把连接收掉；连接必须保持到翻译终态。
+        boolean terminal = VideoTask.isEventSettled(event.taskStatus(), event.translationStatus());
         for (SseEmitter target : targets) {
             try {
                 target.send(SseEmitter.event().name(EVENT_NAME).data(event, MediaType.APPLICATION_JSON));

@@ -2,9 +2,8 @@ package com.vidsage.web.controller;
 
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
-import com.vidsage.domain.task.TaskStatus;
 import com.vidsage.application.task.query.TaskView;
-import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.domain.task.VideoTask;
 import com.vidsage.application.task.TaskService;
 import com.vidsage.application.task.subscribe.Subscription;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
@@ -188,7 +187,8 @@ public class TaskController {
         // 会经它再写一遍给幸存连接（真实运行证据抓到的重复推送缺陷，见 research/acceptance-evidence.md）。
         // close 幂等，与上方终态分支的 close 并发安全。
         emitter.onCompletion(subscription::close);
-        if (isTerminal(snapshot)) {
+        // 终态判定单源在 VideoTask.isEventSettled（主状态终态且翻译不在 RUNNING）
+        if (VideoTask.isEventSettled(snapshot.taskStatus(), snapshot.translationStatus())) {
             // 订阅时任务已终态：快照即最后一条，注册表不会再有 complete 调用，主动退订防泄漏
             subscription.close();
         }
@@ -248,16 +248,5 @@ public class TaskController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment().filename(artifact.name()).build().toString())
                 .body(new FileSystemResource(artifact.path()));
-    }
-
-    /**
-     * 是否终态事件：主状态终态<b>且</b>翻译子状态不在进行中，任务才真正不再有后续事件——
-     * 终态快照推完即收口连接，随后退订。与 {@code TaskSseHub.send} 的终态判定同一判据
-     * （翻译事件的 taskStatus 恒为主状态 SUCCEEDED，只看主状态会把翻译进行中的连接提前收掉）。
-     */
-    private static boolean isTerminal(TaskProgressMessage event) {
-        boolean mainTerminal =
-                event.taskStatus() == TaskStatus.SUCCEEDED || event.taskStatus() == TaskStatus.FAILED;
-        return mainTerminal && event.translationStatus() != TranslationStatus.RUNNING;
     }
 }

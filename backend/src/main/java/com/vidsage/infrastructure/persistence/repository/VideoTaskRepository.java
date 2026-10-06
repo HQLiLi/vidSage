@@ -4,10 +4,8 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.vidsage.domain.shared.WorkspaceKey;
 import com.vidsage.domain.task.TaskNo;
 import com.vidsage.domain.task.VideoTask;
-import com.vidsage.domain.task.TaskStatus;
 import com.vidsage.infrastructure.persistence.entity.VideoTaskEntity;
 import com.vidsage.infrastructure.persistence.mapper.VideoTaskMapper;
-import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Repository;
 
@@ -59,8 +57,9 @@ public class VideoTaskRepository {
     }
 
     /**
-     * 查同工作区且<b>仍在进行中</b>（PENDING / RUNNING）的任务：提交查重用——
-     * 命中即说明同一输入已有任务在排队或执行，重复提交应被 409 拒绝（design.md 数据流节）。
+     * 查同工作区且<b>仍在进行中</b>的任务：提交查重用——命中即说明同一输入已有任务在排队或执行，
+     * 重复提交应被 409 拒绝（design.md 数据流节）。「什么算 active」是业务谓词，单源在
+     * {@link VideoTask#ACTIVE_STATUSES}（PENDING / RUNNING），本方法只把它落成 SQL 的 status IN 条件。
      *
      * @param workspaceKey 工作区短哈希（值对象；查询条件取其 {@code value} 落到 DB 列）
      * @return 进行中的既有任务；没有时为空
@@ -68,7 +67,7 @@ public class VideoTaskRepository {
     public Optional<VideoTask> findActiveByWorkspaceKey(WorkspaceKey workspaceKey) {
         VideoTaskEntity entity = mapper.selectOne(Wrappers.<VideoTaskEntity>lambdaQuery()
                 .eq(VideoTaskEntity::getWorkspaceKey, workspaceKey.value())
-                .in(VideoTaskEntity::getStatus, List.of(TaskStatus.PENDING, TaskStatus.RUNNING))
+                .in(VideoTaskEntity::getStatus, VideoTask.ACTIVE_STATUSES)
                 .last("LIMIT 1"));
         return entity == null ? Optional.empty() : Optional.of(toDomain(entity));
     }

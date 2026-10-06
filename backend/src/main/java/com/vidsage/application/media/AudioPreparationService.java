@@ -2,7 +2,6 @@ package com.vidsage.application.media;
 
 import com.vidsage.domain.media.AcquiredMedia;
 import com.vidsage.domain.media.AudioArtifact;
-import com.vidsage.domain.media.AudioContainer;
 import com.vidsage.domain.media.AudioSpec;
 import com.vidsage.domain.media.MediaInput;
 import com.vidsage.domain.shared.ProgressListener;
@@ -12,7 +11,6 @@ import com.vidsage.domain.subtitle.CheckpointPolicy;
 import com.vidsage.domain.media.AudioExtractor;
 import com.vidsage.shared.fs.ArtifactFiles;
 import java.nio.file.Path;
-import java.util.Locale;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,8 +26,9 @@ import org.springframework.stereotype.Service;
  * <ul>
  *   <li>acquire 阶段由 {@link MediaAcquisitionService#reuseExisting} 判断——只有适配器知道
  *       {@code source.<ext>} 的推导规则与 info json 的解析；</li>
- *   <li>extract 阶段由本服务判断——音频产物名（{@code audio-<规格指纹>.<ext>}）只有本服务知道，
- *       且<b>先校验 spec 再判断点</b>，不放过「非法 spec + 文件恰好存在」这条路径。</li>
+ *   <li>extract 阶段由本服务判断——音频产物名由 {@link AudioArtifact#fileName} 按规格指纹给出
+ *       （命名规则单源在 domain），且<b>先校验 spec 再判断点</b>，不放过「非法 spec + 文件恰好存在」
+ *       这条路径。</li>
  * </ul>
  * 跳过时发 {@code SKIPPED} 事件并记 INFO 日志：<b>断点复用必须可观测</b>，否则「跳过了」与
  * 「没跑」分不出来。
@@ -154,7 +153,9 @@ public class AudioPreparationService {
     private AudioArtifact runExtractStage(AcquiredMedia media, Path workDir, AudioSpec spec,
                                           ProgressListener listener) {
         try {
-            Path audioPath = workDir.resolve(audioFileName(spec));
+            // 抽取目标按规格指纹命名（命名规则单源在 AudioArtifact.fileName）：
+            // 同一输入、不同规格的产物互不覆盖，断点复用不会错拿
+            Path audioPath = workDir.resolve(AudioArtifact.fileName(spec));
             long existingSize = ArtifactFiles.sizeOrZero(audioPath);
             // 断点判据语义单源在 CheckpointPolicy（非空 = 已完成、0 字节 = 未完成）：
             // 与三字幕服务的 JSON 检查点是同一条「产物非空才算完成」政策
@@ -172,50 +173,6 @@ public class AudioPreparationService {
             emit(listener, STAGE_EXTRACT, EXTRACT_START, "抽取音频失败：" + describe(e), StageState.FAILED);
             throw e;
         }
-    }
-
-    /**
-     * 音频产物文件名，带<b>完整规格指纹</b>：
-     * {@code audio-<采样率>k<声道>ch[-<码率>k]-t<音频轨号>.<扩展名>}，如
-     * {@code audio-16k1ch48k-t0.m4a}、{@code audio-16k1ch-t1.wav}（无损容器无码率段）。
-     *
-     * <p><b>为什么必须带完整指纹</b>：若只按容器命名（{@code audio.wav}），同一输入先用 16k 抽一次、
-     * 再用 8k（或码率 / 轨号不同）抽一次时，第二次会命中第一次的文件被断点判据当成已完成而跳过，
-     * 返回一份<b>与请求规格不符</b>的音频且不报错——正是「让正确性依赖未言明的假设」。指纹因此覆盖
-     * <b>所有影响产物内容的参数</b>（采样率、声道、码率、音频轨号）。
-     *
-     * <p><b>不做省略特例</b>：轨号为 0 也照写 {@code -t0}，不为它开分支——特例就是漏判的入口。
-     *
-     * <p>包级 static：可直测。<b>spec 的容器非空、各数值已合法由 {@link AudioSpec} 的紧凑构造器
-     * 保证</b>；这些名字<b>只有本服务知道</b>（见 design §六 文件表）。
-     *
-     * @param spec 已校验的音频规格
-     * @return 音频产物文件名（不含目录）
-     */
-    static String audioFileName(AudioSpec spec) {
-        StringBuilder name = new StringBuilder("audio-")
-                .append(sampleRateKilo(spec.sampleRateHz()))
-                .append(spec.channels())
-                .append("ch");
-        if (spec.container() == AudioContainer.M4A) {
-            // 只有有损容器写码率段；无损容器（WAV）契约规定 bitrateKbps = 0 表示不适用
-            name.append(spec.bitrateKbps()).append('k');
-        }
-        name.append("-t").append(spec.audioTrackIndex());
-        return name.append('.').append(spec.container().name().toLowerCase(Locale.ROOT)).toString();
-    }
-
-    /**
-     * 采样率 → 文件名里的 kHz 片段（{@code 16000 → 16k}、{@code 8000 → 8k}）。
-     *
-     * <p>非整千赫兹保留小数（如 {@code 44100 → 44.1k}）：整数截断会让不同采样率映射到同一名字，
-     * 重新引入「按容器命名」那类静默复用漏洞。
-     */
-    static String sampleRateKilo(int sampleRateHz) {
-        if (sampleRateHz % 1000 == 0) {
-            return (sampleRateHz / 1000) + "k";
-        }
-        return (sampleRateHz / 1000.0) + "k";
     }
 
     /**

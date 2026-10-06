@@ -16,7 +16,6 @@ import com.vidsage.domain.task.TaskStatus;
 import com.vidsage.domain.task.TranslationStatus;
 import com.vidsage.infrastructure.persistence.repository.VideoTaskRepository;
 import com.vidsage.shared.progress.ProgressMapper;
-import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -366,19 +365,12 @@ public class TaskPipelineService {
     }
 
     /**
-     * 从持久化字段还原管线的媒体输入：URL 路线直接还原 RemoteUrl（各阶段服务按同一公式重算
-     * 工作区，落点一致）；上传路线还原 InWorkspace——工作区目录与内容 key 都在库里，还原为
-     * 随输入携带、各阶段服务零重算（若包成 LocalPath，会被按「路径+大小+mtime」重算出另一个目录，
-     * 任务 workspace_dir 与产物落点分家，见 design.md「权衡记录·上传路线的工作区归属」）。
+     * 从持久化字段还原管线的媒体输入：变体选择与落点规则单源在 {@link MediaInput#ofTaskInput}
+     * （提交路线共用同一工厂，重建与提交时身份一致）；本方法只负责取「工作区根 + 持久化的相对
+     * 目录」这一文件系统事实传给工厂（URL 路线用不到它）。
      */
     private MediaInput toMediaInput(VideoTask task) {
-        return switch (task.getInputType()) {
-            case URL -> new MediaInput.RemoteUrl(task.getSourceUri());
-            case UPLOAD -> {
-                Path dir = workspaceService.workspaceRoot().resolve(task.getWorkspaceDir());
-                Path source = dir.resolve(TaskService.UPLOAD_SOURCE_FILE_NAME);
-                yield new MediaInput.InWorkspace(source, dir, task.getWorkspaceKey());
-            }
-        };
+        return MediaInput.ofTaskInput(task.getInputType(), task.getSourceUri(),
+                workspaceService.workspaceRoot().resolve(task.getWorkspaceDir()), task.getWorkspaceKey());
     }
 }
