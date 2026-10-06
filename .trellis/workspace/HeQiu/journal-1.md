@@ -699,3 +699,26 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 25: application 出站依赖倒置：端口归 domain/application，infrastructure 实现
+<!-- trellis-session: v=2 fp=400dab6fe1fefb72 -->
+
+**Date**: 2026-10-06
+**Task**: application 出站依赖倒置：端口归 domain/application，infrastructure 实现
+**Branch**: `dev`
+
+### Summary
+
+消除 application 与 web 对 infrastructure 的 5 处反向依赖与 web→domain 的 4 处引用：新增 5 个端口（VideoTaskRepository、SubtitleCleanser/Translator/ContextSummarizer 落 domain；ToolDiagnostics 落 application）、8 个新类型，5 个实现类改名（Mybatis*/Llm*/Process*），删除 ToolDiagnosticsService 与 ExternalToolReport，豁免清单 a/b 清零；同步重写 directory-structure.md 依赖规则为「窄口+白名单+端口归属判据」。行为等价，465 测试全绿。审查期另立命名任务 10-06-naming-alignment。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `62e9b47` | refactor(backend): 出站依赖倒置——端口归 domain/application，infrastructure 实现；web 去 domain 化 |
+| `9bb8cae` | docs(spec): 对账端口倒置后的依赖规则、端口归属判据与包说明 |
+
+### Status
+
+[OK] **Completed**
