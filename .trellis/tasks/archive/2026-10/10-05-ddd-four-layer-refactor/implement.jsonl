@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线与常用命令（mvn test 门禁、无 wrapper 直接用 mvn）——所有门禁命令的出处"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "现行包结构规范与类归属判据（model vs domain 等），迁移对照的现状依据；也是 Phase 3 重写对象"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "端口四件套定义；本任务把四件套中接口位置从顶层 provider/ 改到 domain/<上下文>/，迁移端口接口时对照其现状描述"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "依赖原则（不预先抽接口）是豁免清单的依据；迁移中不得顺手接口化"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "persistence 层规范（MyBatis-Plus），infrastructure/persistence 平移与其描述相关"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "TaskConflictException / TaskNotFoundException 等异常类迁移涉及的异常规范约束"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "机械迁移要求零逻辑变更，涉及改动类时日志语句不得顺手改写"}
+{"file": "docs/ddd-refactor-handoff.md", "reason": "需求来源底稿：as-is/to-be 结构、类迁移映射表、关键设计决定、Phase 门禁定义"}

@@ -6,8 +6,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.vidsage.model.process.ExternalToolReport;
-import com.vidsage.service.ToolDiagnosticsService;
+import com.vidsage.application.diagnostics.ToolDiagnosticReport;
+import com.vidsage.application.diagnostics.ToolDiagnostics;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,13 +30,13 @@ class MediaControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private ToolDiagnosticsService toolDiagnosticsService;
+    private ToolDiagnostics toolDiagnostics;
 
     @Test
     void returnsToolReports() throws Exception {
-        when(toolDiagnosticsService.diagnoseAll()).thenReturn(List.of(
-                new ExternalToolReport("yt-dlp", true, "2026.08.19", "F:/tools/yt-dlp.exe", null),
-                new ExternalToolReport("ffmpeg", false, null, null,
+        when(toolDiagnostics.diagnoseAll()).thenReturn(List.of(
+                new ToolDiagnosticReport("yt-dlp", true, "2026.08.19", "F:/tools/yt-dlp.exe", null),
+                new ToolDiagnosticReport("ffmpeg", false, null, null,
                         "未找到 ffmpeg：请设置 vidsage.tools.ffmpeg-path 或加入 PATH")));
 
         // 只断言状态码是不够的：这里断言响应体真能序列化出可读的字段

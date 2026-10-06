@@ -605,3 +605,143 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 21: 派发工作流提速协议落地（10-05-workflow-dispatch-tuning）
+<!-- trellis-session: v=2 fp=a8663edd3dc1313f -->
+
+**Date**: 2026-10-05
+**Task**: 派发工作流提速协议落地（10-05-workflow-dispatch-tuning）
+**Branch**: `dev`
+
+### Summary
+
+按 10-03 实测基线落地派发协议调优：正典 dispatch-protocol.md（并行默认/检查拆面/减轮数/档位判据/worktree 仪式/台账/工具适配层）+ workflow.md 与两个 SKILL.md 英文镜像（SYNC MARKER）+ tools/trellis-worktree.sh 幂等脚本 + .codex/agents/trellis-mechanic.toml。三检查面并行核对 AC1–AC7 全过，修复 2P0+2P1+4P2；ZCode 不热加载新 agent 类型，mechanic 按 §7 降级全高档，新会话复测（台账 research/execution-log.md）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f7459d2` | docs(trellis): 派发协议并行化落地（10-05-workflow-dispatch-tuning） |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 22: DDD 四层化重构：机械迁移 + 值对象 + 角色子包 + spec 重写
+<!-- trellis-session: v=2 fp=7ffe6506aad1cb03 -->
+
+**Date**: 2026-10-06
+**Task**: DDD 四层化重构：机械迁移 + 值对象 + 角色子包 + spec 重写
+**Branch**: `feature/ddd-four-layer`
+
+### Summary
+
+完成 10-05-ddd-four-layer-refactor 全部四个 Phase：Phase 1 机械迁移（111 git mv，四层结构落地，零逻辑变更）；Phase 2 值对象 TaskNo/WorkspaceKey（domain/shared 共享内核）+ 17 个 package-info；Phase 3 backend spec 七文档重写（豁免清单正典落 directory-structure.md）；Phase 4 application/task 角色子包（query/exception/subscribe，所有者选定范围）。每批三读面质检 + mvn clean test 441 全绿 + 旧 FQN grep 零残留；13+ 次子代理派发按派发协议并行/串行切批，台账在任务 research/execution-log.md。归档前按所有者要求补记「DDD 规则与现行规范冲突记录」（design.md §8 六项定案，含读模型落位与 @Schema 保留的证据核验）。执行期异常：一次来源不可归因的 TaskPipelineService 无用 import 删除（疑似 research 子代理越权写），已还原到已验证提交态。遗留：feature/ddd-four-layer 四 commit 待所有者审阅合并 dev；新任务 10-06-domain-logic-sink（业务逻辑下沉）规划完成待批准实施。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43e852c` | refactor(backend): DDD 四层化 Phase 1——机械迁移（纯移动+import 重写） |
+| `de004d9` | refactor(backend): DDD 四层化 Phase 2——值对象增量与层 package-info |
+| `4327563` | docs(spec): DDD 四层化 Phase 3——backend spec 重写与旧路径清零 |
+| `e97f2a6` | refactor(backend): DDD 四层化 Phase 4——application/task 角色子包 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 23: workflow-state 解析修复与面包屑瘦身
+<!-- trellis-session: v=2 fp=d60a46d139627c25 -->
+
+**Date**: 2026-10-06
+**Task**: workflow-state 解析修复与面包屑瘦身
+**Branch**: `feature/domain-logic-sink`
+
+### Summary
+
+诊断并根修 trellis 面包屑故障：workflow.md:149 行尾裸标签 × 未锚定正则 = 幻影匹配吞掉 5/8 状态块（每轮降级文案）。两份 hook _TAG_RE 行首锚定；in_progress 3378B→594B、in_progress-inline 2689B→522B（中文硬门+指针）；新建 spec/guides/trellis-update-patches.md 补丁台账（含 trellis update 后复查项与编辑纪律）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ff39880` | fix(trellis): workflow-state 解析正则行首锚定，in_progress 面包屑瘦身（3378B→594B） |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 24: 业务逻辑下沉 domain：四批重构 + 读模型拆分
+<!-- trellis-session: v=2 fp=38df5fd512dac1f1 -->
+
+**Date**: 2026-10-06
+**Task**: 业务逻辑下沉 domain：四批重构 + 读模型拆分
+**Branch**: `feature/domain-logic-sink`
+
+### Summary
+
+执行任务 10-06-domain-logic-sink：application 业务规则下沉 domain，service 瘦身为纯编排。Phase A（efe80ae）SourceUri/WorkspaceDir 值对象 + WorkspaceKey.ofHash 单源 key 宽度；Phase B（7afe71f）Bcp47Language/TermVerification/CheckpointPolicy 三政策件，检查点判据四服务合流，STAGE_TRANSLATE 归位 StageEvent；Phase C（48dabe7）VideoTask.isEventSettled/ACTIVE_STATUSES 谓词单源、TaskArtifactScan 产物可见性、MediaInput.ofTaskInput、AudioArtifact.fileName 指纹命名 + spec 同步；Phase D（6743a3e）读模型拆分 TaskSnapshot（application 零注解）/TaskResponse+TaskArtifactResponse（web/dto @Schema），4 端点与 409 载荷切换。每批 trellis-implement 实现 + trellis-check 独立核查全 PASS；mvn clean test 465 全绿（基线 441）；三零改动服务 diff 为空；对外 JSON/SSE 零变化，前端 types/task.ts 零改动。测试净增 24 条，断言随迁不改值。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `efe80ae` | refactor(backend): 业务下沉 Phase A——Workspace 寻址家族归 domain/shared |
+| `7afe71f` | refactor(backend): 业务下沉 Phase B——字幕语种/术语/检查点政策归 domain/subtitle |
+| `48dabe7` | refactor(backend): 业务下沉 Phase C——零散谓词与工厂单源化 + spec 同步 |
+| `6743a3e` | refactor(backend): 读模型拆分 Phase D——TaskView 拆为 TaskSnapshot/TaskResponse |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 25: application 出站依赖倒置：端口归 domain/application，infrastructure 实现
+<!-- trellis-session: v=2 fp=400dab6fe1fefb72 -->
+
+**Date**: 2026-10-06
+**Task**: application 出站依赖倒置：端口归 domain/application，infrastructure 实现
+**Branch**: `dev`
+
+### Summary
+
+消除 application 与 web 对 infrastructure 的 5 处反向依赖与 web→domain 的 4 处引用：新增 5 个端口（VideoTaskRepository、SubtitleCleanser/Translator/ContextSummarizer 落 domain；ToolDiagnostics 落 application）、8 个新类型，5 个实现类改名（Mybatis*/Llm*/Process*），删除 ToolDiagnosticsService 与 ExternalToolReport，豁免清单 a/b 清零；同步重写 directory-structure.md 依赖规则为「窄口+白名单+端口归属判据」。行为等价，465 测试全绿。审查期另立命名任务 10-06-naming-alignment。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `62e9b47` | refactor(backend): 出站依赖倒置——端口归 domain/application，infrastructure 实现；web 去 domain 化 |
+| `9bb8cae` | docs(spec): 对账端口倒置后的依赖规则、端口归属判据与包说明 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 26: 命名与构件语义整理：Task 前缀对齐、管线方法与阶段类改名
+<!-- trellis-session: v=2 fp=bd9f56cc667eb592 -->
+
+**Date**: 2026-10-06
+**Task**: 命名与构件语义整理：Task 前缀对齐、管线方法与阶段类改名
+**Branch**: `dev`
+
+### Summary
+
+执行 10-06-naming-alignment：把端口倒置审查期暴露的三类命名问题一次收口。类名——TaskService→VideoTaskService、TaskPipelineService→VideoTaskPipeline（前缀对齐聚合根 VideoTask），六个名不副实的服务去 Service 后缀改 XxxStage（SubtitlePreparationStage / SubtitleCleanupStage / SubtitleTranslationStage / AudioPreparationStage / MediaAcquisitionStage / TranscriptionStage）；方法——run→runPipeline、runStages→prepareAndClean、runTranslation→runTranslationPipeline（execute / translateTask 保持）；七个管线构件 stereotype @Service→@Component，依赖字段跟改（含 videoTaskService 的 pipelineService→pipeline）。spec 新增「构件说明：服务与管线构件」，把判据从「名字里有没有 Service」收敛为「有没有 web 调用面」，并写进服务前缀对齐聚合根、管线构件后缀规则；删掉已 100% 执行完、且 §4-2/§4-3/§7-6 三处结论被端口倒置推翻的 docs/ddd-refactor-handoff.md。零行为变化：mvn clean test 45 类 / 465 用例 / 0 failures，与开工基线逐项一致。审查期 trellis-check 独立复核抓出一个真缺陷——R1 三个方法改名整体漏做（AC1 门禁 grep 因类内非限定调用而恒真通过），已补齐并把门禁改为「正向断言新名必须命中」写回任务产物。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7b9db46` | refactor(backend): 命名对齐——服务前缀对齐聚合根、管线去 Service 后缀、六个阶段类改 XxxStage |
+| `bcb1629` | docs(spec): 对账管线构件与聚合根前缀命名，删除已执行完的 DDD 移交文档 |
+
+### Status
+
+[OK] **Completed**

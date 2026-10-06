@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/10-06-domain-logic-sink/research/logic-distribution.md", "reason": "对照逐方法归类表核查业务规则块全部迁出、编排/技术块未被误搬、测试随迁清单完整"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核对新值对象/政策对象落位符合共享内核与上下文归属判据"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对未引入接口增殖、政策对象形态合规"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对异常语义未被搬家改变（ISE/IAE 边界、双份卫语句保留）"}

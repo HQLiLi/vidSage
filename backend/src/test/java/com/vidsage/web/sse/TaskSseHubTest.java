@@ -3,10 +3,10 @@ package com.vidsage.web.sse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.vidsage.model.progress.StageEvent;
-import com.vidsage.model.progress.TaskProgressMessage;
-import com.vidsage.model.task.TaskStatus;
-import com.vidsage.model.task.TranslationStatus;
+import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.domain.task.TaskStatus;
+import com.vidsage.domain.task.TranslationStatus;
 import org.junit.jupiter.api.Test;
 
 /**

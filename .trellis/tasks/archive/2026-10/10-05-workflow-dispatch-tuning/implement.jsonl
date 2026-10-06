@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/guides/dispatch-protocol.md", "reason": "正典协议：所有镜像与脚本的唯一事实源（上游批次产出）"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "SYNC MARKER 先例：中文正典 + workflow.md 英文镜像 + 同步义务的既有模式（D6 要求沿用）"}
+{"file": ".trellis/workflow.md", "reason": "镜像落点：注入块结构、[workflow-state:STATUS] 块位置；既有「≤2-3 步」条款需对齐为 ≤3–4（冲突以正典为准）"}
+{"file": ".agents/skills/trellis-check/SKILL.md", "reason": "镜像落点：读取面/命令关分离条款的英文镜像加在这里"}
+{"file": ".agents/skills/trellis-implement/SKILL.md", "reason": "镜像落点：所有权清单/禁建清单/上报条款的英文镜像加在这里（尚不存在，需新建）"}
+{"file": ".trellis/tasks/archive/2026-10/10-03-vidsage-fe-v0/research/execution-log.md", "reason": "基线数据：成本对账与 AC5 实测对照的数据源（已归档路径）"}
+{"file": ".codex/agents/trellis-implement.toml", "reason": "格式参照：trellis-mechanic.toml 照此 toml 结构写（已落地）"}

@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/10-06-domain-logic-sink/research/logic-distribution.md", "reason": "证据基线：10 服务逐方法归类表与行号锚点，实施时对照搬家清单与测试随迁清单"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "四层归属判据与共享内核定位（WorkspaceDir/SourceUri 归 domain/shared 的依据）；Phase C 需同步第二批值对象事实"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "依赖原则（不预先抽接口）——政策对象是值对象/纯函数领域服务而非技术端口的依据"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "「同一个值被检查两次不是冗余」判据（Controller 卫语句保留）与 ISE/IAE 归属；ISE 紧凑构造器先例"}
+{"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线与门禁命令（mvn clean test）"}

@@ -1,8 +1,6 @@
 package com.vidsage.web.sse;
 
-import com.vidsage.model.progress.TaskProgressMessage;
-import com.vidsage.model.task.TaskStatus;
-import com.vidsage.model.task.TranslationStatus;
+import com.vidsage.application.task.TaskProgressMessage;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
@@ -20,7 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /**
  * SSE 连接管理：持有 {@code taskNo → List<SseEmitter>}，负责写事件、终态收口、断连 / 超时清理与
  * 心跳（design.md「SSE 契约」）。本类是 {@code SseEmitter} 等 HTTP 类型<b>唯一</b>允许出现的包——
- * 订阅机制本体在中立的 {@code subscribe/} 包里，管线只认识注册表不认识 emitter。
+ * 订阅机制本体在 {@code application/task/} 的中立注册表里（原顶层包 subscribe/），管线只认识注册表不认识 emitter。
  *
  * <p><b>事件写入</b>：事件名固定 {@code progress}，data 为 {@link TaskProgressMessage} JSON；快照与增量
  * 共用 {@link #send} 一条路。任务到终态（SUCCEEDED / FAILED）的事件推完即 {@code SseEmitter#complete}
@@ -111,12 +109,11 @@ public class TaskSseHub {
         if (targets == null) {
             return;
         }
-        // 终态判定（2026-10-02 两段式）：主状态终态且翻译子状态不在进行中，任务才真正不再有后续事件。
-        // 翻译事件的 taskStatus 恒为主状态 SUCCEEDED（主管线终态）——若只看主状态，第一条翻译进度
-        // 事件就会把连接收掉；连接必须保持到翻译终态。与 TaskController.isTerminal 同一判据。
-        boolean mainTerminal =
-                event.taskStatus() == TaskStatus.SUCCEEDED || event.taskStatus() == TaskStatus.FAILED;
-        boolean terminal = mainTerminal && event.translationStatus() != TranslationStatus.RUNNING;
+        // 终态判定（2026-10-02 两段式）走 TaskProgressMessage.settled()，判据单源在
+        // VideoTask.isEventSettled：主状态终态且翻译子状态不在进行中，任务才真正不再有后续事件
+        // ——翻译事件的 taskStatus 恒为主状态 SUCCEEDED（主管线终态），若只看主状态，第一条
+        // 翻译进度事件就会把连接收掉；连接必须保持到翻译终态。
+        boolean terminal = event.settled();
         for (SseEmitter target : targets) {
             try {
                 target.send(SseEmitter.event().name(EVENT_NAME).data(event, MediaType.APPLICATION_JSON));

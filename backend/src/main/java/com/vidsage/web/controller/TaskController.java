@@ -1,14 +1,12 @@
 package com.vidsage.web.controller;
 
-import com.vidsage.model.progress.TaskProgressMessage;
-import com.vidsage.model.task.TaskArtifactFile;
-import com.vidsage.model.task.TaskStatus;
-import com.vidsage.model.task.TaskView;
-import com.vidsage.model.task.TranslationStatus;
-import com.vidsage.service.TaskService;
-import com.vidsage.subscribe.Subscription;
-import com.vidsage.subscribe.TaskSubscriptionRegistry;
+import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.query.TaskArtifactFile;
+import com.vidsage.application.task.VideoTaskService;
+import com.vidsage.application.task.subscribe.Subscription;
+import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.web.dto.SubmitUrlRequest;
+import com.vidsage.web.dto.TaskResponse;
 import com.vidsage.web.sse.TaskSseHub;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -55,7 +53,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/tasks")
 public class TaskController {
 
-    private final TaskService taskService;
+    private final VideoTaskService taskService;
 
     private final TaskSseHub sseHub;
 
@@ -68,7 +66,7 @@ public class TaskController {
      * @param sseHub               SSE 连接管理（emitter 持有 / 心跳 / 清理，仅本层可见 HTTP 细节）
      * @param subscriptionRegistry 中立订阅注册表（管线广播的落点）
      */
-    public TaskController(TaskService taskService, TaskSseHub sseHub,
+    public TaskController(VideoTaskService taskService, TaskSseHub sseHub,
                           TaskSubscriptionRegistry subscriptionRegistry) {
         this.taskService = taskService;
         this.sseHub = sseHub;
@@ -89,7 +87,7 @@ public class TaskController {
      * @param request 请求体（url 必填）
      * @return 新任务的 PENDING 视图（拿 taskNo 去查询 / 订阅进度）
      * @throws IllegalArgumentException url 为空白（400）
-     * @throws com.vidsage.service.TaskConflictException 同 URL 已有进行中任务（409，响应体附既有任务）
+     * @throws com.vidsage.application.task.exception.TaskConflictException 同 URL 已有进行中任务（409，响应体附既有任务）
      */
     @Operation(summary = "提交 URL 任务",
             description = "异步执行到原文字幕就绪（下载 → 抽音频 → 转写 → 清洗），立即返回 202 与任务视图；"
@@ -97,14 +95,14 @@ public class TaskController {
                     + "同一 URL 已有排队 / 执行中任务时返回 409")
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public TaskView submitUrl(@RequestBody SubmitUrlRequest request) {
+    public TaskResponse submitUrl(@RequestBody SubmitUrlRequest request) {
         // 卫语句先于一切 I/O（error-handling.md）：url 缺失在边界拦下，不进服务层
         if (request == null || !StringUtils.hasText(request.url())) {
             throw new IllegalArgumentException("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
         log.info("收到任务提交: sourceType=URL");
-        return taskService.submitUrl(request.url());
+        return TaskResponse.from(taskService.submitUrl(request.url()));
     }
 
     /**
@@ -114,7 +112,7 @@ public class TaskController {
      * @param file 上传的媒体文件（multipart 字段名 file）；不能为空
      * @return 新任务的 PENDING 视图
      * @throws IllegalArgumentException 文件缺失或为空（400）
-     * @throws com.vidsage.service.TaskConflictException 同内容文件已有进行中任务（409）
+     * @throws com.vidsage.application.task.exception.TaskConflictException 同内容文件已有进行中任务（409）
      * @throws IllegalStateException    读取上传流失败 / 落盘失败（500）
      */
     @Operation(summary = "上传本地文件提交任务",
@@ -122,14 +120,14 @@ public class TaskController {
                     + "上限见 spring.servlet.multipart.max-file-size（默认 2GB）")
     @PostMapping("/upload")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public TaskView submitUpload(@RequestParam("file") MultipartFile file) {
+    public TaskResponse submitUpload(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空：请选择本地视频 / 音频文件后再提交");
         }
         // 原始文件名是用户资源，不落日志；字节数是度量，可以记
         log.info("收到任务提交: sourceType=UPLOAD, sizeBytes={}", file.getSize());
         try (InputStream in = file.getInputStream()) {
-            return taskService.submitUpload(in, file.getOriginalFilename());
+            return TaskResponse.from(taskService.submitUpload(in, file.getOriginalFilename()));
         } catch (IOException e) {
             throw new IllegalStateException("读取上传文件流失败：" + e.getMessage() + "；请重试或换一个文件", e);
         }
@@ -141,17 +139,17 @@ public class TaskController {
      * @param taskNo 提交响应返回的任务号
      * @return 任务视图（artifacts 为工作区内可见产物）
      * @throws IllegalArgumentException taskNo 为空（400）
-     * @throws com.vidsage.service.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "查询任务状态",
             description = "按 taskNo 返回任务视图（状态 / 当前阶段 / 错误信息 / 产物清单）；不存在返回 404 与中文说明")
     @GetMapping("/{taskNo}")
-    public TaskView getTask(@PathVariable String taskNo) {
+    public TaskResponse getTask(@PathVariable String taskNo) {
         if (!StringUtils.hasText(taskNo)) {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
         log.info("查询任务: taskNo={}", taskNo);
-        return taskService.findByTaskNo(taskNo);
+        return TaskResponse.from(taskService.findByTaskNo(taskNo));
     }
 
     /**
@@ -162,7 +160,7 @@ public class TaskController {
      * @param taskNo 提交响应返回的任务号
      * @return 挂起中的 SSE 连接（text/event-stream）
      * @throws IllegalArgumentException taskNo 为空（400）
-     * @throws com.vidsage.service.TaskNotFoundException 任务不存在（404，此时不留悬挂连接）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404，此时不留悬挂连接）
      */
     @Operation(summary = "订阅任务进度（SSE）",
             description = "text/event-stream；事件名 progress，data 为 TaskProgressMessage JSON。"
@@ -188,7 +186,8 @@ public class TaskController {
         // 会经它再写一遍给幸存连接（真实运行证据抓到的重复推送缺陷，见 research/acceptance-evidence.md）。
         // close 幂等，与上方终态分支的 close 并发安全。
         emitter.onCompletion(subscription::close);
-        if (isTerminal(snapshot)) {
+        // 终态判定走 TaskProgressMessage.settled()（判据单源在 VideoTask.isEventSettled）
+        if (snapshot.settled()) {
             // 订阅时任务已终态：快照即最后一条，注册表不会再有 complete 调用，主动退订防泄漏
             subscription.close();
         }
@@ -203,19 +202,19 @@ public class TaskController {
      * @param taskNo 提交响应返回的任务号
      * @return 触发后的任务视图（translationStatus 反映翻译子状态；正常触发为 RUNNING）
      * @throws IllegalArgumentException taskNo 为空（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
-     * @throws com.vidsage.service.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "触发字幕翻译（按需）",
             description = "主任务成功（SUCCEEDED）后可触发；202 返回触发后的任务视图。幂等：已有翻译产物"
                     + "不重复调用 LLM，翻译进行中重复触发返回当前视图；主任务未成功返回 400（字幕尚未就绪）")
     @PostMapping("/{taskNo}/translate")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public TaskView translate(@PathVariable String taskNo) {
+    public TaskResponse translate(@PathVariable String taskNo) {
         if (!StringUtils.hasText(taskNo)) {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
         log.info("触发字幕翻译: taskNo={}", taskNo);
-        return taskService.translate(taskNo);
+        return TaskResponse.from(taskService.translate(taskNo));
     }
 
     /**
@@ -226,7 +225,7 @@ public class TaskController {
      * @param fileName 产物文件名（清单里的 name）
      * @return 产物文件流（application/octet-stream，附件下载）
      * @throws IllegalArgumentException taskNo / fileName 为空、越出工作区或产物不存在（400）
-     * @throws com.vidsage.service.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "下载任务产物",
             description = "流式返回产物文件；fileName 从任务视图 artifacts 清单里取，"
@@ -248,16 +247,5 @@ public class TaskController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment().filename(artifact.name()).build().toString())
                 .body(new FileSystemResource(artifact.path()));
-    }
-
-    /**
-     * 是否终态事件：主状态终态<b>且</b>翻译子状态不在进行中，任务才真正不再有后续事件——
-     * 终态快照推完即收口连接，随后退订。与 {@code TaskSseHub.send} 的终态判定同一判据
-     * （翻译事件的 taskStatus 恒为主状态 SUCCEEDED，只看主状态会把翻译进行中的连接提前收掉）。
-     */
-    private static boolean isTerminal(TaskProgressMessage event) {
-        boolean mainTerminal =
-                event.taskStatus() == TaskStatus.SUCCEEDED || event.taskStatus() == TaskStatus.FAILED;
-        return mainTerminal && event.translationStatus() != TranslationStatus.RUNNING;
     }
 }

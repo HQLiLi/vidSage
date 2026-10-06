@@ -144,6 +144,13 @@ python ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed g
       MIRROR of rules 2 / 3 / 7 in .trellis/spec/guides/git-workflow.md.
       Change one side, change the other in the same edit. On disagreement
       the spec file is canonical — fix the mirror here to match it
+    - SYNC MARKER: the "Dispatch protocol mirror" lines (Parallelism /
+      Tier test / Round rules / Worktree ritual) in
+      [workflow-state:in_progress] and [workflow-state:in_progress-inline]
+      are a condensed English MIRROR of §1/§3/§4/§5 in
+      .trellis/spec/guides/dispatch-protocol.md. Change one side, change
+      the other in the same edit. On disagreement the spec file is
+      canonical — fix the mirror here to match it
     - Run `trellis update` after editing to push the new bodies to
       downstream user projects (block-level managed replacement)
     - Full runtime contract:
@@ -245,12 +252,10 @@ Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-bef
 Sub-agent dispatch protocol applies to all platforms and all sub-agents, including native Codex `SubagentStart` context injection with child-side pull fallback, class-2 Gemini/Qoder/Copilot/Reasonix/Trae/Grok/Kimi Code, hook-backed ZCode/Snow, and `trellis-research`: every dispatch prompt starts with `Active task: <task path from task.py current>` before role-specific instructions. On Grok Build, use `spawn_subagent` with `subagent_type` set to the Trellis agent name (e.g. `trellis-implement`). On Kimi Code, dispatch the built-in `coder` / `explore` sub-agent with the matching `.kimi-code/skills/trellis-<role>/SKILL.md` instructions.
 
 [workflow-state:in_progress]
-Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
-Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> STOP for user review (Phase 3.4 gate) -> commit after approval -> `/trellis:finish-work` only when the user asks.
-Wrap-up gates (hard): once the work is done and tests pass, stop and hand it to the user for review; never chain commit -> push -> merge -> archive in one run, and never treat silence as approval. While the task is not archived, end every reply with one line: `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`. Full rules: `.trellis/spec/guides/git-workflow.md`.
-Dispatch granularity: 单次 dispatch ≤2-3 个 implement.md 步骤，超了先拆批；子代理内长输出命令必须 tail/grep 截断。质检随批：只查本批触及文件+受影响接口签名，全量测试只在批次末/任务末，任务收尾只做跨批缝合检查（规则见 Phase 2.1）。
-Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
-Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
+流程：派发 `trellis-implement`→`trellis-check`→`trellis-update-spec`→停下等用户审查（Phase 3.4 门）→批准后提交。
+硬门：完成即停等审查；禁止链式 commit/push/merge/归档；审查意见回 2.1 修后走新 3.4 批；未归档每轮提醒 `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`。
+派发硬规：单批 ≤3-4 步，超了先拆批；派发词以 `Active task: <path>` 开头；子代理长输出命令必须 tail/grep 截断。
+细则：.trellis/spec/guides/dispatch-protocol.md·.trellis/spec/guides/git-workflow.md
 [/workflow-state:in_progress]
 
 <!-- Per-turn breadcrumb: shown while status='in_progress' when
@@ -264,10 +269,9 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
      together. -->
 
 [workflow-state:in_progress-inline]
-Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> STOP for user review (Phase 3.4 gate) -> commit after approval -> `/trellis:finish-work` only when the user asks.
-Wrap-up gates (hard): once the work is done and tests pass, stop and hand it to the user for review; never chain commit -> push -> merge -> archive in one run, and never treat silence as approval. While the task is not archived, end every reply with one line: `任务 <name> 未归档 — 审查确认后跑 /trellis:finish-work`. Full rules: `.trellis/spec/guides/git-workflow.md`.
-Do not dispatch implement/check sub-agents in inline mode.
-Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
+流程：`trellis-before-dev` → 直接改代码 → `trellis-check` → 验证 → `trellis-update-spec` → 停下等用户审查（Phase 3.4 门）→ 批准后提交。
+硬门：完成即停等审查；禁止链式 commit/push/merge/归档；审查意见回 2.1 修后走新 3.4 批；未归档每轮提醒。inline 模式不派发 implement/check 子代理。
+批次纪律：单批 ≤3-4 步；并行准入 = 无跨批依赖 + 逐文件所有权清单；细则全文 .trellis/spec/guides/dispatch-protocol.md。
 [/workflow-state:in_progress-inline]
 
 ### Phase 3: Finish
@@ -503,7 +507,7 @@ Goal: turn reviewed planning artifacts into code that passes quality checks.
 #### 2.1 Implement `[required · repeatable]`
 
 **Dispatch granularity（2026-10-02 立，全部平台适用）**：单次 dispatch 只覆盖 implement.md 的
-**2-3 步**（或一个可独立验证的交付物）；派发前先按本规则切批，超过即拆。理由：子代理累计 token
+**3-4 步**（或一个可独立验证的交付物）；派发前先按本规则切批，超过即拆。理由：子代理累计 token
 随循环长度近平方级增长（2026-09-30 MVP-1 实测：单批 5 步的 dispatch 累计 10M+ token），且超大
 上下文拖慢推理、加剧压缩失真。配套纪律：子代理内**长输出命令一律截断**（`| tail` / grep 取失败段，
 禁止整段 mvn/日志输出进循环）；design.md 在规划期定死契约细节，把子代理的试错探索压到最低。

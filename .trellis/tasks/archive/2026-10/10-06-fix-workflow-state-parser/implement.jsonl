@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/10-06-fix-workflow-state-parser/research/diagnosis.md", "reason": "全部精确改动内容（旧/新正则、两个块的新正文全文、台账文件全文）与验证命令都在此文件，实施时照抄不必推导"}
+{"file": ".trellis/spec/guides/index.md", "reason": "收录补丁台账 trellis-update-patches.md 时需遵循该索引的现有条目格式"}

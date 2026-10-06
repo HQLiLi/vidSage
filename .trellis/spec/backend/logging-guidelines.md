@@ -1,7 +1,7 @@
 # 日志规范
 
 > 2026-09-24 随首个日志实现落地重建（此前因全库无日志语句而删除，见 [index.md](./index.md)）。
-> 以 `web/controller/AsrController.java`、`service/TranscriptionService.java`、`provider/asr/dashscope/DashScopeAsrProvider.java` 的真实代码为依据。
+> 以 `web/controller/TaskController.java`、`application/transcription/TranscriptionStage.java`、`infrastructure/provider/asr/dashscope/DashScopeAsrProvider.java` 的真实代码为依据。
 
 ---
 
@@ -32,8 +32,8 @@
 
 | 层 | 级别 | 记什么 | 参照 |
 |---|---|---|---|
-| Controller | INFO | 请求入口与出口（sourceType、language、segments、cost）；入参不合法 WARN | `AsrController` |
-| Service | DEBUG | 编排节点（委托哪个 provider、耗时多少）；与 Controller 耗时相减即框架开销 | `TranscriptionService` |
+| Controller | INFO | 请求入口与出口（sourceType、language、segments、cost）；入参不合法 WARN | `TaskController` |
+| 阶段 / 服务 | DEBUG | 编排节点（委托哪个 provider、耗时多少）；与 Controller 耗时相减即框架开销 | `TranscriptionStage` |
 | Provider 外部调用 | INFO | 有外部副作用的锚点：任务提交/结束的 taskId、status、cost | `DashScopeAsrProvider` |
 | Provider 内部节点 | DEBUG | 地址解析、结果下载等中间步骤 | `DashScopeAsrProvider` |
 

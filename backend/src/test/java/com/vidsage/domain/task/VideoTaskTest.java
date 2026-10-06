@@ -1,15 +1,15 @@
 package com.vidsage.domain.task;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.vidsage.model.task.TaskInputType;
-import com.vidsage.model.task.TaskStatus;
-import com.vidsage.model.task.TranslationStatus;
+import com.vidsage.domain.shared.WorkspaceKey;
 import java.time.LocalDateTime;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -17,7 +17,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>覆盖「主状态机合法迁移三条」「非法迁移拒绝」（重点钉住 SUCCEEDED → RUNNING 这类终态再迁移）
  * 「阶段名推进的时机约束」「翻译子状态迁移（2026-10-02 两段式：仅主状态 SUCCEEDED 后流转）」
- * 「newPending / restore 的出生状态」。
+ * 「newPending / restore 的出生状态」「查询谓词（isEventSettled 终态判定 / ACTIVE_STATUSES active
+ * 判据，2026-10-06 单源化）」。
  */
 class VideoTaskTest {
 
@@ -25,10 +26,12 @@ class VideoTaskTest {
 
     @Test
     void newPendingStartsAsPendingWithGeneratedTaskNo() {
-        VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v", "a1b2c3d4e5f6", "dir-a1b2c3d4e5f6");
+        VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir-a1b2c3d4e5f6");
 
         assertEquals(TaskStatus.PENDING, task.getStatus());
-        assertTrue(task.getTaskNo().matches("[0-9a-f]{32}"), () -> "taskNo 应为 32 位十六进制：" + task.getTaskNo());
+        assertTrue(task.getTaskNo().value().matches("[0-9a-f]{32}"),
+                () -> "taskNo 应为 32 位十六进制：" + task.getTaskNo().value());
         assertNull(task.getId(), "未落库前 id 应为 null");
         assertNotNull(task.getCreatedAt());
         assertEquals(task.getCreatedAt(), task.getUpdatedAt());
@@ -42,8 +45,8 @@ class VideoTaskTest {
     @Test
     void restoreRebuildsPersistedFieldsVerbatim() {
         LocalDateTime created = LocalDateTime.of(2026, 9, 30, 10, 0);
-        VideoTask task = VideoTask.restore(7L, "abc123", TaskInputType.UPLOAD, "demo.mp4",
-                "a1b2c3d4e5f6", "dir", TaskStatus.FAILED, "translate", TranslationStatus.RUNNING,
+        VideoTask task = VideoTask.restore(7L, new TaskNo("abc123"), TaskInputType.UPLOAD, "demo.mp4",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.FAILED, "translate", TranslationStatus.RUNNING,
                 "翻译失败", created,
                 created.plusMinutes(5), created.plusSeconds(1), created.plusMinutes(5));
 
@@ -264,10 +267,39 @@ class VideoTaskTest {
                 "被拒绝的失败标记不应覆盖已有错误信息");
     }
 
+    // ---------- 查询谓词（2026-10-06 终态 / active 判据单源化） ----------
+
+    @Test
+    void eventSettledOnlyWhenMainTerminalAndTranslationNotRunning() {
+        // 主状态终态且翻译不在 RUNNING 才算收敛：SUCCEEDED / FAILED × {null, SUCCEEDED, FAILED}
+        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, null),
+                "主任务成功 + 翻译从未触发 → 已收敛");
+        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.SUCCEEDED),
+                "翻译已完成 → 已收敛");
+        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.FAILED),
+                "翻译已失败 → 已收敛");
+        assertTrue(VideoTask.isEventSettled(TaskStatus.FAILED, null), "主任务失败 → 已收敛");
+        // 翻译进行中：事件流还有后续，连接不能收（原 web 两处重复判定的核心分支）
+        assertFalse(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.RUNNING),
+                "翻译进行中 → 未收敛");
+        // 主状态未终态：无论翻译子状态如何都未收敛
+        assertFalse(VideoTask.isEventSettled(TaskStatus.PENDING, null), "排队中 → 未收敛");
+        assertFalse(VideoTask.isEventSettled(TaskStatus.RUNNING, null), "执行中 → 未收敛");
+        assertFalse(VideoTask.isEventSettled(TaskStatus.RUNNING, TranslationStatus.RUNNING),
+                "执行中 + 翻译进行中 → 未收敛");
+    }
+
+    @Test
+    void activeStatusesAreExactlyPendingAndRunning() {
+        assertEquals(Set.of(TaskStatus.PENDING, TaskStatus.RUNNING), VideoTask.ACTIVE_STATUSES,
+                "active 判据 = 排队 + 执行中；终态不算 active（重新提交同一输入走断点复用）");
+    }
+
     // ---------- 工厂 ----------
 
     private static VideoTask newPending() {
-        return VideoTask.newPending(TaskInputType.URL, "https://example.com/v", "a1b2c3d4e5f6", "dir");
+        return VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir");
     }
 
     private static VideoTask running() {

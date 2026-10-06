@@ -19,17 +19,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.vidsage.model.progress.StageEvent;
-import com.vidsage.model.progress.TaskProgressMessage;
-import com.vidsage.model.task.TaskArtifactFile;
-import com.vidsage.model.task.TaskInputType;
-import com.vidsage.model.task.TaskStatus;
-import com.vidsage.model.task.TaskView;
-import com.vidsage.model.task.TranslationStatus;
-import com.vidsage.service.TaskConflictException;
-import com.vidsage.service.TaskNotFoundException;
-import com.vidsage.service.TaskService;
-import com.vidsage.subscribe.TaskSubscriptionRegistry;
+import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.query.TaskArtifactFile;
+import com.vidsage.domain.task.TaskInputType;
+import com.vidsage.domain.task.TaskStatus;
+import com.vidsage.application.task.query.TaskSnapshot;
+import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.application.task.exception.TaskConflictException;
+import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.VideoTaskService;
+import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.web.sse.TaskSseHub;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -66,7 +66,7 @@ class TaskControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private TaskService taskService;
+    private VideoTaskService taskService;
 
     @Autowired
     private TaskSseHub sseHub;
@@ -77,7 +77,7 @@ class TaskControllerTest {
     // ---------- 提交：URL 路线 ----------
 
     @Test
-    void submitUrlReturnsAcceptedWithTaskView() throws Exception {
+    void submitUrlReturnsAcceptedWithTaskResponse() throws Exception {
         when(taskService.submitUrl("https://example.com/watch/1"))
                 .thenReturn(pendingView(TaskInputType.URL, "https://example.com/watch/1"));
 
@@ -109,7 +109,7 @@ class TaskControllerTest {
 
     @Test
     void submitUrlConflictReturns409WithExistingTask() throws Exception {
-        TaskView existing = new TaskView("aaaabbbbccccddddeeeeffff00001111", TaskInputType.UPLOAD,
+        TaskSnapshot existing = new TaskSnapshot("aaaabbbbccccddddeeeeffff00001111", TaskInputType.UPLOAD,
                 "demo.mp4", TaskStatus.RUNNING, null, "transcribe", null,
                 LocalDateTime.of(2026, 9, 30, 10, 0), LocalDateTime.of(2026, 9, 30, 10, 0, 1), null,
                 List.of());
@@ -129,7 +129,7 @@ class TaskControllerTest {
     // ---------- 提交：上传路线 ----------
 
     @Test
-    void submitUploadReturnsAcceptedWithTaskView() throws Exception {
+    void submitUploadReturnsAcceptedWithTaskResponse() throws Exception {
         when(taskService.submitUpload(any(), any()))
                 .thenReturn(pendingView(TaskInputType.UPLOAD, "视频.mp4"));
         MockMultipartFile file = new MockMultipartFile("file", "视频.mp4", "video/mp4",
@@ -156,7 +156,7 @@ class TaskControllerTest {
     // ---------- 查询 ----------
 
     @Test
-    void getTaskReturnsTaskView() throws Exception {
+    void getTaskReturnsTaskResponse() throws Exception {
         when(taskService.findByTaskNo(TASK_NO))
                 .thenReturn(pendingView(TaskInputType.UPLOAD, "demo.mp4"));
 
@@ -253,7 +253,7 @@ class TaskControllerTest {
     // ---------- 按需触发翻译（2026-10-02 两段式） ----------
 
     @Test
-    void translateReturnsAcceptedWithRefreshedTaskView() throws Exception {
+    void translateReturnsAcceptedWithRefreshedTaskResponse() throws Exception {
         when(taskService.translate(TASK_NO))
                 .thenReturn(succeededView(TranslationStatus.RUNNING));
 
@@ -368,7 +368,7 @@ class TaskControllerTest {
 
     @Test
     void downloadArtifactMapsPathGuardRejectionToBadRequest() throws Exception {
-        // 穿越检测本体在 TaskServiceTest（../、绝对路径、反斜杠、URL 编码四个形态）；
+        // 穿越检测本体在 VideoTaskServiceTest（../、绝对路径、反斜杠、URL 编码四个形态）；
         // 这里只钉「服务层拒绝 → 400」的映射。注意：URL 里裸写 ../ 会被容器规范化成 404，
         // 到不了控制器——这正是编码绕过必须在服务层 resolve 后校验的原因。
         // fileName 的具体解码形态随 servlet 实现而异，用 anyString() 只锚定映射关系。
@@ -391,15 +391,15 @@ class TaskControllerTest {
 
     // ---------- 工厂 ----------
 
-    private static TaskView pendingView(TaskInputType inputType, String sourceUri) {
-        return new TaskView(TASK_NO, inputType, sourceUri,
+    private static TaskSnapshot pendingView(TaskInputType inputType, String sourceUri) {
+        return new TaskSnapshot(TASK_NO, inputType, sourceUri,
                 TaskStatus.PENDING, null, null, null, LocalDateTime.of(2026, 9, 30, 10, 0), null, null,
                 List.of());
     }
 
     /** 主任务已成功的视图（自动管线跑完；翻译子状态由用例给定）。 */
-    private static TaskView succeededView(TranslationStatus translationStatus) {
-        return new TaskView(TASK_NO, TaskInputType.URL, "https://example.com/watch/1",
+    private static TaskSnapshot succeededView(TranslationStatus translationStatus) {
+        return new TaskSnapshot(TASK_NO, TaskInputType.URL, "https://example.com/watch/1",
                 TaskStatus.SUCCEEDED, translationStatus, "clean", null,
                 LocalDateTime.of(2026, 10, 2, 10, 0), LocalDateTime.of(2026, 10, 2, 10, 0, 1),
                 LocalDateTime.of(2026, 10, 2, 10, 5), List.of());

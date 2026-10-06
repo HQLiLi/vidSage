@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/guides/dispatch-protocol.md", "reason": "核对正典是否覆盖 AC1/AC5/AC6/AC7 且协议层工具中立"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "核对 SYNC MARKER 义务是否成文、正典/镜像一致性口径"}
+{"file": ".trellis/workflow.md", "reason": "核对镜像是否与正典一致、注入块是否被破坏、批次上限是否对齐 ≤3–4"}
+{"file": ".agents/skills/trellis-check/SKILL.md", "reason": "核对镜像条款与正典一致（AC2）"}
+{"file": ".agents/skills/trellis-implement/SKILL.md", "reason": "核对镜像条款与正典一致（AC3，新建文件）"}
+{"file": "tools/trellis-worktree.sh", "reason": "核对脚本接口与正典 §5.1 一致且幂等、非交互（AC4）"}
+{"file": ".codex/agents/trellis-mechanic.toml", "reason": "核对 ZCode 适配行与实际 toml 内容一致（AC5/AC6）"}
+{"file": ".trellis/tasks/archive/2026-10/10-03-vidsage-fe-v0/research/execution-log.md", "reason": "核对正典条款引用的基线数据不失真"}

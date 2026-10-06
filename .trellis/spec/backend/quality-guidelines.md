@@ -11,7 +11,7 @@
 - **转写任务提交与轮询**：直接用官方 `dashscope-sdk-java` 的 `Transcription` 类（`asyncCall` + `wait`），没有手写 HTTP 轮询循环。
 
   ```java
-  // provider/asr/dashscope/DashScopeAsrProvider.java
+  // infrastructure/provider/asr/dashscope/DashScopeAsrProvider.java
   var submitted = transcription.asyncCall(param);
   var finished = transcription.wait(
           TranscriptionQueryParam.FromTranscriptionParam(param, submitted.getTaskId()));
@@ -93,7 +93,7 @@ public record TranscriptionCommand(AudioSource source, String language) {
 - 私有方法：可用行注释说明**为什么**这样做，而不是做了什么
 - 解释**原因和约束**，不解释显而易见的代码
 
-参照：`provider/asr/ASRProvider.java`、`model/asr/TranscriptionCommand.java`、`model/asr/AudioSource.java`、`provider/asr/dashscope/DashScopeProperties.java`
+参照：`domain/transcription/ASRProvider.java`、`domain/transcription/TranscriptionCommand.java`、`domain/transcription/AudioSource.java`、`infrastructure/provider/asr/dashscope/DashScopeProperties.java`
 
 > 注：现有代码的私有方法（如 `buildParam`）**尚未**加注释。本规范生效后新增的私有方法要补上——不要因为旧代码没写就跟着不写。
 
@@ -127,7 +127,7 @@ double best = Math.max(
 
 必测点：**必须有一条钉住「双目标」的用例**——造一条长句（阈值 0.7）且模型保留原文，此时 `ratio(基线, 原文)` 只有 0.432；若有人把实现简化成「只比基线」，这条立刻变红。只测「不替换也不被拦」是**恒真**的（`ratio(原文, 原文) = 1.0`），钉不住任何东西。
 
-参照：`provider/llm/SubtitleCleanser#validate` / `#baselineOf`，用例见 `SubtitleCleanserTest`。
+参照：`infrastructure/provider/llm/LlmSubtitleCleanser#validate` / `#baselineOf`，用例见 `LlmSubtitleCleanserTest`。
 
 ### 字幕术语表契约（`SubtitleContext.Term`）
 
@@ -139,10 +139,20 @@ double best = Math.max(
 | `fixed` | 正确的写法，**也是字幕里应当替换成的写法** | 正确写法是外语原文时就写外语原文（`Mittelhau`）；与 `asr` 相同时表示无需替换 |
 | `note` | **替换理由**：说清 `asr` 错在哪、为什么该换成 `fixed` | 必须提到 asr 与 fixed 的写法；**只能写成「为什么该换成 fixed」**，不得写成「两个写法都可以」的并列口吻——否则清洗模型会把 `fixed` 读成别名，于是并列保留而不替换 |
 
-- 渲染给清洗模型的格式：`- "<asr>" → "<fixed>"（候选正确写法）：<note>`；只列**本批正文里真出现过 asr 的**条目（命中判定只有一处实现：`SubtitleCleanser#hitTerms`，渲染、基线、指标三处共用）
+- 渲染给清洗模型的格式：`- "<asr>" → "<fixed>"（候选正确写法）：<note>`；只列**本批正文里真出现过 asr 的**条目（命中判定只有一处实现：`shared/subtitle/TermMatcher#hitTermsByAsr`，`SubtitleCleanser` 为调用方，渲染、基线、指标三处共用）
 - 术语表是**证据不是指令**：换不换由清洗模型按该句上下文判断（读得通就换、读不通保留原写法）。**不要**在提示词里点名哪些词必须换，也**不要**在代码里加强制校验
 - 术语表**未命中**的其他专有名词一律不动；`密度号` 这类「同一个词的另一种音译变体」不靠模糊匹配兜底，靠模型自己按上下文推断（2026-09-28 决策）
 - 术语替换统计走 `CleanseResult.termHits / termApplied`，口径是**保守近似**（变体形算未替换，宁可多报）：`asr == fixed` 的条目从分子分母都排除；跨批次累计；未替换清单进 DEBUG 日志，汇总数进服务层日志与 HTTP 响应
+
+### 不预先抽接口
+
+**上层需要不依赖某个具体实现类时，就为它抽端口**——多实现是抽端口的常见理由，不是必要条件。端口落在哪一层、叫什么名字，判据见 [directory-structure.md](./directory-structure.md) 的[依赖规则](./directory-structure.md#依赖规则)与[端口归属判据](./directory-structure.md#端口归属判据)。
+
+> **2026-10-06 改判**。原表述是「只有对着真实的可替换缝才引入；现有四个端口各自有明确的多实现或替身需求」——这句对 `domain/media/AudioExtractor` 是**失实的**：它一直只有一个实现（`FfmpegAudioExtractor`），其 Javadoc 明写「接口保留是为了让上层不依赖实现类」。新判据只是把一直隐含的规则写成明文，并把 `VideoTaskRepository` 与 `infrastructure/provider/llm/` 的三个 LLM worker 一并纳入（端口在 `domain/`，实现在 `infrastructure/`；详见任务 `10-06-port-inversion`）。
+>
+> **它仍然反对的是**「为以后可能用到」而造的抽象：抽端口要有**当下的上层可见性需求**做依据，不是「将来可能有第二个实现」。
+
+DDD 四层的依赖规则以 [directory-structure.md](./directory-structure.md) 为正典。
 
 ## 五、Lombok 的使用边界
 
@@ -185,7 +195,7 @@ Windows 上 `@TempDir` 的清理**偶发失败**：`JUnitException: Failed to de
 - 凡**会写文件**又用 `@TempDir` 的测试类，用 `@TempDir(cleanup = CleanupMode.NEVER)`（import `org.junit.jupiter.api.io.CleanupMode`），别让环境问题把测试判红
 - **不要**以「顺手统一」为由修改范围外、且无 flake 证据的既有测试类——那会给审查凭空增加噪音
 
-参照：`provider/audio/ffmpeg/FfmpegAudioExtractorTest.java`
+参照：`infrastructure/provider/audio/ffmpeg/FfmpegAudioExtractorTest.java`
 
 ### 测试分档：能不起容器就不起，按需升级
 
@@ -207,7 +217,7 @@ var provider = new DashScopeAsrProvider(
 | 档位 | 判据 | 手段 | 本项目实例 |
 |---|---|---|---|
 | 纯单元测试 | 逻辑不依赖容器能力 | `new` + 构造注入 | `DashScopeAsrProviderTest` 等 21 个 |
-| 切片测试 | 只缺某一层的框架能力 | `@WebMvcTest` / `@DataJpaTest` / `@JsonTest` | `MediaControllerTest`、`AsrControllerTest`、`SubtitleControllerTest` |
+| 切片测试 | 只缺某一层的框架能力 | `@WebMvcTest` / `@DataJpaTest` / `@JsonTest` | `MediaControllerTest`、`TaskControllerTest` |
 | 全容器 | 验证跨层协作、自动配置、真实外部依赖 | `@SpringBootTest` + Testcontainers | `VidSageApplicationTests`（冒烟） |
 
 **切片测试会起「部分容器」，这是设计如此，不违反本节。** 它管的不是「不许起容器」，而是「只缺某一层的框架能力时，别去起完整容器」。所以把 `@WebMvcTest` 叫「单元测试」或「集成测试」都不准确——**直接叫「切片测试」**。
@@ -235,7 +245,7 @@ TranscriptionResult result = DashScopeAsrProvider.toResult(file);
 3. 配置缺失时抛异常
 4. 入参不合法时抛异常
 
-参照：`backend/src/test/java/com/vidsage/provider/asr/dashscope/DashScopeAsrProviderTest.java`
+参照：`backend/src/test/java/com/vidsage/infrastructure/provider/asr/dashscope/DashScopeAsrProviderTest.java`
 
 ### 测试数据
 

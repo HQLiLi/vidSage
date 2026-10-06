@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "分层归属判据、依赖规则与豁免清单、端口落位与命名约定——本轮改动的正典，实现须逐条对齐"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "端口接口的纯净性要求（无框架注解、SDK 类型不出现在签名）与契约命名规范，新端口必须满足"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "构造注入、测试可替换点、反模式清单；本轮翻案的「不预先抽接口」条目也在此"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "持久化三层与 MP 用法边界——批次 1 改的是这一层的可见性，不动用法"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流检查清单，用于确认端口化未改变数据流向"}

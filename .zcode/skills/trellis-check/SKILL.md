@@ -9,6 +9,20 @@ Comprehensive quality verification for recently written code. Combines spec comp
 
 ---
 
+## Check-Face Split (dispatch protocol mirror)
+
+> SYNC MARKER — condensed English mirror of `.trellis/spec/guides/dispatch-protocol.md` §2 (canonical; on conflict the canonical doc wins — keep this mirror in sync in the same edit).
+
+When a full-scope check is dispatched, it defaults to three parallel pure-read faces — spec-compliance, contract-consistency, logic:
+
+- Pure read only: run no commands and write no files, so the faces need no isolation and are safe to run in parallel in the same directory.
+- Read scope = the `git diff` change list + the reference anchors named in the dispatch word (relevant spec files / interface files / module paths). Full-repo reads are forbidden.
+- The three read faces are dispatched in parallel and never wait on each other.
+
+The command face (type-check / lint / build) runs separately — in one dedicated agent or the main line — never mixed into a read face; concurrent npm commands are forbidden (node_modules / .tmp races).
+
+---
+
 ## Step 1: Identify What Changed
 
 ```bash

@@ -11,7 +11,9 @@ dist/
 !frontend/.env
 model-cache/
 asr-service/
-/tools/
+# 忽略 tools/ 下内容但保留例外（git 语义：父目录本身不能被排除，否则否定例外失效）
+/tools/*
+!tools/trellis-worktree.sh
 /backend/data/
 
 # 设计原型沙盒（独立于正式前端，不进仓库）
