@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
+- **Total Sessions**: 26
 - **Last Active**: 2026-10-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~724 | Active |
+| `journal-1.md` | ~747 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-10-06 | 命名与构件语义整理：Task 前缀对齐、管线方法与阶段类改名 | `7b9db46`, `bcb1629` | `dev` |
 | 25 | 2026-10-06 | application 出站依赖倒置：端口归 domain/application，infrastructure 实现 | `62e9b47`, `9bb8cae` | `dev` |
 | 24 | 2026-10-06 | 业务逻辑下沉 domain：四批重构 + 读模型拆分 | `efe80ae`, `7afe71f`, `48dabe7`, `6743a3e` | `feature/domain-logic-sink` |
 | 23 | 2026-10-06 | workflow-state 解析修复与面包屑瘦身 | `ff39880` | `feature/domain-logic-sink` |

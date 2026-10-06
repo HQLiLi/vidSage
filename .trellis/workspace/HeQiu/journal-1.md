@@ -722,3 +722,26 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 26: 命名与构件语义整理：Task 前缀对齐、管线方法与阶段类改名
+<!-- trellis-session: v=2 fp=bd9f56cc667eb592 -->
+
+**Date**: 2026-10-06
+**Task**: 命名与构件语义整理：Task 前缀对齐、管线方法与阶段类改名
+**Branch**: `dev`
+
+### Summary
+
+执行 10-06-naming-alignment：把端口倒置审查期暴露的三类命名问题一次收口。类名——TaskService→VideoTaskService、TaskPipelineService→VideoTaskPipeline（前缀对齐聚合根 VideoTask），六个名不副实的服务去 Service 后缀改 XxxStage（SubtitlePreparationStage / SubtitleCleanupStage / SubtitleTranslationStage / AudioPreparationStage / MediaAcquisitionStage / TranscriptionStage）；方法——run→runPipeline、runStages→prepareAndClean、runTranslation→runTranslationPipeline（execute / translateTask 保持）；七个管线构件 stereotype @Service→@Component，依赖字段跟改（含 videoTaskService 的 pipelineService→pipeline）。spec 新增「构件说明：服务与管线构件」，把判据从「名字里有没有 Service」收敛为「有没有 web 调用面」，并写进服务前缀对齐聚合根、管线构件后缀规则；删掉已 100% 执行完、且 §4-2/§4-3/§7-6 三处结论被端口倒置推翻的 docs/ddd-refactor-handoff.md。零行为变化：mvn clean test 45 类 / 465 用例 / 0 failures，与开工基线逐项一致。审查期 trellis-check 独立复核抓出一个真缺陷——R1 三个方法改名整体漏做（AC1 门禁 grep 因类内非限定调用而恒真通过），已补齐并把门禁改为「正向断言新名必须命中」写回任务产物。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7b9db46` | refactor(backend): 命名对齐——服务前缀对齐聚合根、管线去 Service 后缀、六个阶段类改 XxxStage |
+| `bcb1629` | docs(spec): 对账管线构件与聚合根前缀命名，删除已执行完的 DDD 移交文档 |
+
+### Status
+
+[OK] **Completed**
