@@ -51,11 +51,13 @@
 
 ## Acceptance Criteria
 
-- [ ] **AC1 编译 + 全绿**：`cd backend && JAVA_HOME=/f/java_soft/java21 mvn -q clean test`
-- [ ] **AC2 旧名清零**：`grep -rn "SubtitlePreparationStage\|SubtitleCleanupStage\|SubtitleTranslationStage\|VideoTaskPipeline" backend/src .trellis/spec` → 无命中
-- [ ] **AC3 零行为变化**：跑一条真实任务，SSE 事件流与改名前逐条比对，**除 `taskNo` 外零差异**；`task.workspace_dir` 逐字不变（类名不影响事件内容，但这是最便宜的一道保险）
-- [ ] **AC4 判据落地**：`directory-structure.md` 的「暂停中」标记被新判据替换，且全项目不再有 `*Stage` 结尾的类
-- [ ] **AC5 未误伤**：`VideoTaskService` / `VideoTask` / `VideoTaskRepository` / `VideoTaskMapper` / `TaskStageEvent` 一行未动
+- [x] **AC1 编译 + 全绿**：`cd backend && JAVA_HOME=/f/java_soft/java21 mvn -q clean test` → **45 类 / 469 用例 / 0 失败 / 0 错误 / 1 跳过，退出码 0**（与基线一字不差）
+- [ ] **AC2 旧名清零**：`grep -rn "VideoTaskPipeline\|SubtitlePreparationStage\|SubtitleCleanupStage\|SubtitleTranslationStage" backend/src .trellis/spec` —— 命中只允许出现在**解释这次改名的叙述里**（`directory-structure.md` 的「管线不跟聚合根前缀」那条刻意点名旧名讲理由）。
+  - **现状：仅剩 `CheckpointPolicy.java:18` 一处**——main 源码的 Javadoc 点名旧测试类名 `SubtitlePreparationStageTest`，待改
+- [ ] **AC3 零行为变化** —— **挂起**（用户 2026-10-07 定：等全部改完再跑）。跑一条真实任务，SSE 事件流与改名前逐条比对，除 `taskNo` 外零差异；`task.workspace_dir` 逐字不变
+- [x] **AC4 判据落地**：`directory-structure.md` 的「暂停中」标记被新判据替换（已核）。
+  - **注意不是「全项目没有 `*Stage` 类」**——存量三个（`AudioPreparationStage` / `MediaAcquisitionStage` / `TranscriptionStage`）按 Out of Scope 保留，判据只保证**不再新增**
+- [x] **AC5 未误伤**：`VideoTask` / `VideoTaskRepository` / `VideoTaskMapper` **零改动**（已核）；`VideoTaskService` / `TaskStageEvent` 只有对改名类的引用改动（import / 字段 / 构造参数 / `{@link}` / `{@code}`），逐行核过，没有顺手改别的
 
 ## Out of Scope
 
@@ -63,17 +65,20 @@
 |---|---|
 | `AudioPreparationStage` | 用户定：本轮只改「主要的 3 个」（`VideoTaskPipeline` 直接持有的那 3 个）。它仍在 `SubtitlePreparationCoordinator` 内部被调用 |
 | `MediaAcquisitionStage` | 用户判断它将来会变成 utils，先不管 |
-| `TranscriptionStage` | AI 建议合掉，用户未表态 → 见 Open Questions 1 |
+| `TranscriptionStage` | 用户定：先放着（记为待处理），以后连同管线一起改 → 见「决定」1 |
 | 聚合根 `VideoTask` 的窄化 | 牵连 `VideoTaskService` / `VideoTaskRepository` / `VideoTaskMapper` 全族，是独立议题 |
 | `SubtitlePipeline` 的**包位置** | 现住 `application/task/pipeline/`；挪去 `application/subtitle/pipeline/` 会让 subtitle 包反向依赖 media / transcription。另议 |
 | 权重（三层压一层） | 10-07 拆出的独立任务 |
 
-## Open Questions
+## 决定（2026-10-07 用户拍板）
 
-1. **`TranscriptionStage` 是否合并掉？** 它已被调用方绕过一半——`SubtitlePreparationCoordinator` 同时持有 `TranscriptionStage` 和它包装的 `ASRProvider`，`route()` / `requiredAudioSpec()` 直接问 provider，只有 `transcribe(...)` 走包装类。**调用方一边用包装、一边直接依赖被包装的接口，说明这层没包住什么。** AI 倾向合掉；它会影响本任务的范围（少一个类、少一个名字）。
-2. **`VideoTaskPipeline:34-36` 那段 Javadoc** 列着六个阶段名（acquire / extract-audio / transcribe / write-subtitles），与 10-07 批次 2 要消灭的「文字复述」**重叠**。本任务顺手处理，还是留给批次 2？
-3. **变量名（小驼峰）跟不跟改**：`subtitlePreparationStage` / `cleanupStage` / `translationStage` / `pipeline`。测试里那些 `SubtitleCleanupStage s = service()` 的**类型**必须跟着改，跑不掉；字段名是否也跟着改是选择。
-4. **`SubtitlePipeline` 的 bean 名**会随类名变成 `subtitlePipeline`（`@Component` 默认取类名首字母小写）。已核实：项目里**没有按名注入**这些类——所有 `@Qualifier` 都只用于 `ChatClient`。所以零风险，仅记录。
+1. **`TranscriptionStage`：先放着，不合并**，记为**待处理**——以后连同「管线后续修改」一起改。
+   - 留档理由：它已被调用方绕过一半——`SubtitlePreparationCoordinator` 同时持有 `TranscriptionStage` 和它包装的 `ASRProvider`，`route()` / `requiredAudioSpec()` 直接问 provider，只有 `transcribe(...)` 走包装类。**调用方一边用包装、一边直接依赖被包装的接口，说明这层没包住什么。**
+2. **`VideoTaskPipeline:34-36` 那段 Javadoc：六个阶段名（acquire / extract-audio / transcribe / write-subtitles）归 10-07 批次 2。**
+   - ⚠️ **但那段里的两个类名（`SubtitlePreparationStage` / `SubtitleCleanupStage`）本任务照改**——AC2 要求旧类名清零，不改就过不了。本任务只**不动**那六个阶段名的枚举。
+3. **变量名：以 main 为准，测试逐字对齐。** main 里字段 / 构造参数怎么命名，测试就跟着来（测试里的**类型**本来就跑不掉要改）。
+4. 是否挂成 10-07 的子任务：未另表态，**按独立任务处理**（`task.json` 的 `parent` 为空）。
+5. （已核实，非待定）`SubtitlePipeline` 的 bean 名会随类名变成 `subtitlePipeline`；项目里**没有按名注入**这些类——所有 `@Qualifier` 都只用于 `ChatClient`。零风险，仅记录。
 
 ## 与 10-07-shape-refactor 的关系（**开工顺序有约束**）
 
