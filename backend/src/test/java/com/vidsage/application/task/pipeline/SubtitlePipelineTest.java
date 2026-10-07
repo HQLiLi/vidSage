@@ -17,9 +17,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.application.media.WorkspaceService;
-import com.vidsage.application.subtitle.pipeline.SubtitleCleanupStage;
-import com.vidsage.application.subtitle.pipeline.SubtitlePreparationStage;
-import com.vidsage.application.subtitle.pipeline.SubtitleTranslationStage;
+import com.vidsage.application.subtitle.pipeline.SubtitleCleanupCoordinator;
+import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
+import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
@@ -48,7 +48,7 @@ import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 /**
- * {@link VideoTaskPipeline} 的单元测试：依赖全部 mock，工作区用真实实例 + 临时目录；
+ * {@link SubtitlePipeline} 的单元测试：依赖全部 mock，工作区用真实实例 + 临时目录；
  * 订阅注册表用真实实例（广播 / 终态收口的行为直接落在真注册表上验证）。
  * 同步用例直接调包内可见的 {@code runPipeline(taskNo)} 绕开虚拟线程的时序，翻译触发用例直接调
  * {@code translateTask(taskNo)}（同步段）+ Mockito timeout 等异步段；并发用例走 {@code execute()}
@@ -57,21 +57,21 @@ import org.mockito.Mockito;
  * <p>2026-10-02 两段式：自动管线到清洗为止（prepare 0..70 / clean 70..100），翻译拆出为
  * {@code translateTask} 按需触发（幂等 / 不重入 / 终态收口各有钉子）。
  */
-class VideoTaskPipelineTest {
+class SubtitlePipelineTest {
 
     @TempDir
     Path tempDir;
 
     private final VideoTaskRepository repository = Mockito.mock(VideoTaskRepository.class);
-    private final SubtitlePreparationStage subtitlePreparationStage = Mockito.mock(SubtitlePreparationStage.class);
-    private final SubtitleCleanupStage cleanupStage = Mockito.mock(SubtitleCleanupStage.class);
-    private final SubtitleTranslationStage translationStage = Mockito.mock(SubtitleTranslationStage.class);
+    private final SubtitlePreparationCoordinator subtitlePreparationCoordinator = Mockito.mock(SubtitlePreparationCoordinator.class);
+    private final SubtitleCleanupCoordinator cleanupStage = Mockito.mock(SubtitleCleanupCoordinator.class);
+    private final SubtitleTranslationCoordinator translationStage = Mockito.mock(SubtitleTranslationCoordinator.class);
     private final TaskSubscriptionRegistry registry = new TaskSubscriptionRegistry();
 
-    private VideoTaskPipeline service(int maxConcurrent) {
-        return new VideoTaskPipeline(repository,
+    private SubtitlePipeline service(int maxConcurrent) {
+        return new SubtitlePipeline(repository,
                 new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString())),
-                subtitlePreparationStage, cleanupStage, translationStage, registry, new TaskProperties(maxConcurrent));
+                subtitlePreparationCoordinator, cleanupStage, translationStage, registry, new TaskProperties(maxConcurrent));
     }
 
     // ---------- 正常路径（自动管线：prepare → clean，两段式后不含翻译） ----------
@@ -86,13 +86,13 @@ class VideoTaskPipelineTest {
             listener.onEvent(new StageEvent("clean", 0, "开始清洗", StageEvent.StageState.RUNNING));
             return null;
         }).when(cleanupStage).clean(any(MediaInput.class), anyString(), any(ProgressListener.class));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
         MediaInput input = new MediaInput.RemoteUrl("https://example.com/v");
-        InOrder order = inOrder(subtitlePreparationStage, cleanupStage);
-        order.verify(subtitlePreparationStage).prepare(eq(input), any(ProgressListener.class));
+        InOrder order = inOrder(subtitlePreparationCoordinator, cleanupStage);
+        order.verify(subtitlePreparationCoordinator).prepare(eq(input), any(ProgressListener.class));
         order.verify(cleanupStage).clean(eq(input), eq(""), any(ProgressListener.class));
 
         assertEquals(TaskStatus.SUCCEEDED, task.getStatus());
@@ -107,7 +107,7 @@ class VideoTaskPipelineTest {
     void autoPipelineNeverInvokesTranslation() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -122,12 +122,12 @@ class VideoTaskPipelineTest {
         VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4",
                 new WorkspaceKey("a1b2c3d4e5f6"), "demo.mp4-a1b2c3d4e5f6");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
         ArgumentCaptor<MediaInput> captor = ArgumentCaptor.forClass(MediaInput.class);
-        verify(subtitlePreparationStage).prepare(captor.capture(), any(ProgressListener.class));
+        verify(subtitlePreparationCoordinator).prepare(captor.capture(), any(ProgressListener.class));
         MediaInput input = captor.getValue();
         assertTrue(input instanceof MediaInput.InWorkspace, () -> "上传任务应还原为 InWorkspace：" + input);
         MediaInput.InWorkspace in = (MediaInput.InWorkspace) input;
@@ -147,8 +147,8 @@ class VideoTaskPipelineTest {
             ProgressListener listener = invocation.getArgument(1);
             listener.onEvent(new StageEvent("extract-audio", 30, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
             throw new IllegalStateException("boom");
-        }).when(subtitlePreparationStage).prepare(any(MediaInput.class), any(ProgressListener.class));
-        VideoTaskPipeline pipeline = service(2);
+        }).when(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(ProgressListener.class));
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -163,9 +163,9 @@ class VideoTaskPipelineTest {
     void prepareFailureFailsTaskAndSkipsRemainingStages() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        when(subtitlePreparationStage.prepare(any(MediaInput.class), any(ProgressListener.class)))
+        when(subtitlePreparationCoordinator.prepare(any(MediaInput.class), any(ProgressListener.class)))
                 .thenThrow(new IllegalStateException("ASR 转写任务失败：quota exceeded"));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -186,7 +186,7 @@ class VideoTaskPipelineTest {
             listener.onEvent(new StageEvent("clean", 0, "开始清洗", StageEvent.StageState.RUNNING));
             throw new IllegalStateException("字幕尚未获取：缺 segments-cloud.json");
         }).when(cleanupStage).clean(any(MediaInput.class), anyString(), any(ProgressListener.class));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -199,9 +199,9 @@ class VideoTaskPipelineTest {
     void failMessageFallsBackToExceptionClassNameWhenMessageNull() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        when(subtitlePreparationStage.prepare(any(MediaInput.class), any(ProgressListener.class)))
+        when(subtitlePreparationCoordinator.prepare(any(MediaInput.class), any(ProgressListener.class)))
                 .thenThrow(new NullPointerException());
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -222,8 +222,8 @@ class VideoTaskPipelineTest {
             ProgressListener listener = invocation.getArgument(1);
             listener.onEvent(new StageEvent("extract-audio", 50, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
             return null;
-        }).when(subtitlePreparationStage).prepare(any(MediaInput.class), any(ProgressListener.class));
-        VideoTaskPipeline pipeline = service(2);
+        }).when(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(ProgressListener.class));
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -244,7 +244,7 @@ class VideoTaskPipelineTest {
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -263,9 +263,9 @@ class VideoTaskPipelineTest {
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        when(subtitlePreparationStage.prepare(any(MediaInput.class), any(ProgressListener.class)))
+        when(subtitlePreparationCoordinator.prepare(any(MediaInput.class), any(ProgressListener.class)))
                 .thenThrow(new IllegalStateException("quota exceeded"));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -287,7 +287,7 @@ class VideoTaskPipelineTest {
             throw new IllegalStateException("写入失败（模拟断连的 emitter）");
         });
         registry.subscribe(task.getTaskNo().value(), received::add);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -304,7 +304,7 @@ class VideoTaskPipelineTest {
 
         service(2).runPipeline(new TaskNo("ghost"));
 
-        verify(subtitlePreparationStage, never()).prepare(any(), any());
+        verify(subtitlePreparationCoordinator, never()).prepare(any(), any());
         verify(repository, never()).update(any());
     }
 
@@ -316,7 +316,7 @@ class VideoTaskPipelineTest {
 
         service(2).runPipeline(task.getTaskNo());
 
-        verify(subtitlePreparationStage, never()).prepare(any(), any());
+        verify(subtitlePreparationCoordinator, never()).prepare(any(), any());
         assertEquals(TaskStatus.RUNNING, task.getStatus(), "重复触发不得把别人的执行打成 FAILED");
         verify(repository, never()).update(any());
     }
@@ -351,7 +351,7 @@ class VideoTaskPipelineTest {
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         // 检查点已在（上一次成功的翻译，或两段式改造前的存量产物）
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(true);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -369,7 +369,7 @@ class VideoTaskPipelineTest {
         task.translationSucceed();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(true);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -382,7 +382,7 @@ class VideoTaskPipelineTest {
         VideoTask task = succeededTask("https://example.com/v");
         task.translationStart();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -408,7 +408,7 @@ class VideoTaskPipelineTest {
         }).when(translationStage).translate(any(MediaInput.class), any(ProgressListener.class));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -454,7 +454,7 @@ class VideoTaskPipelineTest {
         }).when(translationStage).translate(any(MediaInput.class), any(ProgressListener.class));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -492,16 +492,16 @@ class VideoTaskPipelineTest {
             firstStarted.countDown();
             releaseFirst.await(5, TimeUnit.SECONDS);
             return null;
-        }).when(subtitlePreparationStage).prepare(eq(new MediaInput.RemoteUrl("https://example.com/first")),
+        }).when(subtitlePreparationCoordinator).prepare(eq(new MediaInput.RemoteUrl("https://example.com/first")),
                 any(ProgressListener.class));
 
-        VideoTaskPipeline pipeline = service(1);   // 并发上限 1：第二个任务必须排队
+        SubtitlePipeline pipeline = service(1);   // 并发上限 1：第二个任务必须排队
         pipeline.execute(first.getTaskNo());
         assertTrue(firstStarted.await(5, TimeUnit.SECONDS), "第一个任务应开始执行");
 
         pipeline.execute(second.getTaskNo());
         // 配额被第一个任务占着：第二个任务保持 PENDING，不得进入 prepare
-        verify(subtitlePreparationStage, org.mockito.Mockito.after(300).never())
+        verify(subtitlePreparationCoordinator, org.mockito.Mockito.after(300).never())
                 .prepare(eq(new MediaInput.RemoteUrl("https://example.com/second")), any(ProgressListener.class));
         assertEquals(TaskStatus.PENDING, second.getStatus(), "排队中的任务必须保持 PENDING");
 
@@ -511,7 +511,7 @@ class VideoTaskPipelineTest {
                 && System.currentTimeMillis() < deadline) {
             Thread.sleep(20);
         }
-        verify(subtitlePreparationStage, timeout(5000)).prepare(
+        verify(subtitlePreparationCoordinator, timeout(5000)).prepare(
                 eq(new MediaInput.RemoteUrl("https://example.com/second")), any(ProgressListener.class));
         assertEquals(TaskStatus.SUCCEEDED, first.getStatus());
         assertEquals(TaskStatus.SUCCEEDED, second.getStatus());

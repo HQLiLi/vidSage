@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@link ProgressMapper} 的纯单元测试：钉住区间映射公式与字段透传
- * （上提自 SubtitlePreparationStage 的私有 remap，公式行为不变）。
+ * （上提自 SubtitlePreparationCoordinator 的私有 remap，公式行为不变）。
  */
 class ProgressMapperTest {
 

@@ -13,11 +13,9 @@ import static org.mockito.Mockito.when;
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.media.pipeline.AudioPreparationStage;
 import com.vidsage.application.transcription.pipeline.TranscriptionStage;
-import com.vidsage.domain.transcription.model.AudioSource;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.AudioArtifact;
-import com.vidsage.domain.media.model.AudioContainer;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
@@ -36,12 +34,12 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * SubtitlePreparationStage 的纯单元测试：不起 Spring 容器，只 new 被测对象；编排路径的依赖用
+ * SubtitlePreparationCoordinator 的纯单元测试：不起 Spring 容器，只 new 被测对象；编排路径的依赖用
  * mock 注入。纯变换（时间格式 / SRT 渲染 / 产物名）已随方法搬到 {@code shared/subtitle/} 下的
  * 镜像测试类，本类只留服务编排用例（断点复用、进度映射、异常路径）。
  * 会写文件的用例用 {@code @TempDir(CleanupMode.NEVER)}——Windows 上清理偶发失败。
  */
-class SubtitlePreparationStageTest {
+class SubtitlePreparationCoordinatorTest {
 
     private static final SubtitleRoute ROUTE = SubtitleRoute.ASR_CLOUD;
 
@@ -79,7 +77,7 @@ class SubtitlePreparationStageTest {
 
         var audioPrep = mock(AudioPreparationStage.class);
         var transcribe = mock(TranscriptionStage.class);
-        var service = new SubtitlePreparationStage(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        var service = new SubtitlePreparationCoordinator(tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, ROUTE, AudioSpec.M4A_AAC_48K_MONO), mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
@@ -105,7 +103,7 @@ class SubtitlePreparationStageTest {
                 tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(
                 new TranscriptionResult(List.of(new TranscriptionSegment(0, 1440, "新转写。")), "zh"));
-        var service = new SubtitlePreparationStage(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        var service = new SubtitlePreparationCoordinator(tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, ROUTE, audioSpec), mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
@@ -121,7 +119,7 @@ class SubtitlePreparationStageTest {
     }
 
     /** 组装被测服务：除特意留出的依赖外全用真实 mock，编排路径覆盖静态断言。 */
-    private static SubtitlePreparationStage serviceWith(
+    private static SubtitlePreparationCoordinator serviceWith(
             Path tempDir, SubtitleRoute route, AudioSpec audioSpec,
             List<TranscriptionSegment> segments, String language, ObjectMapper mapper) {
         var audioPrep = mock(AudioPreparationStage.class);
@@ -129,7 +127,7 @@ class SubtitlePreparationStageTest {
         when(audioPrep.prepare(any(), any(), any())).thenReturn(
                 new AudioArtifact(tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(new TranscriptionResult(segments, language));
-        return new SubtitlePreparationStage(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        return new SubtitlePreparationCoordinator(tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, route, audioSpec), mapper);
     }
 

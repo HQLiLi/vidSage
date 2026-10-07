@@ -39,7 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * SubtitleCleanupStage 的纯单元测试：<b>不起 Spring 容器</b>。
+ * SubtitleCleanupCoordinator 的纯单元测试：<b>不起 Spring 容器</b>。
  *
  * <p>只测<b>编排</b>：定位产物 → 断点复用 → 切分 → 交给 {@link SubtitleCleanser} → 写 -clean 产物。
  * 摘要器与 cleanser 都是 mock。
@@ -47,7 +47,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p><b>清洗算法本身（分批、守卫、重试、保留原文）不在这里测</b>——它的覆盖在
  * {@code SubtitleCleanserTest}：真 ChatClient + 桩 ChatModel，桩从 ChatModel 层进去。
  */
-class SubtitleCleanupStageTest {
+class SubtitleCleanupCoordinatorTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final SubtitleCleanupProperties PROPS =
@@ -73,10 +73,10 @@ class SubtitleCleanupStageTest {
         }).when(subtitleCleanser).clean(any(), any(), any(), any());
     }
 
-    private SubtitleCleanupStage service() {
+    private SubtitleCleanupCoordinator service() {
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
-        return new SubtitleCleanupStage(workspaceService, asrProvider, JSON, PROPS,
+        return new SubtitleCleanupCoordinator(workspaceService, asrProvider, JSON, PROPS,
                 contextSummarizer, subtitleCleanser);
     }
 
@@ -99,7 +99,7 @@ class SubtitleCleanupStageTest {
     @Test
     void cleanWritesCleanArtifactsAndDelegatesOnce() throws Exception {
         writeRawTrack();
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
@@ -116,7 +116,7 @@ class SubtitleCleanupStageTest {
     @Test
     void cleanReusesCheckpointSkipsCleanser() throws Exception {
         writeRawTrack();
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
         // 二跑：-clean.json 已在，应断点复用，不再走切分与清洗
@@ -131,7 +131,7 @@ class SubtitleCleanupStageTest {
         // 空转写是合法产出（纯音乐 / 无语音）：raw segments=[]
         SubtitleTrack empty = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of());
         JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), empty);
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
@@ -151,19 +151,19 @@ class SubtitleCleanupStageTest {
 
     @Test
     void cleanMissingRawThrows() {
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         assertThrows(IllegalStateException.class, () -> s.clean(new MediaInput.RemoteUrl("https://x"), ""));
     }
 
     @Test
     void cleanNullInputThrows() {
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         assertThrows(IllegalArgumentException.class, () -> s.clean(null, ""));
     }
 
     @Test
     void cleanRejectsNullListener() {
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         assertThrows(IllegalArgumentException.class,
                 () -> s.clean(new MediaInput.RemoteUrl("https://x"), "", null));
     }
@@ -199,7 +199,7 @@ class SubtitleCleanupStageTest {
     @Test
     void cleanCheckpointHitEmitsSingleSkippedEvent() throws Exception {
         writeRawTrack();
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
         List<StageEvent> events = new ArrayList<>();
@@ -238,7 +238,7 @@ class SubtitleCleanupStageTest {
         // 用一份有辨识度的上下文当「成功结果」，好钉住落盘的就是它、不是空壳
         when(contextSummarizer.summarize(any()))
                 .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
@@ -255,7 +255,7 @@ class SubtitleCleanupStageTest {
         writeRawTrack();
         JSON.writeValue(contextFile().toFile(),
                 new SubtitleContext("中世纪剑术", "de", List.of()));
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
@@ -266,7 +266,7 @@ class SubtitleCleanupStageTest {
     void summarizeDegradeDoesNotWriteContextFile() throws Exception {
         writeRawTrack();
         when(contextSummarizer.summarize(any())).thenReturn(Optional.empty());
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), "");
 

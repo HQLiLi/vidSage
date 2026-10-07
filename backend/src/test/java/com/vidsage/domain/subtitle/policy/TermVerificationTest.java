@@ -18,7 +18,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * TermVerification 的纯单元测试：术语查证政策断言随逻辑自 {@code SubtitleTranslationStageTest}
+ * TermVerification 的纯单元测试：术语查证政策断言随逻辑自 {@code SubtitleTranslationCoordinatorTest}
  * 迁入，断言值不变（2026-10-06 Phase B，触发三条件与结论记账下沉为本类公开 API）。
  *
  * <p>触发判定走 {@link TermVerification#decide}（纯事实入参），执行与记账走

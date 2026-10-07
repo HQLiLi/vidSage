@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
-import com.vidsage.application.task.pipeline.VideoTaskPipeline;
+import com.vidsage.application.task.pipeline.SubtitlePipeline;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskSnapshot;
 import com.vidsage.config.WorkspaceProperties;
@@ -27,7 +27,6 @@ import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,7 +52,7 @@ class VideoTaskServiceTest {
     Path tempDir;
 
     private final VideoTaskRepository repository = org.mockito.Mockito.mock(VideoTaskRepository.class);
-    private final VideoTaskPipeline pipeline = org.mockito.Mockito.mock(VideoTaskPipeline.class);
+    private final SubtitlePipeline pipeline = org.mockito.Mockito.mock(SubtitlePipeline.class);
 
     /**
      * 工作区用真实实例（目录公式单源在 domain/shared，workspaceFor 真实落盘，真跑比 mock

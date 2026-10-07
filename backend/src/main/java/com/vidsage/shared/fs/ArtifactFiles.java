@@ -119,10 +119,10 @@ public final class ArtifactFiles {
      * 读一份 JSON 检查点；读不出来就返回 {@code null}，不抛异常。
      *
      * <p><b>语义边界：只服务「断点形状的读」</b>——文件不存在、为空、解析失败，一律当「没有检查点」
-     * 返回 {@code null}，让调用方照未完成重跑。这与 {@code SubtitlePreparationStage} / {@code SubtitleCleanupStage}
+     * 返回 {@code null}，让调用方照未完成重跑。这与 {@code SubtitlePreparationCoordinator} / {@code SubtitleCleanupCoordinator}
      * 现有断点判据同一条语义。
      *
-     * <p><b>不要拿它读「必须能解析」的文件</b>：像 {@code SubtitleCleanupStage.readRaw} 那样
+     * <p><b>不要拿它读「必须能解析」的文件</b>：像 {@code SubtitleCleanupCoordinator.readRaw} 那样
      * 原始字幕坏了就该报错的场景，得留着自己的 try-catch 抛 {@link IllegalStateException}——
      * 那是另一种语义，不该被这个方法统一掉。
      *

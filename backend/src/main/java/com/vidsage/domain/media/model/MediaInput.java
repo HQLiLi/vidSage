@@ -31,7 +31,7 @@ public sealed interface MediaInput {
      * 下游零重算——若包成 LocalPath 会被按「路径+大小+mtime」重算出另一个目录，任务 workspace_dir
      * 与产物落点分家，见 design.md「权衡记录·上传路线的工作区归属」）。
      *
-     * <p>提交路线（{@code VideoTaskService}）与管线重建（{@code VideoTaskPipeline}）共用本工厂，
+     * <p>提交路线（{@code VideoTaskService}）与管线重建（{@code SubtitlePipeline}）共用本工厂，
      * 保证同一任务在两个时机得到同一变体与同一落点（2026-10-06 自两处配对重复下沉）。
      * 各变体只取自己需要的字段，其余传 {@code null} 亦可——这正是映射规则的一部分：URL 变体
      * 不携带工作区、UPLOAD 变体不携带原始名（位置已由 {@code source.mp4} 定死）。
