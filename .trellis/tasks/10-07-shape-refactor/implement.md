@@ -218,28 +218,44 @@ ls backend/src/main/java/com/vidsage/domain/task/policy/   # 期望：只剩 Tas
 
 # 批次 2：阶段名单源（权重不动）
 
-**目标**：六个阶段名从三处变一处，三处文字复述改成引用。
-**改动面**：新增 1 个类；删 6 个名字常量 + 3 处复述。**权重那 11 个常量一个不碰。**
+> ✅ **2026-10-07 已做完，含真实验收**。现值：`acquire-media` / `extract-audio` / `transcribe-audio` /
+> `write-subtitles` / `clean-subtitles` / `translate-subtitles`。
+> 与下面这份计划有两处偏差：① 用 **enum** 而不是 String 常量（原方案的理由写在本文 :298，已被
+> `SubtitleRoute`「无字段无方法的闭集枚举」这个同包先例否掉）；② **值改名（原计划的 Step B）随本批一次做掉**，
+> 验证改用「把新值映射回旧值再 diff」，AC7 因此仍是机器可判。
+> 验收证据、环境坑（yt-dlp 会员限制、`mvn test` 必须 `clean`）见 `handoff.md`。
+
+**目标**：六个阶段名从三处变一处，各处文字复述改成引用。
+**改动面**：新增 1 个类；删 6 个名字常量 + **7 处复述**。**权重那 11 个常量一个不碰。**
 **风险**：低——不改进度数值，AC7 天然成立（但仍要跑真实任务确认一遍）。
 
 > **本批不做权重**（2026-10-07 定）。原方案「把权重边界收进一处」不满足 AC3；而真正满足 AC3 的
 > 「三层压成一层、每阶段一个权重」是**有意的行为变更**（进度数值会变、前端进度条走动方式跟着变），
 > 与 AC7 直接冲突，已拆成独立任务（见 `prd.md` 的「后续任务」）。
 
+> ⚠️ **2026-10-07 改名后重扫过**（那次改名已合入本分支）：**下面所有落点的行号一个都没变**——改名只动了类名和文件名。本文已换成新类名。
+> 重扫时**新发现一处**：`src/main/resources/schema.sql:22` 的列注释也复述了全套六个阶段名。
+
+> ✅ **新类名已定案（2026-10-07）：`SubtitleStageName`，落 `domain/subtitle/model/common/`。** 原方案的 `PipelineStage` 否掉（读起来是「管线里那一步的执行类」，与存量 `*Stage` 执行类撞义）；`StageName` 也否掉——不带归属，看不出是哪条管线的阶段。定的口径是**归属**：这六个名字是同一条管线（`SubtitlePipeline`，按产出命名）的步。
+> **连带代价（已接受）**：`AudioPreparationStage`（media）与 `TaskStageEvent`（domain/task）都要 import 一个 subtitle 上下文的类——前者是 media→subtitle 首例，后者是 domain 层跨上下文引用首例（application 侧先例：`VideoTaskService` ← `SubtitleArtifactSpec`，批次 1 立的）。两边都不成环（已核实 subtitle 侧不 import task / media）。
+> **连带改动**：`directory-structure.md:65` 那句「跨上下文共用的词汇进共享内核」的口径要跟着改（措辞待用户过目）；同文件 `:91` 尾句「`XxxStage` 只剩存量，不要再加新类」已按用户要求删除。
+
+> ⚠️ **原方案有一句理由查证失实，已更正**：原文写「改一个名字不会编译失败，只会让前端按老名字渲染进度条的代码失效」。实际**前端不解析 stage 名**——进度条只吃 `progress`（数值）和 `message`（中文），`frontend/src/types/task.ts` 里 `stage` 只是个透传的 `string`。
+> 真正的坑是：stage 名要落 `task.current_stage` 这个**库字段**，改名会让库里存量任务与新任务的阶段名静默对不上。
+
 ## 步骤 2.1 — 阶段名单源
 
-新文件：`backend/src/main/java/com/vidsage/domain/shared/model/PipelineStage.java`（与 `StageEvent` 同包，因为 `StageEvent` 已经持有其中两个名字）
+新文件：`backend/src/main/java/com/vidsage/domain/subtitle/model/common/SubtitleStageName.java`
 
 ```java
 /**
  * 管线阶段名。全项目唯一一处定义。
  *
- * <p>原来散在三处——AudioPreparationStage（acquire / extract-audio）、
- * SubtitlePreparationStage（transcribe / write-subtitles）、StageEvent（clean / translate），
- * 其中 StageEvent 的注释还得用文字指着另外两处。加阶段时要记得改三处，漏一处就静默不一致
- * ——改一个名字不会编译失败，只会让前端按老名字渲染进度条的代码失效。
+ * <p>以前散在三处——AudioPreparationStage（acquire / extract-audio）、
+ * SubtitlePreparationCoordinator（transcribe / write-subtitles）、StageEvent（clean / translate），
+ * 加一个阶段要记得改三处，漏一处不报错，只是静默不一致。
  */
-public final class PipelineStage {
+public final class SubtitleStageName {
 
     public static final String ACQUIRE = "acquire";
     public static final String EXTRACT_AUDIO = "extract-audio";
@@ -248,22 +264,46 @@ public final class PipelineStage {
     public static final String CLEAN = "clean";
     public static final String TRANSLATE = "translate";
 
-    private PipelineStage() {
+    private SubtitleStageName() {
     }
 }
 ```
 
-改动点：
+### 改动点（引用 · 行号已按改名后核对）
 
-- `AudioPreparationStage`：删 `STAGE_ACQUIRE` / `STAGE_EXTRACT`，改引 `PipelineStage.ACQUIRE` / `EXTRACT_AUDIO`
-  - 顺带：该类四个进度常量 `ACQUIRE_START` / `ACQUIRE_DONE` / `EXTRACT_START` / `EXTRACT_DONE` 是**包级可见**，但本包之外零引用——收成 `private`。**这是本批唯一允许碰的权重相关改动：只改可见性，不改值。**
-- `SubtitlePreparationStage`：删 `STAGE_TRANSCRIBE` / `STAGE_WRITE_SUBTITLES`，改引 `PipelineStage`
-- `StageEvent`：删 `STAGE_TRANSLATE` / `STAGE_CLEAN`，改引 `PipelineStage`
-  - 它的 `@param stage` **现在用文字指着另外两处**（`如 "acquire" / "extract-audio" / {@link #STAGE_TRANSLATE}`）——改成 `{@link PipelineStage}`，**消灭第 1 处复述**
-- `VideoTask.updateStage` 的 Javadoc：`（与 StageEvent.stage 同词表：acquire / extract-audio / transcribe / write-subtitles / clean / translate）` 整段列表改成引用，**消灭第 2 处复述**
-- `LlmSubtitleCleanser:52` / `LlmSubtitleTranslator:61` 的注释引用了 `StageEvent.STAGE_CLEAN` / `STAGE_TRANSLATE`——跟改，**消灭第 3 处复述**
+| 文件 | 行 | 做什么 |
+|---|---|---|
+| `AudioPreparationStage` | `:45` `:48` | 删两个常量定义；`:138` `:141` `:143` `:146` `:166` `:169` `:171` `:174` 八处 `emit` 改引 `SubtitleStageName.*` |
+| `SubtitlePreparationCoordinator` | `:57` `:62` | 删两个常量定义；`:149` `:150` `:161` `:164` `:172` `:175` 六处 `emit` 改引 |
+| `StageEvent` | `:22` `:25` | 删 `STAGE_TRANSLATE` / `STAGE_CLEAN` 两个定义 |
+| `SubtitleCleanupCoordinator` | `:153` `:157` `:192` | 三处 `StageEvent.STAGE_CLEAN` 改引 |
+| `SubtitleTranslationCoordinator` | `:197` `:201` `:262` | 三处 `StageEvent.STAGE_TRANSLATE` 改引 |
+| `TaskStageEvent` | `:68` `:70` `:72` | 三处 `StageEvent.STAGE_TRANSLATE` 改引（`:64` 的 `@return` Javadoc 跟改） |
+| `LlmSubtitleCleanser` | `:52` `:110` `:205` `:209` | 注释 + 两处 `{@link}` + 一处构造调用 |
+| `LlmSubtitleTranslator` | `:61` `:126` `:206` `:210` | 同上 |
 
-**为什么用 String 常量而不是枚举**：调用点零摩擦（`PipelineStage.ACQUIRE` 本身就是 `String`，`emit(listener, PipelineStage.ACQUIRE, …)` 与现在逐字一样），而且**不碰 JSON 契约**（`StageEvent.stage` 是 String，`StageEvent` 直接序列化成 SSE 的 data）。等扁平化那步真需要「阶段 + 权重」的载体时，再决定要不要变成枚举。
+**顺带（唯一允许碰的权重相关改动）**：`AudioPreparationStage` 四个进度常量 `ACQUIRE_START` / `ACQUIRE_DONE` / `EXTRACT_START` / `EXTRACT_DONE`（`:54` `:56` `:58` `:60`）是**包级可见**但本包外零引用（已核实）——收成 `private`。**只改可见性，不改值。**
+
+### 复述清单（7 处，改完必须为零）
+
+**散点 3 处：**
+1. `StageEvent:14` 的 `@param stage`（`如 "acquire" / "extract-audio" / {@link #STAGE_TRANSLATE}`）→ 改 `{@link SubtitleStageName}`
+2. `StageEvent:9-12` 整段「阶段词表」历史（说「归位本类」——本批后就不在本类了）→ 重写为指向 `SubtitleStageName`
+3. `VideoTask:182-183` 的 `@param stage` 六词列表 → 改引用
+
+**全套名单 4 处（这才是「加一个阶段要改几处」的真正落点，且改了不会编译失败）：**
+
+| 文件 | 行 | 内容 |
+|---|---|---|
+| `SubtitlePipeline.java` | `:34-35` | 「内部含 acquire / extract-audio / transcribe / write-subtitles 四个阶段」 |
+| `SubtitlePipeline.java` | `:60` | 「prepare 全包阶段（acquire / extract-audio / transcribe / write-subtitles）映射进 0..70」 |
+| `application/media/package-info.java` | `:7` | 「（acquire → extract-audio 两阶段编排）」 |
+| `resources/schema.sql` | `:22` | 列注释「最近阶段名（与 StageEvent.stage 同词表：acquire/extract-audio/…）」——**改它要动 DDL 注释，想清楚再动** |
+
+**还有 5 处「说我自己驱动的那一步」**（点名是对的，最佳形态是换成 `{@link SubtitleStageName#X}`，不是删）：
+`AudioPreparationStage:22` `:98` `:152`、`SubtitlePreparationCoordinator:44` `:80`。
+
+**为什么用 String 常量而不是枚举**：调用点零摩擦（`SubtitleStageName.ACQUIRE` 本身就是 `String`，`emit(listener, SubtitleStageName.ACQUIRE, …)` 与现在逐字一样），而且**不碰 JSON 契约**（`StageEvent.stage` 是 String，直接序列化成 SSE 的 data）。等扁平化那步真需要「阶段 + 权重」的载体时，再决定要不要变成枚举。
 
 ## 批次 2 验证
 
@@ -272,9 +312,9 @@ cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mv
 ```
 
 ```bash
-# ① 六个阶段名的字面量只在 PipelineStage 出现
+# ① 六个阶段名的字面量只在 SubtitleStageName 出现
 grep -rn '"acquire"\|"extract-audio"\|"transcribe"\|"write-subtitles"\|"clean"\|"translate"' \
-  backend/src/main | grep -v PipelineStage.java     # 期望：无命中
+  backend/src/main | grep -v SubtitleStageName.java     # 期望：无命中
 
 # ② 旧的名字常量已清零
 grep -rn 'STAGE_ACQUIRE\|STAGE_EXTRACT\|STAGE_TRANSCRIBE\|STAGE_WRITE_SUBTITLES\|STAGE_CLEAN\|STAGE_TRANSLATE' \
@@ -286,6 +326,8 @@ git diff -U0 | grep -E '^[+-].*(ACQUIRE_START|ACQUIRE_DONE|EXTRACT_START|EXTRACT
 ```
 
 **本批不需要 `clean`**——只删常量、不删类，`target/classes` 不会留陈旧副本。`mvn -q test` 即可（跑全量是为了确认没有别处被带崩）。
+
+> ⚠️ **2026-10-07 实测更正**：不 `clean` 会挂——`NoClassDefFoundError` + JUnit 连测试类都发现不了（IDE 同时在写 `target/classes` 时更容易踩）。**一律 `mvn -q clean test`**；本批实测 45 类 / 469 用例 / 0 失败 / 0 错误 / 1 跳过。
 
 **最重要的一条：进度事件逐条比对（AC7）**
 
@@ -314,6 +356,14 @@ git diff -U0 | grep -E '^[+-].*(ACQUIRE_START|ACQUIRE_DONE|EXTRACT_START|EXTRACT
 **目标**：身份由输入自己算（`WorkspaceService` 的 switch 消失）；`InWorkspace` 从"带结果"改成"带身份"。
 **改动面**：`MediaInput`（3 个变体各加实现）+ 新增 `MediaFacts` + `WorkspaceService` + `MediaInput.ofTaskInput` + 类注释。
 **风险**：**高**——身份算错就是工作区目录算错，产物落错地方或断点复用失效。
+
+> **复核（2026-10-07，批次 2 之后按当前代码重扫）**——两个原草案没写的落点：
+> ① `WorkspaceService.normalize` 有**跨包消费方**：`VideoTaskService:100` 用它算落库的 `workspace_key`（URL 路线）。
+> 删 `normalize` 时那点要改成 `input.contentKey(MediaFacts.NOT_APPLICABLE)`（URL 路线不需要文件事实，零 I/O）；
+> `VideoTaskService:105` 的 `WorkspaceDir.of(input.value(), workspaceKey)` 改用 `input.dirLabel()` 之后目录名逐字不变。
+> ② 测试侧要改的（AI 做）：`WorkspaceServiceTest` 的 `WorkspaceService.localPathKey` ×3 处（:57 :60 :65）与两参
+> `workspaceFor(label, key)` ×3 处（:103 :113 :115）；`VideoTaskServiceTest:93` 的 `WorkspaceService.normalize`。
+> 其余测试只是 `when(workspaceService.workspaceFor(any()))` 打桩，不受影响。
 
 ## 步骤 3.1 — `MediaFacts` 值对象
 
