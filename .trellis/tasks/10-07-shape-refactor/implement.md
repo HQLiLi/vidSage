@@ -1,0 +1,560 @@
+# 形状重构 — 执行步骤
+
+> **执行者是项目所有者本人。** 本文按概念拆成三个批次，可独立做、独立验证、独立回滚。
+> 建议顺序就是下面的顺序：**产出物 → 阶段 → 身份**，风险递增（身份那批算错 key 会算错目录）。
+
+## 三个分叉的定论（前置）
+
+| 分叉 | 结论 |
+|---|---|
+| 1 阶段 | **A** —— 只单源（名字 + 权重边界），编排保持手写，权重保持两层结构（改扁平会改进度数值） |
+| 2 产出物 | **枚举登记表** |
+| 3 身份 | **`contentKey()` 归输入自己 + `InWorkspace` 从"带结果"改成"带身份"** |
+
+**开工前先跑一次基线**（本任务会移动/删除类，必须 `clean`）：
+
+```bash
+cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn -q clean test
+```
+基线：**45 类 / 465 用例 / 0 失败 / 1 跳过**。数字对不上就先查基线，不要往下走。
+
+---
+
+# 批次 1：产出物登记表
+
+**目标**：一个产出物的「叫什么 / 能不能下载 / 是不是检查点」三问，在同一行答完。
+**改动面**：新增 1 个枚举；删 `TaskArtifactScan`；改 3 个 stage 类 + `VideoTaskService` + `SubtitleArtifactNames`。
+**风险**：低（产物清单的对外行为不变，只是判据从字符串匹配换成声明）。
+
+## 步骤 1.1 — 新建登记表
+
+⚠️ **名字不能叫 `SubtitleArtifact`** —— 那个 record 已被 `prepare()` 的返回值占用。用 `SubtitleArtifactSpec`。
+
+新文件：`backend/src/main/java/com/vidsage/domain/subtitle/model/common/SubtitleArtifactSpec.java`
+
+```java
+/**
+ * 字幕产出物登记表：叫什么 / 能不能下载 / 是不是检查点。全项目唯一一处产出物定义。
+ *
+ * <p>以前这三件事分散在三处——命名在 SubtitleArtifactNames、检查点判据在 CheckpointPolicy、
+ * 对外可见性在 TaskArtifactScan 的字符串白名单（`endsWith(".srt") || startsWith("segments-")`）。
+ * 加一个产出物要去三个文件各加一段，而且第三处还跨在 domain/task 里，产物却是 subtitle 的。
+ *
+ * <p><b>改模板字符串 = 存量产物全部失配</b>：工作目录按媒体内容寻址，改名会让已有产物从
+ * 「已完成」打回「未完成」。改之前想清楚。
+ */
+public enum SubtitleArtifactSpec {
+
+    /** 原始转写检查点。 */
+    SEGMENTS_RAW("segments-{route}.json", true, true),
+
+    /** 原始 SRT：由 JSON 渲染的派生视图，不参与幂等判定。 */
+    SRT_RAW("subtitles-{route}.srt", true, false),
+
+    /** 清洗后检查点。 */
+    SEGMENTS_CLEAN("segments-{route}-clean.json", true, true),
+    SRT_CLEAN("subtitles-{route}-clean.srt", true, false),
+
+    /** 翻译检查点。带目标语种指纹——换语种绝不拿上一份凑数。 */
+    SEGMENTS_TRANSLATED("segments-{route}-translate-{lang}.json", true, true),
+    SRT_TRANSLATED("subtitles-{route}-translate-{lang}.srt", true, false),
+
+    /** 上下文摘要：清洗与翻译共用。故意不带语种指纹——主题/术语/源语种与译成什么语无关。 */
+    CONTEXT("context-{route}.json", false, true),
+
+    /** 术语查证结论：删文件即重查；查证失败的词不进文件，下次自然补查。 */
+    TERMS("terms-{route}-{lang}.json", false, true);
+
+    private final String template;
+    private final boolean downloadable;
+    private final boolean checkpoint;
+
+    /**
+     * 渲染文件名。
+     *
+     * @param routeToken 路线 token（kebab，如 asr-cloud）
+     * @param lang       目标语种（已归一化）；模板不含 {lang} 时传任意值，不会被用到
+     */
+    public String fileName(String routeToken, String lang) {
+        String name = template.replace("{route}", routeToken);
+        return name.contains("{lang}") ? name.replace("{lang}", lang) : name;
+    }
+
+    /** 是不是断点复用的检查点判据载体。派生视图（SRT）为 false——它由 JSON 渲染而来。 */
+    public boolean isCheckpoint() {
+        return checkpoint;
+    }
+
+    /** 该产出物是否进对外产物清单（能不能被下载）。 */
+    public boolean isDownloadable() {
+        return downloadable;
+    }
+}
+```
+
+**一处诚实记下的代价**：`{lang}` 这种模板填装**不如原来类型安全**。现在 `translateSrtFileName(route, lang)` 少传一个参数编译不过；模板方式要运行时才发现。这是换法的代价，接受它。
+
+## 步骤 1.2 — `SubtitleArtifactNames` 收敛成一层
+
+保留 `routeToken()` 与 `normalizeLanguage()`（它们是 **token 归一化**，不是产出物属性）；其余 8 个 `xxxFileName` **全部删除**，调用点改走枚举。
+
+改造前 → 改造后：
+
+```java
+// 前
+Path segmentsPath = workDir.resolve(SubtitleArtifactNames.segmentsFileName(route));
+// 后
+Path segmentsPath = workDir.resolve(
+        SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleArtifactNames.routeToken(route), null));
+```
+
+这类拼接在 3 个 stage 里共约 15 处，**机械替换**。建议在 stage 里加一个私有小工具收口，避免每处都写 `routeToken + null`：
+
+```java
+/** 本阶段关心的产出物在本任务工作区的绝对路径。 */
+private Path artifact(SubtitleArtifactSpec spec, String lang) {
+    return workspaceService.workspaceFor(input)   // 或已算好的 workDir
+            .resolve(spec.fileName(SubtitleArtifactNames.routeToken(route), lang));
+}
+```
+
+## 步骤 1.3 — 删 `TaskArtifactScan`，可见性改由声明决定
+
+**改造前**（后缀白名单——近似）：
+
+```java
+// domain/task/policy/TaskArtifactScan.java
+public static boolean isVisible(String fileName) {
+    return fileName.endsWith(".srt")
+            || (fileName.startsWith("segments-") && fileName.endsWith(".json"));
+}
+```
+
+**改造后**：整个类删除。`VideoTaskService.scanArtifacts` 改成「对已登记的产出物逐个查文件在不在」：
+
+```java
+/**
+ * 扫描任务工作区，收集对外可见的产物清单。
+ *
+ * <p>判据来自产出物登记表（{@link SubtitleArtifactSpec#isDownloadable()}）——
+ * 原来是后缀白名单（`.srt` / `segments-*.json`）的字符串近似，改判据后不会因为
+ * 某个内部产物恰好叫 `.srt` 而被误判成可下载。
+ */
+private List<TaskArtifact> scanArtifacts(String taskNo, String workspaceDir) {
+    if (!StringUtils.hasText(workspaceDir)) {
+        return List.of();
+    }
+    Path dir = workspaceService.workspaceRoot().resolve(workspaceDir);
+    List<TaskArtifact> found = new ArrayList<>();
+    for (SubtitleArtifactSpec spec : SubtitleArtifactSpec.values()) {
+        if (!spec.isDownloadable()) {
+            continue;
+        }
+        // 带 {lang} 的产出物需要知道语种——见下面的「一个未决细节」
+        ...
+    }
+    return found;
+}
+```
+
+### 未决细节（2026-10-07 已定：方案 a）
+
+带 `{lang}` 的三个产出物（翻译 segments / 双语 SRT / 术语）**扫目录时不知道语种**。定为 **(a)：枚举补 `matches(fileName)`**，保留"清单是一份扫描结果"的语义、不引入配置依赖。
+
+⚠️ **实现 (a) 时踩到的坑**：**朴素匹配是有歧义的**。
+
+`segments-{route}.json` 的 `{route}` 若是任意非空串，那么
+`segments-asr-cloud-translate-zh.json` **也能被它匹配**（route 取 `asr-cloud-translate-zh`）。于是翻译检查点会被同时算成"原始转写检查点"，清单出现重复项。
+
+**解法：`{route}` 只允许匹配已知的路线 token**，不允许任意串。路线 token 由 `SubtitleRoute` 全量渲染得出，而 `SubtitleArtifactSpec` 与它在**同一个包**（`domain/subtitle/model/common/`），所以不需要额外传参：
+
+```java
+/** 文件名是否由本模板渲染得出来（扫目录用）。{@route} 只认已知路线 token，避免把带后缀的档案也吃进来。 */
+public boolean matches(String fileName) {
+    return pattern().matcher(fileName).matches();
+}
+
+/**
+ * 模板 → 正则：
+ * {route} → 已知路线 token 的交替（如 asr-cloud|asr-local）——不写成 .+，
+ *           否则 segments-{route}.json 会把 segments-xxx-translate-zh.json 也匹配掉
+ * {lang}  → [a-z0-9-]+（非空）
+ * 其余字面量按正则转义（模板里的 . 是真句点）
+ */
+private Pattern pattern() { ... }   // 懒初始化一次
+```
+
+`{lang}` 段保留通配是**有意**的：清单要反映磁盘上真实存在的东西——换了目标语种后旧语种的产物仍在磁盘上，扫描就该列出来。这正是 (a) 相对 (b) 保住的行为。
+
+## 步骤 1.4 — 检查点判据改从登记表取
+
+各 stage 的 `readCheckpoint` 不变（仍调 `CheckpointPolicy.isCompleted(非空)`），但**"哪些产出物是检查点"从隐式变显式**：非检查点（`isCheckpoint() == false`，即 SRT）不该有 `readCheckpoint` 这条路。
+
+**注意**：这一步不要顺手改 `CheckpointPolicy` 的判据语义（"JSON 非空 = 完成、0 字节 = 未完成"那条是设计决策 4 的产物，动它会引入空转写死循环）。
+
+## 批次 1 验证
+
+```bash
+cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn -q clean test
+```
+
+断言（三条都要过）：
+
+```bash
+# ① 后缀白名单彻底消失
+grep -rn 'endsWith(".srt")' backend/src/main   # 期望：无命中
+
+# ② 产出物模板只在登记表里出现
+grep -rn '"segments-\|"subtitles-\|"context-\|"terms-' backend/src/main \
+  | grep -v SubtitleArtifactSpec.java          # 期望：无命中
+
+# ③ TaskArtifactScan 已删除
+ls backend/src/main/java/com/vidsage/domain/task/policy/   # 期望：只剩 TaskStageEvent
+```
+
+**回滚点**：`git reset --hard` 到批次开工前的提交。本批不碰 HTTP 契约与数据库，回滚零副作用。
+
+---
+
+# 批次 2：阶段名单源 + 进度区间单源
+
+**目标**：阶段名从三处变一处；进度边界从三层各自硬编码变一处。
+**改动面**：新增 2 个类；删 6 个阶段名字面量 + 三层权重常量。
+**风险**：中——**最容易破 AC7（进度事件序列与数值不变）**。
+
+## 步骤 2.1 — 阶段名单源
+
+新文件：`backend/src/main/java/com/vidsage/domain/shared/model/PipelineStage.java`（与 `StageEvent` 同包，因为 `StageEvent` 已经持有其中两个名字）
+
+```java
+/**
+ * 管线阶段名。全项目唯一一处定义。
+ *
+ * <p>原来散在三处——AudioPreparationStage（acquire / extract-audio）、
+ * SubtitlePreparationStage（transcribe / write-subtitles）、StageEvent（clean / translate），
+ * 其中 StageEvent 的注释还得用文字指着另外两处。加阶段时要记得改三处，漏一处就静默不一致
+ * ——改一个名字不会编译失败，只会让前端按老名字渲染进度条的代码失效。
+ */
+public final class PipelineStage {
+
+    public static final String ACQUIRE = "acquire";
+    public static final String EXTRACT_AUDIO = "extract-audio";
+    public static final String TRANSCRIBE = "transcribe";
+    public static final String WRITE_SUBTITLES = "write-subtitles";
+    public static final String CLEAN = "clean";
+    public static final String TRANSLATE = "translate";
+
+    private PipelineStage() {
+    }
+}
+```
+
+改动点：
+- `AudioPreparationStage`：删 `STAGE_ACQUIRE` / `STAGE_EXTRACT`，改用 `PipelineStage.ACQUIRE` 等
+- `SubtitlePreparationStage`：删 `STAGE_TRANSCRIBE` / `STAGE_WRITE_SUBTITLES`
+- `StageEvent`：删 `STAGE_TRANSLATE` / `STAGE_CLEAN`（`TaskStageEvent`、`SubtitleCleanupStage` 等引用点跟改）
+- `VideoTask.updateStage` 的 Javadoc：把枚举列表改成 `{@link PipelineStage}` 引用（**消灭第 3 处复述**）
+
+## 步骤 2.2 — 进度区间单源
+
+新文件：`backend/src/main/java/com/vidsage/application/task/pipeline/ProgressPlan.java`
+
+```java
+/**
+ * 任务级进度区间表：每个编排单元占任务进度的哪一段。改权重只改这里。
+ *
+ * <p><b>两层是真实存在的，不是历史包袱</b>：prepare 段内部还要把 0..100 再映射一次，
+ * 而映射出来的边界是 66.5 —— 不是整数。所以这里只把边界单源，不改结构；改成扁平的整数
+ * 权重列表复现不出现在的数值，那就是进度事件的行为变更。
+ */
+final class ProgressPlan {
+
+    /** prepare 全包（acquire / extract-audio / transcribe / write-subtitles）占任务 0..70。 */
+    static final int PREPARE_END = 70;
+
+    /** clean 占 70..100。 */
+    static final int CLEAN_START = 70;
+    static final int CLEAN_END = 100;
+
+    /** prepare 段内部的划分（0..100 自报口径，由 PREPARE 的 0..70 再映射）。 */
+    static final int AUDIO_END = 60;
+    static final int TRANSCRIBE_START = 60;
+    static final int TRANSCRIBE_DONE = 95;
+    static final int WRITE_DONE = 100;
+
+    private ProgressPlan() {
+    }
+}
+```
+
+删掉的原常量：`VideoTaskPipeline` 的 `PREPARE_END` / `CLEAN_START` / `CLEAN_END`，`SubtitlePreparationStage` 的 `ACQUIRE_END` / `TRANSCRIBE_START` / `TRANSCRIBE_DONE` / `WRITE_DONE`。
+
+调用点**只换名字来源，数值一个不改**：
+
+```java
+// 前
+subtitlePreparationStage.prepare(input, ProgressMapper.remap(listener, 0, PREPARE_END));
+// 后
+subtitlePreparationStage.prepare(input, ProgressMapper.remap(listener, 0, ProgressPlan.PREPARE_END));
+```
+
+## 批次 2 验证
+
+```bash
+cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn -q clean test
+```
+
+```bash
+# ① 六个阶段名的字面量只在 PipelineStage 出现
+grep -rn '"acquire"\|"extract-audio"\|"transcribe"\|"write-subtitles"\|"clean"\|"translate"' \
+  backend/src/main | grep -v PipelineStage.java     # 期望：无命中
+
+# ② 权重边界只在 ProgressPlan 出现
+grep -rn '= 70;\|= 60;\|= 95;\|= 100;' backend/src/main/java/com/vidsage/application \
+  | grep -v ProgressPlan.java                       # 期望：无命中
+```
+
+**③ 最重要的一条：进度事件逐条比对（AC7）**
+
+`mvn test` **抓不到进度数值变化**——它是行为契约，不是编译契约。必须手工验：
+
+1. 改之前，起实例跑一条真实任务（B站链接或本地 mp4），订阅 SSE，把事件流存下来：
+   ```bash
+   curl -N http://localhost:18080/api/tasks/{taskNo}/events > before.txt
+   ```
+2. 改之后，**删掉工作区产物**（否则断点复用会跳过阶段、事件流不完整），跑同一输入，存 `after.txt`
+3. 逐条比对：
+   ```bash
+   diff <(sed 's/"taskNo":"[^"]*"/"taskNo":"X"/' before.txt) \
+        <(sed 's/"taskNo":"[^"]*"/"taskNo":"X"/' after.txt)
+   ```
+   期望：**除 taskNo 外零差异**。
+
+⚠️ 起实例的两个坑（已实测）：`TaskStop` 杀不掉 `spring-boot:run` 的子 JVM，必须按 PID `taskkill //PID <pid> //F`；Git Bash 的 `/tmp` 与 Windows 程序的不通用，文件一律用相对路径或 Windows 绝对路径。
+
+**回滚点**：同上，`git reset --hard` 到批次开工前。
+
+---
+
+# 批次 3：身份归属
+
+**目标**：身份由输入自己算（`WorkspaceService` 的 switch 消失）；`InWorkspace` 从"带结果"改成"带身份"。
+**改动面**：`MediaInput`（3 个变体各加实现）+ 新增 `MediaFacts` + `WorkspaceService` + `MediaInput.ofTaskInput` + 类注释。
+**风险**：**高**——身份算错就是工作区目录算错，产物落错地方或断点复用失效。
+
+## 步骤 3.1 — `MediaFacts` 值对象
+
+新文件：`backend/src/main/java/com/vidsage/domain/media/model/MediaFacts.java`
+
+```java
+/**
+ * 媒体文件的文件系统事实：大小 + 最后修改时间。
+ *
+ * <p>只有本地文件路线的身份需要它（身份＝路径｜大小｜mtime）。domain 层不做 I/O，
+ * 所以 stat 由 application 读出来传进来——**身份公式在 domain，文件事实由外部提供**。
+ * 文件不存在 / 不可读时用 {@link #UNAVAILABLE} 占位（与原 localPathKey 的行为一致）。
+ *
+ * @param sizeBytes      文件大小；不可用时为 -1
+ * @param lastModifiedMs 最后修改时间毫秒；不可用时为 -1
+ */
+public record MediaFacts(long sizeBytes, long lastModifiedMs) {
+
+    public static final long UNAVAILABLE = -1L;
+    public static final MediaFacts NOT_APPLICABLE = new MediaFacts(UNAVAILABLE, UNAVAILABLE);
+}
+```
+
+## 步骤 3.2 — 身份成为输入的属性
+
+`MediaInput` **改造前**：
+
+```java
+public sealed interface MediaInput {
+    record RemoteUrl(String value) implements MediaInput { }
+    record LocalPath(Path value) implements MediaInput { }
+    record InWorkspace(Path value, Path workspaceDir, WorkspaceKey workspaceKey) implements MediaInput { }
+    // 身份由 WorkspaceService.normalize() 的 switch 从外面推
+}
+```
+
+**改造后**：
+
+```java
+public sealed interface MediaInput {
+
+    /**
+     * 本输入的内容寻址 key——决定它落在哪个工作区目录。
+     *
+     * <p>身份**不由外部按变体分派**：每个变体自己知道自己的身份是什么。上传路线当初就是
+     * 在这里绕不过去——它的身份是文件内容的 sha256，从位置推不出来，所以只能算出来之后
+     * 带着走（见 {@link InWorkspace}）。
+     *
+     * @param facts 文件系统事实（大小 / 修改时间）；只有 {@link LocalPath} 需要，其余变体忽略
+     */
+    WorkspaceKey contentKey(MediaFacts facts);
+
+    /** 目录名前半段的人读标签。唯一性完全由 key 保证，这里只是给人看的。 */
+    String dirLabel();
+
+    /**
+     * 公网可访问的媒体页面地址。
+     * @param value 完整 URL；<b>不要传本地文件路径</b>（本地文件请用 {@link LocalPath}）
+     */
+    record RemoteUrl(String value) implements MediaInput {
+        @Override
+        public WorkspaceKey contentKey(MediaFacts facts) {
+            return WorkspaceKey.ofHash(value == null ? "" : value);
+        }
+        @Override
+        public String dirLabel() {
+            return value == null ? "" : value;
+        }
+    }
+
+    /** 本机可读的媒体文件路径，直接采用，不下载、不拷贝。 */
+    record LocalPath(Path value) implements MediaInput {
+        @Override
+        public WorkspaceKey contentKey(MediaFacts facts) {
+            return WorkspaceKey.ofHash(SourceUri.ofLocalFile(value, facts.sizeBytes(),
+                    facts.lastModifiedMs()).value());
+        }
+        @Override
+        public String dirLabel() {
+            Path fileName = value == null ? null : value.getFileName();
+            return fileName == null ? "" : fileName.toString();
+        }
+    }
+
+    /**
+     * 已在任务工作区内的媒体文件（上传路线）：身份是文件内容的 sha256，上传时流式边写边算出来的，
+     * 无法从位置重推，所以随输入携带。
+     *
+     * <p><b>携带的是身份，不是结果</b>：目录名由 {@code WorkspaceDir.of(dirLabel, key)} 重算，
+     * 与提交时逐字相同——搬整个已解析的目录过来会让「哪个是真身份」有两个说法。
+     *
+     * @param value    媒体文件路径（已在工作区内，如 {@code <工作区>/source.mp4}）
+     * @param key      内容寻址 key（文件内容 sha256 前 12 位）
+     * @param dirLabel 目录名的标签段，即上传时的原始文件名
+     */
+    record InWorkspace(Path value, WorkspaceKey key, String dirLabel) implements MediaInput {
+        @Override
+        public WorkspaceKey contentKey(MediaFacts facts) {
+            return key;      // 身份就在身上，不用算
+        }
+        // dirLabel() 由 record 的访问器自动满足接口方法
+    }
+}
+```
+
+**注意**：`InWorkspace` 的字段名用 `key`（不是 `contentKey`），否则和接口方法同名冲突。
+
+**类注释要改写**——现在那句「本类型只承载『位置』」是错的（它自己破了）。改成：
+
+```java
+/**
+ * 媒体输入来源：契约描述「媒体从哪里来」以及「它的身份是什么」。
+ *
+ * <p>身份必须由输入自己给出，不能由外部按变体分派——否则加一种输入来源就要回头改
+ * WorkspaceService。三条路线里两条的身份从位置推出（URL 原文 / 路径+大小+mtime），
+ * 上传路线不行：它的身份是内容 sha256，只能算完带着走（{@link InWorkspace}）。
+ */
+```
+
+## 步骤 3.3 — `WorkspaceService` 去 switch
+
+```java
+// 前：三路 switch，还带一个抛异常的第三支
+public static SourceUri normalize(MediaInput input) {
+    return switch (input) {
+        case MediaInput.RemoteUrl url   -> SourceUri.ofRemoteUrl(url.value());
+        case MediaInput.LocalPath local -> localPathKey(local.value());
+        case MediaInput.InWorkspace ignored -> throw new IllegalStateException(...);
+    };
+}
+
+// 后：删掉 normalize；只留下"取事实"这一点残留的类型判断
+public Path workspaceFor(MediaInput input) {
+    if (input == null) {
+        throw new IllegalArgumentException("媒体输入不能为空：请传 RemoteUrl / LocalPath / InWorkspace");
+    }
+    MediaFacts facts = factsOf(input);
+    return ensureCreated(rootDir().resolve(
+            WorkspaceDir.of(input.dirLabel(), input.contentKey(facts)).value()));
+}
+
+/** stat 只在本地文件路线需要；这是"取事实"，不是"选公式"——公式已经住在变体里了。 */
+private static MediaFacts factsOf(MediaInput input) {
+    if (!(input instanceof MediaInput.LocalPath local) || local.value() == null) {
+        return MediaFacts.NOT_APPLICABLE;
+    }
+    Path absolute = local.value().toAbsolutePath().normalize();
+    try {
+        if (Files.isRegularFile(absolute)) {
+            return new MediaFacts(Files.size(absolute),
+                    Files.getLastModifiedTime(absolute).toMillis());
+        }
+    } catch (IOException e) {
+        log.debug("读取本地文件属性失败，按占位值计算工作目录: file={}, reason={}",
+                absolute.getFileName(), e.getMessage());
+    }
+    return MediaFacts.NOT_APPLICABLE;
+}
+```
+
+**原来的两条入口 `workspaceFor(MediaInput)` / `workspaceFor(String label, WorkspaceKey key)` 合并成一条**——第二条（上传路线用）不再需要单独存在，因为 `InWorkspace` 现在能自己给出 key。`VideoTaskService.submitUpload` 的 `settleUpload` 要跟着改成先拼 `InWorkspace` 再调 `workspaceFor`。
+
+## 步骤 3.4 — `ofTaskInput` 跟着改
+
+```java
+// 前
+case UPLOAD -> new InWorkspace(workspaceDir.resolve(UPLOAD_SOURCE_FILE_NAME), workspaceDir, workspaceKey);
+// 后：把 sourceUri 当目录标签（提交时建目录用的就是它）
+case UPLOAD -> new InWorkspace(workspaceDir.resolve(UPLOAD_SOURCE_FILE_NAME), workspaceKey, sourceUri);
+```
+
+## 批次 3 验证
+
+```bash
+cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn -q clean test
+```
+
+```bash
+# ① normalize 与三路 switch 已消失
+grep -rn "normalize(MediaInput\|SourceUri normalize" backend/src/main   # 期望：无命中
+
+# ② WorkspaceService 里不再有按变体分派的 switch
+grep -n "case MediaInput" backend/src/main/java/com/vidsage/application/media/WorkspaceService.java
+# 期望：无命中（残留的 instanceof 只为取 facts，形式不同）
+```
+
+**③ 最重要的一条：工作区目录逐字一致（AC7）**
+
+身份算错不会编译报错，也不会让测试失败——**它只会让产物落错地方**。必须手工验：
+
+对三条路线各取一个输入，**改造前后**的目录名必须逐字相同：
+
+| 路线 | 验证办法 |
+|---|---|
+| URL | 提交同一链接，比对 `task.workspace_dir` 与工作区实际目录名 |
+| 上传 | 上传同一文件，比对同上；**再重传一次**，确认仍命中同一目录（内容寻址） |
+| 本地文件 | 用同一个本地 mp4，比对同上；**再 `touch` 一次该文件**，确认目录变了（这是三元组身份应有的行为，不是 bug） |
+
+```sql
+-- 库里落的就是权威值
+SELECT task_no, workspace_dir, workspace_key FROM task ORDER BY created_at DESC LIMIT 5;
+```
+
+**回滚点**：同上。
+
+---
+
+# 全部做完之后
+
+1. **跑一次端到端真实链路**（提交 → 字幕 → 清洗 → 翻译），确认 SSE 事件序列与产物清单都对
+2. **补写 `design.md` 的「变更类型 → 落点清单」终稿**——现在那里是雏形，改造完才知道每条落点**实际**是几处（AC6 要求每行可 grep 验证）
+3. 回写 `.trellis/spec/backend/directory-structure.md`（若新增类的落位有新判据）
+
+## 本任务的诚实边界
+
+- **「加一种状态 / 子状态」和「加一个 provider」两行落点清单留空**——前者是决策 4（生命周期不统一，不做），后者不在本任务范围
+- **音频产物（`AudioArtifact.fileName`）不纳入登记表**——它在 media 上下文，且本就不对外可见。产出物概念横跨两个上下文，本批只做 subtitle 侧
