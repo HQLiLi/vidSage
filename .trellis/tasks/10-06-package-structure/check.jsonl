@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "逐条核对：① 每个桶只含单一角色（port/ 全是接口、policy/ 全是 final class、model/ 全是数据词汇）；② 根只留门面（domain 主类型 / application 服务门面 + 应用消息）；③ 无空桶；④ 依赖规则未被破坏（无新增跨层 import，infrastructure→application 仍只有端口白名单一处）；⑤「二级包怎么分」阈值句已改写为可机械推导的新判据；⑥ 测试包与主包镜像一致"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对零行为变化与无悬空引用：diff 里不得出现方法签名、注解、类名、日志文案、异常类型的变化；package-info 重写后描述的路径与角色必须与代码事实相符"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "核对收尾门禁：是否只停在汇报、未自行 commit / push / merge / 归档"}
