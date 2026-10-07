@@ -32,7 +32,7 @@ import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.model.translation.TranslateResult;
 import com.vidsage.domain.subtitle.port.TermLookupProvider;
-import com.vidsage.shared.subtitle.SubtitleArtifactNames;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -187,25 +187,25 @@ class SubtitleTranslationStageTest {
     }
 
     private Path cleanFile() {
-        return workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(SubtitleRoute.ASR_CLOUD));
+        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
     }
 
     private Path translateSegFile() {
-        return workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(
+        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(
                 SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
     }
 
     private Path translateSrtFile() {
-        return workDir.resolve(SubtitleArtifactNames.translateSrtFileName(
+        return workDir.resolve(SubtitleArtifactSpec.SRT_TRANSLATED.fileName(
                 SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
     }
 
     private Path contextFile() {
-        return workDir.resolve(SubtitleArtifactNames.contextFileName(SubtitleRoute.ASR_CLOUD));
+        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(SubtitleRoute.ASR_CLOUD, null));
     }
 
     private Path termsFile() {
-        return workDir.resolve(SubtitleArtifactNames.verifiedTermsFileName(
+        return workDir.resolve(SubtitleArtifactSpec.TERMS.fileName(
                 SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
     }
 
@@ -257,7 +257,7 @@ class SubtitleTranslationStageTest {
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> s.translate(new MediaInput.RemoteUrl("https://x")));
         // 消息要说清「缺哪个文件、先跑哪一步」
-        assertTrue(e.getMessage().contains(SubtitleArtifactNames.cleanSegmentsFileName(SubtitleRoute.ASR_CLOUD)),
+        assertTrue(e.getMessage().contains(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null)),
                 "消息应指明缺哪个文件");
         assertTrue(e.getMessage().contains("/api/subtitles/clean"), "消息应指明先跑哪一步");
     }

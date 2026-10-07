@@ -2,33 +2,32 @@ package com.vidsage.application.subtitle.pipeline;
 
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.config.SubtitleCleanupProperties;
+import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
+import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
-import com.vidsage.domain.media.model.MediaInput;
-import com.vidsage.domain.shared.port.ProgressListener;
-import com.vidsage.domain.shared.model.StageEvent;
-import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
-import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
-import com.vidsage.domain.subtitle.model.common.SubtitleContext;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
-import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.subtitle.SrtRenderer;
-import com.vidsage.shared.subtitle.SubtitleArtifactNames;
 import com.vidsage.shared.subtitle.SubtitleSegmentSplitter;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
-
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * 字幕清洗编排：把「2b 产出的原始 segments」变成「切分 + LLM 纠错后的 -clean 产物」。
@@ -47,10 +46,14 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SubtitleCleanupStage {
 
-    /** 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 70..100）。 */
+    /**
+     * 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 70..100）。
+     */
     private static final int STAGE_BEGIN = 0;
 
-    /** 阶段进度的终点（0..100 区间自报口径，管线负责 remap 进 70..100）。 */
+    /**
+     * 阶段进度的终点（0..100 区间自报口径，管线负责 remap 进 70..100）。
+     */
     private static final int STAGE_DONE = 100;
 
     private final WorkspaceService workspaceService;
@@ -65,12 +68,12 @@ public class SubtitleCleanupStage {
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param workspaceService 工作目录解析
-     * @param asrProvider      当前装配的 ASR provider（取路线与产物命名指纹）
-     * @param objectMapper     Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
-     * @param props            字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
+     * @param workspaceService  工作目录解析
+     * @param asrProvider       当前装配的 ASR provider（取路线与产物命名指纹）
+     * @param objectMapper      Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
+     * @param props             字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
      * @param contextSummarizer 内容总结器（摘要出主题与术语，供跨批上下文用）
-     * @param subtitleCleanser 字幕清洗器（持有清洗专用的 ChatClient）
+     * @param subtitleCleanser  字幕清洗器（持有清洗专用的 ChatClient）
      */
     public SubtitleCleanupStage(WorkspaceService workspaceService,
                                 ASRProvider asrProvider,
@@ -140,9 +143,9 @@ public class SubtitleCleanupStage {
         }
         SubtitleRoute route = asrProvider.route();
         Path workDir = workspaceService.workspaceFor(input);
-        Path rawSeg = workDir.resolve(SubtitleArtifactNames.segmentsFileName(route));
-        Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(route));
-        Path cleanSrt = workDir.resolve(SubtitleArtifactNames.cleanSrtFileName(route));
+        Path rawSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(route, null));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(route, null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(route, null));
         SubtitleTrack existing = readCheckpoint(cleanSeg);
         if (existing != null) {
             log.info("字幕清洗断点复用跳过: clean={}", cleanSeg.getFileName());
@@ -153,10 +156,6 @@ public class SubtitleCleanupStage {
         }
         emit(listener, StageEvent.STAGE_CLEAN, STAGE_BEGIN, "开始清洗", StageEvent.StageState.RUNNING);
 
-        // 原始缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
-        // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮接受 500：它是「服务端状态缺失」，
-        // 可归入 error-handling 的「环境不对」；改成 4xx 需新增异常类或动既有 handler，超本任务
-        // 「只新增」范围。2026-09-27 经项目所有者拍板：本轮接受 500，4xx 映射留作后续小任务。
         if (!ArtifactFiles.isNonEmpty(rawSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
                     + rawSeg.getFileName() + "）");
@@ -166,10 +165,7 @@ public class SubtitleCleanupStage {
         // 媒体内容
         List<TranscriptionSegment> segments = raw.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
-        // 内容的主题、源语种和从中提取出的术语：先读缓存，没有才摘要；摘要成功才落盘、空摘要绝不落盘
-        // ——裁决单源在 CheckpointPolicy（与翻译阶段同一份，2026-10-06 两处近逐字重复合流于此）。
-        // 断点分支留在本层（不在 SubtitleContextSummarizer 里）——与 -clean 断点判据同处，见 design §3.2。
-        Path ctxFile = workDir.resolve(SubtitleArtifactNames.contextFileName(route));
+        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(route, null));
         SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
         CheckpointPolicy.ContextResolution contextResolution =
                 CheckpointPolicy.resolveContext(cached, () -> contextSummarizer.summarize(radioContent));

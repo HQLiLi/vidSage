@@ -10,7 +10,7 @@ import com.vidsage.application.task.query.TaskSnapshot;
 import com.vidsage.domain.shared.model.SourceUri;
 import com.vidsage.domain.shared.model.WorkspaceDir;
 import com.vidsage.domain.shared.model.WorkspaceKey;
-import com.vidsage.domain.task.policy.TaskArtifactScan;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
@@ -323,7 +323,7 @@ public class VideoTaskService {
     }
 
     /**
-     * 扫描任务工作区，收集对外可见的产物清单（可见性判据单源在 {@link TaskArtifactScan}）。
+     * 扫描任务工作区，收集对外可见的产物清单
      *
      * <p>目录不存在（URL 任务尚未建目录 / 环境差异）或列举失败时返回空表：清单是展示信息，
      * 读不出来不该把整个任务查询打挂。
@@ -343,7 +343,7 @@ public class VideoTaskService {
             return entries
                     .filter(Files::isRegularFile)
                     .map(path -> path.getFileName().toString())
-                    .filter(TaskArtifactScan::isVisible)
+                    .filter(SubtitleArtifactSpec::isDownloadable)
                     .sorted()
                     .map(name -> new TaskArtifact(name, ArtifactFiles.sizeOrZero(dir.resolve(name))))
                     .toList();

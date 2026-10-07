@@ -2,6 +2,7 @@ package com.vidsage.application.subtitle.pipeline;
 
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.config.SubtitleTranslateProperties;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
@@ -23,7 +24,6 @@ import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.model.translation.TranslateResult;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.subtitle.SrtRenderer;
-import com.vidsage.shared.subtitle.SubtitleArtifactNames;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -58,10 +58,14 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class SubtitleTranslationStage {
 
-    /** 阶段进度的起点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。 */
+    /**
+     * 阶段进度的起点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。
+     */
     private static final int STAGE_BEGIN = 0;
 
-    /** 阶段进度的终点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。 */
+    /**
+     * 阶段进度的终点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。
+     */
     private static final int STAGE_DONE = 100;
 
     private final WorkspaceService workspaceService;
@@ -131,7 +135,7 @@ public class SubtitleTranslationStage {
         String targetLanguage = Bcp47Language.resolveTargetLanguage(props.targetLanguage());
         SubtitleRoute route = asrProvider.route();
         Path workDir = workspaceService.workspaceFor(input);
-        Path translateSeg = workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(route, targetLanguage));
+        Path translateSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(route, targetLanguage));
         // 检查点判据单源在 CheckpointPolicy：JSON 非空 = 已完成，0 字节/缺失 = 未完成（SRT 派生视图不参与）
         return CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(translateSeg));
     }
@@ -180,10 +184,11 @@ public class SubtitleTranslationStage {
         String targetLanguage = Bcp47Language.resolveTargetLanguage(props.targetLanguage());
         SubtitleRoute route = asrProvider.route();
         Path workDir = workspaceService.workspaceFor(input);
-        Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(route));
-        Path translateSeg = workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(route, targetLanguage));
-        Path translateSrt = workDir.resolve(SubtitleArtifactNames.translateSrtFileName(route, targetLanguage));
-        Path termsFile = workDir.resolve(SubtitleArtifactNames.verifiedTermsFileName(route, targetLanguage));
+
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(route, null));
+        Path translateSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(route, targetLanguage));
+        Path translateSrt = workDir.resolve(SubtitleArtifactSpec.SRT_TRANSLATED.fileName(route, targetLanguage));
+        Path termsFile = workDir.resolve(SubtitleArtifactSpec.TERMS.fileName(route, targetLanguage));
 
         // 断点：检查点已在且非空 → 反序列化直接返回，本趟统计一律归零（含 untranslatedCount）
         TranslatedTrack existing = ArtifactFiles.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
@@ -208,7 +213,7 @@ public class SubtitleTranslationStage {
         // 上下文：先读缓存，没有才摘要；摘要成功才落盘、空摘要绝不落盘——裁决单源在 CheckpointPolicy
         // （与清洗阶段同一份）。断点分支留在本层（不在 SubtitleContextSummarizer 里）——与 -clean
         // 断点判据同处，见 design §3.2。翻译依赖 -clean，所以清洗必定先跑并落下上下文，这里通常命中缓存。
-        Path ctxFile = workDir.resolve(SubtitleArtifactNames.contextFileName(route));
+        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(route, null));
         SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
         CheckpointPolicy.ContextResolution contextResolution = CheckpointPolicy.resolveContext(cached,
                 // 摘要请求惰性求值：缓存命中时连内容拼接与摘要调用都不发生

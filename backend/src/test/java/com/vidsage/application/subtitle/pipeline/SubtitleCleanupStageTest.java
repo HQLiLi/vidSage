@@ -25,7 +25,7 @@ import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
-import com.vidsage.shared.subtitle.SubtitleArtifactNames;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -84,7 +84,7 @@ class SubtitleCleanupStageTest {
         SubtitleTrack raw = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of(
                 new TranscriptionSegment(0, 5000, "我防关这边露出"),
                 new TranscriptionSegment(5000, 10000, "今天天气不错")));
-        JSON.writeValue(workDir.resolve(SubtitleArtifactNames.segmentsFileName(SubtitleRoute.ASR_CLOUD)).toFile(), raw);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), raw);
     }
 
     @BeforeEach
@@ -104,8 +104,8 @@ class SubtitleCleanupStageTest {
         CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
         // 两条 -clean 产物都在且非空
-        Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(SubtitleRoute.ASR_CLOUD));
-        Path cleanSrt = workDir.resolve(SubtitleArtifactNames.cleanSrtFileName(SubtitleRoute.ASR_CLOUD));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
         assertTrue(Files.isRegularFile(cleanSeg) && Files.size(cleanSeg) > 0, "应产出 -clean.json");
         assertTrue(Files.isRegularFile(cleanSrt) && Files.size(cleanSrt) > 0, "应产出 -clean.srt");
         assertEquals(2, cleaned.segmentCount());
@@ -130,13 +130,13 @@ class SubtitleCleanupStageTest {
     void emptyTranscriptionWritesNonEmptyCheckpointDespiteZeroByteSrt() throws Exception {
         // 空转写是合法产出（纯音乐 / 无语音）：raw segments=[]
         SubtitleTrack empty = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of());
-        JSON.writeValue(workDir.resolve(SubtitleArtifactNames.segmentsFileName(SubtitleRoute.ASR_CLOUD)).toFile(), empty);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), empty);
         SubtitleCleanupStage s = service();
 
         CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
-        Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(SubtitleRoute.ASR_CLOUD));
-        Path cleanSrt = workDir.resolve(SubtitleArtifactNames.cleanSrtFileName(SubtitleRoute.ASR_CLOUD));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
         assertEquals(0, first.segmentCount());
         assertEquals(0, first.srtSizeBytes());
         // 关键：SRT 是 0 字节，但检查点 JSON 必须非空——否则下次判「未完成」会反复重跑（死循环）
@@ -229,7 +229,7 @@ class SubtitleCleanupStageTest {
     // ------------------------------------------------------------------
 
     private Path contextFile() {
-        return workDir.resolve(SubtitleArtifactNames.contextFileName(SubtitleRoute.ASR_CLOUD));
+        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(SubtitleRoute.ASR_CLOUD, null));
     }
 
     @Test

@@ -26,7 +26,7 @@ import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.subtitle.SrtRenderer;
-import com.vidsage.shared.subtitle.SubtitleArtifactNames;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -73,7 +73,7 @@ class SubtitlePreparationStageTest {
         // 预置非空 segments JSON → prepare 应跳过音频准备与转写
         var track = new SubtitleTrack(ROUTE, "zh",
                 List.of(new TranscriptionSegment(0, 1440, "已有内容。")));
-        Path segmentsPath = tempDir.resolve(SubtitleArtifactNames.segmentsFileName(ROUTE));
+        Path segmentsPath = tempDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(ROUTE, null));
         Files.writeString(segmentsPath, mapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(track));
 
@@ -95,7 +95,7 @@ class SubtitlePreparationStageTest {
             @TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         // 只有 SRT 在、segments JSON 不在 → 必须重新跑，不能跳过（决策 4 的回归测试）
-        Files.writeString(tempDir.resolve(SubtitleArtifactNames.srtFileName(ROUTE)),
+        Files.writeString(tempDir.resolve(SubtitleArtifactSpec.SRT_RAW.fileName(ROUTE, null)),
                 SrtRenderer.toSrt(List.of(new TranscriptionSegment(0, 1440, "陈旧 SRT。"))));
 
         var audioPrep = mock(AudioPreparationStage.class);
