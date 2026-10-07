@@ -93,7 +93,7 @@ public record TranscriptionCommand(AudioSource source, String language) {
 - 私有方法：可用行注释说明**为什么**这样做，而不是做了什么
 - 解释**原因和约束**，不解释显而易见的代码
 
-参照：`domain/transcription/ASRProvider.java`、`domain/transcription/TranscriptionCommand.java`、`domain/transcription/AudioSource.java`、`infrastructure/provider/asr/dashscope/DashScopeProperties.java`
+参照：`domain/transcription/port/ASRProvider.java`、`domain/transcription/model/TranscriptionCommand.java`、`domain/transcription/model/AudioSource.java`、`infrastructure/provider/asr/dashscope/DashScopeProperties.java`
 
 > 注：现有代码的私有方法（如 `buildParam`）**尚未**加注释。本规范生效后新增的私有方法要补上——不要因为旧代码没写就跟着不写。
 
@@ -148,7 +148,7 @@ double best = Math.max(
 
 **上层需要不依赖某个具体实现类时，就为它抽端口**——多实现是抽端口的常见理由，不是必要条件。端口落在哪一层、叫什么名字，判据见 [directory-structure.md](./directory-structure.md) 的[依赖规则](./directory-structure.md#依赖规则)与[端口归属判据](./directory-structure.md#端口归属判据)。
 
-> **2026-10-06 改判**。原表述是「只有对着真实的可替换缝才引入；现有四个端口各自有明确的多实现或替身需求」——这句对 `domain/media/AudioExtractor` 是**失实的**：它一直只有一个实现（`FfmpegAudioExtractor`），其 Javadoc 明写「接口保留是为了让上层不依赖实现类」。新判据只是把一直隐含的规则写成明文，并把 `VideoTaskRepository` 与 `infrastructure/provider/llm/` 的三个 LLM worker 一并纳入（端口在 `domain/`，实现在 `infrastructure/`；详见任务 `10-06-port-inversion`）。
+> **2026-10-06 改判**。原表述是「只有对着真实的可替换缝才引入；现有四个端口各自有明确的多实现或替身需求」——这句对 `domain/media/port/AudioExtractor` 是**失实的**：它一直只有一个实现（`FfmpegAudioExtractor`），其 Javadoc 明写「接口保留是为了让上层不依赖实现类」。新判据只是把一直隐含的规则写成明文，并把 `VideoTaskRepository` 与 `infrastructure/provider/llm/` 的三个 LLM worker 一并纳入（端口在 `domain/`，实现在 `infrastructure/`；详见任务 `10-06-port-inversion`）。
 >
 > **它仍然反对的是**「为以后可能用到」而造的抽象：抽端口要有**当下的上层可见性需求**做依据，不是「将来可能有第二个实现」。
 

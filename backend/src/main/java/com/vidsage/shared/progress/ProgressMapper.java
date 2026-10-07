@@ -1,7 +1,7 @@
 package com.vidsage.shared.progress;
 
-import com.vidsage.domain.shared.ProgressListener;
-import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.shared.model.StageEvent;
 
 /**
  * 进度区间线性映射：把某段服务自报的 {@code 0..100} 进度压缩进管线分配给它的子区间

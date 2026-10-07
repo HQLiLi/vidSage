@@ -2,8 +2,8 @@ package com.vidsage.shared.progress;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.vidsage.domain.shared.ProgressListener;
-import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.shared.model.StageEvent;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;

@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.vidsage.application.diagnostics.ToolDiagnosticReport;
-import com.vidsage.application.diagnostics.ToolDiagnostics;
+import com.vidsage.application.diagnostics.port.ToolDiagnostics;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -10,8 +10,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.domain.media.AcquiredMedia;
-import com.vidsage.domain.media.MediaInput;
+import com.vidsage.domain.media.model.AcquiredMedia;
+import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import java.io.IOException;
 import java.nio.file.Files;

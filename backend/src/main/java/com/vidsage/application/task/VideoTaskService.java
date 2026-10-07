@@ -3,20 +3,20 @@ package com.vidsage.application.task;
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.pipeline.VideoTaskPipeline;
 import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskSnapshot;
-import com.vidsage.domain.shared.SourceUri;
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.domain.shared.WorkspaceDir;
-import com.vidsage.domain.shared.WorkspaceKey;
-import com.vidsage.domain.task.TaskArtifactScan;
-import com.vidsage.domain.task.TaskNo;
+import com.vidsage.domain.shared.model.SourceUri;
+import com.vidsage.domain.shared.model.WorkspaceDir;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.task.policy.TaskArtifactScan;
+import com.vidsage.domain.task.policy.TaskStageEvent;
+import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
-import com.vidsage.domain.media.MediaInput;
-import com.vidsage.domain.task.TaskInputType;
-import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.domain.task.VideoTaskRepository;
+import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.port.VideoTaskRepository;
 import com.vidsage.shared.fs.ArtifactFiles;
 import java.io.IOException;
 import java.io.InputStream;
@@ -193,7 +193,7 @@ public class VideoTaskService {
      * 组装 SSE 连接建立时的<b>快照事件</b>（design.md「SSE 契约」：DB 快照即权威，事件不落库）。
      * 任务当前状态 + 由 current_stage / status 构造的最近阶段事件；前端刷新页面重连后拿它恢复进度，
      * 无需事件回放。主任务 SUCCEEDED 且翻译子状态存在时按翻译子状态粗粒度还原
-     * （见 {@link #stageEventOf}）。
+     * （见 {@link TaskStageEvent#from}）。
      *
      * <p>快照经 {@code TaskController} 通过 {@code web/sse/TaskSseHub} 推送；阶段事件的进度值取
      * 状态的粗粒度位置（进行中为 0、完成为 100）——精确进度由增量事件携带，快照只保证形状合法。
@@ -205,7 +205,7 @@ public class VideoTaskService {
      */
     public TaskProgressMessage snapshot(String taskNo) {
         VideoTask task = loadTask(taskNo);
-        return new TaskProgressMessage(task.getTaskNo().value(), task.getStatus(), stageEventOf(task),
+        return new TaskProgressMessage(task.getTaskNo().value(), task.getStatus(), TaskStageEvent.from(task),
                 task.getTranslationStatus());
     }
 
@@ -256,61 +256,6 @@ public class VideoTaskService {
         }
         return repository.findByTaskNo(new TaskNo(taskNo))
                 .orElseThrow(() -> new TaskNotFoundException(taskNo));
-    }
-
-    /**
-     * 由持久化状态构造阶段事件（进度取状态粗粒度位置：排队 / 执行中 0、成功 100、失败 0，
-     * 失败事件的消息携带终态错误——SSE 上唯一的错误出口；current_stage 尚空时阶段名允许为
-     * {@code null}，形状仍合法）。
-     *
-     * <p><b>翻译子状态覆盖（2026-10-02 两段式）</b>：主任务 SUCCEEDED 且翻译子状态存在时，
-     * 快照 / 终态广播的阶段事件改由翻译子状态粗粒度还原（{@link #translationStageEventOf}）——
-     * 翻译是主任务成功后的第二生命周期，重连订阅者最关心的是它。主管线终态广播发生时翻译子状态
-     * 必为 null（翻译只能在主状态 SUCCEEDED 后触发），不受本分支影响。
-     *
-     * <p>两个使用者共用一份形状：SSE 快照（{@link #snapshot}）与管线的终态广播
-     * （{@code VideoTaskPipeline}，包内可见 static）——在线订阅者与重连订阅者看到的
-     * 终态渲染因此一致。
-     */
-    static StageEvent stageEventOf(VideoTask task) {
-        if (task.getStatus() == TaskStatus.SUCCEEDED && task.getTranslationStatus() != null) {
-            return translationStageEventOf(task);
-        }
-        String stage = task.getCurrentStage();
-        return switch (task.getStatus()) {
-            case PENDING -> stage == null ? null
-                    : new StageEvent(stage, 0, "任务排队中，等待执行", StageEvent.StageState.RUNNING);
-            case RUNNING -> stage == null ? null
-                    : new StageEvent(stage, 0, "任务执行中", StageEvent.StageState.RUNNING);
-            case SUCCEEDED -> stage == null ? null
-                    : new StageEvent(stage, 100, "任务已完成", StageEvent.StageState.SUCCEEDED);
-            case FAILED -> new StageEvent(stage, 0,
-                    StringUtils.hasText(task.getErrorMessage()) ? task.getErrorMessage() : "任务已失败",
-                    StageEvent.StageState.FAILED);
-        };
-    }
-
-    /**
-     * 翻译子状态的粗粒度阶段事件（stage 固定 translate，进度取子状态粗粒度位置：
-     * 进行中 0、完成 100、失败 0 + 失败信息）。与主任务 {@link #stageEventOf} 同哲学：
-     * 精确进度由增量事件携带，快照 / 终态广播只保证形状合法。
-     *
-     * <p>两个使用者共用一份形状：SSE 快照（经 {@link #stageEventOf} 分派）与管线的翻译终态广播
-     * （{@code VideoTaskPipeline}，包内可见 static）。
-     *
-     * <p>前置条件：{@code task.getTranslationStatus() != null}（调用点已保证——主管线终态广播时
-     * 翻译从未触发，走不到这里）。
-     */
-    static StageEvent translationStageEventOf(VideoTask task) {
-        return switch (task.getTranslationStatus()) {
-            case RUNNING -> new StageEvent(StageEvent.STAGE_TRANSLATE, 0, "翻译进行中",
-                    StageEvent.StageState.RUNNING);
-            case SUCCEEDED -> new StageEvent(StageEvent.STAGE_TRANSLATE, 100, "翻译完成",
-                    StageEvent.StageState.SUCCEEDED);
-            case FAILED -> new StageEvent(StageEvent.STAGE_TRANSLATE, 0,
-                    StringUtils.hasText(task.getErrorMessage()) ? task.getErrorMessage() : "翻译已失败",
-                    StageEvent.StageState.FAILED);
-        };
     }
 
     /**

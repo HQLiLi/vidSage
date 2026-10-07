@@ -1,10 +1,10 @@
 package com.vidsage.infrastructure.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.vidsage.domain.shared.WorkspaceKey;
-import com.vidsage.domain.task.TaskNo;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
-import com.vidsage.domain.task.VideoTaskRepository;
+import com.vidsage.domain.task.port.VideoTaskRepository;
 import com.vidsage.infrastructure.persistence.entity.VideoTaskEntity;
 import com.vidsage.infrastructure.persistence.mapper.VideoTaskMapper;
 import java.util.Optional;

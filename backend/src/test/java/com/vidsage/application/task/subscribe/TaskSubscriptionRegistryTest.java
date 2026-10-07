@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.application.task.TaskProgressMessage;
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.domain.task.TaskStatus;
+import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.task.model.TaskStatus;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.CopyOnWriteArrayList;

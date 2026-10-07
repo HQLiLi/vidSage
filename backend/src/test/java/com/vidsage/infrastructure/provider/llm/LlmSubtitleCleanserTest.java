@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.config.SubtitleCleanupProperties;
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.subtitle.CleanseResult;
-import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;

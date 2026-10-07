@@ -6,20 +6,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 任务响应：任务提交与查询端点的对外 HTTP 契约（2026-10-06 读模型拆分，
- * directory-structure.md「契约类的位置」判据 2——对外响应类命名 {@code XXResponse}、
- * 落 {@code web/dto/}、@Schema 集中于此）。
+ * 任务响应：任务提交与查询端点的对外 HTTP 契约
  *
- * <p>契约注解自拆分前 application 层的任务视图类逐条迁入；应用层读模型
- * {@link TaskSnapshot} 零 web 注解，经 {@link #from(TaskSnapshot)} 纯映射——
- * JSON 字段名 / 类型与拆分前逐一一致，前端零感知。映射调用点在 {@code TaskController}。
  *
- * <p><b>三个状态字段是 String 而不是领域枚举</b>（2026-10-06 端口倒置）：web 层不依赖
- * {@code domain/}，故枚举在映射处取 {@code name()}。JSON 形状与之前完全一致（Jackson 本来就把
- * 枚举序列化成名字），取值写在 {@code @Schema} 描述里；代价是 OpenAPI 里这三个字段由
- * {@code enum} 降级为 {@code string}——本项目前端手写契约镜像、不消费 OpenAPI，无实际消费方。
- *
- * <p>刻意不含数据库自增 {@code id} 与 workspace_key / workspace_dir 等内部字段——对外只暴露 taskNo；
  * SSE 快照形状是 {@code application/task/TaskProgressMessage}，两者按用途分开。
  *
  * @param taskNo            对外任务号（32 位短 UUID；数据库自增 id 不外泄）
@@ -55,7 +44,6 @@ public record TaskResponse(
 
     /**
      * 应用层读模型 → 对外响应的纯映射（无业务逻辑）：字段一一对应，产物清单逐元素映射为
-     * {@link TaskArtifactResponse}（JSON 形状不变）。三个状态字段在此取领域枚举的名字字符串。
      */
     public static TaskResponse from(TaskSnapshot snapshot) {
         return new TaskResponse(snapshot.taskNo(), snapshot.inputType().name(), snapshot.sourceUri(),

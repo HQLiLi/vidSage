@@ -3,7 +3,7 @@ package com.vidsage.shared.subtitle;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

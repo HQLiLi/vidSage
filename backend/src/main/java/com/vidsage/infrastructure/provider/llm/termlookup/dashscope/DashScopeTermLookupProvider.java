@@ -2,13 +2,13 @@ package com.vidsage.infrastructure.provider.llm.termlookup.dashscope;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.vidsage.domain.subtitle.TermLookupCommand;
-import com.vidsage.domain.subtitle.TermLookupResult;
+import com.vidsage.domain.subtitle.model.term.TermLookupCommand;
+import com.vidsage.domain.subtitle.model.term.TermLookupResult;
 
 import java.net.URI;
 import java.util.List;
 
-import com.vidsage.domain.subtitle.TermLookupProvider;
+import com.vidsage.domain.subtitle.port.TermLookupProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;

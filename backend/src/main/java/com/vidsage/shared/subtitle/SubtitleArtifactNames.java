@@ -1,6 +1,6 @@
 package com.vidsage.shared.subtitle;
 
-import com.vidsage.domain.subtitle.SubtitleRoute;
+import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import java.util.Locale;
 import org.springframework.util.StringUtils;
 
@@ -99,7 +99,7 @@ public final class SubtitleArtifactNames {
     /**
      * 术语查证产物文件名：{@code terms-asr-cloud-en.json}。
      *
-     * <p>语义：这份字幕的术语表联网查证后的结论（{@link com.vidsage.domain.subtitle.VerifiedTerms}），
+     * <p>语义：这份字幕的术语表联网查证后的结论（{@link com.vidsage.domain.subtitle.model.term.VerifiedTerms}），
      * 由翻译流程在真翻译前生成。<b>文件存在 = 已查证</b>——断点判据与 -clean / -translate 同哲学：
      * 删掉本文件即重新查证。查证调用失败的词不进文件，所以下次文件缺失重跑时自然补查。
      *

@@ -1,7 +1,7 @@
 package com.vidsage.web.controller;
 
 import com.vidsage.application.diagnostics.ToolDiagnosticReport;
-import com.vidsage.application.diagnostics.ToolDiagnostics;
+import com.vidsage.application.diagnostics.port.ToolDiagnostics;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;

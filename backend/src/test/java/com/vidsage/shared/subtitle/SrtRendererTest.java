@@ -2,8 +2,8 @@ package com.vidsage.shared.subtitle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.subtitle.TranslatedSegment;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.subtitle.model.translation.TranslatedSegment;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

@@ -2,12 +2,12 @@ package com.vidsage.infrastructure.provider.llm;
 
 
 import com.vidsage.config.SubtitleCleanupProperties;
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.shared.ProgressListener;
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.domain.subtitle.CleanseResult;
-import com.vidsage.domain.subtitle.SubtitleCleanser;
-import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
+import com.vidsage.domain.subtitle.port.SubtitleCleanser;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.shared.subtitle.TermMatcher;
 import com.vidsage.shared.subtitle.TextSimilarity;
 import lombok.extern.slf4j.Slf4j;

@@ -1,14 +1,14 @@
 package com.vidsage.infrastructure.provider.llm;
 
 import com.vidsage.config.SubtitleTranslateProperties;
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.shared.ProgressListener;
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.domain.subtitle.SubtitleContext;
-import com.vidsage.domain.subtitle.SubtitleTranslator;
-import com.vidsage.domain.subtitle.TranslateResult;
-import com.vidsage.domain.subtitle.TranslatedSegment;
-import com.vidsage.domain.subtitle.VerifiedTerm;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.port.SubtitleTranslator;
+import com.vidsage.domain.subtitle.model.translation.TranslateResult;
+import com.vidsage.domain.subtitle.model.translation.TranslatedSegment;
+import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
 import com.vidsage.shared.subtitle.TermMatcher;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

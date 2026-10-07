@@ -1,6 +1,6 @@
 package com.vidsage.shared.subtitle;
 
-import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;

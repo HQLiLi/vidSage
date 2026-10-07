@@ -1,7 +1,6 @@
 package com.vidsage.application.task.subscribe;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 /**
  * 任务进度的退订句柄：{@link TaskSubscriptionRegistry#subscribe} 的返回值。

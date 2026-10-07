@@ -1,7 +1,7 @@
 package com.vidsage.infrastructure.process;
 
 import com.vidsage.application.diagnostics.ToolDiagnosticReport;
-import com.vidsage.application.diagnostics.ToolDiagnostics;
+import com.vidsage.application.diagnostics.port.ToolDiagnostics;
 
 import java.io.File;
 import java.nio.file.Files;
