@@ -23,3 +23,6 @@ asr-service/
 .playwright-mcp/
 .zcode/tmp/
 .zcode/plans/
+
+# 重构期间的对照副本（项目所有者临时保留，重构完成后删除）
+backend-before-reconstruction/
