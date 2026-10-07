@@ -1,10 +1,10 @@
 package com.vidsage.infrastructure.provider.audio.ffmpeg;
 
-import com.vidsage.domain.media.AudioArtifact;
-import com.vidsage.domain.media.AudioContainer;
-import com.vidsage.domain.media.AudioSpec;
+import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioContainer;
+import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.infrastructure.process.ProcessOutcome;
-import com.vidsage.domain.media.AudioExtractor;
+import com.vidsage.domain.media.port.AudioExtractor;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
 import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;

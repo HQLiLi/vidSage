@@ -77,12 +77,8 @@ public class TaskController {
      * 提交 URL 任务：异步执行 下载 → 抽音频 → 转写 → 清洗，到原文字幕就绪为止（2026-10-02
      * 两段式）；翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
      *
-     * <p><b>当前支持的输入（2026-10-02 记录，待前端落地后复议校验层级）</b>：公网媒体页面 URL，
-     * 实测可用的是 yt-dlp 支持的站点——本项目验证过 B 站视频页与 YouTube；未验证站点不提前拦截，
-     * 交给 yt-dlp 提取，失败即任务 FAILED + SSE 推 FAILED 事件（不做站点白名单：等于把 yt-dlp 的
-     * 站点知识复制一份进来，维护成本高）。本条是 PRD 验收标准「不支持的链接 → 4xx」被
-     * 项目所有者改为「暂以 FAILED 呈现」的依据；提交口预检（如域名白名单）与解析期失败
-     * 何者更合适，等前端做完按真实交互再定（见 09-24-vidsage-mvp1-submit prd.md 验收标准）。
+     * 支持的站点——本项目验证过 B 站视频页与 YouTube；未验证站点不提前拦截，
+     * 交给 yt-dlp 提取，失败即任务 FAILED + SSE 推 FAILED 事件
      *
      * @param request 请求体（url 必填）
      * @return 新任务的 PENDING 视图（拿 taskNo 去查询 / 订阅进度）
@@ -107,7 +103,7 @@ public class TaskController {
 
     /**
      * 上传本地视频 / 音频文件提交任务：流式落盘（按内容寻址），异步执行到原文字幕就绪为止
-     * （2026-10-02 两段式）；翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
+     * 翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
      *
      * @param file 上传的媒体文件（multipart 字段名 file）；不能为空
      * @return 新任务的 PENDING 视图

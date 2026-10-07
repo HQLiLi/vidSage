@@ -1,7 +1,7 @@
 package com.vidsage.infrastructure.provider.llm;
 
-import com.vidsage.domain.subtitle.SubtitleContext;
-import com.vidsage.domain.subtitle.SubtitleContextSummarizer;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;

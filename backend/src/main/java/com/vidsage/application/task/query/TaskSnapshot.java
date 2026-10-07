@@ -1,19 +1,16 @@
 package com.vidsage.application.task.query;
 
-import com.vidsage.domain.task.TaskInputType;
-import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskStatus;
+import com.vidsage.domain.task.model.TranslationStatus;
 import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 任务快照（应用层读模型）：任务提交与查询的投影。零 web 注解（2026-10-06 读模型拆分，
- * directory-structure.md「契约类的位置」判据 2）——对外契约注解集中在
- * {@code web/dto/TaskResponse}，由其静态工厂 {@code from(TaskSnapshot)} 纯映射，
- * JSON 字段名 / 类型与拆分前逐一一致，前端零感知。
+ * 任务快照：任务提交与查询的对外读模型。
  *
- * <p>刻意不含数据库自增 {@code id} 与 workspace_key / workspace_dir 等内部字段——对外只暴露 taskNo；
- * SSE 快照形状是 {@code application/task/TaskProgressMessage}，两者按用途分开。
+ * <p>刻意不含数据库自增 {@code id} 与 workspace_key / workspace_dir 等内部字段，
+ * 对外只暴露 taskNo。
  *
  * @param taskNo            对外任务号（32 位短 UUID；数据库自增 id 不外泄）
  * @param inputType         输入类型

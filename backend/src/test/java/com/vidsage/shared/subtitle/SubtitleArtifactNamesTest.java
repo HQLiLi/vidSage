@@ -3,7 +3,7 @@ package com.vidsage.shared.subtitle;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.vidsage.domain.subtitle.SubtitleRoute;
+import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import org.junit.jupiter.api.Test;
 
 /**

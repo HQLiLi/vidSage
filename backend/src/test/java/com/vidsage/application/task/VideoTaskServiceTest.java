@@ -13,18 +13,19 @@ import static org.mockito.Mockito.when;
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.pipeline.VideoTaskPipeline;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskSnapshot;
 import com.vidsage.config.WorkspaceProperties;
-import com.vidsage.domain.shared.WorkspaceDir;
-import com.vidsage.domain.shared.WorkspaceKey;
-import com.vidsage.domain.task.TaskNo;
+import com.vidsage.domain.shared.model.WorkspaceDir;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.domain.task.TaskInputType;
-import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.domain.task.TranslationStatus;
-import com.vidsage.domain.task.VideoTaskRepository;
+import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskStatus;
+import com.vidsage.domain.task.model.TranslationStatus;
+import com.vidsage.domain.task.port.VideoTaskRepository;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -90,7 +91,7 @@ class VideoTaskServiceTest {
         assertTrue(inserted.getTaskNo().value().matches("[0-9a-f]{32}"));
         // 目录名与 WorkspaceDir 同公式：sanitize(url)-hash12（非法字符替换为下划线）
         WorkspaceKey expectedKey = WorkspaceKey.ofHash(WorkspaceService.normalize(
-                new com.vidsage.domain.media.MediaInput.RemoteUrl("https://example.com/watch/1")).value());
+                new com.vidsage.domain.media.model.MediaInput.RemoteUrl("https://example.com/watch/1")).value());
         String expectedDir = WorkspaceDir.sanitizeName("https://example.com/watch/1") + "-" + expectedKey.value();
         assertEquals(expectedDir, inserted.getWorkspaceDir());
 

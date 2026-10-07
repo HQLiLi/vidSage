@@ -1,6 +1,10 @@
 package com.vidsage.domain.task;
 
-import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskNo;
+import com.vidsage.domain.task.model.TaskStatus;
+import com.vidsage.domain.task.model.TranslationStatus;
 import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;

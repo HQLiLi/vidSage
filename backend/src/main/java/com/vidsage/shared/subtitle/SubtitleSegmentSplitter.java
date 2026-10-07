@@ -1,6 +1,6 @@
 package com.vidsage.shared.subtitle;
 
-import com.vidsage.domain.transcription.TranscriptionSegment;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import java.util.ArrayList;
 import java.util.List;
 

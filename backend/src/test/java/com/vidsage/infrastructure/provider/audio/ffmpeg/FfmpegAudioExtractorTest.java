@@ -10,9 +10,9 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.domain.media.AudioArtifact;
-import com.vidsage.domain.media.AudioContainer;
-import com.vidsage.domain.media.AudioSpec;
+import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioContainer;
+import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
 import com.vidsage.infrastructure.process.ProcessToolDiagnostics;

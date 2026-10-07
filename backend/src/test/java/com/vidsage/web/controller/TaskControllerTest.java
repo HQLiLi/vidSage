@@ -19,13 +19,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.vidsage.domain.shared.StageEvent;
+import com.vidsage.domain.shared.model.StageEvent;
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
-import com.vidsage.domain.task.TaskInputType;
-import com.vidsage.domain.task.TaskStatus;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.application.task.query.TaskSnapshot;
-import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.VideoTaskService;

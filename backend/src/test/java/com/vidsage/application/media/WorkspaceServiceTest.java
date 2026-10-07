@@ -7,10 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.config.WorkspaceProperties;
-import com.vidsage.domain.media.MediaInput;
-import com.vidsage.domain.shared.SourceUri;
-import com.vidsage.domain.shared.WorkspaceDir;
-import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.shared.model.SourceUri;
+import com.vidsage.domain.shared.model.WorkspaceDir;
+import com.vidsage.domain.shared.model.WorkspaceKey;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

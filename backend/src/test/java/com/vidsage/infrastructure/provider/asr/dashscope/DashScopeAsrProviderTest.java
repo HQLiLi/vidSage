@@ -7,12 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.alibaba.dashscope.exception.ApiException;
 import com.google.gson.JsonObject;
-import com.vidsage.domain.transcription.AudioSource;
-import com.vidsage.domain.transcription.TranscriptionCommand;
-import com.vidsage.domain.transcription.TranscriptionResult;
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.media.AudioSpec;
-import com.vidsage.domain.subtitle.SubtitleRoute;
+import com.vidsage.domain.transcription.model.AudioSource;
+import com.vidsage.domain.transcription.model.TranscriptionCommand;
+import com.vidsage.domain.transcription.model.TranscriptionResult;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.media.model.AudioSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

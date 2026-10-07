@@ -1,9 +1,9 @@
 package com.vidsage.infrastructure.provider.download.local;
 
-import com.vidsage.domain.media.AcquiredMedia;
-import com.vidsage.domain.media.MediaInput;
+import com.vidsage.domain.media.model.AcquiredMedia;
+import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.infrastructure.process.ProcessOutcome;
-import com.vidsage.domain.media.MediaAcquirer;
+import com.vidsage.domain.media.port.MediaAcquirer;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
 import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
