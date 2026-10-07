@@ -12,6 +12,7 @@ import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.transcription.model.AudioSource;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
@@ -41,7 +42,7 @@ import java.nio.file.Path;
  * {@link CheckpointPolicy}。文件名规则只有本阶段知道，故复用判据也由本阶段判（design §六）。
  *
  * <p>进度权重是<b>过渡态</b>：2a 的 {@code 0..100} 被本阶段线性映射进 {@code 0..60}，自己的
- * {@code transcribe} 占 60→95、{@code write-subtitles} 占 95→100。真正形状应以 MVP-1 的
+ * 转写占 60→95、写字幕占 95→100。真正形状应以 MVP-1 的
  * SSE payload 定锤，本映射不构成未来约束（design 决策 6）。
  *
  * <p><b>空转写是合法产出</b>：ASR 返回空 segments 时写 0 字节 SRT + 内容正常的 JSON
@@ -52,32 +53,22 @@ import java.nio.file.Path;
 public class SubtitlePreparationCoordinator {
 
     /**
-     * 转写阶段名。
-     */
-    static final String STAGE_TRANSCRIBE = "transcribe";
-
-    /**
-     * 写字幕阶段名。
-     */
-    static final String STAGE_WRITE_SUBTITLES = "write-subtitles";
-
-    /**
      * 2a 的进度区间映射进本任务的 {@code 0..60}（design 决策 6）。
      */
     private static final int ACQUIRE_END = 60;
 
     /**
-     * transcribe 在自己区间（60..95）内的起点权重。
+     * 转写阶段在自身区间（60..95）内的起点权重。
      */
     private static final int TRANSCRIBE_START = 60;
 
     /**
-     * transcribe 在自己区间内的终点权重。
+     * 转写阶段在自身区间内的终点权重。
      */
     private static final int TRANSCRIBE_DONE = 95;
 
     /**
-     * write-subtitles 在自己区间（95..100）内的终点权重。
+     * 写字幕阶段在自身区间（95..100）内的终点权重。
      */
     private static final int WRITE_DONE = 100;
 
@@ -146,8 +137,8 @@ public class SubtitlePreparationCoordinator {
         SubtitleTrack existing = readCheckpoint(segmentsPath);
         if (existing != null) {
             log.info("字幕断点复用跳过: segments={}, routeToken={}", segmentsPath.getFileName(), route);
-            emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_DONE, "已有 segments 产物，跳过转写", StageEvent.StageState.SKIPPED);
-            emit(listener, STAGE_WRITE_SUBTITLES, WRITE_DONE, "已有字幕产物，跳过写盘", StageEvent.StageState.SKIPPED);
+            emit(listener, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), TRANSCRIBE_DONE, "已有 segments 产物，跳过转写", StageEvent.StageState.SKIPPED);
+            emit(listener, SubtitleStageName.WRITE_SUBTITLES.getStageName(), WRITE_DONE, "已有字幕产物，跳过写盘", StageEvent.StageState.SKIPPED);
             return toArtifact(srtPath, segmentsPath, existing);
         }
 
@@ -158,10 +149,10 @@ public class SubtitlePreparationCoordinator {
         // 音频准备 + 转写（2a 的 0..100 映射进 0..60；映射逻辑上提至 ProgressMapper——
         // MVP-1 管线对 clean 的区间映射是第二个使用者，2026-10-02 两段式后翻译不再经映射）
         AudioArtifact audio = audioPreparationStage.prepare(input, spec, ProgressMapper.remap(listener, 0, ACQUIRE_END));
-        emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_START, "开始转写", StageEvent.StageState.RUNNING);
+        emit(listener, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), TRANSCRIBE_START, "开始转写", StageEvent.StageState.RUNNING);
         TranscriptionResult result = transcriptionStage.transcribe(
                 new AudioSource.AudioFilePath(audio.audioPath().toString()), null);
-        emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_DONE, "转写完成", StageEvent.StageState.SUCCEEDED);
+        emit(listener, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), TRANSCRIBE_DONE, "转写完成", StageEvent.StageState.SUCCEEDED);
 
         SubtitleTrack track = new SubtitleTrack(route, result.language(), result.segments());
         if (result.segments().isEmpty()) {
@@ -169,10 +160,10 @@ public class SubtitlePreparationCoordinator {
             log.warn("ASR 未识别出任何内容，产出空字幕: segmentsPath={}，可能是纯音乐或无语音音频",
                     segmentsPath.getFileName());
         }
-        emit(listener, STAGE_WRITE_SUBTITLES, WRITE_DONE,
+        emit(listener, SubtitleStageName.WRITE_SUBTITLES.getStageName(), WRITE_DONE,
                 "开始写字幕产物", StageEvent.StageState.RUNNING);
         writeArtifacts(segmentsPath, srtPath, track);
-        emit(listener, STAGE_WRITE_SUBTITLES, WRITE_DONE,
+        emit(listener, SubtitleStageName.WRITE_SUBTITLES.getStageName(), WRITE_DONE,
                 "字幕产物写入完成", StageEvent.StageState.SUCCEEDED);
         return toArtifact(srtPath, segmentsPath, track);
     }

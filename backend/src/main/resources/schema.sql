@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS task
     workspace_key      CHAR(12)      NOT NULL COMMENT '工作区短哈希：URL/本地路径取 normalize 串摘要，上传取内容 sha256 前 12 位；提交查重用',
     workspace_dir      VARCHAR(512)  NOT NULL COMMENT '工作区目录相对路径（相对 vidsage.workspace.root）',
     status             ENUM ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED') NOT NULL COMMENT '任务状态（状态机权威存储：PENDING→RUNNING→SUCCEEDED/FAILED）',
-    current_stage      VARCHAR(64)   NULL COMMENT '最近阶段名（与 StageEvent.stage 同词表：acquire/extract-audio/transcribe/write-subtitles/clean/translate）',
+    current_stage      VARCHAR(64)   NULL COMMENT '最近阶段名',
     translation_status ENUM ('RUNNING', 'SUCCEEDED', 'FAILED') NULL COMMENT '翻译子状态（2026-10-02 两段式：翻译不随主管线自动执行，主任务 SUCCEEDED 后按需触发）：NULL=从未触发，与主状态 status 相互独立',
     error_message      VARCHAR(2048) NULL COMMENT '终态错误信息（中文，面向用户；主任务失败或翻译子状态失败——后者带「翻译失败：」前缀）',
     created_at         DATETIME      NOT NULL COMMENT '创建时间',

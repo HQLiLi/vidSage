@@ -2,6 +2,7 @@ package com.vidsage.infrastructure.provider.llm;
 
 
 import com.vidsage.config.SubtitleCleanupProperties;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.shared.model.StageEvent;
@@ -48,9 +49,6 @@ import java.util.*;
 @Slf4j
 @Component
 public class LlmSubtitleCleanser implements SubtitleCleanser {
-
-    // 本类承担的管线阶段名（"clean"）单源在 StageEvent.STAGE_CLEAN——阶段词表是
-    // domain/shared 的进度词汇，不住实现类里（2026-10-06 随逻辑下沉归位）。
 
     private final ChatClient cleanser;
 
@@ -107,7 +105,7 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
      * {@code history}——每批被采纳的「批次原文 + 纠正结果」留成一对多轮往返，带给后续所有批次。
      * 历史比前窗更强：前窗给的是上一批<b>未清洗</b>的原文，历史给的是<b>已被采纳的纠正</b>。
      *
-     * <p>每批清洗完成后向 {@code listener} 发一条批级进度（stage={@link StageEvent#STAGE_CLEAN}，
+     * <p>每批清洗完成后向 {@code listener} 发一条批级进度
      * 进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）；批数为 0（空清单）时无批级事件。
      *
      * @param segments  拆分后的字幕列表
@@ -202,13 +200,14 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     }
 
     /**
-     * 发一条批级进度事件（stage 固定 {@link StageEvent#STAGE_CLEAN}，state 为 RUNNING）。
+     * 发一条批级进度事件（stage 固定 {state 为 RUNNING）。
      * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
      */
     private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
-        listener.onEvent(new StageEvent(StageEvent.STAGE_CLEAN, batchNo * 100 / totalBatches,
+        listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), batchNo * 100 / totalBatches,
                 "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
     }
+
 
     /**
      * 一次性算出全部批边界（[start, end) 半开区间 + 实际字数），切批判据与清洗循环共用这一份：
@@ -236,7 +235,9 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
         return ranges;
     }
 
-    /** 一批的边界与实际字数：start 含、end 不含；chars 供「句数还是字数先到」的校准日志用。 */
+    /**
+     * 一批的边界与实际字数：start 含、end 不含；chars 供「句数还是字数先到」的校准日志用。
+     */
     private record BatchRange(int start, int end, int chars) {
     }
 
@@ -319,9 +320,9 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
      * 不是逐字节相等——差异只可能来自 {@link BeanOutputConverter} 剥掉的围栏/空白，
      * 以及 {@code validate} 阈值内允许的措辞差。别误以为二者恒等。
      *
-     * @param history      跨批历史，原地追加
-     * @param batch        本批的原文键值对
-     * @param rawAccepted  本批被采纳那次的模型回复原文
+     * @param history     跨批历史，原地追加
+     * @param batch       本批的原文键值对
+     * @param rawAccepted 本批被采纳那次的模型回复原文
      */
     private void remember(List<Message> history, Map<String, String> batch, String rawAccepted) {
         if (prop.historyMaxChars() <= 0) {
@@ -470,7 +471,7 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
         }
         return sb.length() == 0 ? null
                 : new ValidationFailure(ValidationFailure.FailureKind.TOO_MUCH_EDIT,
-                        sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。");
+                sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。");
     }
 
     /**
@@ -649,9 +650,13 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
          * 失败类型：键集问题、改动过大。分开计数才能看清相似度守卫有没有拦下过东西。
          */
         enum FailureKind {
-            /** 键集与原文不一致：缺条目或多条目。 */
+            /**
+             * 键集与原文不一致：缺条目或多条目。
+             */
             KEY_SET,
-            /** 改写幅度超过相似度阈值。 */
+            /**
+             * 改写幅度超过相似度阈值。
+             */
             TOO_MUCH_EDIT
         }
     }

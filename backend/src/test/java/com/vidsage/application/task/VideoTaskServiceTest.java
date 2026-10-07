@@ -22,6 +22,7 @@ import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
@@ -244,13 +245,13 @@ class VideoTaskServiceTest {
     void snapshotForRunningTaskCarriesRunningStageEvent() {
         VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
-        task.updateStage("transcribe");
+        task.updateStage(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName());
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TaskStatus.RUNNING, event.taskStatus());
-        assertEquals("transcribe", event.stage().stage());
+        assertEquals(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), event.stage().stage());
         assertEquals(0, event.stage().progress(), "快照只保证形状合法，精确进度由增量事件携带");
         assertEquals(StageEvent.StageState.RUNNING, event.stage().state());
     }
@@ -259,14 +260,14 @@ class VideoTaskServiceTest {
     void snapshotForSucceededTaskCarriesCompletedStageEvent() {
         VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
-        task.updateStage("translate");
+        task.updateStage(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName());
         task.succeed();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TaskStatus.SUCCEEDED, event.taskStatus());
-        assertEquals("translate", event.stage().stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), event.stage().stage());
         assertEquals(100, event.stage().progress());
         assertEquals(StageEvent.StageState.SUCCEEDED, event.stage().state());
     }
@@ -275,15 +276,15 @@ class VideoTaskServiceTest {
     void snapshotForFailedTaskCarriesErrorMessageInStageEvent() {
         VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4", new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
-        task.updateStage("clean");
-        task.fail("任务在 clean 阶段失败：boom");
+        task.updateStage(SubtitleStageName.CLEAN_SUBTITLES.getStageName());
+        task.fail("任务执行失败：boom");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TaskStatus.FAILED, event.taskStatus());
         assertEquals(StageEvent.StageState.FAILED, event.stage().state());
-        assertEquals("任务在 clean 阶段失败：boom", event.stage().message(),
+        assertEquals("任务执行失败：boom", event.stage().message(),
                 "失败快照的消息携带终态错误（SSE 上唯一的错误出口）");
     }
 
@@ -306,7 +307,7 @@ class VideoTaskServiceTest {
         assertEquals(TaskStatus.SUCCEEDED, event.taskStatus(), "主状态不被翻译子状态改写");
         assertEquals(TranslationStatus.RUNNING, event.translationStatus(),
                 "快照携带翻译子状态（订阅端终态判定据此保持连接）");
-        assertEquals("translate", event.stage().stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), event.stage().stage());
         assertEquals(0, event.stage().progress(), "翻译进行中取粗粒度 0，精确进度由增量事件携带");
         assertEquals(StageEvent.StageState.RUNNING, event.stage().state());
     }
@@ -319,7 +320,7 @@ class VideoTaskServiceTest {
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TranslationStatus.SUCCEEDED, event.translationStatus());
-        assertEquals("translate", event.stage().stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), event.stage().stage());
         assertEquals(100, event.stage().progress());
         assertEquals(StageEvent.StageState.SUCCEEDED, event.stage().state());
     }
@@ -343,14 +344,14 @@ class VideoTaskServiceTest {
         VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
                 new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
-        task.updateStage("clean");
+        task.updateStage(SubtitleStageName.CLEAN_SUBTITLES.getStageName());
         task.succeed();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertNull(event.translationStatus(), "从未触发翻译 → 翻译子状态为 null");
-        assertEquals("clean", event.stage().stage(), "不受翻译分支影响");
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), event.stage().stage(), "不受翻译分支影响");
         assertEquals(100, event.stage().progress());
     }
 
@@ -499,7 +500,7 @@ class VideoTaskServiceTest {
      */
     private static VideoTask succeededWithTranslation(TranslationStatus translationStatus, String errorMessage) {
         return VideoTask.restore(7L, new TaskNo("abc123def456abc123def456abc123de"), TaskInputType.URL,
-                "https://example.com/v", new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, "clean",
+                "https://example.com/v", new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, SubtitleStageName.CLEAN_SUBTITLES.getStageName(),
                 translationStatus, errorMessage,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now());

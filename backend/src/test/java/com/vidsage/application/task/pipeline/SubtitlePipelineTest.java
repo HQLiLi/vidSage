@@ -31,6 +31,7 @@ import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
@@ -83,7 +84,7 @@ class SubtitlePipelineTest {
         // clean 的桩发一条阶段事件（真实服务层会发「开始清洗」事件），验证回调驱动 current_stage
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(2);
-            listener.onEvent(new StageEvent("clean", 0, "开始清洗", StageEvent.StageState.RUNNING));
+            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 0, "开始清洗", StageEvent.StageState.RUNNING));
             return null;
         }).when(cleanupStage).clean(any(MediaInput.class), anyString(), any(ProgressListener.class));
         SubtitlePipeline pipeline = service(2);
@@ -97,7 +98,7 @@ class SubtitlePipelineTest {
 
         assertEquals(TaskStatus.SUCCEEDED, task.getStatus());
         assertNotNull(task.getFinishedAt(), "成功应落 finished_at");
-        assertEquals("clean", task.getCurrentStage(), "最后一个阶段应留痕在 current_stage");
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), task.getCurrentStage(), "最后一个阶段应留痕在 current_stage");
         assertNull(task.getTranslationStatus(), "自动管线不触发翻译，翻译子状态保持「从未触发」");
         // start + clean 回调 + succeed（mock 的 prepare 不发事件）
         verify(repository, Mockito.times(3)).update(task);
@@ -145,7 +146,7 @@ class SubtitlePipelineTest {
         // prepare 回调里先推一个阶段事件再抛异常：失败消息嵌入的阶段名即为回调落库的 current_stage
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent("extract-audio", 30, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
+            listener.onEvent(new StageEvent(SubtitleStageName.EXTRACT_AUDIO.getStageName(), 30, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
             throw new IllegalStateException("boom");
         }).when(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(ProgressListener.class));
         SubtitlePipeline pipeline = service(2);
@@ -153,8 +154,8 @@ class SubtitlePipelineTest {
         pipeline.runPipeline(task.getTaskNo());
 
         assertEquals(TaskStatus.FAILED, task.getStatus());
-        assertEquals("extract-audio", task.getCurrentStage(), "阶段事件的 stage 名应已落库");
-        assertEquals("任务在 extract-audio 阶段失败：boom", task.getErrorMessage());
+        assertEquals(SubtitleStageName.EXTRACT_AUDIO.getStageName(), task.getCurrentStage(), "阶段事件的 stage 名应已落库");
+        assertEquals("任务执行失败：boom", task.getErrorMessage());
     }
 
     // ---------- 失败路径 ----------
@@ -180,10 +181,10 @@ class SubtitlePipelineTest {
     void cleanFailureFailsTask() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        // 真实 clean 会先发「开始清洗」再干活：失败消息里带上阶段名依赖这条事件已落库
+        // 真实 clean 会先发「开始清洗」再干活
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(2);
-            listener.onEvent(new StageEvent("clean", 0, "开始清洗", StageEvent.StageState.RUNNING));
+            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 0, "开始清洗", StageEvent.StageState.RUNNING));
             throw new IllegalStateException("字幕尚未获取：缺 segments-cloud.json");
         }).when(cleanupStage).clean(any(MediaInput.class), anyString(), any(ProgressListener.class));
         SubtitlePipeline pipeline = service(2);
@@ -191,7 +192,7 @@ class SubtitlePipelineTest {
         pipeline.runPipeline(task.getTaskNo());
 
         assertEquals(TaskStatus.FAILED, task.getStatus());
-        assertEquals("任务在 clean 阶段失败：字幕尚未获取：缺 segments-cloud.json", task.getErrorMessage());
+        assertEquals("任务执行失败：字幕尚未获取：缺 segments-cloud.json", task.getErrorMessage());
         verify(translationStage, never()).translate(any(), any());
     }
 
@@ -220,7 +221,7 @@ class SubtitlePipelineTest {
         // prepare 收到的是 remap(composite, 0, 70) 后的 listener：直接回调 50 → 广播出去应为 35
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent("extract-audio", 50, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
+            listener.onEvent(new StageEvent(SubtitleStageName.EXTRACT_AUDIO.getStageName(), 50, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
             return null;
         }).when(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(ProgressListener.class));
         SubtitlePipeline pipeline = service(2);
@@ -233,7 +234,7 @@ class SubtitlePipelineTest {
         assertEquals(task.getTaskNo().value(), event.taskNo());
         assertEquals(TaskStatus.RUNNING, event.taskStatus());
         assertNull(event.translationStatus(), "主管线事件的翻译子状态为 null（从未触发）");
-        assertEquals("extract-audio", event.stage().stage());
+        assertEquals(SubtitleStageName.EXTRACT_AUDIO.getStageName(), event.stage().stage());
         assertEquals(35, event.stage().progress(), "prepare 区间 0..70 的中点：50 应映射为 35");
         assertEquals(TaskStatus.SUCCEEDED, received.get(1).taskStatus(), "终态广播随后到达");
     }
@@ -402,7 +403,7 @@ class SubtitlePipelineTest {
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, 40, "第 1/2 批",
+            listener.onEvent(new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 40, "第 1/2 批",
                     StageEvent.StageState.RUNNING));
             return null;
         }).when(translationStage).translate(any(MediaInput.class), any(ProgressListener.class));
@@ -425,13 +426,13 @@ class SubtitlePipelineTest {
                 "翻译事件的 taskStatus 恒为主状态 SUCCEEDED");
         assertEquals(TranslationStatus.RUNNING, progress.translationStatus(),
                 "进度事件携带进行中的翻译子状态（SSE 终态判定据此不收口连接）");
-        assertEquals(StageEvent.STAGE_TRANSLATE, progress.stage().stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), progress.stage().stage());
         assertEquals(40, progress.stage().progress(), "翻译事件自成 0..100 段，直通不 remap");
 
         TaskProgressMessage terminal = received.get(1);
         assertEquals(TaskStatus.SUCCEEDED, terminal.taskStatus(), "翻译终态广播的 taskStatus 用主状态");
         assertEquals(TranslationStatus.SUCCEEDED, terminal.translationStatus());
-        assertEquals(StageEvent.STAGE_TRANSLATE, terminal.stage().stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), terminal.stage().stage());
         assertEquals(100, terminal.stage().progress());
         assertEquals(StageEvent.StageState.SUCCEEDED, terminal.stage().state());
 
@@ -448,7 +449,7 @@ class SubtitlePipelineTest {
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, 40, "第 1/2 批",
+            listener.onEvent(new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 40, "第 1/2 批",
                     StageEvent.StageState.RUNNING));
             throw new IllegalStateException("LLM 返回掉行");
         }).when(translationStage).translate(any(MediaInput.class), any(ProgressListener.class));

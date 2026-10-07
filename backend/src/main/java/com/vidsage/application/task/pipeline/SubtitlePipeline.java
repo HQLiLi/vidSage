@@ -28,13 +28,6 @@ import org.springframework.stereotype.Component;
 /**
  * 异步任务管线：按阶段顺序编排各阶段构件，把「一条已落库的任务」跑成终态。
  *
- * <p>阶段顺序（design.md「数据流·执行」；区间为任务级进度权重；2026-10-02 两段式裁定后管线
- * 到清洗 / 原文字幕为止，翻译拆出为按需触发，见 {@link #translateTask}）：
- * <ol>
- *   <li>{@code SubtitlePreparationCoordinator.prepare}（0..70，内部含 acquire / extract-audio / transcribe /
- *       write-subtitles 四个阶段，阶段事件由回调驱动）</li>
- *   <li>{@code SubtitleCleanupCoordinator.clean}（70..100，批级进度 0..100 由 remap 压进该区间）</li>
- * </ol>
  *
  * <p>进度回调是<b>复合监听器</b>：① 更新 DB {@code current_stage}（先落库再广播——订阅者看到的
  * 状态有持久化背书）；② 组 {@link TaskProgressMessage}(taskNo, taskStatus, stage, translationStatus)
@@ -57,7 +50,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class SubtitlePipeline {
 
-    /** prepare 全包阶段（acquire / extract-audio / transcribe / write-subtitles）映射进 0..70。 */
+    /** prepare 覆盖的阶段映射进 0..70。 */
     private static final int PREPARE_END = 70;
 
     /** clean 批级进度映射进 70..100（2026-10-02 两段式：翻译拆出后管线权重只剩这两段）。 */
@@ -318,16 +311,14 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 任一阶段异常 → FAILED：落中文错误信息（含失败所在阶段），广播终态事件并清空订阅者。
+     * 任一阶段异常 → FAILED：落中文错误信息，广播终态事件并清空订阅者。
      * 落库本身再失败时只记 ERROR——虚拟线程无人接异常，吞掉等于静默，必须留下日志痕迹；
      * 此时任务可能停留在 RUNNING，不广播终态（库与实况已脱节，不传播脱节的状态）。
      */
     private void failTask(VideoTask task, Exception cause) {
         String reason = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
-        String stage = task.getCurrentStage();
-        String message = stage == null
-                ? "任务执行失败：" + reason
-                : "任务在 " + stage + " 阶段失败：" + reason;
+        // 文案不带阶段名：事件与快照的 stage 字段已经给了，中文句子里再嵌一遍标识符没有必要
+        String message = "任务执行失败：" + reason;
         try {
             task.fail(message);
             repository.update(task);

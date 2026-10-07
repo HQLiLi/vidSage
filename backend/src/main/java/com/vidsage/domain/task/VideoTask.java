@@ -179,8 +179,7 @@ public class VideoTask {
     /**
      * 推进最近阶段名（限 RUNNING 期间，由进度回调或管线阶段边界驱动），同时刷新 updatedAt。
      *
-     * @param stage 阶段名（与 StageEvent.stage 同词表：acquire / extract-audio / transcribe /
-     *              write-subtitles / clean / translate）
+     * @param stage 阶段名
      * @throws IllegalStateException 任务不处于 RUNNING
      */
     public void updateStage(String stage) {

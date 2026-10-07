@@ -33,6 +33,7 @@ import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.model.translation.TranslateResult;
 import com.vidsage.domain.subtitle.port.TermLookupProvider;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -401,7 +402,7 @@ class SubtitleTranslationCoordinatorTest {
         // 真实批级事件来自 SubtitleTranslator；本层只验「批级事件原样透传 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(4);
-            listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, 100, "第 1/1 批",
+            listener.onEvent(new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "第 1/1 批",
                     StageEvent.StageState.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             List<TranslatedSegment> out = in.stream()
@@ -414,7 +415,7 @@ class SubtitleTranslationCoordinatorTest {
         service().translate(new MediaInput.RemoteUrl("https://x"), events::add);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
-        assertEquals(StageEvent.STAGE_TRANSLATE, events.get(0).stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), events.get(0).stage());
         assertEquals(0, events.get(0).progress());
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
         assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
@@ -434,7 +435,7 @@ class SubtitleTranslationCoordinatorTest {
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
         assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
         assertEquals(100, events.get(0).progress());
-        assertEquals(StageEvent.STAGE_TRANSLATE, events.get(0).stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), events.get(0).stage());
     }
 
     @Test

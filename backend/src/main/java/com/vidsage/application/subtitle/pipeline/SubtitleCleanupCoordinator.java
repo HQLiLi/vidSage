@@ -11,6 +11,7 @@ import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
@@ -150,11 +151,12 @@ public class SubtitleCleanupCoordinator {
         if (existing != null) {
             log.info("字幕清洗断点复用跳过: clean={}", cleanSeg.getFileName());
             // 断点复用不重跑，本趟统计一律为 0（含术语指标），语义与 correctedCount 一致
-            emit(listener, StageEvent.STAGE_CLEAN, STAGE_DONE, "已有清洗产物，跳过清洗",
+
+            emit(listener, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), STAGE_DONE, "已有清洗产物，跳过清洗",
                     StageEvent.StageState.SKIPPED);
             return toCleaned(existing, cleanSeg, cleanSrt, 0, 0, 0, 0);
         }
-        emit(listener, StageEvent.STAGE_CLEAN, STAGE_BEGIN, "开始清洗", StageEvent.StageState.RUNNING);
+        emit(listener, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), STAGE_BEGIN, "开始清洗", StageEvent.StageState.RUNNING);
 
         if (!ArtifactFiles.isNonEmpty(rawSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
@@ -189,7 +191,7 @@ public class SubtitleCleanupCoordinator {
 
         SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments());
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换
-        emit(listener, StageEvent.STAGE_CLEAN, STAGE_DONE, "清洗完成", StageEvent.StageState.SUCCEEDED);
+        emit(listener, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), STAGE_DONE, "清洗完成", StageEvent.StageState.SUCCEEDED);
         log.info("字幕清洗完成: route={}, segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
                 route.name(), result.segments().size(), result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());

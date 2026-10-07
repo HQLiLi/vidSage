@@ -1,6 +1,7 @@
 package com.vidsage.domain.task.policy;
 
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskStatus;
 import org.springframework.util.StringUtils;
@@ -61,15 +62,15 @@ public final class TaskStageEvent {
      * 翻译从未触发，走不到这里；由 {@link #from} 转派时也已判过）。
      *
      * @param task 翻译子状态非 {@code null} 的任务
-     * @return 翻译阶段事件（stage 恒为 {@link StageEvent#STAGE_TRANSLATE}）
+     * @return 翻译阶段事件
      */
     public static StageEvent fromTranslation(VideoTask task) {
         return switch (task.getTranslationStatus()) {
-            case RUNNING -> new StageEvent(StageEvent.STAGE_TRANSLATE, 0, "翻译进行中",
+            case RUNNING -> new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0, "翻译进行中",
                     StageEvent.StageState.RUNNING);
-            case SUCCEEDED -> new StageEvent(StageEvent.STAGE_TRANSLATE, 100, "翻译完成",
+            case SUCCEEDED -> new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "翻译完成",
                     StageEvent.StageState.SUCCEEDED);
-            case FAILED -> new StageEvent(StageEvent.STAGE_TRANSLATE, 0,
+            case FAILED -> new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0,
                     StringUtils.hasText(task.getErrorMessage()) ? task.getErrorMessage() : "翻译已失败",
                     StageEvent.StageState.FAILED);
         };

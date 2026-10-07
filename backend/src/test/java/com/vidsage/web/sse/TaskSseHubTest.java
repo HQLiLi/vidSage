@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
@@ -25,13 +26,13 @@ class TaskSseHubTest {
 
     private static TaskProgressMessage event(TaskStatus status) {
         return new TaskProgressMessage(TASK_NO, status,
-                new StageEvent("transcribe", 70, "开始转写", StageEvent.StageState.RUNNING), null);
+                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 70, "开始转写", StageEvent.StageState.RUNNING), null);
     }
 
     /** 翻译事件：taskStatus 恒为主状态 SUCCEEDED（主管线终态），翻译子状态随给定值。 */
     private static TaskProgressMessage translationEvent(TranslationStatus translationStatus) {
         return new TaskProgressMessage(TASK_NO, TaskStatus.SUCCEEDED,
-                new StageEvent("translate", 50, "第 2/3 批", StageEvent.StageState.RUNNING),
+                new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 50, "第 2/3 批", StageEvent.StageState.RUNNING),
                 translationStatus);
     }
 

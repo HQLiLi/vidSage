@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.model.TaskStatus;
@@ -50,13 +51,13 @@ class VideoTaskTest {
     void restoreRebuildsPersistedFieldsVerbatim() {
         LocalDateTime created = LocalDateTime.of(2026, 9, 30, 10, 0);
         VideoTask task = VideoTask.restore(7L, new TaskNo("abc123"), TaskInputType.UPLOAD, "demo.mp4",
-                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.FAILED, "translate", TranslationStatus.RUNNING,
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.FAILED, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), TranslationStatus.RUNNING,
                 "翻译失败", created,
                 created.plusMinutes(5), created.plusSeconds(1), created.plusMinutes(5));
 
         assertEquals(7L, task.getId());
         assertEquals(TaskStatus.FAILED, task.getStatus());
-        assertEquals("translate", task.getCurrentStage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), task.getCurrentStage());
         assertEquals(TranslationStatus.RUNNING, task.getTranslationStatus(), "翻译子状态应随行还原");
         assertEquals("翻译失败", task.getErrorMessage());
         assertEquals(created, task.getCreatedAt());
@@ -101,9 +102,9 @@ class VideoTaskTest {
     void updateStageRecordsCurrentStageWhileRunning() {
         VideoTask task = running();
 
-        task.updateStage("extract-audio");
+        task.updateStage(SubtitleStageName.EXTRACT_AUDIO.getStageName());
 
-        assertEquals("extract-audio", task.getCurrentStage());
+        assertEquals(SubtitleStageName.EXTRACT_AUDIO.getStageName(), task.getCurrentStage());
         assertEquals(TaskStatus.RUNNING, task.getStatus());
     }
 
@@ -160,8 +161,8 @@ class VideoTaskTest {
         VideoTask succeeded = running();
         succeeded.succeed();
 
-        assertThrows(IllegalStateException.class, () -> pending.updateStage("clean"));
-        assertThrows(IllegalStateException.class, () -> succeeded.updateStage("clean"));
+        assertThrows(IllegalStateException.class, () -> pending.updateStage(SubtitleStageName.CLEAN_SUBTITLES.getStageName()));
+        assertThrows(IllegalStateException.class, () -> succeeded.updateStage(SubtitleStageName.CLEAN_SUBTITLES.getStageName()));
         assertNull(pending.getCurrentStage(), "被拒绝的阶段推进不应留下脏状态");
     }
 

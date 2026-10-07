@@ -26,6 +26,7 @@ import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -178,7 +179,7 @@ class SubtitleCleanupCoordinatorTest {
         // 真实批级事件来自 SubtitleCleanser；本层只验「批级事件原样透传 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(3);
-            listener.onEvent(new StageEvent(StageEvent.STAGE_CLEAN, 100, "第 1/1 批",
+            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 100, "第 1/1 批",
                     StageEvent.StageState.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             return new CleanseResult(in, 0, 0, 0, 0);
@@ -188,7 +189,7 @@ class SubtitleCleanupCoordinatorTest {
         service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
-        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
         assertEquals(0, events.get(0).progress());
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
         assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
@@ -208,7 +209,7 @@ class SubtitleCleanupCoordinatorTest {
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
         assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
         assertEquals(100, events.get(0).progress());
-        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
     }
 
     @Test
@@ -220,7 +221,7 @@ class SubtitleCleanupCoordinatorTest {
                 () -> service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add));
 
         assertEquals(1, events.size(), () -> "失败前应已发「开始清洗」：" + events);
-        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
     }
 
