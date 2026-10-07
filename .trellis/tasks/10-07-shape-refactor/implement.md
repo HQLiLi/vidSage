@@ -216,11 +216,15 @@ ls backend/src/main/java/com/vidsage/domain/task/policy/   # 期望：只剩 Tas
 
 ---
 
-# 批次 2：阶段名单源 + 进度区间单源
+# 批次 2：阶段名单源（权重不动）
 
-**目标**：阶段名从三处变一处；进度边界从三层各自硬编码变一处。
-**改动面**：新增 2 个类；删 6 个阶段名字面量 + 三层权重常量。
-**风险**：中——**最容易破 AC7（进度事件序列与数值不变）**。
+**目标**：六个阶段名从三处变一处，三处文字复述改成引用。
+**改动面**：新增 1 个类；删 6 个名字常量 + 3 处复述。**权重那 11 个常量一个不碰。**
+**风险**：低——不改进度数值，AC7 天然成立（但仍要跑真实任务确认一遍）。
+
+> **本批不做权重**（2026-10-07 定）。原方案「把权重边界收进一处」不满足 AC3；而真正满足 AC3 的
+> 「三层压成一层、每阶段一个权重」是**有意的行为变更**（进度数值会变、前端进度条走动方式跟着变），
+> 与 AC7 直接冲突，已拆成独立任务（见 `prd.md` 的「后续任务」）。
 
 ## 步骤 2.1 — 阶段名单源
 
@@ -250,58 +254,21 @@ public final class PipelineStage {
 ```
 
 改动点：
-- `AudioPreparationStage`：删 `STAGE_ACQUIRE` / `STAGE_EXTRACT`，改用 `PipelineStage.ACQUIRE` 等
-- `SubtitlePreparationStage`：删 `STAGE_TRANSCRIBE` / `STAGE_WRITE_SUBTITLES`
-- `StageEvent`：删 `STAGE_TRANSLATE` / `STAGE_CLEAN`（`TaskStageEvent`、`SubtitleCleanupStage` 等引用点跟改）
-- `VideoTask.updateStage` 的 Javadoc：把枚举列表改成 `{@link PipelineStage}` 引用（**消灭第 3 处复述**）
 
-## 步骤 2.2 — 进度区间单源
+- `AudioPreparationStage`：删 `STAGE_ACQUIRE` / `STAGE_EXTRACT`，改引 `PipelineStage.ACQUIRE` / `EXTRACT_AUDIO`
+  - 顺带：该类四个进度常量 `ACQUIRE_START` / `ACQUIRE_DONE` / `EXTRACT_START` / `EXTRACT_DONE` 是**包级可见**，但本包之外零引用——收成 `private`。**这是本批唯一允许碰的权重相关改动：只改可见性，不改值。**
+- `SubtitlePreparationStage`：删 `STAGE_TRANSCRIBE` / `STAGE_WRITE_SUBTITLES`，改引 `PipelineStage`
+- `StageEvent`：删 `STAGE_TRANSLATE` / `STAGE_CLEAN`，改引 `PipelineStage`
+  - 它的 `@param stage` **现在用文字指着另外两处**（`如 "acquire" / "extract-audio" / {@link #STAGE_TRANSLATE}`）——改成 `{@link PipelineStage}`，**消灭第 1 处复述**
+- `VideoTask.updateStage` 的 Javadoc：`（与 StageEvent.stage 同词表：acquire / extract-audio / transcribe / write-subtitles / clean / translate）` 整段列表改成引用，**消灭第 2 处复述**
+- `LlmSubtitleCleanser:52` / `LlmSubtitleTranslator:61` 的注释引用了 `StageEvent.STAGE_CLEAN` / `STAGE_TRANSLATE`——跟改，**消灭第 3 处复述**
 
-新文件：`backend/src/main/java/com/vidsage/application/task/pipeline/ProgressPlan.java`
-
-```java
-/**
- * 任务级进度区间表：每个编排单元占任务进度的哪一段。改权重只改这里。
- *
- * <p><b>两层是真实存在的，不是历史包袱</b>：prepare 段内部还要把 0..100 再映射一次，
- * 而映射出来的边界是 66.5 —— 不是整数。所以这里只把边界单源，不改结构；改成扁平的整数
- * 权重列表复现不出现在的数值，那就是进度事件的行为变更。
- */
-final class ProgressPlan {
-
-    /** prepare 全包（acquire / extract-audio / transcribe / write-subtitles）占任务 0..70。 */
-    static final int PREPARE_END = 70;
-
-    /** clean 占 70..100。 */
-    static final int CLEAN_START = 70;
-    static final int CLEAN_END = 100;
-
-    /** prepare 段内部的划分（0..100 自报口径，由 PREPARE 的 0..70 再映射）。 */
-    static final int AUDIO_END = 60;
-    static final int TRANSCRIBE_START = 60;
-    static final int TRANSCRIBE_DONE = 95;
-    static final int WRITE_DONE = 100;
-
-    private ProgressPlan() {
-    }
-}
-```
-
-删掉的原常量：`VideoTaskPipeline` 的 `PREPARE_END` / `CLEAN_START` / `CLEAN_END`，`SubtitlePreparationStage` 的 `ACQUIRE_END` / `TRANSCRIBE_START` / `TRANSCRIBE_DONE` / `WRITE_DONE`。
-
-调用点**只换名字来源，数值一个不改**：
-
-```java
-// 前
-subtitlePreparationStage.prepare(input, ProgressMapper.remap(listener, 0, PREPARE_END));
-// 后
-subtitlePreparationStage.prepare(input, ProgressMapper.remap(listener, 0, ProgressPlan.PREPARE_END));
-```
+**为什么用 String 常量而不是枚举**：调用点零摩擦（`PipelineStage.ACQUIRE` 本身就是 `String`，`emit(listener, PipelineStage.ACQUIRE, …)` 与现在逐字一样），而且**不碰 JSON 契约**（`StageEvent.stage` 是 String，`StageEvent` 直接序列化成 SSE 的 data）。等扁平化那步真需要「阶段 + 权重」的载体时，再决定要不要变成枚举。
 
 ## 批次 2 验证
 
 ```bash
-cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn -q clean test
+cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn -q test
 ```
 
 ```bash
@@ -309,12 +276,18 @@ cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mv
 grep -rn '"acquire"\|"extract-audio"\|"transcribe"\|"write-subtitles"\|"clean"\|"translate"' \
   backend/src/main | grep -v PipelineStage.java     # 期望：无命中
 
-# ② 权重边界只在 ProgressPlan 出现
-grep -rn '= 70;\|= 60;\|= 95;\|= 100;' backend/src/main/java/com/vidsage/application \
-  | grep -v ProgressPlan.java                       # 期望：无命中
+# ② 旧的名字常量已清零
+grep -rn 'STAGE_ACQUIRE\|STAGE_EXTRACT\|STAGE_TRANSCRIBE\|STAGE_WRITE_SUBTITLES\|STAGE_CLEAN\|STAGE_TRANSLATE' \
+  backend/src/main                                    # 期望：无命中
+
+# ③ 权重常量一个没动（AC3'）
+git diff -U0 | grep -E '^[+-].*(ACQUIRE_START|ACQUIRE_DONE|EXTRACT_START|EXTRACT_DONE|ACQUIRE_END|TRANSCRIBE_START|TRANSCRIBE_DONE|WRITE_DONE|PREPARE_END|CLEAN_START|CLEAN_END)'
+# 期望：只出现 AudioPreparationStage 那四个的 `static final int` → `private static final int`（可见性收窄），数值一行没变
 ```
 
-**③ 最重要的一条：进度事件逐条比对（AC7）**
+**本批不需要 `clean`**——只删常量、不删类，`target/classes` 不会留陈旧副本。`mvn -q test` 即可（跑全量是为了确认没有别处被带崩）。
+
+**最重要的一条：进度事件逐条比对（AC7）**
 
 `mvn test` **抓不到进度数值变化**——它是行为契约，不是编译契约。必须手工验：
 
