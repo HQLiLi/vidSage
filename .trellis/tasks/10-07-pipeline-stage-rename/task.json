@@ -12,7 +12,7 @@
   "assignee": "HeQiu",
   "createdAt": "2026-10-07",
   "completedAt": null,
-  "branch": null,
+  "branch": "feature/pipeline-stage-rename",
   "base_branch": "feature/shape-refactor",
   "worktree_path": null,
   "commit": null,
