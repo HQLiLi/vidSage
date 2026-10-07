@@ -34,7 +34,7 @@
 
 - 只用第一档 `BaseMapper<T>`；**禁** `IService` / `ServiceImpl` 继承（理由见 directory-structure.md 反模式表）。
 - MP 类型（`BaseMapper` / `LambdaQueryWrapper` / `IPage`）不越出 `infrastructure/persistence/` 包。
-- **值对象 ↔ String 列**：领域侧 `VideoTask` 的 `taskNo` / `workspaceKey` 已是值对象（`domain/task/TaskNo`、`domain/shared/WorkspaceKey`）；实体 `VideoTaskEntity` 保持 `String` 列，转换收敛在 `VideoTaskRepository` 的实体↔领域映射边界——schema / SQL / Mapper 层对该转换无感知。
+- **值对象 ↔ String 列**：领域侧 `VideoTask` 的 `taskNo` / `workspaceKey` 已是值对象（`domain/task/model/TaskNo`、`domain/shared/model/WorkspaceKey`）；实体 `VideoTaskEntity` 保持 `String` 列，转换收敛在 `VideoTaskRepository` 的实体↔领域映射边界——schema / SQL / Mapper 层对该转换无感知。
 - Mapper 注册依赖 starter 自动配置 + `@Mapper` 注解，**不写 @MapperScan**。
 - 枚举持久化按名映射（`@TableName` 实体字段直接用 Java enum）。
 

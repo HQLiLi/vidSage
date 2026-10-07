@@ -41,7 +41,7 @@ return switch (source) {
 上一张表回答「种类」，这条回答「**归属**」——同一个非法值，来源不同就该是不同的异常：
 
 - **调用方产生**（请求体 / URL / 路径）→ 在 **HTTP 边界卫语句**里拦下，抛 `IllegalArgumentException` → **400 + WARN**
-- **服务端自己算出** → 在 `domain/` 值对象的**紧凑构造器不变量**里拦下，抛 `IllegalStateException` → **500 + ERROR**（先例：`domain/task/TaskNo`、`domain/shared/WorkspaceKey` 的紧凑构造器对空白值抛 `IllegalStateException`）
+- **服务端自己算出** → 在 `domain/` 值对象的**紧凑构造器不变量**里拦下，抛 `IllegalStateException` → **500 + ERROR**（先例：`domain/task/model/TaskNo`、`domain/shared/model/WorkspaceKey` 的紧凑构造器对空白值抛 `IllegalStateException`）
 
 **落地规则：任何「拿调用方的值构造 `domain/` 值对象」的代码，必须先有一个边界卫语句。** 构造器那层是**最后防线**——它触发即意味着边界漏了。
 
