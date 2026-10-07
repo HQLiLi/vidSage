@@ -745,3 +745,31 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 27: 包结构整理归档 + 架构「形状」设计讨论
+<!-- trellis-session: v=2 fp=965d1f8e09698d21 -->
+
+**Date**: 2026-10-07
+**Task**: 包结构整理归档 + 架构「形状」设计讨论
+**Branch**: `dev`
+
+### Summary
+
+执行 10-06-package-structure 收尾（提交 / 合并 dev / 推送远端 / 归档），收尾前完成一轮架构「形状」设计讨论。收尾：138 个改动分三个提交（代码 / spec / 任务工件）——domain 与 application 各上下文包按角色轴拆桶（port / policy / model），67 个类改名移动，测试包镜像跟随；唯一非纯移动的改动是 R7 下沉（VideoTaskService 两个包级私有 static → domain/task/policy/TaskStageEvent，判据逐字搬）。验证用 mvn clean test（必须 clean：动了 67 个文件，target/classes 会留陈旧 class）→ 45 类 / 465 用例 / 0 失败 / 1 跳过。审查期抓到两处规范与代码不符：① TaskProgressMessage 的 @Schema 被用户自行删除——理由是该注解是死的（SSE 端点返回 SseEmitter，本类型只作 TaskSseHub.send 入参流转，进不了 /v3/api-docs），已同步改 directory-structure.md 判据 2 清单与该行；② TranscriptionResult 同属「@Schema 是死的」但仍在代码里，属未决口径，本轮未动。设计讨论（用户主导，结论已定、任务尚未建）：用户自陈「只有 DDD 的形，内在还是乱——读得懂但加新功能不知道从哪下手」。诊断结论：核心概念只有具体实例、没有统一表示——阶段（六个阶段 = 六个类 + 三份名字常量 + 三层进度权重区间）、产出物（命名 / 检查点 / 可见性分散在 SubtitleArtifactNames / CheckpointPolicy / TaskArtifactScan 三处）、输入身份（提交时按 URL 串或内容 sha256 算，LocalPath 在阶段里按「路径 + 大小 + mtime」重算，代码造了 MediaInput.InWorkspace 变体绕行——该类型自己的注释写「只承载位置」却被自己破掉）、生命周期（主状态机 + 翻译子状态机各硬编码一台）。用户要的是「类似公式的架构」：变更类型 → 落点清单，可机械代入。四条形状决策：(1) 阶段成为类型——要；(2) 产出物成为类型——要；(3) 输入身份收敛成一套、身份作为输入自身属性、消除 normalize() 三路 switch——要；(4) 生命周期统一——不做（只有一个样本，分不清「生命周期是任务的」还是「产物自己的」两种候选形状，造错抽象比没有抽象更糟）。另查明 SubtitleCleanser.clean(...) 的 reference 参数恒传空串——为「术语表喂清洗」预留但从未接上的死参数（术语查证后来挪去翻译侧）。CQRS 是讨论中的岔路并已排除：Fowler 明确警示谨慎使用，本项目读写负载无失衡，两条触发条件与嗅觉测试均不满足。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `35c7a83` | refactor(backend): 包结构整理——平铺包按角色拆分子包 |
+| `3e13c54` | docs(spec): 二级包按角色分桶的判据改写与路径引用对账 |
+| `866e647` | chore(task): 记录 10-06-package-structure 规划工件 |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 建形状重构任务：把四条决策写成 PRD 验收标准 + 形状设计，变更类型 → 落点清单作为产出；执行者用户本人，非 sub-agent
