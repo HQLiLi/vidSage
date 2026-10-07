@@ -773,3 +773,38 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Next Steps
 
 - 建形状重构任务：把四条决策写成 PRD 验收标准 + 形状设计，变更类型 → 落点清单作为产出；执行者用户本人，非 sub-agent
+
+
+## Session 28: 命名判据重立 + 管线与阶段构件改名（*Stage → *Coordinator）
+<!-- trellis-session: v=2 fp=ceea7e765170947d -->
+
+**Date**: 2026-10-07
+**Task**: 命名判据重立 + 管线与阶段构件改名（*Stage → *Coordinator）
+**Branch**: `feature/shape-refactor`
+
+### Summary
+
+从一次长命名讨论收口成一个纯改名任务并落地。判据不是先立规则再改代码，是从数据里 grep 出来的：*er/*or 留给做事的人（domain 端口已占满 SubtitleCleanser/SubtitleTranslator/MediaAcquirer），*Coordinator 给认领进度阶段的那一步，管线所有者按产出命名。VideoTaskPipeline → SubtitlePipeline（Video 是错的：音频是一等输入走同一条管线），三个 *Stage → *Coordinator。验证 mvn clean test → 45 类 / 469 用例 / 0 失败 / 0 错误 / 1 跳过，与基线一字不差。顺带：补回 Bcp47Language 丢掉的调用点约束、关闭 SubtitleArtifactSpec 那笔账、把与实际不符的 spec 命名判据作废并重立。任务 10-07-pipeline-stage-rename 已归档并 --no-ff 合回 feature/shape-refactor。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `399126f` | docs(task): 10-07 批次 2 定案——只做阶段名单源，权重移出 |
+| `1af5f25` | docs(backend): 补回 resolveTargetLanguage 的调用点约束 |
+| `e144df5` | docs(spec): 管线构件后缀判据暂停——与实际不符 |
+| `f899d4b` | chore(task): 10-07-pipeline-stage-rename 规划工件 |
+| `27c8b65` | chore(task): 记录 10-07-pipeline-stage-rename 的分支元数据 |
+| `5fe9742` | docs(task): 10-07 会话移交刷新 |
+| `5c09fe8` | chore(task): 10-07-pipeline-stage-rename 置为 in_progress |
+| `fcf0750` | refactor(backend): 管线与阶段构件改名——管线按产出命名，阶段构件按角色命名 |
+| `dc2aced` | docs(spec,task): 管线构件命名判据重立 + 任务工件 |
+| `ef571a5` | merge: 管线与阶段构件改名（10-07-pipeline-stage-rename） |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 10-07-shape-refactor 批次 2（阶段名单源）仍未开工——注意改名已使该批次的逐行清单失效，需重扫。注释偏多的问题用户要求后面统一处理。
