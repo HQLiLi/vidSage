@@ -31,7 +31,7 @@ public final class Bcp47Language {
     /**
      * 解析目标语种：空白抛 ISE，否则返回归一化（去空白 + 转小写）后的值。
      *
-     * <p><b>调用点要排在建工作目录那类 I/O 之前</b>（见 SubtitleTranslationStage 的卫语句）：配置错了
+     * <p><b>调用点要排在建工作目录那类 I/O 之前</b>（见 SubtitleTranslationCoordinator 的卫语句）：配置错了
      * 就该立刻抛，而不是先建了目录、甚至跑完一轮 ASR 再报错——那样错误信息会被前面的 I/O 失败盖掉。
      *
      * @param configuredTarget 配置的目标语种原始值；可空白

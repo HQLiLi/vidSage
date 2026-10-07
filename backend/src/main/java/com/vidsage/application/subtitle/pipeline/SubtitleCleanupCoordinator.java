@@ -38,13 +38,13 @@ import java.util.stream.Collectors;
  *
  * <p><b>断点复用判据</b>：{@code -clean.json} 存在且字节数 &gt; 0 即跳过切分与纠错，直接反序列化返回。
  * 为什么拿 JSON 当检查点而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当检查点会让空清洗永远判「未完成」
- * ——该语义单源在 {@link CheckpointPolicy}（design 决策 4，同 {@link SubtitlePreparationStage}）。
+ * ——该语义单源在 {@link CheckpointPolicy}（design 决策 4，同 {@link SubtitlePreparationCoordinator}）。
  *
  * <p><b>不碰 2b 原始产物</b>：读 {@code segments-<route>.json}（原始，只读，必须已存在）、写 {@code -clean}。
  */
 @Slf4j
 @Component
-public class SubtitleCleanupStage {
+public class SubtitleCleanupCoordinator {
 
     /**
      * 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 70..100）。
@@ -75,12 +75,12 @@ public class SubtitleCleanupStage {
      * @param contextSummarizer 内容总结器（摘要出主题与术语，供跨批上下文用）
      * @param subtitleCleanser  字幕清洗器（持有清洗专用的 ChatClient）
      */
-    public SubtitleCleanupStage(WorkspaceService workspaceService,
-                                ASRProvider asrProvider,
-                                ObjectMapper objectMapper,
-                                SubtitleCleanupProperties props,
-                                SubtitleContextSummarizer contextSummarizer,
-                                SubtitleCleanser subtitleCleanser) {
+    public SubtitleCleanupCoordinator(WorkspaceService workspaceService,
+                                      ASRProvider asrProvider,
+                                      ObjectMapper objectMapper,
+                                      SubtitleCleanupProperties props,
+                                      SubtitleContextSummarizer contextSummarizer,
+                                      SubtitleCleanser subtitleCleanser) {
         this.workspaceService = workspaceService;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
@@ -199,7 +199,7 @@ public class SubtitleCleanupStage {
 
     /**
      * 读断点：{@code -clean.json} 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。
-     * 解析失败当未完成重跑（同 {@link SubtitlePreparationStage}）。
+     * 解析失败当未完成重跑（同 {@link SubtitlePreparationCoordinator}）。
      * 判据语义（JSON 非空 = 完成、0 字节 = 未完成）单源在 {@link CheckpointPolicy}。
      */
     private SubtitleTrack readCheckpoint(Path cleanSeg) {

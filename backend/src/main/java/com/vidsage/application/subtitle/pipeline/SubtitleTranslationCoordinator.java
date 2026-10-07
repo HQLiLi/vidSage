@@ -48,7 +48,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>断点复用判据</b>：{@code -translate-<target>.json} 存在且非空即跳过翻译，直接反序列化返回。
  * 为什么拿 JSON 当检查点而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当检查点会让空产物永远判「未完成」
- * ——该语义单源在 {@link CheckpointPolicy}（同 {@link SubtitleCleanupStage} / {@link SubtitlePreparationStage}）。
+ * ——该语义单源在 {@link CheckpointPolicy}（同 {@link SubtitleCleanupCoordinator} / {@link SubtitlePreparationCoordinator}）。
  *
  * <p><b>只读 -clean 产物</b>：输入是 {@code segments-<route>-clean.json}（只读，必须已存在），写
  * {@code -translate} 与 {@code terms-<route>-<target>.json}。<b>不静默回退到原始 segments</b>：
@@ -56,7 +56,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Slf4j
 @Component
-public class SubtitleTranslationStage {
+public class SubtitleTranslationCoordinator {
 
     /**
      * 阶段进度的起点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。
@@ -92,13 +92,13 @@ public class SubtitleTranslationStage {
      *                           应当让应用照常起、只关查证，而不是缺 bean 起不来
      * @param subtitleTranslator 字幕翻译器（持有翻译专用的 ChatClient）
      */
-    public SubtitleTranslationStage(WorkspaceService workspaceService,
-                                    ASRProvider asrProvider,
-                                    ObjectMapper objectMapper,
-                                    SubtitleTranslateProperties props,
-                                    SubtitleContextSummarizer contextSummarizer,
-                                    ObjectProvider<TermLookupProvider> lookupProvider,
-                                    SubtitleTranslator subtitleTranslator) {
+    public SubtitleTranslationCoordinator(WorkspaceService workspaceService,
+                                          ASRProvider asrProvider,
+                                          ObjectMapper objectMapper,
+                                          SubtitleTranslateProperties props,
+                                          SubtitleContextSummarizer contextSummarizer,
+                                          ObjectProvider<TermLookupProvider> lookupProvider,
+                                          SubtitleTranslator subtitleTranslator) {
         this.workspaceService = workspaceService;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
@@ -201,7 +201,7 @@ public class SubtitleTranslationStage {
         emit(listener, StageEvent.STAGE_TRANSLATE, STAGE_BEGIN, "开始翻译", StageEvent.StageState.RUNNING);
 
         // -clean 缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
-        // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮与清洗侧同一取舍（见 SubtitleCleanupStage）：
+        // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮与清洗侧同一取舍（见 SubtitleCleanupCoordinator）：
         // 它是「服务端状态缺失」，可归入 error-handling 的「环境不对」；改成 4xx 超本任务「只新增」范围。
         if (!ArtifactFiles.isNonEmpty(cleanSeg)) {
             throw new IllegalStateException("字幕尚未清洗：请先调用 POST /api/subtitles/clean 产出 -clean 字幕，再翻译（缺 "

@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * 未配置时用 {@link DefaultValue} 兜底，没有该配置块也能加载 Spring 上下文。
  *
  * @param maxConcurrent 同时执行的管线任务上限；超出者保持 PENDING 排队
- *                      （{@code VideoTaskPipeline} 的 Semaphore 限流）。必须 ≥ 1，默认 2
+ *                      （{@code SubtitlePipeline} 的 Semaphore 限流）。必须 ≥ 1，默认 2
  */
 @ConfigurationProperties(prefix = "vidsage.task")
 public record TaskProperties(@DefaultValue("2") int maxConcurrent) {

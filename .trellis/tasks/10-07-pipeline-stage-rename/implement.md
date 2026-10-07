@@ -18,6 +18,10 @@ cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mv
 
 **一个已核实的前提**：`@Component` 的默认 bean 名会随类名变（`subtitlePreparationStage` → `subtitlePreparationCoordinator`）。项目里**没有按名注入**这四个类——所有 `@Qualifier` 都只用于 `ChatClient`。改名安全，不需要额外处理。
 
+**变量名**（字段 / 构造参数的小驼峰）：**以 main 为准，测试逐字对齐**——main 怎么命名，测试跟着来（见 `prd.md` 决定 3）。
+
+**本轮待处理（不做，只记着）**：`TranscriptionStage` 已被调用方绕过一半（调用方同时持有它和它包装的 `ASRProvider`），用户定「先放着」，以后连同管线一起改 → 见 `prd.md` 决定 1。
+
 ---
 
 # 步骤 1 — main 改名（项目所有者）
@@ -26,6 +30,7 @@ cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mv
 
 **本体（1 文件）**
 - `application/task/pipeline/VideoTaskPipeline.java` —— 文件名、`:58` 类声明、`:87` 构造器
+  - ⚠️ 类 Javadoc `:34-36` 里点名了 `SubtitlePreparationStage` / `SubtitleCleanupStage`——**这两个类名本任务改**；同一段里的六个阶段名（acquire / extract-audio / transcribe / write-subtitles）**留给 10-07 批次 2**（见 `prd.md` 决定 2）
 
 **代码引用（1 文件）**
 - `application/task/VideoTaskService.java` —— `:6` import、`:70` 字段、`:80` 构造参数

@@ -49,7 +49,7 @@ import java.nio.file.Path;
  */
 @Slf4j
 @Component
-public class SubtitlePreparationStage {
+public class SubtitlePreparationCoordinator {
 
     /**
      * 转写阶段名。
@@ -96,11 +96,11 @@ public class SubtitlePreparationStage {
      * @param asrProvider           当前装配的 ASR provider（用来问规格与路线）
      * @param objectMapper          Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      */
-    public SubtitlePreparationStage(WorkspaceService workspaceService,
-                                    AudioPreparationStage audioPreparationStage,
-                                    TranscriptionStage transcriptionStage,
-                                    ASRProvider asrProvider,
-                                    ObjectMapper objectMapper) {
+    public SubtitlePreparationCoordinator(WorkspaceService workspaceService,
+                                          AudioPreparationStage audioPreparationStage,
+                                          TranscriptionStage transcriptionStage,
+                                          ASRProvider asrProvider,
+                                          ObjectMapper objectMapper) {
         this.workspaceService = workspaceService;
         this.audioPreparationStage = audioPreparationStage;
         this.transcriptionStage = transcriptionStage;

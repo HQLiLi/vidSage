@@ -1,9 +1,9 @@
 package com.vidsage.application.task.pipeline;
 
 import com.vidsage.application.media.WorkspaceService;
-import com.vidsage.application.subtitle.pipeline.SubtitleCleanupStage;
-import com.vidsage.application.subtitle.pipeline.SubtitlePreparationStage;
-import com.vidsage.application.subtitle.pipeline.SubtitleTranslationStage;
+import com.vidsage.application.subtitle.pipeline.SubtitleCleanupCoordinator;
+import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
+import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.exception.TaskNotFoundException;
@@ -31,9 +31,9 @@ import org.springframework.stereotype.Component;
  * <p>阶段顺序（design.md「数据流·执行」；区间为任务级进度权重；2026-10-02 两段式裁定后管线
  * 到清洗 / 原文字幕为止，翻译拆出为按需触发，见 {@link #translateTask}）：
  * <ol>
- *   <li>{@code SubtitlePreparationStage.prepare}（0..70，内部含 acquire / extract-audio / transcribe /
+ *   <li>{@code SubtitlePreparationCoordinator.prepare}（0..70，内部含 acquire / extract-audio / transcribe /
  *       write-subtitles 四个阶段，阶段事件由回调驱动）</li>
- *   <li>{@code SubtitleCleanupStage.clean}（70..100，批级进度 0..100 由 remap 压进该区间）</li>
+ *   <li>{@code SubtitleCleanupCoordinator.clean}（70..100，批级进度 0..100 由 remap 压进该区间）</li>
  * </ol>
  *
  * <p>进度回调是<b>复合监听器</b>：① 更新 DB {@code current_stage}（先落库再广播——订阅者看到的
@@ -55,7 +55,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class VideoTaskPipeline {
+public class SubtitlePipeline {
 
     /** prepare 全包阶段（acquire / extract-audio / transcribe / write-subtitles）映射进 0..70。 */
     private static final int PREPARE_END = 70;
@@ -66,9 +66,9 @@ public class VideoTaskPipeline {
 
     private final VideoTaskRepository repository;
     private final WorkspaceService workspaceService;
-    private final SubtitlePreparationStage subtitlePreparationStage;
-    private final SubtitleCleanupStage cleanupStage;
-    private final SubtitleTranslationStage translationStage;
+    private final SubtitlePreparationCoordinator subtitlePreparationCoordinator;
+    private final SubtitleCleanupCoordinator cleanupStage;
+    private final SubtitleTranslationCoordinator translationStage;
     private final TaskSubscriptionRegistry subscriptionRegistry;
     private final Semaphore semaphore;
     private final ExecutorService executor;
@@ -78,23 +78,23 @@ public class VideoTaskPipeline {
      *
      * @param repository               任务持久化入口（管线按 taskNo 装载任务并回写状态）
      * @param workspaceService         工作区根解析（上传路线按持久化的 workspace_dir 还原媒体路径）
-     * @param subtitlePreparationStage 阶段 1：音频准备 + 转写 + 写原始字幕
+     * @param subtitlePreparationCoordinator 阶段 1：音频准备 + 转写 + 写原始字幕
      * @param cleanupStage             阶段 2：字幕清洗（管线的最后一个自动阶段）
      * @param translationStage         按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
      * @param subscriptionRegistry     中立订阅注册表（进度事件的广播落点）
      * @param properties               管线配置（并发上限）
      */
-    public VideoTaskPipeline(VideoTaskRepository repository, WorkspaceService workspaceService,
-                             SubtitlePreparationStage subtitlePreparationStage, SubtitleCleanupStage cleanupStage,
-                             SubtitleTranslationStage translationStage,
-                             TaskSubscriptionRegistry subscriptionRegistry, TaskProperties properties) {
+    public SubtitlePipeline(VideoTaskRepository repository, WorkspaceService workspaceService,
+                            SubtitlePreparationCoordinator subtitlePreparationCoordinator, SubtitleCleanupCoordinator cleanupStage,
+                            SubtitleTranslationCoordinator translationStage,
+                            TaskSubscriptionRegistry subscriptionRegistry, TaskProperties properties) {
         if (properties.maxConcurrent() < 1) {
             throw new IllegalStateException("vidsage.task.max-concurrent 必须 ≥ 1：当前为 "
                     + properties.maxConcurrent() + "；请修正配置");
         }
         this.repository = repository;
         this.workspaceService = workspaceService;
-        this.subtitlePreparationStage = subtitlePreparationStage;
+        this.subtitlePreparationCoordinator = subtitlePreparationCoordinator;
         this.cleanupStage = cleanupStage;
         this.translationStage = translationStage;
         this.subscriptionRegistry = subscriptionRegistry;
@@ -251,7 +251,7 @@ public class VideoTaskPipeline {
         MediaInput input = toMediaInput(task);
         ProgressListener listener = progressListener(task);
         // 阶段 1：prepare 全包（0..70），阶段事件由 remap 后的回调驱动
-        subtitlePreparationStage.prepare(input, ProgressMapper.remap(listener, 0, PREPARE_END));
+        subtitlePreparationCoordinator.prepare(input, ProgressMapper.remap(listener, 0, PREPARE_END));
         // 阶段 2：清洗（70..100），批级进度事件来自 SubtitleCleanser，开始 / 跳过 / 完成事件来自阶段构件
         cleanupStage.clean(input, "", ProgressMapper.remap(listener, CLEAN_START, CLEAN_END));
     }

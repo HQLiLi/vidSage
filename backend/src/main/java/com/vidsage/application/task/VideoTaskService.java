@@ -3,7 +3,7 @@ package com.vidsage.application.task;
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
-import com.vidsage.application.task.pipeline.VideoTaskPipeline;
+import com.vidsage.application.task.pipeline.SubtitlePipeline;
 import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskSnapshot;
@@ -35,7 +35,7 @@ import org.springframework.util.StringUtils;
 
 /**
  * 任务提交与查询的唯一入口：校验、查重、落库、上传落盘（design.md「数据流」）。
- * 异步执行不在这里——落库后委托 {@link VideoTaskPipeline#execute} 启动管线，HTTP 秒级返回。
+ * 异步执行不在这里——落库后委托 {@link SubtitlePipeline#execute} 启动管线，HTTP 秒级返回。
  *
  * <p>两条提交路线收敛到 {@link #handleSubmit}：
  * <ul>
@@ -67,7 +67,7 @@ public class VideoTaskService {
 
     private final VideoTaskRepository repository;
     private final WorkspaceService workspaceService;
-    private final VideoTaskPipeline pipeline;
+    private final SubtitlePipeline pipeline;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
@@ -77,7 +77,7 @@ public class VideoTaskService {
      * @param pipeline         异步管线（insert 成功后异步启动）
      */
     public VideoTaskService(VideoTaskRepository repository, WorkspaceService workspaceService,
-                            VideoTaskPipeline pipeline) {
+                            SubtitlePipeline pipeline) {
         this.repository = repository;
         this.workspaceService = workspaceService;
         this.pipeline = pipeline;
@@ -171,7 +171,7 @@ public class VideoTaskService {
 
     /**
      * 按需触发翻译（2026-10-02 两段式）：主任务 SUCCEEDED 后由用户显式触发——不看翻译的人不花
-     * LLM 钱。判定与幂等语义在 {@link VideoTaskPipeline#translateTask}（未知任务 404、
+     * LLM 钱。判定与幂等语义在 {@link SubtitlePipeline#translateTask}（未知任务 404、
      * 未就绪 400、翻译中不重入、检查点已在则幂等收敛不发 LLM）；本方法只做装载、委托与
      * <b>重读回视图</b>——translateTask 内部可能已推进翻译子状态（启动 RUNNING / 幂等收敛
      * SUCCEEDED），重读保证 202 响应的视图反映触发后的状态。
