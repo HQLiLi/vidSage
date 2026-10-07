@@ -87,7 +87,9 @@ com.vidsage
 命名跟着分两条：
 
 - **服务类前缀与聚合根对齐**——聚合根是 `VideoTask`，故 `TaskService` → `VideoTaskService`、`TaskPipelineService` → `VideoTaskPipeline`（2026-10-06 命名对齐）。**对外契约与值对象不跟这个前缀**：「任务」是对外概念（路由就是 `/api/tasks`，前端也这么叫），加 `Video` 只变长不消歧义。故 `VideoTaskService` 返回 `TaskSnapshot` 是**已知且可接受**的不一致——口径是「服务与聚合根对齐，读模型与对外契约沿用对外概念」。
-- **管线构件后缀按角色取**——**管线的所有者不带后缀**（`VideoTaskPipeline`）；**管线的一步以既有领域词 `Stage` 结尾**（`current_stage` / `StageEvent` 是本项目既有词汇），一个阶段对应一个执行类。`Service` 后缀**不许**再出现在管线构件上：它在本项目的含义是「用例入口 / 横切服务」，而管线构件两者都不是。（2026-10-06 命名对齐前，六个阶段类叫 `SubtitleService` / `SubtitleCleanupService` / …，名不副实。）
+- **管线构件后缀判据暂停中（2026-10-07）**——原判据是「管线的所有者不带后缀（`VideoTaskPipeline`）；管线的一步以既有领域词 `Stage` 结尾，**一个阶段对应一个执行类**」。**后两句与实际不符，作废**：六个 `XxxStage` 里 `MediaAcquisitionStage` / `TranscriptionStage` **不认领任何阶段**（它们是阶段内部调用的端口分派与包装，一个阶段事件都不发），而 `AudioPreparationStage` / `SubtitlePreparationStage` 各认领**两个**阶段。新判据待定；定下之前**不要往 `*Stage` 家族加新类**。
+
+  （`Service` 后缀仍**不许**用在管线构件上：它在本项目的含义是「用例入口 / 横切服务」，管线构件与两者都不沾。2026-10-06 命名对齐前，六个阶段类叫 `SubtitleService` / `SubtitleCleanupService` / …，名不副实。）
 
 **为什么管线构件不下沉 `domain/`**：它们全是 I/O 密集（读工作区、调端口、写产物文件），而 `domain → shared` 禁止、`domain` 的紧凑构造器不许做 I/O；纯业务判据已下沉完（`CheckpointPolicy` / `TermVerification` / `Bcp47Language` / `TaskArtifactScan` 等）。**问题不在分层，在名字。**
 
