@@ -70,7 +70,7 @@ com.vidsage
 **`application/`（五个上下文）**——用例编排的家，五类一等构件：
 
 - **用例服务**：`@Service` 编排类，**有 web 调用面**（`VideoTaskService`——`TaskController` 唯一注入的应用服务）或**被多处方共用的横切能力**（`WorkspaceService`，被 6 处注入）。组装契约、委托端口，不出现适配器实现类与 SDK 类型。
-- **管线构件**：`@Component` 编排类，**没有 web 调用面**——`SubtitlePipeline`（管线的所有者：配额、虚拟线程、阶段顺序、进度广播、终态收口）与各阶段构件（认领进度阶段的那一步，只被上级管线按顺序调用一次）。判据、命名与「为什么不下沉 domain」见下节[构件说明](#构件说明服务与管线构件)。
+- **管线构件**：`@Component` 编排类，**没有 web 调用面**——`SubtitlePipeline`（管线的所有者：阶段顺序、进度广播、终态收口）与各阶段构件（认领进度阶段的那一步，只被上级管线按顺序调用一次）。判据、命名与「为什么不下沉 domain」见下节[构件说明](#构件说明服务与管线构件)。
 - **读模型**：`TaskSnapshot` / `TaskArtifact` / `TaskArtifactFile`——面向查询的应用层投影，**零 web 注解**（2026-10-06 读模型拆分：对外 @Schema 集中到 `web/dto/TaskResponse`，见[契约类的位置](#契约类的位置)判据 2）。
 - **应用消息 / 应用异常**：`TaskProgressMessage`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`。
 - **中立订阅机制**：`TaskSubscriptionRegistry` / `Subscription`——application 层管线广播事件、web 层挂「写 emitter」回调，两边都依赖它。判据是「写得出它不许装什么」：**禁 HTTP 类型**（`SseEmitter` 只活 `web/sse/`，此 Javadoc 承诺原样保持）、**禁业务编排**；与 `shared/` 同类「机制包」先例。（历史注：该机制 2026-09-30 曾定调为顶层 `subscribe/` 包，2026-10-05 四层化归入 `application/task/`；升级条件随之带入——出现多传输协议（SSE + WebSocket）并存或包内构件 ≥3 时再议拆分。）

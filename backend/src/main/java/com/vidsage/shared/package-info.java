@@ -7,5 +7,8 @@
  * （如 {@code StringUtils}），但不依赖 Spring 容器与 Web 类型——去掉容器仍可编译。依赖限
  * JDK、Jackson、slf4j 与 {@code domain} 的领域词汇（如 {@code StageEvent}、
  * {@code TranscriptionSegment}），不含业务编排。
+ *
+ * <p>有状态、或需要 Spring 容器的技术机制不归本层，落 {@code infrastructure/}——那里的准入判据是
+ * 「有没有状态」，不是「跟不跟外部世界打交道」（如 {@code infrastructure/concurrency} 的任务并发闸）。
  */
 package com.vidsage.shared;
