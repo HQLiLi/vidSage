@@ -10,11 +10,13 @@
 ## 一句话状态
 
 任务 `10-08-pipeline-state-broadcast`（标题「SubtitlePipeline 状态迁移 × 广播收口拆分」）
-**已创建、仍是 `planning`**：目录里只有 `task.json`，**prd / design / implement 都还没写**，
-未 `task.py start`，未开分支，当前在 `dev` 上、工作区干净（除本文档）。
+**已创建、仍是 `planning`**：目录里是 `task.json` + `task.py create` 种子化的 `prd.md`
+（只填了 Goal，Requirements / Acceptance Criteria 都还是 `TBD`）+ 两个空的 `implement.jsonl` / `check.jsonl`；
+**design / implement 未写**，未 `task.py start`，未开分支，当前在 `dev` 上、工作区干净。
 
-`base_branch = dev` 已核对无误。**任务目录尚未入库**（`git status` 里是 `??`）——
-第一次提交必须把它带上，否则归档时自动提交会报 pathspec 错（上个任务踩过，见 memory）。
+`base_branch = dev` 已核对无误。任务目录与本文档**已于 2026-10-08 入库并推到 dev**
+（`9e676dc` 本文档 / `9e9ecba` 任务卡），所以归档时的 pathspec 坑在这条任务上不存在了——
+那条坑只咬「从创建到归档从没入过库」的任务（历史上 31 笔归档里踩过 5 次，全在 10-05 之前）。
 
 ## 下一步怎么起
 
