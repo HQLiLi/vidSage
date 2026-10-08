@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class MediaAcquisitionStage {
+public class MediaAcquirerDispatcher {
 
     private final List<MediaAcquirer> acquirers;
 
@@ -34,7 +34,7 @@ public class MediaAcquisitionStage {
      * @param acquirers 容器里的全部适配器；两个实现的 {@code supports} 互斥，
      *                  故 {@link #select} 用 {@code findFirst()} 取到的总是唯一那个
      */
-    public MediaAcquisitionStage(List<MediaAcquirer> acquirers) {
+    public MediaAcquirerDispatcher(List<MediaAcquirer> acquirers) {
         this.acquirers = List.copyOf(acquirers);
     }
 

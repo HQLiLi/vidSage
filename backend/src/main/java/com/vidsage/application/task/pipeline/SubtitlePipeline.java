@@ -9,6 +9,7 @@ import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.config.TaskProperties;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.model.MediaInput;
@@ -17,11 +18,12 @@ import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
-import com.vidsage.shared.progress.ProgressMapper;
+
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -50,12 +52,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class SubtitlePipeline {
 
-    /** prepare 覆盖的阶段映射进 0..70。 */
-    private static final int PREPARE_END = 70;
-
-    /** clean 批级进度映射进 70..100（2026-10-02 两段式：翻译拆出后管线权重只剩这两段）。 */
-    private static final int CLEAN_START = 70;
-    private static final int CLEAN_END = 100;
 
     private final VideoTaskRepository repository;
     private final WorkspaceService workspaceService;
@@ -69,13 +65,13 @@ public class SubtitlePipeline {
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param repository               任务持久化入口（管线按 taskNo 装载任务并回写状态）
-     * @param workspaceService         工作区根解析（上传路线按持久化的 workspace_dir 还原媒体路径）
+     * @param repository                     任务持久化入口（管线按 taskNo 装载任务并回写状态）
+     * @param workspaceService               工作区根解析（上传路线按持久化的 workspace_dir 还原媒体路径）
      * @param subtitlePreparationCoordinator 阶段 1：音频准备 + 转写 + 写原始字幕
-     * @param cleanupStage             阶段 2：字幕清洗（管线的最后一个自动阶段）
-     * @param translationStage         按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
-     * @param subscriptionRegistry     中立订阅注册表（进度事件的广播落点）
-     * @param properties               管线配置（并发上限）
+     * @param cleanupStage                   阶段 2：字幕清洗（管线的最后一个自动阶段）
+     * @param translationStage               按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
+     * @param subscriptionRegistry           中立订阅注册表（进度事件的广播落点）
+     * @param properties                     管线配置（并发上限）
      */
     public SubtitlePipeline(VideoTaskRepository repository, WorkspaceService workspaceService,
                             SubtitlePreparationCoordinator subtitlePreparationCoordinator, SubtitleCleanupCoordinator cleanupStage,
@@ -238,15 +234,14 @@ public class SubtitlePipeline {
 
     /**
      * 按阶段顺序执行；prepare 的阶段事件与 clean 的批级事件都由回调驱动
-     * （composite listener 落库 + 广播），各阶段自报的 0..100 进度按权重 remap 进任务级区间。
      */
     private void prepareAndClean(VideoTask task) {
         MediaInput input = toMediaInput(task);
         ProgressListener listener = progressListener(task);
-        // 阶段 1：prepare 全包（0..70），阶段事件由 remap 后的回调驱动
-        subtitlePreparationCoordinator.prepare(input, ProgressMapper.remap(listener, 0, PREPARE_END));
-        // 阶段 2：清洗（70..100），批级进度事件来自 SubtitleCleanser，开始 / 跳过 / 完成事件来自阶段构件
-        cleanupStage.clean(input, "", ProgressMapper.remap(listener, CLEAN_START, CLEAN_END));
+        // 阶段 1：prepare 准备字幕文件
+        subtitlePreparationCoordinator.prepare(input, listener);
+        // 阶段 2：清洗字幕文件
+        cleanupStage.clean(input, "", listener);
     }
 
     /**

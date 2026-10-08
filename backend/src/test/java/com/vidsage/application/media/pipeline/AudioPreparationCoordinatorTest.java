@@ -31,17 +31,17 @@ import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * AudioPreparationStage 的纯单元测试：<b>不起 Spring 容器</b>，Mockito 替掉工作目录 / 输入获取 /
+ * AudioPreparationCoordinator 的纯单元测试：<b>不起 Spring 容器</b>，Mockito 替掉工作目录 / 输入获取 /
  * 音频抽取，只验证阶段编排、断点复用判定、事件序列与失败路径。
  */
-class AudioPreparationStageTest {
+class AudioPreparationCoordinatorTest {
 
     // 本类会真的写音频产物文件，沿用 implement.md 记录的环境性清理规避：不清理临时目录。
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
 
     private final WorkspaceService workspaceService = mock(WorkspaceService.class);
-    private final MediaAcquisitionStage acquisitionStage = mock(MediaAcquisitionStage.class);
+    private final MediaAcquirerDispatcher acquisitionStage = mock(MediaAcquirerDispatcher.class);
     private final AudioExtractor audioExtractor = mock(AudioExtractor.class);
     private final RecordingListener listener = new RecordingListener();
 
@@ -52,8 +52,8 @@ class AudioPreparationStageTest {
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
     }
 
-    private AudioPreparationStage service() {
-        return new AudioPreparationStage(workspaceService, acquisitionStage, audioExtractor);
+    private AudioPreparationCoordinator service() {
+        return new AudioPreparationCoordinator(workspaceService, acquisitionStage, audioExtractor);
     }
 
     private AcquiredMedia acquiredMedia() {
@@ -78,7 +78,7 @@ class AudioPreparationStageTest {
         assertEquals(List.of(
                 "acquire-media/RUNNING", "acquire-media/SUCCEEDED",
                 "extract-audio/RUNNING", "extract-audio/SUCCEEDED"), states());
-        assertEquals(List.of(0, 50, 50, 100), progresses(), "进度应两段加权且单调");
+        assertEquals(List.of(0, 21, 21, 42), progresses(), "进度取任务级区间端点：acquire [0,21) / extract [21,42)");
     }
 
     @Test
@@ -114,7 +114,7 @@ class AudioPreparationStageTest {
         verify(acquisitionStage, never()).acquire(any(), any());
         assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/RUNNING", "extract-audio/SUCCEEDED"),
                 states());
-        assertEquals(50, listener.events().getFirst().progress(), "跳过的 acquire 进度取该阶段终点值");
+        assertEquals(21, listener.events().getFirst().progress(), "跳过的 acquire 进度取该阶段终点值");
     }
 
     @Test
@@ -129,7 +129,7 @@ class AudioPreparationStageTest {
         assertEquals(workDir.resolve("audio-16k1ch-t0.wav"), result.audioPath());
         assertEquals(5, result.sizeBytes());
         assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/SKIPPED"), states());
-        assertEquals(100, listener.events().getLast().progress(), "跳过的 extract 进度取该阶段终点值");
+        assertEquals(42, listener.events().getLast().progress(), "跳过的 extract 进度取该阶段终点值");
     }
 
     @Test

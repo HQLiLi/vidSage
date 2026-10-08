@@ -18,6 +18,7 @@ import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.progress.ProgressMapper;
 import com.vidsage.shared.subtitle.SrtRenderer;
 import com.vidsage.shared.subtitle.SubtitleSegmentSplitter;
 import lombok.extern.slf4j.Slf4j;
@@ -46,16 +47,6 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 public class SubtitleCleanupCoordinator {
-
-    /**
-     * 阶段进度的起点（0..100 区间自报口径，管线负责 remap 进 70..100）。
-     */
-    private static final int STAGE_BEGIN = 0;
-
-    /**
-     * 阶段进度的终点（0..100 区间自报口径，管线负责 remap 进 70..100）。
-     */
-    private static final int STAGE_DONE = 100;
 
     private final WorkspaceService workspaceService;
     private final ASRProvider asrProvider;
@@ -118,11 +109,11 @@ public class SubtitleCleanupCoordinator {
     /**
      * 清洗一份字幕：读原始 segments → 摘要出上下文 → 切分 → 逐批清洗 → 写 -clean 产物。
      *
-     * <p>进度事件（{@code 0..100} 自报口径，管线负责 remap 进自己的区间）：
+     * <p>进度事件（端点取 {@code CLEAN_SUBTITLES} 的区间；批级进度 cleanser 自报 {@code 0..100}，本类换算进该区间）：
      * <ul>
-     *   <li>断点复用命中 → 一条 SKIPPED（进度 100），直接返回；</li>
-     *   <li>正常路径 → 开始（0，RUNNING）→ 每批清洗完成各一条（「第 x/N 批」，来自
-     *       {@link SubtitleCleanser}）→ 完成（100，SUCCEEDED）。</li>
+     *   <li>断点复用命中 → 一条 SKIPPED（区间终点），直接返回；</li>
+     *   <li>正常路径 → 开始（区间起点，RUNNING）→ 每批清洗完成各一条（「第 x/N 批」，来自
+     *       {@link SubtitleCleanser} 的自报进度换算后）→ 完成（区间终点，SUCCEEDED）。</li>
      * </ul>
      * 开始事件先于「原始字幕缺失」卫语句发出——失败任务的用户消息里能带上所在阶段。
      *
@@ -148,15 +139,17 @@ public class SubtitleCleanupCoordinator {
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(route, null));
         Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(route, null));
         SubtitleTrack existing = readCheckpoint(cleanSeg);
+
+        String cleanSubtitlesStageName = SubtitleStageName.CLEAN_SUBTITLES.getStageName();
         if (existing != null) {
             log.info("字幕清洗断点复用跳过: clean={}", cleanSeg.getFileName());
             // 断点复用不重跑，本趟统计一律为 0（含术语指标），语义与 correctedCount 一致
 
-            emit(listener, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), STAGE_DONE, "已有清洗产物，跳过清洗",
+            emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.end(), "已有清洗产物，跳过清洗",
                     StageEvent.StageState.SKIPPED);
             return toCleaned(existing, cleanSeg, cleanSrt, 0, 0, 0, 0);
         }
-        emit(listener, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), STAGE_BEGIN, "开始清洗", StageEvent.StageState.RUNNING);
+        emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.start(), "开始清洗", StageEvent.StageState.RUNNING);
 
         if (!ArtifactFiles.isNonEmpty(rawSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
@@ -186,12 +179,13 @@ public class SubtitleCleanupCoordinator {
         // 切分
         List<TranscriptionSegment> split = new SubtitleSegmentSplitter(props.maxSegmentMs()).split(segments);
 
-        // 清洗（分批 + 每批带主题/术语/后窗/跨批历史）；批级进度由 cleanser 直接回调 listener
-        CleanseResult result = subtitleCleanser.clean(split, subtitleContext, reference, listener);
+        // 清洗（分批 + 每批带主题/术语/后窗/跨批历史）；批级进度 cleanser 报自己的 0..100，换算进 clean 区间再往下传
+        CleanseResult result = subtitleCleanser.clean(split, subtitleContext, reference,
+                ProgressMapper.remap(listener, SubtitleStageName.CLEAN_SUBTITLES.start(), SubtitleStageName.CLEAN_SUBTITLES.end()));
 
         SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments());
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换
-        emit(listener, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), STAGE_DONE, "清洗完成", StageEvent.StageState.SUCCEEDED);
+        emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.end(), "清洗完成", StageEvent.StageState.SUCCEEDED);
         log.info("字幕清洗完成: route={}, segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
                 route.name(), result.segments().size(), result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());
@@ -238,7 +232,8 @@ public class SubtitleCleanupCoordinator {
     }
 
     /**
-     * 发一个阶段事件（本类阶段进度 0..100 自报口径，区间映射归管线的 {@code ProgressMapper}）。
+     * 发一个阶段事件（progress 是任务级值：调用处直接传 {@code CLEAN_SUBTITLES} 的区间端点；
+     * 批级进度不走这里，由 cleanser 经 {@code ProgressMapper} 换算后直接回调 listener）。
      */
     private static void emit(ProgressListener listener, String stage, int progress, String message,
                              StageEvent.StageState state) {

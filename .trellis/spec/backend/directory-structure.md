@@ -83,15 +83,15 @@ com.vidsage
 | 档 | 注解 | 是什么 | 现行成员 |
 |---|---|---|---|
 | **服务** | `@Service` | 有 web 调用面，或被多处方共用的横切能力 | `VideoTaskService`（`TaskController` 唯一注入的应用服务）、`WorkspaceService`（被 6 处共用） |
-| **管线构件** | `@Component` | 没有 web 调用面，只被上级管线按顺序调用 | `SubtitlePipeline`（管线的所有者）、各 `XxxCoordinator` / `XxxStage`（管线的一步） |
+| **管线构件** | `@Component` | 没有 web 调用面，只被上级管线按顺序调用 | `SubtitlePipeline`（管线的所有者）、各 `XxxCoordinator`（认领阶段的一步）、`MediaAcquirerDispatcher` / `Transcriber`（不认领阶段的委托件，2026-10-08 改名落地） |
 
 命名跟着分两条：
 
 - **服务类前缀与聚合根对齐**——聚合根是 `VideoTask`，故 `TaskService` → `VideoTaskService`（2026-10-06 命名对齐）。**对外契约与值对象不跟这个前缀**：「任务」是对外概念（路由就是 `/api/tasks`，前端也这么叫）。故 `VideoTaskService` 返回 `TaskSnapshot` 是**已知且可接受**的不一致——口径是「服务与聚合根对齐，读模型与对外契约沿用对外概念」。
 - **管线不跟聚合根前缀，按产出命名**（2026-10-07）——管线的所有者叫 `SubtitlePipeline`，不叫 `VideoTaskPipeline`。两条理由：① 两个前缀回答的是**两问**——服务前缀答「这是谁的任务」，管线前缀答「**它产出什么**」，不该共用一个词；② `VideoTask` 里的 `Video` 本身是**窄化**的（音频是一等输入、走同一条管线），拿它当别的类型的限定语会把错误传下去。
 - **管线构件后缀按角色取**（2026-10-07 重立）——**`XxxCoordinator` = 认领进度阶段、驱动若干协作者的那一步**。判据是「**它认不认领阶段事件**」，即在 `emit(...)` 里报出阶段名。
-  - 存量里名不副实的是 `MediaAcquisitionStage`（选一个 `MediaAcquirer` 并委托）与 `TranscriptionStage`（包 `ASRProvider`）——它们**一个阶段事件都不发**，只是阶段内部调用的端口分派与包装。该用「做事的人」的 `-er` / `-or` 名（拟 `MediaAcquirerDispatcher` / `Transcriber`），**待改**。
-  - 被替换的旧判据「管线的一步以 `Stage` 结尾，**一个阶段对应一个执行类**」**已作废**：后半句两头都不成立——`AudioPreparationStage` / `SubtitlePreparationCoordinator` 各认领**两个**阶段，而上面那两个认领**零个**。
+  - 改名已全部落地（2026-10-08，进度权重扁平化任务）：`MediaAcquisitionStage` → `MediaAcquirerDispatcher`、`TranscriptionStage` → `Transcriber`——两者**一个阶段事件都不发**（端口分派与包装），用「做事的人」的 `-er` / `-or` 名；`AudioPreparationStage` → `AudioPreparationCoordinator`（认领 acquire + extract 两个阶段，符合 `*Coordinator` 判据）。存量 `*Stage` 后缀清零。
+  - 被替换的旧判据「管线的一步以 `Stage` 结尾，**一个阶段对应一个执行类**」**已作废**：后半句两头都不成立——`AudioPreparationCoordinator` / `SubtitlePreparationCoordinator` 各认领**两个**阶段，而 `MediaAcquirerDispatcher` / `Transcriber` 认领**零个**。
 
   （`Service` 后缀仍**不许**用在管线构件上：它在本项目的含义是「用例入口 / 横切服务」，管线构件与两者都不沾。2026-10-06 命名对齐前，六个阶段类叫 `SubtitleService` / `SubtitleCleanupService` / …，名不副实。）
 

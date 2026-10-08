@@ -8,7 +8,7 @@ import java.util.function.Supplier;
  * 检查点语义单源 + 跨批上下文政策（纯函数领域政策，不做文件 I/O）。
  *
  * <p><b>检查点语义（SubtitlePreparationCoordinator / SubtitleCleanupCoordinator / SubtitleTranslationCoordinator /
- * AudioPreparationStage 四处合流于此）</b>：
+ * AudioPreparationCoordinator 四处合流于此）</b>：
  * <ul>
  *   <li><b>JSON 非空 = 完成</b>：检查点产物存在且字节数 &gt; 0 即该阶段已完成（{@link #isCompleted}）；</li>
  *   <li><b>0 字节 = 未完成</b>：空文件视为不存在，照未完成重跑；</li>

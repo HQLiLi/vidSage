@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "命名判据与本任务的三个改名直接相关：*er/*or = 做事的人、*Coordinator = 认领进度阶段的那一步；本轮落地后该节的『存量待改』清空"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "契约设计、注释要求与测试写法——本任务改枚举与四个构件的 Javadoc，并重写多处断言"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "新增的『不在主管线上的阶段调用 start()/end() 即抛』属于校验路径，异常类型与文案要合规范"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "『改动任何常量前先搜索』正是本任务的核心动作：11 个散常量要清零并核对全部引用点"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "分支工作流硬规则：从 dev 开 feature 分支、改完即停等审查、逐门批准"}

@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>断点复用</b>（产物存在且大小 &gt; 0 即跳过，0 字节视为不存在、必须重跑）：
  * <ul>
- *   <li>获取媒体阶段由 {@link MediaAcquisitionStage#reuseExisting} 判断——只有适配器知道
+ *   <li>获取媒体阶段由 {@link MediaAcquirerDispatcher#reuseExisting} 判断——只有适配器知道
  *       {@code source.<ext>} 的推导规则与 info json 的解析；</li>
  *   <li>抽取音频阶段由本阶段判断——音频产物名由 {@link AudioArtifact#fileName} 按规格指纹给出
  *       （命名规则单源在 domain），且<b>先校验 spec 再判断点</b>，不放过「非法 spec + 文件恰好存在」
@@ -42,23 +42,11 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class AudioPreparationStage {
+public class AudioPreparationCoordinator {
 
-
-    /**
-     * 进度权重（<b>过渡约定</b>，形状以 MVP-1 的 SSE payload 为准）：获取媒体 0→50，抽取音频 50→100。
-     * SKIPPED 沿用该阶段本应到达的累计值，保证进度单调、不被跳过阶段回退。
-     */
-    private static final int ACQUIRE_START = 0;
-
-    private static final int ACQUIRE_DONE = 50;
-
-    private static final int EXTRACT_START = 50;
-
-    private static final int EXTRACT_DONE = 100;
 
     private final WorkspaceService workspaceService;
-    private final MediaAcquisitionStage acquisitionStage;
+    private final MediaAcquirerDispatcher acquisitionStage;
     private final AudioExtractor audioExtractor;
 
     /**
@@ -68,9 +56,9 @@ public class AudioPreparationStage {
      * @param acquisitionStage 媒体获取分派（不感知任何适配器实现类）
      * @param audioExtractor   音频抽取（不感知 ffmpeg 实现类）
      */
-    public AudioPreparationStage(WorkspaceService workspaceService,
-                                 MediaAcquisitionStage acquisitionStage,
-                                 AudioExtractor audioExtractor) {
+    public AudioPreparationCoordinator(WorkspaceService workspaceService,
+                                       MediaAcquirerDispatcher acquisitionStage,
+                                       AudioExtractor audioExtractor) {
         this.workspaceService = workspaceService;
         this.acquisitionStage = acquisitionStage;
         this.audioExtractor = audioExtractor;
@@ -127,19 +115,22 @@ public class AudioPreparationStage {
      * 获取媒体阶段：已有完整产物则跳过，否则委托获取。
      */
     private AcquiredMedia runAcquireStage(MediaInput input, Path workDir, ProgressListener listener) {
+
+        String stageName = SubtitleStageName.ACQUIRE_MEDIA.getStageName();
+
         try {
             Optional<AcquiredMedia> existing = acquisitionStage.reuseExisting(input, workDir);
             if (existing.isPresent()) {
                 log.info("获取媒体阶段跳过（断点复用）: media={}", existing.get().mediaPath().getFileName());
-                emit(listener, SubtitleStageName.ACQUIRE_MEDIA.getStageName(), ACQUIRE_DONE, "已有本地媒体，跳过获取", StageState.SKIPPED);
+                emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "已有本地媒体，跳过获取", StageState.SKIPPED);
                 return existing.get();
             }
-            emit(listener, SubtitleStageName.ACQUIRE_MEDIA.getStageName(), ACQUIRE_START, "开始获取媒体", StageState.RUNNING);
+            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "开始获取媒体", StageState.RUNNING);
             AcquiredMedia media = acquisitionStage.acquire(input, workDir);
-            emit(listener, SubtitleStageName.ACQUIRE_MEDIA.getStageName(), ACQUIRE_DONE, "媒体获取完成", StageState.SUCCEEDED);
+            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "媒体获取完成", StageState.SUCCEEDED);
             return media;
         } catch (RuntimeException e) {
-            emit(listener, SubtitleStageName.ACQUIRE_MEDIA.getStageName(), ACQUIRE_START, "获取媒体失败：" + describe(e), StageState.FAILED);
+            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "获取媒体失败：" + describe(e), StageState.FAILED);
             throw e;
         }
     }
@@ -149,6 +140,8 @@ public class AudioPreparationStage {
      */
     private AudioArtifact runExtractStage(AcquiredMedia media, Path workDir, AudioSpec spec,
                                           ProgressListener listener) {
+        String stageName = SubtitleStageName.EXTRACT_AUDIO.getStageName();
+
         try {
             // 抽取目标按规格指纹命名（命名规则单源在 AudioArtifact.fileName）：
             // 同一输入、不同规格的产物互不覆盖，断点复用不会错拿
@@ -160,15 +153,15 @@ public class AudioPreparationStage {
                 log.info("extract 阶段跳过（断点复用）: file={}, sizeBytes={}",
                         audioPath.getFileName(), existingSize);
 
-                emit(listener, SubtitleStageName.EXTRACT_AUDIO.getStageName(), EXTRACT_DONE, "已有音频产物，跳过抽取", StageState.SKIPPED);
+                emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "已有音频产物，跳过抽取", StageState.SKIPPED);
                 return new AudioArtifact(audioPath, spec, existingSize);
             }
-            emit(listener, SubtitleStageName.EXTRACT_AUDIO.getStageName(), EXTRACT_START, "开始抽取音频", StageState.RUNNING);
+            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "开始抽取音频", StageState.RUNNING);
             AudioArtifact artifact = audioExtractor.extract(media.mediaPath(), audioPath, spec);
-            emit(listener, SubtitleStageName.EXTRACT_AUDIO.getStageName(), EXTRACT_DONE, "音频抽取完成", StageState.SUCCEEDED);
+            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "音频抽取完成", StageState.SUCCEEDED);
             return artifact;
         } catch (RuntimeException e) {
-            emit(listener, SubtitleStageName.EXTRACT_AUDIO.getStageName(), EXTRACT_START, "抽取音频失败：" + describe(e), StageState.FAILED);
+            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "抽取音频失败：" + describe(e), StageState.FAILED);
             throw e;
         }
     }
