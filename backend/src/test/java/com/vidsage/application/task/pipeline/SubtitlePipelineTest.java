@@ -22,6 +22,7 @@ import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.config.TaskProperties;
 import com.vidsage.config.WorkspaceProperties;
@@ -36,6 +37,7 @@ import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.port.VideoTaskRepository;
+import com.vidsage.infrastructure.concurrency.SemaphoreTaskConcurrencyGate;
 import com.vidsage.infrastructure.fs.NioFileStateReader;
 import java.nio.file.Path;
 import java.util.List;
@@ -71,10 +73,15 @@ class SubtitlePipelineTest {
     private final TaskSubscriptionRegistry registry = new TaskSubscriptionRegistry();
 
     private SubtitlePipeline service(int maxConcurrent) {
+        return service(new SemaphoreTaskConcurrencyGate(new TaskProperties(maxConcurrent)));
+    }
+
+    /** 注入假闸门：把线程与配额摘掉，只看管线对「排队被打断」的反应（真实闸门见并发用例）。 */
+    private SubtitlePipeline service(TaskConcurrencyGate concurrencyGate) {
         return new SubtitlePipeline(repository,
                 new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString()),
                         new NioFileStateReader()),
-                subtitlePreparationCoordinator, cleanupStage, translationStage, registry, new TaskProperties(maxConcurrent));
+                subtitlePreparationCoordinator, cleanupStage, translationStage, registry, concurrencyGate);
     }
 
     // ---------- 正常路径（自动管线：prepare → clean，两段式后不含翻译） ----------
@@ -522,6 +529,65 @@ class SubtitlePipelineTest {
                 eq(new MediaInput.RemoteUrl("https://example.com/second")), any(ProgressListener.class));
         assertEquals(TaskStatus.SUCCEEDED, first.getStatus());
         assertEquals(TaskStatus.SUCCEEDED, second.getStatus());
+    }
+
+    // ---------- 排队中断（注入假闸门：不碰线程与配额，只看管线的收尾语义） ----------
+
+    @Test
+    void executeRunsPipelineThroughTheGate() {
+        VideoTask task = urlTask("https://example.com/v");
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+
+        service(inlineGate()).execute(task.getTaskNo());
+
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "拿到许可后 body 照常把管线跑完");
+        verify(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(ProgressListener.class));
+    }
+
+    @Test
+    void queuedMainTaskInterruptKeepsPendingAndRunsNothing() {
+        VideoTask task = urlTask("https://example.com/v");
+        List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
+        registry.subscribe(task.getTaskNo().value(), received::add);
+
+        service(interruptOnQueueGate()).execute(task.getTaskNo());
+
+        assertEquals(TaskStatus.PENDING, task.getStatus(), "主管线排队被打断必须保持 PENDING");
+        assertNull(task.getErrorMessage());
+        assertTrue(received.isEmpty(), () -> "排队被打断不广播任何事件：" + received);
+        // 连装载都没发生：body 一次都没跑
+        verify(repository, never()).findByTaskNo(any());
+        verify(repository, never()).update(any());
+        verify(subtitlePreparationCoordinator, never()).prepare(any(MediaInput.class), any(ProgressListener.class));
+    }
+
+    @Test
+    void queuedTranslationInterruptFailsTranslationAndBroadcastsTerminal() {
+        VideoTask task = succeededTask("https://example.com/v");
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
+        List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
+        registry.subscribe(task.getTaskNo().value(), received::add);
+
+        service(interruptOnQueueGate()).translateTask(task.getTaskNo());
+
+        assertEquals(TranslationStatus.FAILED, task.getTranslationStatus(),
+                "翻译已置 RUNNING 才排队，被打断不能吞状态");
+        assertEquals("翻译失败：翻译在等待执行配额时被中断：请重新触发翻译", task.getErrorMessage());
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "翻译失败不得回退主状态");
+        assertEquals(1, received.size(), () -> "失败终态只广播一条：" + received);
+        assertEquals(TranslationStatus.FAILED, received.get(0).translationStatus());
+        verify(translationStage, never()).translate(any(MediaInput.class), any(ProgressListener.class));
+    }
+
+    /** 假闸门①：立刻同步跑 body（只看管线在「拿到许可」之后跑成什么样）。 */
+    private static TaskConcurrencyGate inlineGate() {
+        return (body, onQueueInterrupted) -> body.run();
+    }
+
+    /** 假闸门②：模拟「排队被打断」——body 不跑，直接回调。 */
+    private static TaskConcurrencyGate interruptOnQueueGate() {
+        return (body, onQueueInterrupted) -> onQueueInterrupted.run();
     }
 
     // ---------- 工厂 ----------

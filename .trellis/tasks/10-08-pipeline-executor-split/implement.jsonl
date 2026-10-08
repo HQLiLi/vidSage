@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "落位/命名/依赖表/端口归属判据的正典：本任务新增 application/task/port/ 与 infrastructure/concurrency/，并按新判据改二级包表、端口判据、以及 SubtitlePipeline 那句失实括注"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "构造注入、Javadoc 与注释密度、测试写法——本任务新建一个端口与一个实现类，并新增四条测试"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "maxConcurrent ≥ 1 的校验从管线搬到实现类，异常类型与中文文案要逐字保留"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "AC7 要求五条日志文案逐字不变（两条排队中断 warn + 装载/开始/成功/翻译三条 info），级别与脱敏口径也不能变"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本任务就是一次跨层改动（application 定端口、infrastructure 实现、管线只依赖端口），要复查 application 不 import infrastructure 这条线没被破"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "分支工作流硬规则：从 dev 开 feature 分支、改完即停等审查、提交/推送/合并/归档逐门批准"}

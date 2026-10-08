@@ -1,50 +1,49 @@
-# 会话移交（2026-10-08）：SubtitlePipeline 执行模型拆分 —— 待建任务
+# 会话移交（2026-10-08 第二轮）：SubtitlePipeline 执行模型拆分 —— 工件已成、待激活
 
-> 上一个任务（`10-08-progress-weight-flattening`）**已完结归档**（merge `7cdcb2c` → dev 已推，archive `db2bf67`）。
-> 本文件是它的执行会话留给下一任务的热上下文。**任务尚未创建**。
+> 全文已重写为**实现阶段**的交接。上一版（2026-10-08 第一轮会话，`15e6112`）写的是「任务尚未创建、
+> 先通读 SubtitlePipeline 全文」——那些都已经做过，按订正惯例直接重写为现状。
+> 前一个任务 `10-08-progress-weight-flattening` 已完结归档（merge `7cdcb2c` / archive `db2bf67`，均已推）。
 
 ## 一句话状态
 
-候选下一任务：把 `SubtitlePipeline` 的**执行模型**（executor / semaphore / 排队）从**编排**（阶段顺序、进度回调）里拆出来。
-尚未建任务、未开分支、未做任何调研——新会话开局读完本文档后，先问用户是否建任务，再进 brainstorm。
+任务 `10-08-pipeline-executor-split` 的 **prd / design / implement 三件套已写完并经用户过目**（原话「差不多」）。
+工件齐了、结论定了，**还没动一行代码**：
+`planning` 状态、**未 `task.py start`**、**未开分支**、当前在 `dev` 上。
+**任务目录尚未入库**（`git status` 只有 `?? .trellis/tasks/10-08-pipeline-executor-split/`）——第一次提交要把它带上，否则归档会踩 pathspec 错。
 
-## 下一步怎么起
+## 下一步怎么起（新会话照这个顺序做）
 
-1. 读本文档 → 需要时补读 `archive/2026-10/10-08-progress-weight-flattening/design.md`（其 §七 与执行模型相关的诚实边界）。
-2. **先通读 `backend/src/main/java/com/vidsage/application/task/pipeline/SubtitlePipeline.java` 全文**——本会话只见过它的进度/编排面，executor/semaphore/排队的实现细节没通读，别带着我这份二手摘要直接开写工件。
-3. 用户点头后 `task.py create`，brainstorm 出 prd/design/implement 三件套。
+1. **先读工件，本文档只是补充**：`prd.md`（动机 / R1–R9 / AC1–AC7 / Key decisions Q1–Q6）→ `design.md`（八节，
+   含「否掉的七个方案」与「诚实边界」）→ `implement.md`（步骤 0–9，示例代码全在里面）。
+2. 工件用户已认可 → `python ./.trellis/scripts/task.py start` 激活（转 `in_progress`）。
+3. `implement.md` 步骤 0 开分支：`git checkout -b feature/pipeline-executor-split`（从 `dev` 起）。
+   注意 **spec 改动不在「纯文档可直接在 dev 上改」的例外里**——步骤 1 要改 `.trellis/spec/backend/directory-structure.md`，
+   所以必须先开分支。
+4. **执行分工（沿用既有口径）**：主源码**用户写**（每步先问；示例代码在 `implement.md`，不在会话里贴）；
+   测试**我按他写出来的代码改**。
+5. 每步做完停下等审查；提交 / 推送 / 合并 / 归档**各是一道门**，沉默 ≠ 批准；归档只有用户跑 `finish-work` 或明说才做。
 
-## 动机（为什么现在做）
+## 决定清单（只做指针，正文在工件）
 
-- 这是 `10-08` handoff 遗留清单第 2 条：「AI 建议等本任务落地后再评估」——扁平化已落地，条件齐了。
-- 现状一个类身兼数职：任务异步执行 + 并发闸（semaphore）+ 阶段编排（`prepareAndClean` 的语句顺序）+ 进度回调组装（composite listener：先落库再广播）。职责混装的代价在 `10-07`/`10-08` 两次任务里都碰到过——改进度要小心不碰执行，改执行要小心不碰进度。
-- 扁平化刚把**进度职责**彻底理干净（管线不再持区间、listener 纯透传），现在拆执行模型不会和进度逻辑纠缠。
+| 决定 | 落点 |
+|---|---|
+| 切法 A「执行壳」= executor + semaphore + 排队骨架；状态/编排/进度/终态全留管线 | prd Key decisions Q1、design §一 |
+| 名字 `TaskConcurrencyGate`（「异步」不进类名，写注释里） | prd Q2、design §二 |
+| 端口在 `application/task/port/`、实现在 `infrastructure/concurrency/`；**D 保留**（不回退单向依赖） | prd Q4、design §二 |
+| 主管线装载挪进 body（不提到调用线程） | prd Q3、design §四之 1 |
+| infrastructure 范围放宽 + 判据改「有没有状态」；`shared`/`config`/`web`/依赖表都不动 | prd Q5、design §六 |
+| 本次收益定位 = 轻（归位 + 配对单点化 + 中断路径可测 + 立一条分层判例） | prd Q6、design §八 |
 
-## 已定边界——别在 brainstorm 里重开
+## 工件之外的热上下文（会话里磨过、工件只落结论的部分）
 
-1. **阶段顺序仍然只存在于编排语句的顺序里**（形状重构定的档位 A：不做列表化遍历；`10-08` design §七 边界 3 复述过）。执行模型拆分 ≠ 引入阶段列表/状态机——除非用户主动改档。
-2. **翻译不在主管线**：`TRANSLATE_SUBTITLES` 任务成功后按需触发，直通 0..100，拆分不改这个结构。
-3. **进度职责刚定型**：谁发事件谁取数、`ProgressMapper` 只剩 clean 批级一处、`SubtitleStageName` 是区间单源。拆分不得把这些搅回去。
-4. 零配置项约束、技术栈不动——沿用 `10-08` prd 的 Constraints 口径（除非用户另说）。
+- **「甲（裸 Executor）/ 乙（自造端口）」这套判断用户是第一次接触**，追问了两轮（含"线程管理怎么会属于乙"）。
+  判据链在 design §二，新会话不用重讲——但**别当成显然**，用户是从「为什么需要端口」这个层次建立的。
+- 用户对这个任务的期望是**先做轻的那半，最麻烦的（状态迁移 × 广播三角）排在后面另开**（prd Out of scope 已记）。
+  别把本次包装成"大改造"。
+- 会话里还核出两处**与本任务无关**的并发竞态（并发 `POST /translate` 双跑同一任务；提交查重 check-then-insert
+  且 schema 无唯一约束）——已写进 prd Out of scope，将来做「状态 × 广播三角」时是输入。
 
-## 本会话攒下的热上下文（二手，需对照源码验证）
+## 环境坑（memory 里有，implement.md 末尾也抄了一份）
 
-- `SubtitlePipeline.runPipeline(taskNo)` 是执行入口；`prepareAndClean` 里 prepare → clean 顺序编排；收尾路径有 `semaphore.release()`。
-- 测试构造形如 `service(2)`（`SubtitlePipelineTest`）——参数疑似并发度，拆分时这个口子要在设计里交代。
-- 进度链：`progressListener(task)` 组 composite（落库先、广播后），事件在 `任务阶段事件` DEBUG 日志逐条可查——**行为不变**的验收可沿用 `10-08` 的机器判模式（测试全绿 + 真实链路事件流逐格比对）。
-- SSE 快照+增量、去重只拦进行中、工作区 `./data/works` 相对 CWD——这些是任务平台的性质，拆分不该改变它们。
-
-## 验收方式建议（沿用项目模式）
-
-结构改造 → 改造前后行为逐格相同：单测全绿 + 若走真实链路，双实例 SSE 对照（AC7 的套路，worktree 对照点用 dev 当前位）。
-
-## 环境坑（memory 里有，别重踩）
-
-JDK 路径 `JAVA_HOME=/f/java_soft/java21`；量测试前删 `target/surefire-reports`、改名后必须 `mvn clean`；起冒烟实例后 `TaskStop` 杀不掉子 JVM，按端口 PID `taskkill //PID <pid> //F`；Git Bash 的 `/tmp` 不通用。
-
-## 其他遗留（本任务范围外，顺带备忘）
-
-1. **Javadoc 全局重构**——用户定另开一次，搭车 spec 两条约定（注释不抄 kebab 值；阶段名 = 动词-对象）。
-2. **`backend-before-reconstruction/`**——用户 2026-10-08 明确**留着**，别再提议删。
-3. `@Schema` 落位口径——未决，用户自行推进。
-4. Trellis 还有 3 个 planning 任务：`09-24-vidsage`（父，[5/7]）、`09-24-vidsage-mvp4-summary`、`09-29-subtitle-translate-qwen-mt`——与本候选任务平级，选哪个由用户定。
+JDK：`JAVA_HOME=/f/java_soft/java21`；量测试前删 `target/surefire-reports`、改名/改结构后必须 `mvn clean`；
+冒烟实例 `TaskStop` 杀不掉子 JVM，按端口 PID `taskkill //PID <pid> //F`；Git Bash 的 `/tmp` 不通用，证据落任务 `evidence/`。

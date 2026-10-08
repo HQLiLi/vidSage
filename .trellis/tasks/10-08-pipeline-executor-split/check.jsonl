@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "复查落位与命名是否合判据（端口在 application、实现在 infrastructure/concurrency/）、依赖方向未被破、spec 自身订正是否落地"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "复查两条排队中断 warn 与三条 info 的文案/级别逐字未变，且没有把中断语义合并成一种；确认没新增复述类日志"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "复查新类注释是否白话、断言写法是否与既有用例同构、测试替身（假闸门/自控 executor）没有泄漏进生产装配"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "复查「行为逐格不变」的对照面：申请配额与 PENDING → RUNNING 的先后、终态广播仍在配额内、翻译成本日志口径含排队时间"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "复查实现类构造期校验的异常类型与文案、以及中断回调路径不吞异常（failTranslation 内部照旧兜底）"}

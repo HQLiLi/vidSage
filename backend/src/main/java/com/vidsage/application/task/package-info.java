@@ -4,7 +4,9 @@
  * 与 {@code TaskProgressMessage}（application → web 的进度消息）。
  *
  * <p>子包按角色划分：{@code pipeline/} 装管线构件（{@code SubtitlePipeline}——异步管线的本体，
- * 没有 web 调用面，只被上级按顺序调用）；{@code query/} 装读模型（{@code TaskSnapshot} /
+ * 没有 web 调用面，只被上级按顺序调用）；{@code port/} 装本层出站端口
+ * （{@code TaskConcurrencyGate}——执行闸门的契约，实现在 {@code infrastructure/concurrency}）；
+ * {@code query/} 装读模型（{@code TaskSnapshot} /
  * {@code TaskArtifact} / {@code TaskArtifactFile}，面向查询的应用层投影，零 web 注解——对外契约注解
  * 集中在 {@code web/dto/TaskResponse}）；{@code exception/} 装应用异常
  * （{@code TaskConflictException} → 409、{@code TaskNotFoundException} → 404）；{@code subscribe/}
