@@ -176,10 +176,10 @@ class SubtitleCleanupCoordinatorTest {
     @Test
     void cleanWithListenerEmitsBeginBatchAndEndEvents() throws Exception {
         writeRawTrack();
-        // 真实批级事件来自 SubtitleCleanser；本层只验「批级事件原样透传 + 首尾事件齐全」
+        // 真实批级事件来自 SubtitleCleanser（自报 0..100）；本层验「批级换算进 clean 区间 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(3);
-            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 100, "第 1/1 批",
+            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 50, "第 1/1 批",
                     StageEvent.StageState.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             return new CleanseResult(in, 0, 0, 0, 0);
@@ -190,10 +190,11 @@ class SubtitleCleanupCoordinatorTest {
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
         assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
-        assertEquals(0, events.get(0).progress());
+        assertEquals(70, events.get(0).progress(), "开始 = clean 区间起点");
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
-        assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
-        assertEquals(100, events.get(2).progress());
+        assertEquals("第 1/1 批", events.get(1).message(), "批级消息原样透传");
+        assertEquals(85, events.get(1).progress(), "批级自报 50 应换算进 [70,100)：70 + 50*30/100 = 85");
+        assertEquals(100, events.get(2).progress(), "完成 = clean 区间终点");
         assertEquals(StageEvent.StageState.SUCCEEDED, events.get(2).state());
     }
 

@@ -14,14 +14,14 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class TranscriptionStage {
+public class Transcriber {
 
     private final ASRProvider asrProvider;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      */
-    public TranscriptionStage(ASRProvider asrProvider) {
+    public Transcriber(ASRProvider asrProvider) {
         this.asrProvider = asrProvider;
     }
 

@@ -11,8 +11,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.application.media.WorkspaceService;
-import com.vidsage.application.media.pipeline.AudioPreparationStage;
-import com.vidsage.application.transcription.pipeline.TranscriptionStage;
+import com.vidsage.application.media.pipeline.AudioPreparationCoordinator;
+import com.vidsage.application.transcription.pipeline.Transcriber;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.AudioArtifact;
@@ -75,8 +75,8 @@ class SubtitlePreparationCoordinatorTest {
         Files.writeString(segmentsPath, mapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(track));
 
-        var audioPrep = mock(AudioPreparationStage.class);
-        var transcribe = mock(TranscriptionStage.class);
+        var audioPrep = mock(AudioPreparationCoordinator.class);
+        var transcribe = mock(Transcriber.class);
         var service = new SubtitlePreparationCoordinator(tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, ROUTE, AudioSpec.M4A_AAC_48K_MONO), mapper);
 
@@ -96,8 +96,8 @@ class SubtitlePreparationCoordinatorTest {
         Files.writeString(tempDir.resolve(SubtitleArtifactSpec.SRT_RAW.fileName(ROUTE, null)),
                 SrtRenderer.toSrt(List.of(new TranscriptionSegment(0, 1440, "陈旧 SRT。"))));
 
-        var audioPrep = mock(AudioPreparationStage.class);
-        var transcribe = mock(TranscriptionStage.class);
+        var audioPrep = mock(AudioPreparationCoordinator.class);
+        var transcribe = mock(Transcriber.class);
         var audioSpec = AudioSpec.M4A_AAC_48K_MONO;
         when(audioPrep.prepare(any(), any(), any())).thenReturn(new AudioArtifact(
                 tempDir.resolve("audio.m4a"), audioSpec, 100));
@@ -122,8 +122,8 @@ class SubtitlePreparationCoordinatorTest {
     private static SubtitlePreparationCoordinator serviceWith(
             Path tempDir, SubtitleRoute route, AudioSpec audioSpec,
             List<TranscriptionSegment> segments, String language, ObjectMapper mapper) {
-        var audioPrep = mock(AudioPreparationStage.class);
-        var transcribe = mock(TranscriptionStage.class);
+        var audioPrep = mock(AudioPreparationCoordinator.class);
+        var transcribe = mock(Transcriber.class);
         when(audioPrep.prepare(any(), any(), any())).thenReturn(
                 new AudioArtifact(tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(new TranscriptionResult(segments, language));

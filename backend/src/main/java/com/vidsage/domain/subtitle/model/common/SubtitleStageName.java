@@ -2,41 +2,93 @@ package com.vidsage.domain.subtitle.model.common;
 
 import lombok.Getter;
 
+import java.util.EnumMap;
+import java.util.Map;
+
 /***
  * 从媒体源生成字幕管线的所有阶段
+ * 注意：枚举声明顺序就是进度区间的累加顺序，别随意调换。
+ * 每个主管线阶段只声明一个相对份额，任务级区间在类加载时按顺序算出来。
  */
 @Getter
 public enum SubtitleStageName {
 
-    /**
-     * 抓取媒体源
-     */
-    ACQUIRE_MEDIA("acquire-media"),
-    /**
-     * 从媒体源中提取音频
-     */
-    EXTRACT_AUDIO("extract-audio"),
-    /**
-     * 调 ASR，把音轨转成文本
-     */
-    TRANSCRIBE_AUDIO("transcribe-audio"),
-    /**
-     * 通过音轨转写的文本生成字幕
-     */
-    WRITE_SUBTITLES("write-subtitles"),
-    /**
-     * 清洗音频生成的字幕
-     */
-    CLEAN_SUBTITLES("clean-subtitles"),
-    /**
-     * 翻译字幕
-     */
-    TRANSLATE_SUBTITLES("translate-subtitles");
+    ACQUIRE_MEDIA("acquire-media", 42),
+    EXTRACT_AUDIO("extract-audio", 42),
+    TRANSCRIBE_AUDIO("transcribe-audio", 49),
+    WRITE_SUBTITLES("write-subtitles", 7),
+    CLEAN_SUBTITLES("clean-subtitles", 60),
+    TRANSLATE_SUBTITLES("translate-subtitles", 0, false);
 
     private final String stageName;
 
-    SubtitleStageName(String stageName) {
+    private final int weight;
+
+    /**
+     * 是否处于主管线上
+     */
+    private final boolean inMainPipeline;
+
+    /**
+     * 主管线各阶段的任务级区间 [起点, 终点)，类加载时按声明顺序累加算出。
+     * 翻译不在表里，调 start()/end() 会抛。
+     */
+    private static final Map<SubtitleStageName, int[]> RANGES = new EnumMap<>(SubtitleStageName.class);
+
+    /* 静态块，用于构造每个阶段的起始结束区间*/
+    static {
+        int total = 0;
+        for (SubtitleStageName stage : values()) {
+            if (stage.inMainPipeline) {
+                total += stage.weight;
+            }
+        }
+        int done = 0;
+        for (SubtitleStageName stage : values()) {
+            if (stage.inMainPipeline) {
+                int start = done * 100 / total;
+                done += stage.weight;
+                RANGES.put(stage, new int[]{start, done * 100 / total});
+            }
+        }
+    }
+
+    SubtitleStageName(String stageName, int weight) {
+        this(stageName, weight, true);
+    }
+
+    SubtitleStageName(String stageName, int weight, boolean inMainPipeline) {
         this.stageName = stageName;
+        this.weight = weight;
+        this.inMainPipeline = inMainPipeline;
+    }
+
+    /**
+     * 根据Stage获取它的起始和结束区间
+     *
+     * @return 起始和结束区间 [start,end)
+     */
+    private int[] getRange() {
+        int[] range = RANGES.get(this);
+        if (range == null) {
+            throw new IllegalStateException(stageName + " 不在主管线权重表里，没有任务级区间");
+        }
+        return range;
+    }
+
+
+    /**
+     * 本阶段在任务级进度里的起点
+     */
+    public int start() {
+        return getRange()[0];
+    }
+
+    /**
+     * 本阶段在任务级进度里的终点
+     */
+    public int end() {
+        return getRange()[1];
     }
 
 }

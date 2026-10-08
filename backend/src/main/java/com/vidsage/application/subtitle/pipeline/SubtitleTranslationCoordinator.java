@@ -343,7 +343,7 @@ public class SubtitleTranslationCoordinator {
     }
 
     /**
-     * 发一个阶段事件（本类阶段进度 0..100 自报口径，区间映射归管线的 {@code ProgressMapper}）。
+     * 发一个阶段事件
      */
     private static void emit(ProgressListener listener, String stage, int progress, String message,
                              StageEvent.StageState state) {

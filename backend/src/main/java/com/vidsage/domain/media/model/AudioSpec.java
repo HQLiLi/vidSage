@@ -26,7 +26,7 @@ public record AudioSpec(AudioContainer container, int sampleRateHz, int channels
 
     /**
      * 字段不变量（契约级约束，与 ffmpeg 无关）。消息文本与原先写在
-     * {@code AudioPreparationStage} / {@code FfmpegAudioExtractor} 两处的
+     * {@code AudioPreparationCoordinator} / {@code FfmpegAudioExtractor} 两处的
      * {@code requireValidSpec} 逐字一致——两处校验各写一遍的做法已被本构造器取代。
      */
     public AudioSpec {

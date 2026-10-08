@@ -219,12 +219,12 @@ class SubtitlePipelineTest {
     // ---------- 进度广播与终态收口 ----------
 
     @Test
-    void stageEventsAreBroadcastAsTaskProgressMessagesWithRemappedProgress() {
+    void stageEventsAreBroadcastAsTaskProgressMessages() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        // prepare 收到的是 remap(composite, 0, 70) 后的 listener：直接回调 50 → 广播出去应为 35
+        // 管线不再 remap：prepare 收到的就是复合 listener，回调多少广播多少
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
             listener.onEvent(new StageEvent(SubtitleStageName.EXTRACT_AUDIO.getStageName(), 50, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
@@ -241,7 +241,7 @@ class SubtitlePipelineTest {
         assertEquals(TaskStatus.RUNNING, event.taskStatus());
         assertNull(event.translationStatus(), "主管线事件的翻译子状态为 null（从未触发）");
         assertEquals(SubtitleStageName.EXTRACT_AUDIO.getStageName(), event.stage().stage());
-        assertEquals(35, event.stage().progress(), "prepare 区间 0..70 的中点：50 应映射为 35");
+        assertEquals(50, event.stage().progress(), "管线只透传，不做区间映射：回调 50 广播 50");
         assertEquals(TaskStatus.SUCCEEDED, received.get(1).taskStatus(), "终态广播随后到达");
     }
 

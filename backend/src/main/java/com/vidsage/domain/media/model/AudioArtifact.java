@@ -25,7 +25,7 @@ public record AudioArtifact(Path audioPath, AudioSpec spec, long sizeBytes) {
      *
      * <p><b>不做省略特例</b>：轨号为 0 也照写 {@code -t0}，不为它开分支——特例就是漏判的入口。
      *
-     * <p>命名规则单源在此（2026-10-06 自 AudioPreparationStage 下沉）：音频准备服务按本名解析
+     * <p>命名规则单源在此（2026-10-06 自 AudioPreparationCoordinator 下沉）：音频准备服务按本名解析
      * 抽取目标，改这里的字符串会让已有缓存全部失配，等于把存量音频产物从「已完成」打回「未完成」。
      *
      * @param spec 已校验的音频规格（容器非空、各数值合法性由 {@link AudioSpec} 的紧凑构造器保证）
