@@ -854,3 +854,31 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 31: 执行模型拆分：TaskConcurrencyGate 端口 + 行为逐格对照零差异
+<!-- trellis-session: v=2 fp=25ba26a25565600d -->
+
+**Date**: 2026-10-08
+**Task**: 执行模型拆分：TaskConcurrencyGate 端口 + 行为逐格对照零差异
+**Branch**: `dev`
+
+### Summary
+
+把 SubtitlePipeline 的 executor/semaphore/排队语义拆成 application 端口 TaskConcurrencyGate 与 infrastructure/concurrency 实现；两条排队中断语义不合并、翻译成本日志「含排队时间」口径原样保留。全量 482 用例绿（1 skip 为既存），闸门命门用例做过变异验证（错放许可 0.011s 即红）；真实链路 SSE 14 格与 dev 基线逐字节零差异，R3 差异栏由两格补齐为四格。规范侧：infrastructure 范围按「有没有状态」划线、六处失实订正（含 application.yml 注释）、注释「写与删」口径写进 quality-guidelines。收尾：合并回 dev 0d388d4、删功能分支、归档任务，记录仅 journal。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `95a8886` | docs(spec): 分层判据按「有没有状态」划线 + infrastructure/concurrency 落位（10-08-pipeline-executor-split） |
+| `ef39a14` | refactor(pipeline): 执行模型拆出端口 TaskConcurrencyGate + 信号量实现（10-08-pipeline-executor-split） |
+| `efdbf81` | test(pipeline,gate): 排队中断两条分支 + 闸门两条命门 + 校验文案逐字（10-08-pipeline-executor-split） |
+| `4ba9b09` | docs(spec,infra): 失实订正六处（配额/虚拟线程归属）+ 注释「写与删」口径（10-08-pipeline-executor-split） |
+| `133dcdc` | chore(task): 10-08-pipeline-executor-split 工件与 AC4 对照证据入库 |
+| `38ea58e` | docs(workspace): 执行模型拆分移交文档重写为现状 |
+| `0d388d4` | merge: SubtitlePipeline 执行模型拆分——端口 TaskConcurrencyGate + 信号量实现 / 行为逐格不变（10-08-pipeline-executor-split） |
+
+### Status
+
+[OK] **Completed**
