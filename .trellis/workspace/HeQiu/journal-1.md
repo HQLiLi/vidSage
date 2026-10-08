@@ -808,3 +808,26 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Next Steps
 
 - 10-07-shape-refactor 批次 2（阶段名单源）仍未开工——注意改名已使该批次的逐行清单失效，需重扫。注释偏多的问题用户要求后面统一处理。
+
+
+## Session 29: 形状重构收尾：批次 2/3 完成验收、合并推送并归档
+<!-- trellis-session: v=2 fp=30274c9e241699e7 -->
+
+**Date**: 2026-10-08
+**Task**: 形状重构收尾：批次 2/3 完成验收、合并推送并归档
+**Branch**: `dev`
+
+### Summary
+
+批次 2：六阶段名收进 SubtitleStageName 枚举并改「动词-对象」值，注释/文案复述清零，失败文案去阶段名；SSE 事件流 before/after 逐条零差异（除四条改名映射）。批次 3：MediaInput.getContentKey 多态 + MediaFileInfo 快照 + FileStateReader 端口（infrastructure/fs 新开桶），WorkspaceService 去 switch/normalize，双参 workspaceFor 保留（提交时刻无 MediaInput 的鸡生蛋洞）；四路线工作区目录名 before/after 逐字一致 + 断点复用佐证。AC1–AC7 对账打勾（三句过严表述按删除线+日期修正），design §五落点清单改终稿，spec 加 fs 分层行。473 用例全绿。合并 dev（4e5862a）并推送，任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1fb308c` | refactor(backend): 批次 3 身份归属——MediaInput 自算身份，stat 采样经端口 |
+| `f7bdcfb` | docs(spec,task): 批次 3 工件对账 + spec 加 infrastructure/fs 分层行 |
+
+### Status
+
+[OK] **Completed**
