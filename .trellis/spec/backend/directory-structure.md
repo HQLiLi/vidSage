@@ -49,6 +49,7 @@ com.vidsage
 | `infrastructure/persistence/` | 出站存储适配 | MyBatis-Plus 三件套：`XxxEntity` / `XxxMapper` / `XxxRepository`（`XxxRepository` 实现 domain 定义的存取端口，如 `MybatisVideoTaskRepository` 实现 `domain/task/port/VideoTaskRepository`） | 业务编排、MP 类型外泄 |
 | `infrastructure/process/` | 调外部程序的**通用机制** | 进程执行器、外部工具路径解析与诊断等**不面向业务契约**的机制类 | 面向业务契约的 Provider 四件套（那属于 `infrastructure/provider/`）、业务编排 |
 | `infrastructure/fs/` | 本机文件系统**读数**适配（2026-10-08 端口定案） | 只读 stat 类端口实现：`NioFileStateReader`（实现 application 的 `FileStateReader` 端口） | 业务编排、写入策略（产物落盘在 `shared/fs/ArtifactFiles`，编排在应用层） |
+| `infrastructure/concurrency/` | 进程内执行**机制**的通用类 | 任务并发闸这类**有状态、不面向业务契约**的机制类 | 出站端口适配（那属于 `provider/`）、业务编排 |
 | `infrastructure/provider/` | 出站实现（外部 API / 模型服务 / 端口适配器） | 端口适配器 + LLM worker 具体类 + 该实现专用的 `*Properties` | SDK 类型外泄到公开签名 |
 | `web/controller/` | HTTP 入站适配 | `@RestController`、局部 `@ExceptionHandler` | 业务逻辑、**main 源码**直接依赖 `infrastructure/` 或 `domain/`（跨层规则见[依赖规则](#依赖规则)）、**请求/响应契约的定义**（那是 `web/dto/` 的活） |
 | `web/dto/` | 需**展平**的 HTTP 请求/响应契约 | 顶层 `record`、`@Schema`、纯映射的静态工厂（如 `from(...)`） | 业务逻辑（校验之外的编排）、`@RestController`、**main 源码**直接依赖 `infrastructure/` 或 `domain/` |
@@ -156,6 +157,9 @@ com.vidsage
 ```
 
 兜底问题：**删掉这个端口，业务规则还成立吗？** 成立 → application 端口；不成立 → domain 端口。
+
+- 例（2026-10-08）：`TaskConcurrencyGate` → application 端口。判据：技术词汇（并发配额），且兜底问
+  「删掉它业务规则还成立吗」→ 成立。
 
 **端口实现规则**：两类端口均由 `infrastructure/` 实现，infrastructure 是唯一实现端口的地方；application 只调用端口，不实现出站端口；domain 聚合根不调端口，domain service 可调 domain 端口（本仓当前尚无 domain service）。
 
