@@ -831,3 +831,26 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 30: 进度权重扁平化执行与验收（AC1-AC9 全绿）
+<!-- trellis-session: v=2 fp=3b75e1c41f235f74 -->
+
+**Date**: 2026-10-08
+**Task**: 进度权重扁平化执行与验收（AC1-AC9 全绿）
+**Branch**: `dev`
+
+### Summary
+
+执行 10-08-progress-weight-flattening 步骤 0-8：SubtitleStageName 加 weight/inMainPipeline、区间按声明顺序累加；换算收敛到 clean 批级一处（ProgressMapper 保留唯一用途）；写字幕开始 70→66（R8 唯一有意变更）；三个 *Stage 改名落地。分工：用户写 main、AI 写测试并代改了 listener 接线三处。476 测试全绿；AC7 双实例（dff027b 对照 18081 vs 分支 18080）逐格比对 14 格恰差第 7 格，证据在任务 evidence/。已按批准合并 dev 并推送（merge 7cdcb2c）、删特性分支。按用户指示仅记 journal，任务未归档（task.py archive 跳过，留待后议）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f7a7f96` | refactor(backend): 进度权重扁平化——阶段份额单源 / 换算只剩 clean 一处 / 三个 *Stage 改名（10-08-progress-weight-flattening） |
+| `d36b2f8` | docs(spec,task): 命名判据收口 + 归档任务落点订正 + 权重扁平化工件与 AC7 证据（10-08） |
+
+### Status
+
+[OK] **Completed**

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 29
+- **Total Sessions**: 30
 - **Last Active**: 2026-10-08
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~833 | Active |
+| `journal-1.md` | ~856 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 30 | 2026-10-08 | 进度权重扁平化执行与验收（AC1-AC9 全绿） | `f7a7f96`, `d36b2f8` | `dev` |
 | 29 | 2026-10-08 | 形状重构收尾：批次 2/3 完成验收、合并推送并归档 | `1fb308c`, `f7bdcfb` | `dev` |
 | 28 | 2026-10-07 | 命名判据重立 + 管线与阶段构件改名（*Stage → *Coordinator） | `399126f`, `1af5f25`, `e144df5`, `f899d4b`, `27c8b65`, `5fe9742`, `5c09fe8`, `fcf0750`, `dc2aced`, `ef571a5` | `feature/shape-refactor` |
 | 27 | 2026-10-07 | 包结构整理归档 + 架构「形状」设计讨论 | `35c7a83`, `3e13c54`, `866e647` | `dev` |
