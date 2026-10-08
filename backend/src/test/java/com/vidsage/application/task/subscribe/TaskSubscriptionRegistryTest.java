@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskStatus;
 import java.util.List;
 import java.util.ArrayList;
@@ -29,7 +30,7 @@ class TaskSubscriptionRegistryTest {
 
     private static TaskProgressMessage event(TaskStatus status) {
         return new TaskProgressMessage("t0", status,
-                new StageEvent("clean", 50, "第 1/2 批", StageEvent.StageState.RUNNING), null);
+                new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 50, "第 1/2 批", StageEvent.StageState.RUNNING), null);
     }
 
     // ---------- 订阅与广播 ----------

@@ -1,6 +1,7 @@
 package com.vidsage.infrastructure.provider.llm;
 
 import com.vidsage.config.SubtitleTranslateProperties;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.shared.model.StageEvent;
@@ -57,9 +58,6 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 @Component
 public class LlmSubtitleTranslator implements SubtitleTranslator {
-
-    // 本类承担的管线阶段名（"translate"）单源在 StageEvent.STAGE_TRANSLATE——阶段词表是
-    // domain/shared 的进度词汇，不住实现类里（2026-10-06 随逻辑下沉归位）。
 
     private final ChatClient translator;
 
@@ -123,7 +121,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
      * @param officialTerms  术语官方译名查证产物（{@code terms-<route>-<target>.json} 的内容），可为空表：
      *                       命中术语里查到译名的按「给定的译名照翻」渲染进提示词，弃权（空串）与没查的
      *                       按「保留原样」渲染
-     * @param listener       批级进度回调；每批翻译完成后回调一次（stage={@link StageEvent#STAGE_TRANSLATE}，
+     * @param listener       批级进度回调；每批翻译完成后回调一次
      *                       进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」），批数为 0 时无批级事件；
      *                       不可为 {@code null}——不关心进度用四参重载
      * @return 逐条双语段落 + 重试轮数 + 未翻译段数
@@ -203,11 +201,11 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     }
 
     /**
-     * 发一条批级进度事件（stage 固定 {@link StageEvent#STAGE_TRANSLATE}，state 为 RUNNING）。
+     * 发一条批级进度事件（stage 固定 {state 为 RUNNING）。
      * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
      */
     private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
-        listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, batchNo * 100 / totalBatches,
+        listener.onEvent(new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), batchNo * 100 / totalBatches,
                 "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
     }
 
@@ -410,7 +408,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
      * <p>两条硬约束：键集必须与输入完全一致（不许掉行 / 加行 / 串行）；每条译文 trim 后非空。
      * <b>不设相似度守卫</b>：译文与原文天然不相似，「最小改动」那套判据在翻译里没有意义。
      *
-     * <p>包级可见是为了直接单测（同 {@link SubtitleCleanser#validate}）。
+     * <p>包级可见是为了直接单测。
      *
      * @param original  原文键值对
      * @param candidate 模型回复键值对

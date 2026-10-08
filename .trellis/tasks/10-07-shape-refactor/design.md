@@ -133,9 +133,10 @@ public sealed interface MediaInput {
      * <p>身份**不按"输入从哪来"在外部 switch 里分派**——每个变体自己知道自己的身份是什么。
      * 这正是上传路线当初绕不过去的那一步：它的身份是文件内容的 sha256，从位置推不出来。
      *
-     * @param facts 文件系统事实（大小 / 修改时间），只有本地文件路线需要；其余变体忽略
+     * @param facts 文件系统快照（路径 / 大小 / 修改时间），只有本地文件路线需要（并校验快照 path 与自己一致）；
+     *              其余变体忽略
      */
-    WorkspaceKey contentKey(MediaFacts facts);
+    WorkspaceKey getContentKey(MediaFileInfo facts);
 
     /** 目录名前半段的标签（给人看的），唯一性由 key 保证。 */
     String dirLabel();
@@ -146,11 +147,32 @@ public sealed interface MediaInput {
 
 ```java
 public Path workspaceFor(MediaInput input) {
-    MediaFacts facts = ...;                       // 唯一残留的类型判断，只为取事实，不为选公式
-    WorkspaceKey key = input.contentKey(facts);
+    MediaFileInfo facts = ...;                       // 唯一残留的类型判断，只为取事实（经端口），不为选公式
+    WorkspaceKey key = input.getContentKey(facts);
     return ensureCreated(rootDir().resolve(WorkspaceDir.of(input.dirLabel(), key).value()));
 }
 ```
+
+### 采样与快照（2026-10-08 定案）
+
+- **`MediaFileInfo` 是自带参照物的快照**：`record MediaFileInfo(Path path, long sizeBytes, long lastModifiedMs)`。
+  观测必须说得清「看的是哪个文件」——path 不在快照里，喂错文件不会有任何报错。
+  `NOT_APPLICABLE = (null, -1, -1)` 只给 URL / 上传路线当哨兵。`LocalPath.getContentKey` 用
+  `facts.path()` 参与公式并断言与 `value` 一致（`Objects.equals`），「观测错文件」从静默隐患变成
+  当场 `IllegalArgumentException`。快照存**传入原样** path（absolute 化仍归 `SourceUri` 公式）——
+  身份串与目录名与改造前逐字一致，AC7 验收办法不变。
+- **stat 采样经端口**：`application/media/port/FileStateReader.getFileState(Path)`，实现落
+  `infrastructure/fs/NioFileStateReader`。落位判据：契约是技术词汇、兜底问题「删掉这个端口业务规则
+  还成立吗」答「成立」→ application 端口；实现按**能力来源**分桶（DB→persistence、本机进程→process、
+  文件→fs），`provider/` 留给外部服务与工具。`getContentKey` 签名不变、保持纯函数——端口只替换
+  「谁去读」，不改变「给定 facts 必得同一 key」。
+- **失败口径不变**：读不到 → `-1` 占位、`log.debug`、不报错（权威报错归输入获取适配器）。
+  原 `WorkspaceService.localPathKey` 的行为与日志逐字搬进 `NioFileStateReader`；读不到时返回
+  `(path, -1, -1)` 而非 `NOT_APPLICABLE`（保持 path 与传入一致，否则会被断言误判）。
+
+**否决过的两个形状（别再提）**：① `getContentKey(FileStateReader)`——端口参数进 domain 签名，
+失败策略跟着渗进 domain，绕回「domain 碰不碰 I/O」的老问题；② 端口落 `domain/media/port/`——
+契约是技术词汇不是领域词汇，走判据第二行（技术词汇 → application 端口）。
 
 ### 一处必须诚实处理的地方
 
@@ -160,7 +182,7 @@ public Path workspaceFor(MediaInput input) {
 
 所以目标形态是：
 
-- **`InWorkspace` 携带的东西从"结果"缩到"身份"**：不再带整个已解析的 `workspaceDir`（Path），只带 `contentKey` + `dirLabel`（目录名由公式重算，与提交时逐字一致——AC7 要求）
+- **`InWorkspace` 携带的东西从"结果"缩到"身份"**：不再带整个已解析的 `workspaceDir`（Path），只带 `getContentKey` + `dirLabel`（目录名由公式重算，与提交时逐字一致——AC7 要求）
 - **改写 `MediaInput` 的类注释**：把「只承载位置」改成准确的表述（位置 + 必要的身份元数据），并写明为什么上传路线必须有这一份元数据
 
 ### 待定分叉 3：身份的承载形态
@@ -171,19 +193,21 @@ public Path workspaceFor(MediaInput input) {
 
 **档位 C（否决）**：让 `InWorkspace` 也走"从位置推导"（改成对文件内容算 sha256）。**这会改行为**（要读整份文件、且既有工作区目录的归属会变），与 R5 冲突，另立任务。
 
-## 五、交付物：变更类型 → 落点清单（雏形）
+## 五、交付物：变更类型 → 落点清单（**终稿**，2026-10-08 三批全部落地后回填）
 
-改造完成后，这张表就是用户要的"公式"。**每行必须可 grep 验证**（AC6）。初稿：
+~~雏形 / 初稿~~ 这张表是用户要的"公式"。**每行附 grep 验证**（AC6），命令均为实测过：
 
-| 变更类型 | 判据 | 落点 |
-|---|---|---|
-| 加一个**管线阶段** | 它属于主管线还是按需派生产物？ | ① `PipelineStage` 加一条（名字 + 相对权重）② `prepareAndClean` 插一行调用 |
-| 加一个**产出物** | 对外可下载吗？什么算完成？ | ① `SubtitleArtifact` 加一条（模板 + 检查点规则 + 可见性） |
-| 加一种**输入来源** | 身份从哪来——位置还是内容？ | ① `MediaInput` 加一个变体并实现 `contentKey()` / `dirLabel()`；`WorkspaceService` **不动** |
-| 加一个 **provider** | 端口在哪层？ | （本轮不处理，留给后续——`provider-pattern.md` 已有规范，但落点清单未成文） |
-| 加一种**状态 / 子状态** | —— | **本轮不处理**（决策 4：生命周期不统一） |
+| 变更类型 | 判据 | 落点 | grep 验证 |
+|---|---|---|---|
+| 加一个**管线阶段** | 它属于主管线还是按需派生产物？ | ① `SubtitleStageName` 加一条枚举项（值 = 动词-对象 kebab）② 发事件处引用 `SubtitleStageName.X.getStageName()`（sealed/编译器管，漏了编译不过）③ **权重区间仍要手算**（三层 11 个常量未动——扁平化已拆独立任务，见 prd「后续任务」） | `grep -rn '"acquire-media"' backend/src/main \| grep -v SubtitleStageName` → 无命中（值字面量单点） |
+| 加一个**产出物** | 对外可下载吗？什么算完成？ | `SubtitleArtifactSpec` 加一条（文件名模板 + `downloadable` + `checkpoint` 三问同行） | `grep -rn '"segments-\|"context-' backend/src/main \| grep -v SubtitleArtifactSpec` → 无命中 |
+| 加一种**输入来源** | 身份从哪来——位置还是内容？ | ① `MediaInput` 加变体（`permits` 跟改）并实现 `getContentKey()` / `dirLabel()` ② 身份侧 `WorkspaceService` **不动**；提交侧还要跟 `TaskInputType` + `ofTaskInput` 的 case + 提交端点（身份公式之外的落点，列此为诚实说明） | `grep -n 'case MediaInput' WorkspaceService.java` → 无命中（不按变体分派） |
+| 加一个 **provider** | 端口在哪层？ | （故意留空——`provider-pattern.md` 已有规范，但落点清单未成文） | — |
+| 加一种**状态 / 子状态** | —— | （故意留空——决策 4：生命周期不统一） | — |
 
 最后两行**故意留空**：这是本轮范围的诚实边界，不是遗漏。
+
+**本任务自身代价的诚实记录**：第①行的「编译器管」只管住**引用点**——复述类文字（注释 / 文档 / DDL 里抄一份名单）编译器管不着，批次 2 已把存量复述清零；防止复发的约定（注释不抄 kebab 值、阶段名 = 动词-对象）**尚未写进 spec**，用户定延后到 Javadoc 全局重构一并处理。
 
 ## 六、三处分叉的定论（2026-10-07 用户确认）
 
@@ -193,6 +217,6 @@ public Path workspaceFor(MediaInput input) {
 2. **产出物** — **枚举登记表**。理由见 §三。
    - 落地时发现两个约束（`implement.md` 里处理）：`SubtitleArtifact` 这个名字**已被占用**（`prepare()` 返回的 record），登记表改名 `SubtitleArtifactSpec`；带 `{lang}` 的三个产出物在扫目录时不知道语种，需要补一个匹配方法。
 
-3. **身份** — **`contentKey()` 归输入自己 + `InWorkspace` 从"带结果"改成"带身份"**。
+3. **身份** — **`getContentKey()` 归输入自己 + `InWorkspace` 从"带结果"改成"带身份"**。
    - 讨论澄清：B（独立的 `InputIdentity` sealed 类型）**不是 A 的替代方案，而是 A 多包一层**——`InputIdentity` 除了 key 什么都不装，而身份在项目里只被用来建目录 / 查重 / 落库，三件都只要 key。所以 A/B 之争撤回，实质只有一件事：**身份由谁算**（答案：输入自己）。
    - 真正有内容的设计点是 `InWorkspace` 的字段：`(value, workspaceDir, workspaceKey)` → `(value, key, dirLabel)`——**带身份，不带结果**。目录由 `WorkspaceDir.of(dirLabel, key)` 重算，与提交时逐字一致。

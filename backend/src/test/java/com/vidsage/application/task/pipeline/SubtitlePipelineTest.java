@@ -17,9 +17,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.application.media.WorkspaceService;
-import com.vidsage.application.subtitle.pipeline.SubtitleCleanupStage;
-import com.vidsage.application.subtitle.pipeline.SubtitlePreparationStage;
-import com.vidsage.application.subtitle.pipeline.SubtitleTranslationStage;
+import com.vidsage.application.subtitle.pipeline.SubtitleCleanupCoordinator;
+import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
+import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
@@ -31,10 +31,12 @@ import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.port.VideoTaskRepository;
+import com.vidsage.infrastructure.fs.NioFileStateReader;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -48,7 +50,7 @@ import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 /**
- * {@link VideoTaskPipeline} 的单元测试：依赖全部 mock，工作区用真实实例 + 临时目录；
+ * {@link SubtitlePipeline} 的单元测试：依赖全部 mock，工作区用真实实例 + 临时目录；
  * 订阅注册表用真实实例（广播 / 终态收口的行为直接落在真注册表上验证）。
  * 同步用例直接调包内可见的 {@code runPipeline(taskNo)} 绕开虚拟线程的时序，翻译触发用例直接调
  * {@code translateTask(taskNo)}（同步段）+ Mockito timeout 等异步段；并发用例走 {@code execute()}
@@ -57,21 +59,22 @@ import org.mockito.Mockito;
  * <p>2026-10-02 两段式：自动管线到清洗为止（prepare 0..70 / clean 70..100），翻译拆出为
  * {@code translateTask} 按需触发（幂等 / 不重入 / 终态收口各有钉子）。
  */
-class VideoTaskPipelineTest {
+class SubtitlePipelineTest {
 
     @TempDir
     Path tempDir;
 
     private final VideoTaskRepository repository = Mockito.mock(VideoTaskRepository.class);
-    private final SubtitlePreparationStage subtitlePreparationStage = Mockito.mock(SubtitlePreparationStage.class);
-    private final SubtitleCleanupStage cleanupStage = Mockito.mock(SubtitleCleanupStage.class);
-    private final SubtitleTranslationStage translationStage = Mockito.mock(SubtitleTranslationStage.class);
+    private final SubtitlePreparationCoordinator subtitlePreparationCoordinator = Mockito.mock(SubtitlePreparationCoordinator.class);
+    private final SubtitleCleanupCoordinator cleanupStage = Mockito.mock(SubtitleCleanupCoordinator.class);
+    private final SubtitleTranslationCoordinator translationStage = Mockito.mock(SubtitleTranslationCoordinator.class);
     private final TaskSubscriptionRegistry registry = new TaskSubscriptionRegistry();
 
-    private VideoTaskPipeline service(int maxConcurrent) {
-        return new VideoTaskPipeline(repository,
-                new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString())),
-                subtitlePreparationStage, cleanupStage, translationStage, registry, new TaskProperties(maxConcurrent));
+    private SubtitlePipeline service(int maxConcurrent) {
+        return new SubtitlePipeline(repository,
+                new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString()),
+                        new NioFileStateReader()),
+                subtitlePreparationCoordinator, cleanupStage, translationStage, registry, new TaskProperties(maxConcurrent));
     }
 
     // ---------- 正常路径（自动管线：prepare → clean，两段式后不含翻译） ----------
@@ -83,21 +86,21 @@ class VideoTaskPipelineTest {
         // clean 的桩发一条阶段事件（真实服务层会发「开始清洗」事件），验证回调驱动 current_stage
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(2);
-            listener.onEvent(new StageEvent("clean", 0, "开始清洗", StageEvent.StageState.RUNNING));
+            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 0, "开始清洗", StageEvent.StageState.RUNNING));
             return null;
         }).when(cleanupStage).clean(any(MediaInput.class), anyString(), any(ProgressListener.class));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
         MediaInput input = new MediaInput.RemoteUrl("https://example.com/v");
-        InOrder order = inOrder(subtitlePreparationStage, cleanupStage);
-        order.verify(subtitlePreparationStage).prepare(eq(input), any(ProgressListener.class));
+        InOrder order = inOrder(subtitlePreparationCoordinator, cleanupStage);
+        order.verify(subtitlePreparationCoordinator).prepare(eq(input), any(ProgressListener.class));
         order.verify(cleanupStage).clean(eq(input), eq(""), any(ProgressListener.class));
 
         assertEquals(TaskStatus.SUCCEEDED, task.getStatus());
         assertNotNull(task.getFinishedAt(), "成功应落 finished_at");
-        assertEquals("clean", task.getCurrentStage(), "最后一个阶段应留痕在 current_stage");
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), task.getCurrentStage(), "最后一个阶段应留痕在 current_stage");
         assertNull(task.getTranslationStatus(), "自动管线不触发翻译，翻译子状态保持「从未触发」");
         // start + clean 回调 + succeed（mock 的 prepare 不发事件）
         verify(repository, Mockito.times(3)).update(task);
@@ -107,7 +110,7 @@ class VideoTaskPipelineTest {
     void autoPipelineNeverInvokesTranslation() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -122,20 +125,24 @@ class VideoTaskPipelineTest {
         VideoTask task = VideoTask.newPending(TaskInputType.UPLOAD, "demo.mp4",
                 new WorkspaceKey("a1b2c3d4e5f6"), "demo.mp4-a1b2c3d4e5f6");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
         ArgumentCaptor<MediaInput> captor = ArgumentCaptor.forClass(MediaInput.class);
-        verify(subtitlePreparationStage).prepare(captor.capture(), any(ProgressListener.class));
+        verify(subtitlePreparationCoordinator).prepare(captor.capture(), any(ProgressListener.class));
         MediaInput input = captor.getValue();
         assertTrue(input instanceof MediaInput.InWorkspace, () -> "上传任务应还原为 InWorkspace：" + input);
         MediaInput.InWorkspace in = (MediaInput.InWorkspace) input;
         Path expectedDir = tempDir.resolve("works").resolve("demo.mp4-a1b2c3d4e5f6");
         assertEquals(expectedDir.resolve("source.mp4"), in.value(),
                 "上传任务必须按持久化的 workspace_dir 定位 source.mp4，不能从输入重算 key");
-        assertEquals(expectedDir, in.workspaceDir(), "InWorkspace 必须携带已解析的工作区目录，下游零重算");
-        assertEquals("a1b2c3d4e5f6", in.workspaceKey().value(), "内容 key 应随输入携带");
+        // 身份由 dirLabel + key 随输入携带：workspaceFor 用它们重算目录，必须与持久化的 workspace_dir 逐字一致
+        assertEquals(expectedDir, new WorkspaceService(
+                        new WorkspaceProperties(tempDir.resolve("works").toString()), new NioFileStateReader())
+                .workspaceFor(in),
+                "dirLabel + key 重建的目录必须与持久化的 workspace_dir 逐字一致（下游零重算）");
+        assertEquals("a1b2c3d4e5f6", in.key().value(), "内容 key 应随输入携带");
     }
 
     @Test
@@ -145,16 +152,16 @@ class VideoTaskPipelineTest {
         // prepare 回调里先推一个阶段事件再抛异常：失败消息嵌入的阶段名即为回调落库的 current_stage
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent("extract-audio", 30, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
+            listener.onEvent(new StageEvent(SubtitleStageName.EXTRACT_AUDIO.getStageName(), 30, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
             throw new IllegalStateException("boom");
-        }).when(subtitlePreparationStage).prepare(any(MediaInput.class), any(ProgressListener.class));
-        VideoTaskPipeline pipeline = service(2);
+        }).when(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(ProgressListener.class));
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
         assertEquals(TaskStatus.FAILED, task.getStatus());
-        assertEquals("extract-audio", task.getCurrentStage(), "阶段事件的 stage 名应已落库");
-        assertEquals("任务在 extract-audio 阶段失败：boom", task.getErrorMessage());
+        assertEquals(SubtitleStageName.EXTRACT_AUDIO.getStageName(), task.getCurrentStage(), "阶段事件的 stage 名应已落库");
+        assertEquals("任务执行失败：boom", task.getErrorMessage());
     }
 
     // ---------- 失败路径 ----------
@@ -163,9 +170,9 @@ class VideoTaskPipelineTest {
     void prepareFailureFailsTaskAndSkipsRemainingStages() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        when(subtitlePreparationStage.prepare(any(MediaInput.class), any(ProgressListener.class)))
+        when(subtitlePreparationCoordinator.prepare(any(MediaInput.class), any(ProgressListener.class)))
                 .thenThrow(new IllegalStateException("ASR 转写任务失败：quota exceeded"));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -180,18 +187,18 @@ class VideoTaskPipelineTest {
     void cleanFailureFailsTask() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        // 真实 clean 会先发「开始清洗」再干活：失败消息里带上阶段名依赖这条事件已落库
+        // 真实 clean 会先发「开始清洗」再干活
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(2);
-            listener.onEvent(new StageEvent("clean", 0, "开始清洗", StageEvent.StageState.RUNNING));
+            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 0, "开始清洗", StageEvent.StageState.RUNNING));
             throw new IllegalStateException("字幕尚未获取：缺 segments-cloud.json");
         }).when(cleanupStage).clean(any(MediaInput.class), anyString(), any(ProgressListener.class));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
         assertEquals(TaskStatus.FAILED, task.getStatus());
-        assertEquals("任务在 clean 阶段失败：字幕尚未获取：缺 segments-cloud.json", task.getErrorMessage());
+        assertEquals("任务执行失败：字幕尚未获取：缺 segments-cloud.json", task.getErrorMessage());
         verify(translationStage, never()).translate(any(), any());
     }
 
@@ -199,9 +206,9 @@ class VideoTaskPipelineTest {
     void failMessageFallsBackToExceptionClassNameWhenMessageNull() {
         VideoTask task = urlTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        when(subtitlePreparationStage.prepare(any(MediaInput.class), any(ProgressListener.class)))
+        when(subtitlePreparationCoordinator.prepare(any(MediaInput.class), any(ProgressListener.class)))
                 .thenThrow(new NullPointerException());
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -220,10 +227,10 @@ class VideoTaskPipelineTest {
         // prepare 收到的是 remap(composite, 0, 70) 后的 listener：直接回调 50 → 广播出去应为 35
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent("extract-audio", 50, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
+            listener.onEvent(new StageEvent(SubtitleStageName.EXTRACT_AUDIO.getStageName(), 50, "音频抽取完成", StageEvent.StageState.SUCCEEDED));
             return null;
-        }).when(subtitlePreparationStage).prepare(any(MediaInput.class), any(ProgressListener.class));
-        VideoTaskPipeline pipeline = service(2);
+        }).when(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(ProgressListener.class));
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -233,7 +240,7 @@ class VideoTaskPipelineTest {
         assertEquals(task.getTaskNo().value(), event.taskNo());
         assertEquals(TaskStatus.RUNNING, event.taskStatus());
         assertNull(event.translationStatus(), "主管线事件的翻译子状态为 null（从未触发）");
-        assertEquals("extract-audio", event.stage().stage());
+        assertEquals(SubtitleStageName.EXTRACT_AUDIO.getStageName(), event.stage().stage());
         assertEquals(35, event.stage().progress(), "prepare 区间 0..70 的中点：50 应映射为 35");
         assertEquals(TaskStatus.SUCCEEDED, received.get(1).taskStatus(), "终态广播随后到达");
     }
@@ -244,7 +251,7 @@ class VideoTaskPipelineTest {
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -263,9 +270,9 @@ class VideoTaskPipelineTest {
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        when(subtitlePreparationStage.prepare(any(MediaInput.class), any(ProgressListener.class)))
+        when(subtitlePreparationCoordinator.prepare(any(MediaInput.class), any(ProgressListener.class)))
                 .thenThrow(new IllegalStateException("quota exceeded"));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -287,7 +294,7 @@ class VideoTaskPipelineTest {
             throw new IllegalStateException("写入失败（模拟断连的 emitter）");
         });
         registry.subscribe(task.getTaskNo().value(), received::add);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
 
@@ -304,7 +311,7 @@ class VideoTaskPipelineTest {
 
         service(2).runPipeline(new TaskNo("ghost"));
 
-        verify(subtitlePreparationStage, never()).prepare(any(), any());
+        verify(subtitlePreparationCoordinator, never()).prepare(any(), any());
         verify(repository, never()).update(any());
     }
 
@@ -316,7 +323,7 @@ class VideoTaskPipelineTest {
 
         service(2).runPipeline(task.getTaskNo());
 
-        verify(subtitlePreparationStage, never()).prepare(any(), any());
+        verify(subtitlePreparationCoordinator, never()).prepare(any(), any());
         assertEquals(TaskStatus.RUNNING, task.getStatus(), "重复触发不得把别人的执行打成 FAILED");
         verify(repository, never()).update(any());
     }
@@ -351,7 +358,7 @@ class VideoTaskPipelineTest {
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         // 检查点已在（上一次成功的翻译，或两段式改造前的存量产物）
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(true);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -369,7 +376,7 @@ class VideoTaskPipelineTest {
         task.translationSucceed();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(true);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -382,7 +389,7 @@ class VideoTaskPipelineTest {
         VideoTask task = succeededTask("https://example.com/v");
         task.translationStart();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -402,13 +409,13 @@ class VideoTaskPipelineTest {
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, 40, "第 1/2 批",
+            listener.onEvent(new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 40, "第 1/2 批",
                     StageEvent.StageState.RUNNING));
             return null;
         }).when(translationStage).translate(any(MediaInput.class), any(ProgressListener.class));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -425,13 +432,13 @@ class VideoTaskPipelineTest {
                 "翻译事件的 taskStatus 恒为主状态 SUCCEEDED");
         assertEquals(TranslationStatus.RUNNING, progress.translationStatus(),
                 "进度事件携带进行中的翻译子状态（SSE 终态判定据此不收口连接）");
-        assertEquals(StageEvent.STAGE_TRANSLATE, progress.stage().stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), progress.stage().stage());
         assertEquals(40, progress.stage().progress(), "翻译事件自成 0..100 段，直通不 remap");
 
         TaskProgressMessage terminal = received.get(1);
         assertEquals(TaskStatus.SUCCEEDED, terminal.taskStatus(), "翻译终态广播的 taskStatus 用主状态");
         assertEquals(TranslationStatus.SUCCEEDED, terminal.translationStatus());
-        assertEquals(StageEvent.STAGE_TRANSLATE, terminal.stage().stage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), terminal.stage().stage());
         assertEquals(100, terminal.stage().progress());
         assertEquals(StageEvent.StageState.SUCCEEDED, terminal.stage().state());
 
@@ -448,13 +455,13 @@ class VideoTaskPipelineTest {
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(1);
-            listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, 40, "第 1/2 批",
+            listener.onEvent(new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 40, "第 1/2 批",
                     StageEvent.StageState.RUNNING));
             throw new IllegalStateException("LLM 返回掉行");
         }).when(translationStage).translate(any(MediaInput.class), any(ProgressListener.class));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
-        VideoTaskPipeline pipeline = service(2);
+        SubtitlePipeline pipeline = service(2);
 
         pipeline.translateTask(task.getTaskNo());
 
@@ -492,16 +499,16 @@ class VideoTaskPipelineTest {
             firstStarted.countDown();
             releaseFirst.await(5, TimeUnit.SECONDS);
             return null;
-        }).when(subtitlePreparationStage).prepare(eq(new MediaInput.RemoteUrl("https://example.com/first")),
+        }).when(subtitlePreparationCoordinator).prepare(eq(new MediaInput.RemoteUrl("https://example.com/first")),
                 any(ProgressListener.class));
 
-        VideoTaskPipeline pipeline = service(1);   // 并发上限 1：第二个任务必须排队
+        SubtitlePipeline pipeline = service(1);   // 并发上限 1：第二个任务必须排队
         pipeline.execute(first.getTaskNo());
         assertTrue(firstStarted.await(5, TimeUnit.SECONDS), "第一个任务应开始执行");
 
         pipeline.execute(second.getTaskNo());
         // 配额被第一个任务占着：第二个任务保持 PENDING，不得进入 prepare
-        verify(subtitlePreparationStage, org.mockito.Mockito.after(300).never())
+        verify(subtitlePreparationCoordinator, org.mockito.Mockito.after(300).never())
                 .prepare(eq(new MediaInput.RemoteUrl("https://example.com/second")), any(ProgressListener.class));
         assertEquals(TaskStatus.PENDING, second.getStatus(), "排队中的任务必须保持 PENDING");
 
@@ -511,7 +518,7 @@ class VideoTaskPipelineTest {
                 && System.currentTimeMillis() < deadline) {
             Thread.sleep(20);
         }
-        verify(subtitlePreparationStage, timeout(5000)).prepare(
+        verify(subtitlePreparationCoordinator, timeout(5000)).prepare(
                 eq(new MediaInput.RemoteUrl("https://example.com/second")), any(ProgressListener.class));
         assertEquals(TaskStatus.SUCCEEDED, first.getStatus());
         assertEquals(TaskStatus.SUCCEEDED, second.getStatus());

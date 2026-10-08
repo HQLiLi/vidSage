@@ -76,7 +76,7 @@ class AudioPreparationStageTest {
         assertSame(artifact, result);
         verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO);
         assertEquals(List.of(
-                "acquire/RUNNING", "acquire/SUCCEEDED",
+                "acquire-media/RUNNING", "acquire-media/SUCCEEDED",
                 "extract-audio/RUNNING", "extract-audio/SUCCEEDED"), states());
         assertEquals(List.of(0, 50, 50, 100), progresses(), "进度应两段加权且单调");
     }
@@ -112,7 +112,7 @@ class AudioPreparationStageTest {
         service().prepare(input, AudioSpec.WAV_PCM_16K_MONO, listener);
 
         verify(acquisitionStage, never()).acquire(any(), any());
-        assertEquals(List.of("acquire/SKIPPED", "extract-audio/RUNNING", "extract-audio/SUCCEEDED"),
+        assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/RUNNING", "extract-audio/SUCCEEDED"),
                 states());
         assertEquals(50, listener.events().getFirst().progress(), "跳过的 acquire 进度取该阶段终点值");
     }
@@ -128,7 +128,7 @@ class AudioPreparationStageTest {
         verify(audioExtractor, never()).extract(any(), any(), any());
         assertEquals(workDir.resolve("audio-16k1ch-t0.wav"), result.audioPath());
         assertEquals(5, result.sizeBytes());
-        assertEquals(List.of("acquire/SKIPPED", "extract-audio/SKIPPED"), states());
+        assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/SKIPPED"), states());
         assertEquals(100, listener.events().getLast().progress(), "跳过的 extract 进度取该阶段终点值");
     }
 
@@ -144,7 +144,7 @@ class AudioPreparationStageTest {
         service().prepare(input, AudioSpec.WAV_PCM_16K_MONO, listener);
 
         verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO);
-        assertEquals(List.of("acquire/SKIPPED", "extract-audio/RUNNING", "extract-audio/SUCCEEDED"),
+        assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/RUNNING", "extract-audio/SUCCEEDED"),
                 states());
     }
 
@@ -161,7 +161,7 @@ class AudioPreparationStageTest {
                 () -> service().prepare(input, AudioSpec.WAV_PCM_16K_MONO, listener));
 
         assertTrue(error.getMessage().contains("boom"));
-        assertEquals(List.of("acquire/SKIPPED", "extract-audio/RUNNING", "extract-audio/FAILED"), states());
+        assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/RUNNING", "extract-audio/FAILED"), states());
         assertTrue(listener.events().getLast().message().contains("boom"),
                 () -> "FAILED 消息应取异常 message：" + listener.events().getLast().message());
     }
@@ -176,7 +176,7 @@ class AudioPreparationStageTest {
                 () -> service().prepare(input, AudioSpec.WAV_PCM_16K_MONO, listener));
 
         assertTrue(error.getMessage().contains("本地媒体文件不存在"));
-        assertEquals(List.of("acquire/RUNNING", "acquire/FAILED"), states());
+        assertEquals(List.of("acquire-media/RUNNING", "acquire-media/FAILED"), states());
         assertTrue(listener.events().getLast().message().contains("本地媒体文件不存在"),
                 () -> "FAILED 消息应取异常 message：" + listener.events().getLast().message());
     }
@@ -190,7 +190,7 @@ class AudioPreparationStageTest {
                 () -> service().prepare(input, AudioSpec.WAV_PCM_16K_MONO, listener));
 
         assertTrue(error.getMessage().contains("扫描下载工作目录失败"));
-        assertEquals(List.of("acquire/FAILED"), states());
+        assertEquals(List.of("acquire-media/FAILED"), states());
     }
 
     // ---------- 无监听重载与卫语句 ----------

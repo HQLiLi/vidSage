@@ -2,6 +2,8 @@ package com.vidsage.application.subtitle.pipeline;
 
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.config.SubtitleTranslateProperties;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
@@ -23,7 +25,6 @@ import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.model.translation.TranslateResult;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.subtitle.SrtRenderer;
-import com.vidsage.shared.subtitle.SubtitleArtifactNames;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -48,7 +49,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>断点复用判据</b>：{@code -translate-<target>.json} 存在且非空即跳过翻译，直接反序列化返回。
  * 为什么拿 JSON 当检查点而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当检查点会让空产物永远判「未完成」
- * ——该语义单源在 {@link CheckpointPolicy}（同 {@link SubtitleCleanupStage} / {@link SubtitlePreparationStage}）。
+ * ——该语义单源在 {@link CheckpointPolicy}（同 {@link SubtitleCleanupCoordinator} / {@link SubtitlePreparationCoordinator}）。
  *
  * <p><b>只读 -clean 产物</b>：输入是 {@code segments-<route>-clean.json}（只读，必须已存在），写
  * {@code -translate} 与 {@code terms-<route>-<target>.json}。<b>不静默回退到原始 segments</b>：
@@ -56,12 +57,16 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Slf4j
 @Component
-public class SubtitleTranslationStage {
+public class SubtitleTranslationCoordinator {
 
-    /** 阶段进度的起点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。 */
+    /**
+     * 阶段进度的起点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。
+     */
     private static final int STAGE_BEGIN = 0;
 
-    /** 阶段进度的终点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。 */
+    /**
+     * 阶段进度的终点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。
+     */
     private static final int STAGE_DONE = 100;
 
     private final WorkspaceService workspaceService;
@@ -88,13 +93,13 @@ public class SubtitleTranslationStage {
      *                           应当让应用照常起、只关查证，而不是缺 bean 起不来
      * @param subtitleTranslator 字幕翻译器（持有翻译专用的 ChatClient）
      */
-    public SubtitleTranslationStage(WorkspaceService workspaceService,
-                                    ASRProvider asrProvider,
-                                    ObjectMapper objectMapper,
-                                    SubtitleTranslateProperties props,
-                                    SubtitleContextSummarizer contextSummarizer,
-                                    ObjectProvider<TermLookupProvider> lookupProvider,
-                                    SubtitleTranslator subtitleTranslator) {
+    public SubtitleTranslationCoordinator(WorkspaceService workspaceService,
+                                          ASRProvider asrProvider,
+                                          ObjectMapper objectMapper,
+                                          SubtitleTranslateProperties props,
+                                          SubtitleContextSummarizer contextSummarizer,
+                                          ObjectProvider<TermLookupProvider> lookupProvider,
+                                          SubtitleTranslator subtitleTranslator) {
         this.workspaceService = workspaceService;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
@@ -131,7 +136,7 @@ public class SubtitleTranslationStage {
         String targetLanguage = Bcp47Language.resolveTargetLanguage(props.targetLanguage());
         SubtitleRoute route = asrProvider.route();
         Path workDir = workspaceService.workspaceFor(input);
-        Path translateSeg = workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(route, targetLanguage));
+        Path translateSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(route, targetLanguage));
         // 检查点判据单源在 CheckpointPolicy：JSON 非空 = 已完成，0 字节/缺失 = 未完成（SRT 派生视图不参与）
         return CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(translateSeg));
     }
@@ -180,23 +185,25 @@ public class SubtitleTranslationStage {
         String targetLanguage = Bcp47Language.resolveTargetLanguage(props.targetLanguage());
         SubtitleRoute route = asrProvider.route();
         Path workDir = workspaceService.workspaceFor(input);
-        Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(route));
-        Path translateSeg = workDir.resolve(SubtitleArtifactNames.translateSegmentsFileName(route, targetLanguage));
-        Path translateSrt = workDir.resolve(SubtitleArtifactNames.translateSrtFileName(route, targetLanguage));
-        Path termsFile = workDir.resolve(SubtitleArtifactNames.verifiedTermsFileName(route, targetLanguage));
+
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(route, null));
+        Path translateSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(route, targetLanguage));
+        Path translateSrt = workDir.resolve(SubtitleArtifactSpec.SRT_TRANSLATED.fileName(route, targetLanguage));
+        Path termsFile = workDir.resolve(SubtitleArtifactSpec.TERMS.fileName(route, targetLanguage));
 
         // 断点：检查点已在且非空 → 反序列化直接返回，本趟统计一律归零（含 untranslatedCount）
         TranslatedTrack existing = ArtifactFiles.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
         if (existing != null) {
             log.info("字幕翻译断点复用跳过: translate={}", translateSeg.getFileName());
-            emit(listener, StageEvent.STAGE_TRANSLATE, STAGE_DONE, "已有翻译产物，跳过翻译",
+
+            emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE, "已有翻译产物，跳过翻译",
                     StageEvent.StageState.SKIPPED);
             return toTranslated(existing, translateSeg, translateSrt, 0, 0);
         }
-        emit(listener, StageEvent.STAGE_TRANSLATE, STAGE_BEGIN, "开始翻译", StageEvent.StageState.RUNNING);
+        emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageEvent.StageState.RUNNING);
 
         // -clean 缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
-        // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮与清洗侧同一取舍（见 SubtitleCleanupStage）：
+        // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮与清洗侧同一取舍（见 SubtitleCleanupCoordinator）：
         // 它是「服务端状态缺失」，可归入 error-handling 的「环境不对」；改成 4xx 超本任务「只新增」范围。
         if (!ArtifactFiles.isNonEmpty(cleanSeg)) {
             throw new IllegalStateException("字幕尚未清洗：请先调用 POST /api/subtitles/clean 产出 -clean 字幕，再翻译（缺 "
@@ -208,7 +215,7 @@ public class SubtitleTranslationStage {
         // 上下文：先读缓存，没有才摘要；摘要成功才落盘、空摘要绝不落盘——裁决单源在 CheckpointPolicy
         // （与清洗阶段同一份）。断点分支留在本层（不在 SubtitleContextSummarizer 里）——与 -clean
         // 断点判据同处，见 design §3.2。翻译依赖 -clean，所以清洗必定先跑并落下上下文，这里通常命中缓存。
-        Path ctxFile = workDir.resolve(SubtitleArtifactNames.contextFileName(route));
+        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(route, null));
         SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
         CheckpointPolicy.ContextResolution contextResolution = CheckpointPolicy.resolveContext(cached,
                 // 摘要请求惰性求值：缓存命中时连内容拼接与摘要调用都不发生
@@ -254,7 +261,7 @@ public class SubtitleTranslationStage {
         }
 
         writeArtifacts(translateSeg, translateSrt, track);   // 先 JSON（检查点）再 SRT（派生），都原子替换
-        emit(listener, StageEvent.STAGE_TRANSLATE, STAGE_DONE,
+        emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE,
                 skippedTranslation ? "源语种与目标语种相同，跳过翻译" : "翻译完成",
                 skippedTranslation ? StageEvent.StageState.SKIPPED : StageEvent.StageState.SUCCEEDED);
         log.debug("字幕翻译完成: route={}, sourceLanguage={}, targetLanguage={}, skipped={}, segments={}, "

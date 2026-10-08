@@ -7,20 +7,19 @@ import java.util.function.Supplier;
 /**
  * 检查点语义单源 + 跨批上下文政策（纯函数领域政策，不做文件 I/O）。
  *
- * <p><b>检查点语义（SubtitlePreparationStage / SubtitleCleanupStage / SubtitleTranslationStage /
+ * <p><b>检查点语义（SubtitlePreparationCoordinator / SubtitleCleanupCoordinator / SubtitleTranslationCoordinator /
  * AudioPreparationStage 四处合流于此）</b>：
  * <ul>
  *   <li><b>JSON 非空 = 完成</b>：检查点产物存在且字节数 &gt; 0 即该阶段已完成（{@link #isCompleted}）；</li>
  *   <li><b>0 字节 = 未完成</b>：空文件视为不存在，照未完成重跑；</li>
  *   <li><b>SRT 是派生视图，不参与幂等</b>：为什么检查点是 JSON 而不是 SRT——空转写产出 0 字节 SRT，
  *       拿 SRT 当检查点会让空产物永远判「未完成」→ 反复重跑的死循环。本判据只接受 JSON 检查点的
- *       字节数：政策不接受任何路径/扩展名入参，SRT 大小进不了判定
- *       （回归护栏：SubtitlePreparationStageTest {@code srtAloneDoesNotCountAsCheckpoint}）；</li>
+ *       字节数：政策不接受任何路径/扩展名入参，SRT 大小进不了判定</li>
  *   <li>文件在但解析失败：当未完成重跑（重新跑一遍比留一个坏产物好）——该机制的 I/O 与解析留在应用层，
  *       本政策只承载判据。</li>
  * </ul>
  *
- * <p><b>上下文政策（SubtitleCleanupStage 与 SubtitleTranslationStage 两处近逐字重复，合流于此）</b>：
+ * <p><b>上下文政策（SubtitleCleanupCoordinator 与 SubtitleTranslationCoordinator 两处近逐字重复，合流于此）</b>：
  * 先读缓存（缓存命中不摘要），没有才摘要（{@link #resolveContext}）；<b>摘要成功才落盘，降级出的
  * 空上下文绝不落盘</b>——否则下次会命中这份空缓存，摘要永久丢失且不报错（design 决策 5）。
  * 摘要请求经 {@code Supplier} 惰性传入：缓存命中时连摘要调用都不会发生。

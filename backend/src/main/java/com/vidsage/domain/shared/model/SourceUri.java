@@ -6,7 +6,7 @@ import java.nio.file.Path;
  * 输入身份的规范化串（值对象）：内容寻址的哈希输入——同一输入必须规范化出同一串、
  * 不同输入必须规范化出不同串；工作区 key（{@link WorkspaceKey#ofHash}）由它哈希而来。
  *
- * <p>两条公式（{@code WorkspaceService.normalize} 按 {@code MediaInput} 变体分派到这里的静态工厂，
+ * <p>两条公式（{@code MediaInput.getContentKey} 按变体分派到这里的静态工厂，
  * 本类不感知 MediaInput）：
  * <ul>
  *   <li><b>远程 URL</b>：{@link #ofRemoteUrl}——URL 原文原样参与哈希（{@code null} 视为空串）；</li>

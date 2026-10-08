@@ -25,7 +25,8 @@ import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
-import com.vidsage.shared.subtitle.SubtitleArtifactNames;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -39,7 +40,7 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * SubtitleCleanupStage 的纯单元测试：<b>不起 Spring 容器</b>。
+ * SubtitleCleanupCoordinator 的纯单元测试：<b>不起 Spring 容器</b>。
  *
  * <p>只测<b>编排</b>：定位产物 → 断点复用 → 切分 → 交给 {@link SubtitleCleanser} → 写 -clean 产物。
  * 摘要器与 cleanser 都是 mock。
@@ -47,7 +48,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p><b>清洗算法本身（分批、守卫、重试、保留原文）不在这里测</b>——它的覆盖在
  * {@code SubtitleCleanserTest}：真 ChatClient + 桩 ChatModel，桩从 ChatModel 层进去。
  */
-class SubtitleCleanupStageTest {
+class SubtitleCleanupCoordinatorTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final SubtitleCleanupProperties PROPS =
@@ -73,10 +74,10 @@ class SubtitleCleanupStageTest {
         }).when(subtitleCleanser).clean(any(), any(), any(), any());
     }
 
-    private SubtitleCleanupStage service() {
+    private SubtitleCleanupCoordinator service() {
         when(workspaceService.workspaceFor(any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
-        return new SubtitleCleanupStage(workspaceService, asrProvider, JSON, PROPS,
+        return new SubtitleCleanupCoordinator(workspaceService, asrProvider, JSON, PROPS,
                 contextSummarizer, subtitleCleanser);
     }
 
@@ -84,7 +85,7 @@ class SubtitleCleanupStageTest {
         SubtitleTrack raw = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of(
                 new TranscriptionSegment(0, 5000, "我防关这边露出"),
                 new TranscriptionSegment(5000, 10000, "今天天气不错")));
-        JSON.writeValue(workDir.resolve(SubtitleArtifactNames.segmentsFileName(SubtitleRoute.ASR_CLOUD)).toFile(), raw);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), raw);
     }
 
     @BeforeEach
@@ -99,13 +100,13 @@ class SubtitleCleanupStageTest {
     @Test
     void cleanWritesCleanArtifactsAndDelegatesOnce() throws Exception {
         writeRawTrack();
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
         // 两条 -clean 产物都在且非空
-        Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(SubtitleRoute.ASR_CLOUD));
-        Path cleanSrt = workDir.resolve(SubtitleArtifactNames.cleanSrtFileName(SubtitleRoute.ASR_CLOUD));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
         assertTrue(Files.isRegularFile(cleanSeg) && Files.size(cleanSeg) > 0, "应产出 -clean.json");
         assertTrue(Files.isRegularFile(cleanSrt) && Files.size(cleanSrt) > 0, "应产出 -clean.srt");
         assertEquals(2, cleaned.segmentCount());
@@ -116,7 +117,7 @@ class SubtitleCleanupStageTest {
     @Test
     void cleanReusesCheckpointSkipsCleanser() throws Exception {
         writeRawTrack();
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
         // 二跑：-clean.json 已在，应断点复用，不再走切分与清洗
@@ -130,13 +131,13 @@ class SubtitleCleanupStageTest {
     void emptyTranscriptionWritesNonEmptyCheckpointDespiteZeroByteSrt() throws Exception {
         // 空转写是合法产出（纯音乐 / 无语音）：raw segments=[]
         SubtitleTrack empty = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of());
-        JSON.writeValue(workDir.resolve(SubtitleArtifactNames.segmentsFileName(SubtitleRoute.ASR_CLOUD)).toFile(), empty);
-        SubtitleCleanupStage s = service();
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), empty);
+        SubtitleCleanupCoordinator s = service();
 
         CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
-        Path cleanSeg = workDir.resolve(SubtitleArtifactNames.cleanSegmentsFileName(SubtitleRoute.ASR_CLOUD));
-        Path cleanSrt = workDir.resolve(SubtitleArtifactNames.cleanSrtFileName(SubtitleRoute.ASR_CLOUD));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
         assertEquals(0, first.segmentCount());
         assertEquals(0, first.srtSizeBytes());
         // 关键：SRT 是 0 字节，但检查点 JSON 必须非空——否则下次判「未完成」会反复重跑（死循环）
@@ -151,19 +152,19 @@ class SubtitleCleanupStageTest {
 
     @Test
     void cleanMissingRawThrows() {
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         assertThrows(IllegalStateException.class, () -> s.clean(new MediaInput.RemoteUrl("https://x"), ""));
     }
 
     @Test
     void cleanNullInputThrows() {
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         assertThrows(IllegalArgumentException.class, () -> s.clean(null, ""));
     }
 
     @Test
     void cleanRejectsNullListener() {
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         assertThrows(IllegalArgumentException.class,
                 () -> s.clean(new MediaInput.RemoteUrl("https://x"), "", null));
     }
@@ -178,7 +179,7 @@ class SubtitleCleanupStageTest {
         // 真实批级事件来自 SubtitleCleanser；本层只验「批级事件原样透传 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(3);
-            listener.onEvent(new StageEvent(StageEvent.STAGE_CLEAN, 100, "第 1/1 批",
+            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 100, "第 1/1 批",
                     StageEvent.StageState.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             return new CleanseResult(in, 0, 0, 0, 0);
@@ -188,7 +189,7 @@ class SubtitleCleanupStageTest {
         service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
-        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
         assertEquals(0, events.get(0).progress());
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
         assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
@@ -199,7 +200,7 @@ class SubtitleCleanupStageTest {
     @Test
     void cleanCheckpointHitEmitsSingleSkippedEvent() throws Exception {
         writeRawTrack();
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
         List<StageEvent> events = new ArrayList<>();
@@ -208,7 +209,7 @@ class SubtitleCleanupStageTest {
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
         assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
         assertEquals(100, events.get(0).progress());
-        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
     }
 
     @Test
@@ -220,7 +221,7 @@ class SubtitleCleanupStageTest {
                 () -> service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add));
 
         assertEquals(1, events.size(), () -> "失败前应已发「开始清洗」：" + events);
-        assertEquals(StageEvent.STAGE_CLEAN, events.get(0).stage());
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
         assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
     }
 
@@ -229,7 +230,7 @@ class SubtitleCleanupStageTest {
     // ------------------------------------------------------------------
 
     private Path contextFile() {
-        return workDir.resolve(SubtitleArtifactNames.contextFileName(SubtitleRoute.ASR_CLOUD));
+        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(SubtitleRoute.ASR_CLOUD, null));
     }
 
     @Test
@@ -238,7 +239,7 @@ class SubtitleCleanupStageTest {
         // 用一份有辨识度的上下文当「成功结果」，好钉住落盘的就是它、不是空壳
         when(contextSummarizer.summarize(any()))
                 .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
@@ -255,7 +256,7 @@ class SubtitleCleanupStageTest {
         writeRawTrack();
         JSON.writeValue(contextFile().toFile(),
                 new SubtitleContext("中世纪剑术", "de", List.of()));
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
@@ -266,7 +267,7 @@ class SubtitleCleanupStageTest {
     void summarizeDegradeDoesNotWriteContextFile() throws Exception {
         writeRawTrack();
         when(contextSummarizer.summarize(any())).thenReturn(Optional.empty());
-        SubtitleCleanupStage s = service();
+        SubtitleCleanupCoordinator s = service();
 
         CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), "");
 

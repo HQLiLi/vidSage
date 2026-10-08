@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.domain.task.model.TaskInputType;
@@ -110,7 +111,7 @@ class TaskControllerTest {
     @Test
     void submitUrlConflictReturns409WithExistingTask() throws Exception {
         TaskSnapshot existing = new TaskSnapshot("aaaabbbbccccddddeeeeffff00001111", TaskInputType.UPLOAD,
-                "demo.mp4", TaskStatus.RUNNING, null, "transcribe", null,
+                "demo.mp4", TaskStatus.RUNNING, null, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), null,
                 LocalDateTime.of(2026, 9, 30, 10, 0), LocalDateTime.of(2026, 9, 30, 10, 0, 1), null,
                 List.of());
         when(taskService.submitUrl(anyString())).thenThrow(new TaskConflictException(existing));
@@ -180,7 +181,7 @@ class TaskControllerTest {
     @Test
     void subscribeEventsPushesSnapshotFirstThenIncrementalBroadcasts() throws Exception {
         when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
-                new StageEvent("transcribe", 60, "开始转写", StageEvent.StageState.RUNNING), null));
+                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageEvent.StageState.RUNNING), null));
 
         // 连接建立：连接保持挂起（asyncStarted），快照已随响应写出（emitter 初始化时冲刷缓冲）
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -194,7 +195,7 @@ class TaskControllerTest {
 
         // 模拟管线推进：经真实 hub 写进同一批 emitter（注册表订阅的就是「写 emitter」这个动作）
         sseHub.send(TASK_NO, new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
-                new StageEvent("transcribe", 95, "转写完成", StageEvent.StageState.SUCCEEDED), null));
+                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageEvent.StageState.SUCCEEDED), null));
         String body = result.getResponse().getContentAsString();
         assertTrue(body.contains("\"progress\":60"), () -> "快照的进度应先到：" + body);
         assertTrue(body.contains("\"progress\":95"), () -> "增量事件应随后到达：" + body);
@@ -204,7 +205,7 @@ class TaskControllerTest {
     @Test
     void subscribeEventsToTerminalTaskCompletesConnectionAfterSnapshot() throws Exception {
         when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.FAILED,
-                new StageEvent("transcribe", 0, "任务在 transcribe 阶段失败：quota exceeded",
+                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
                         StageEvent.StageState.FAILED), null));
 
         // 终态快照推完即收口（hub 对终态事件 complete emitter），连接不等 30 分钟超时；
@@ -224,9 +225,9 @@ class TaskControllerTest {
         // 且这条订阅既等不到终态事件也永远不会退订（注册表泄漏）。
         when(taskService.snapshot(TASK_NO))
                 .thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
-                        new StageEvent("transcribe", 60, "开始转写", StageEvent.StageState.RUNNING), null))
+                        new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageEvent.StageState.RUNNING), null))
                 .thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.FAILED,
-                        new StageEvent("transcribe", 0, "任务在 transcribe 阶段失败：quota exceeded",
+                        new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
                                 StageEvent.StageState.FAILED), null));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -302,7 +303,7 @@ class TaskControllerTest {
         // 连接不得按主状态终态收口（终态判定 = 主状态终态且翻译非 RUNNING）
         when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO,
                 TaskStatus.SUCCEEDED,
-                new StageEvent("translate", 0, "翻译进行中", StageEvent.StageState.RUNNING),
+                new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0, "翻译进行中", StageEvent.StageState.RUNNING),
                 TranslationStatus.RUNNING));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -313,7 +314,7 @@ class TaskControllerTest {
 
         // 模拟管线推进：翻译进度事件经真实 hub 写进同一批 emitter（若连接被提前收口，此事件无人可写）
         sseHub.send(TASK_NO, new TaskProgressMessage(TASK_NO, TaskStatus.SUCCEEDED,
-                new StageEvent("translate", 55, "第 2/3 批", StageEvent.StageState.RUNNING),
+                new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 55, "第 2/3 批", StageEvent.StageState.RUNNING),
                 TranslationStatus.RUNNING));
 
         String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
@@ -327,7 +328,7 @@ class TaskControllerTest {
         // 主任务 SUCCEEDED + 翻译 SUCCEEDED：真正再无后续事件，快照推完即收口
         when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO,
                 TaskStatus.SUCCEEDED,
-                new StageEvent("translate", 100, "翻译完成", StageEvent.StageState.SUCCEEDED),
+                new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "翻译完成", StageEvent.StageState.SUCCEEDED),
                 TranslationStatus.SUCCEEDED));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -400,7 +401,7 @@ class TaskControllerTest {
     /** 主任务已成功的视图（自动管线跑完；翻译子状态由用例给定）。 */
     private static TaskSnapshot succeededView(TranslationStatus translationStatus) {
         return new TaskSnapshot(TASK_NO, TaskInputType.URL, "https://example.com/watch/1",
-                TaskStatus.SUCCEEDED, translationStatus, "clean", null,
+                TaskStatus.SUCCEEDED, translationStatus, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null,
                 LocalDateTime.of(2026, 10, 2, 10, 0), LocalDateTime.of(2026, 10, 2, 10, 0, 1),
                 LocalDateTime.of(2026, 10, 2, 10, 5), List.of());
     }

@@ -3,32 +3,34 @@ package com.vidsage.application.subtitle.pipeline;
 import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.media.pipeline.AudioPreparationStage;
 import com.vidsage.application.transcription.pipeline.TranscriptionStage;
-import com.vidsage.domain.transcription.model.AudioSource;
-import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.media.model.AudioArtifact;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
-import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.shared.model.StageEvent;
-import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
-import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
+import com.vidsage.domain.transcription.model.AudioSource;
+import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.progress.ProgressMapper;
 import com.vidsage.shared.subtitle.SrtRenderer;
-import com.vidsage.shared.subtitle.SubtitleArtifactNames;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+
 /**
  * 字幕编排：把「一条 {@link MediaInput}」变成两个产物——{@code subtitles-<路线>.srt} 与
- * {@code segments-<路线>.json}（名字规则见 {@link SubtitleArtifactNames}）。
+ * {@code segments-<路线>.json}
  *
  * <p>编排顺序（design §四）：取 provider 自述的音频规格 → 断点复用判定 →
  * 音频准备（复用 2a）→ 转写（复用云 provider）→ 组 {@link SubtitleTrack} → 先写 JSON（检查点）
@@ -40,7 +42,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@link CheckpointPolicy}。文件名规则只有本阶段知道，故复用判据也由本阶段判（design §六）。
  *
  * <p>进度权重是<b>过渡态</b>：2a 的 {@code 0..100} 被本阶段线性映射进 {@code 0..60}，自己的
- * {@code transcribe} 占 60→95、{@code write-subtitles} 占 95→100。真正形状应以 MVP-1 的
+ * 转写占 60→95、写字幕占 95→100。真正形状应以 MVP-1 的
  * SSE payload 定锤，本映射不构成未来约束（design 决策 6）。
  *
  * <p><b>空转写是合法产出</b>：ASR 返回空 segments 时写 0 字节 SRT + 内容正常的 JSON
@@ -48,24 +50,26 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Slf4j
 @Component
-public class SubtitlePreparationStage {
+public class SubtitlePreparationCoordinator {
 
-    /** 转写阶段名。 */
-    static final String STAGE_TRANSCRIBE = "transcribe";
-
-    /** 写字幕阶段名。 */
-    static final String STAGE_WRITE_SUBTITLES = "write-subtitles";
-
-    /** 2a 的进度区间映射进本任务的 {@code 0..60}（design 决策 6）。 */
+    /**
+     * 2a 的进度区间映射进本任务的 {@code 0..60}（design 决策 6）。
+     */
     private static final int ACQUIRE_END = 60;
 
-    /** transcribe 在自己区间（60..95）内的起点权重。 */
+    /**
+     * 转写阶段在自身区间（60..95）内的起点权重。
+     */
     private static final int TRANSCRIBE_START = 60;
 
-    /** transcribe 在自己区间内的终点权重。 */
+    /**
+     * 转写阶段在自身区间内的终点权重。
+     */
     private static final int TRANSCRIBE_DONE = 95;
 
-    /** write-subtitles 在自己区间（95..100）内的终点权重。 */
+    /**
+     * 写字幕阶段在自身区间（95..100）内的终点权重。
+     */
     private static final int WRITE_DONE = 100;
 
     private final WorkspaceService workspaceService;
@@ -77,17 +81,17 @@ public class SubtitlePreparationStage {
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param workspaceService       工作目录解析
-     * @param audioPreparationStage  音频准备（复用 2a，本阶段不碰 ffmpeg）
-     * @param transcriptionStage     转写（复用云 provider）
-     * @param asrProvider            当前装配的 ASR provider（用来问规格与路线）
-     * @param objectMapper           Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
+     * @param workspaceService      工作目录解析
+     * @param audioPreparationStage 音频准备（复用 2a，本阶段不碰 ffmpeg）
+     * @param transcriptionStage    转写（复用云 provider）
+     * @param asrProvider           当前装配的 ASR provider（用来问规格与路线）
+     * @param objectMapper          Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      */
-    public SubtitlePreparationStage(WorkspaceService workspaceService,
-                                    AudioPreparationStage audioPreparationStage,
-                                    TranscriptionStage transcriptionStage,
-                                    ASRProvider asrProvider,
-                                    ObjectMapper objectMapper) {
+    public SubtitlePreparationCoordinator(WorkspaceService workspaceService,
+                                          AudioPreparationStage audioPreparationStage,
+                                          TranscriptionStage transcriptionStage,
+                                          ASRProvider asrProvider,
+                                          ObjectMapper objectMapper) {
         this.workspaceService = workspaceService;
         this.audioPreparationStage = audioPreparationStage;
         this.transcriptionStage = transcriptionStage;
@@ -125,31 +129,30 @@ public class SubtitlePreparationStage {
         }
 
         SubtitleRoute route = asrProvider.route();
-        String routeToken = SubtitleArtifactNames.routeToken(route);
         Path workDir = workspaceService.workspaceFor(input);
-        Path segmentsPath = workDir.resolve(SubtitleArtifactNames.segmentsFileName(route));
-        Path srtPath = workDir.resolve(SubtitleArtifactNames.srtFileName(route));
+        Path segmentsPath = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(route, null));
+        Path srtPath = workDir.resolve(SubtitleArtifactSpec.SRT_RAW.fileName(route, null));
 
         // 断点复用：已有非空 segments JSON → 反序列化直接返回，不做任何音频/转写/写盘
         SubtitleTrack existing = readCheckpoint(segmentsPath);
         if (existing != null) {
-            log.info("字幕断点复用跳过: segments={}, routeToken={}", segmentsPath.getFileName(), routeToken);
-            emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_DONE, "已有 segments 产物，跳过转写", StageEvent.StageState.SKIPPED);
-            emit(listener, STAGE_WRITE_SUBTITLES, WRITE_DONE, "已有字幕产物，跳过写盘", StageEvent.StageState.SKIPPED);
+            log.info("字幕断点复用跳过: segments={}, routeToken={}", segmentsPath.getFileName(), route);
+            emit(listener, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), TRANSCRIBE_DONE, "已有 segments 产物，跳过转写", StageEvent.StageState.SKIPPED);
+            emit(listener, SubtitleStageName.WRITE_SUBTITLES.getStageName(), WRITE_DONE, "已有字幕产物，跳过写盘", StageEvent.StageState.SKIPPED);
             return toArtifact(srtPath, segmentsPath, existing);
         }
 
         AudioSpec spec = asrProvider.requiredAudioSpec();
         log.debug("开始准备字幕: workDir={}, routeToken={}, audioSpec={}",
-                workDir.getFileName(), routeToken, spec.container());
+                workDir.getFileName(), route, spec.container());
 
         // 音频准备 + 转写（2a 的 0..100 映射进 0..60；映射逻辑上提至 ProgressMapper——
         // MVP-1 管线对 clean 的区间映射是第二个使用者，2026-10-02 两段式后翻译不再经映射）
         AudioArtifact audio = audioPreparationStage.prepare(input, spec, ProgressMapper.remap(listener, 0, ACQUIRE_END));
-        emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_START, "开始转写", StageEvent.StageState.RUNNING);
+        emit(listener, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), TRANSCRIBE_START, "开始转写", StageEvent.StageState.RUNNING);
         TranscriptionResult result = transcriptionStage.transcribe(
                 new AudioSource.AudioFilePath(audio.audioPath().toString()), null);
-        emit(listener, STAGE_TRANSCRIBE, TRANSCRIBE_DONE, "转写完成", StageEvent.StageState.SUCCEEDED);
+        emit(listener, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), TRANSCRIBE_DONE, "转写完成", StageEvent.StageState.SUCCEEDED);
 
         SubtitleTrack track = new SubtitleTrack(route, result.language(), result.segments());
         if (result.segments().isEmpty()) {
@@ -157,10 +160,10 @@ public class SubtitlePreparationStage {
             log.warn("ASR 未识别出任何内容，产出空字幕: segmentsPath={}，可能是纯音乐或无语音音频",
                     segmentsPath.getFileName());
         }
-        emit(listener, STAGE_WRITE_SUBTITLES, WRITE_DONE,
+        emit(listener, SubtitleStageName.WRITE_SUBTITLES.getStageName(), WRITE_DONE,
                 "开始写字幕产物", StageEvent.StageState.RUNNING);
         writeArtifacts(segmentsPath, srtPath, track);
-        emit(listener, STAGE_WRITE_SUBTITLES, WRITE_DONE,
+        emit(listener, SubtitleStageName.WRITE_SUBTITLES.getStageName(), WRITE_DONE,
                 "字幕产物写入完成", StageEvent.StageState.SUCCEEDED);
         return toArtifact(srtPath, segmentsPath, track);
     }

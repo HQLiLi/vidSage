@@ -14,7 +14,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Bcp47Language 的纯单元测试：语种政策断言随逻辑自 {@code SubtitleTranslationStageTest} 迁入，
+ * Bcp47Language 的纯单元测试：语种政策断言随逻辑自 {@code SubtitleTranslationCoordinatorTest} 迁入，
  * 断言值不变（2026-10-06 Phase B，resolveTargetLanguage 等四个包级静态方法下沉为本类公开 API）。
  */
 class Bcp47LanguageTest {

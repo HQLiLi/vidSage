@@ -3,7 +3,7 @@
  * 根包只留两样：{@code VideoTaskService}（提交与查询的唯一入口，也是本上下文唯一有 web 调用面的服务）
  * 与 {@code TaskProgressMessage}（application → web 的进度消息）。
  *
- * <p>子包按角色划分：{@code pipeline/} 装管线构件（{@code VideoTaskPipeline}——异步管线的本体，
+ * <p>子包按角色划分：{@code pipeline/} 装管线构件（{@code SubtitlePipeline}——异步管线的本体，
  * 没有 web 调用面，只被上级按顺序调用）；{@code query/} 装读模型（{@code TaskSnapshot} /
  * {@code TaskArtifact} / {@code TaskArtifactFile}，面向查询的应用层投影，零 web 注解——对外契约注解
  * 集中在 {@code web/dto/TaskResponse}）；{@code exception/} 装应用异常

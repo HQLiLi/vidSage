@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 27
+- **Total Sessions**: 28
 - **Last Active**: 2026-10-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~775 | Active |
+| `journal-1.md` | ~810 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 28 | 2026-10-07 | 命名判据重立 + 管线与阶段构件改名（*Stage → *Coordinator） | `399126f`, `1af5f25`, `e144df5`, `f899d4b`, `27c8b65`, `5fe9742`, `5c09fe8`, `fcf0750`, `dc2aced`, `ef571a5` | `feature/shape-refactor` |
 | 27 | 2026-10-07 | 包结构整理归档 + 架构「形状」设计讨论 | `35c7a83`, `3e13c54`, `866e647` | `dev` |
 | 26 | 2026-10-06 | 命名与构件语义整理：Task 前缀对齐、管线方法与阶段类改名 | `7b9db46`, `bcb1629` | `dev` |
 | 25 | 2026-10-06 | application 出站依赖倒置：端口归 domain/application，infrastructure 实现 | `62e9b47`, `9bb8cae` | `dev` |

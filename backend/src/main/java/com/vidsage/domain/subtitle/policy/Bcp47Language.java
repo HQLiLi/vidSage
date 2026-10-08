@@ -31,11 +31,8 @@ public final class Bcp47Language {
     /**
      * 解析目标语种：空白抛 ISE，否则返回归一化（去空白 + 转小写）后的值。
      *
-     * <p><b>为什么必须在编排入口做、且零 I/O</b>：产物名
-     * （{@code SubtitleArtifactNames#translateSegmentsFileName}）里也有一道同样的守卫，但它排在
-     * 工作目录解析之后——那只会在<b>建出工作目录之后</b>才报错，属「卫语句晚于 I/O」：配置错却先
-     * 产生副作用。error-handling 的硬规则要求边界上可判定的配置错误零 I/O 返回。产物名那道守卫保留作
-     * <b>防御性兜底</b>，正常路径已被这里挡住。
+     * <p><b>调用点要排在建工作目录那类 I/O 之前</b>（见 SubtitleTranslationCoordinator 的卫语句）：配置错了
+     * 就该立刻抛，而不是先建了目录、甚至跑完一轮 ASR 再报错——那样错误信息会被前面的 I/O 失败盖掉。
      *
      * @param configuredTarget 配置的目标语种原始值；可空白
      * @return 归一化后的目标语种（trim + 小写），与产物名的归一化口径一致
