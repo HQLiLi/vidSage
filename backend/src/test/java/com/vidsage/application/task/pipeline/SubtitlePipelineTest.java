@@ -36,6 +36,7 @@ import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.port.VideoTaskRepository;
+import com.vidsage.infrastructure.fs.NioFileStateReader;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -71,7 +72,8 @@ class SubtitlePipelineTest {
 
     private SubtitlePipeline service(int maxConcurrent) {
         return new SubtitlePipeline(repository,
-                new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString())),
+                new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString()),
+                        new NioFileStateReader()),
                 subtitlePreparationCoordinator, cleanupStage, translationStage, registry, new TaskProperties(maxConcurrent));
     }
 
@@ -135,8 +137,12 @@ class SubtitlePipelineTest {
         Path expectedDir = tempDir.resolve("works").resolve("demo.mp4-a1b2c3d4e5f6");
         assertEquals(expectedDir.resolve("source.mp4"), in.value(),
                 "上传任务必须按持久化的 workspace_dir 定位 source.mp4，不能从输入重算 key");
-        assertEquals(expectedDir, in.workspaceDir(), "InWorkspace 必须携带已解析的工作区目录，下游零重算");
-        assertEquals("a1b2c3d4e5f6", in.workspaceKey().value(), "内容 key 应随输入携带");
+        // 身份由 dirLabel + key 随输入携带：workspaceFor 用它们重算目录，必须与持久化的 workspace_dir 逐字一致
+        assertEquals(expectedDir, new WorkspaceService(
+                        new WorkspaceProperties(tempDir.resolve("works").toString()), new NioFileStateReader())
+                .workspaceFor(in),
+                "dirLabel + key 重建的目录必须与持久化的 workspace_dir 逐字一致（下游零重算）");
+        assertEquals("a1b2c3d4e5f6", in.key().value(), "内容 key 应随输入携带");
     }
 
     @Test

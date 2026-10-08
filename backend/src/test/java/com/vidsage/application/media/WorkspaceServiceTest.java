@@ -7,10 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.config.WorkspaceProperties;
+import com.vidsage.domain.media.model.MediaFileInfo;
 import com.vidsage.domain.media.model.MediaInput;
-import com.vidsage.domain.shared.model.SourceUri;
 import com.vidsage.domain.shared.model.WorkspaceDir;
 import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.infrastructure.fs.NioFileStateReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,15 +33,17 @@ class WorkspaceServiceTest {
     @TempDir(cleanup = CleanupMode.NEVER)
     Path tempDir;
 
+    private final NioFileStateReader fileStateReader = new NioFileStateReader();
+
     private Path root() {
         return tempDir.resolve("works");
     }
 
     private WorkspaceService service() {
-        return new WorkspaceService(new WorkspaceProperties(root().toString()));
+        return new WorkspaceService(new WorkspaceProperties(root().toString()), fileStateReader);
     }
 
-    // ---------- 内容寻址（本地文件 stat 路线：stat 是应用层职责，公式在 SourceUri） ----------
+    // ---------- 内容寻址（本地文件 stat 路线：FileStateReader 供事实，身份公式在 domain） ----------
 
     @Test
     void sameLocalFileMapsToSameDirectory() throws IOException {
@@ -52,20 +55,26 @@ class WorkspaceServiceTest {
 
     @Test
     void localFileKeyIncorporatesSize() throws IOException {
-        // 路径相同但内容大小不同 → 规范化身份不同（内容寻址，而非仅凭文件名）
+        // 路径相同但内容大小不同 → 身份不同（内容寻址，而非仅凭文件名）
         Path small = writeMedia("same-name.bin", 8);
-        SourceUri smallKey = WorkspaceService.localPathKey(small);
+        var input = new MediaInput.LocalPath(small);
+        WorkspaceKey before = input.getContentKey(fileStateReader.getFileState(small));
         Files.write(small, new byte[64]);
 
-        assertNotEquals(smallKey.value(), WorkspaceService.localPathKey(small).value());
+        assertNotEquals(before, input.getContentKey(fileStateReader.getFileState(small)));
     }
 
     @Test
-    void localPathKeyToleratesMissingFile() {
-        SourceUri key = WorkspaceService.localPathKey(tempDir.resolve("nope.mp4"));
+    void missingFileYieldsPlaceholderIdentity() {
+        Path missing = tempDir.resolve("nope.mp4");
+        var input = new MediaInput.LocalPath(missing);
+        MediaFileInfo info = fileStateReader.getFileState(missing);
 
-        // 文件不存在时用占位值，不在服务层报「文件不存在」——那是输入获取适配器的职责
-        assertTrue(key.value().endsWith("|-1|-1"), key.value());
+        // 文件不存在 → 占位事实（size/mtime 均为 -1）而不是异常；「文件不存在」的报错属于输入获取适配器
+        assertFalse(info.isAvailable());
+        // 占位事实照常定身份：重复读取稳定，workspaceFor 照样能算出目录
+        assertEquals(input.getContentKey(info), input.getContentKey(fileStateReader.getFileState(missing)));
+        assertTrue(Files.isDirectory(service().workspaceFor(input)));
     }
 
     // ---------- 可读标签 ----------

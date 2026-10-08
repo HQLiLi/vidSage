@@ -7,6 +7,7 @@ import com.vidsage.application.task.pipeline.SubtitlePipeline;
 import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskSnapshot;
+import com.vidsage.domain.media.model.MediaFileInfo;
 import com.vidsage.domain.shared.model.SourceUri;
 import com.vidsage.domain.shared.model.WorkspaceDir;
 import com.vidsage.domain.shared.model.WorkspaceKey;
@@ -18,6 +19,7 @@ import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import com.vidsage.shared.fs.ArtifactFiles;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -29,6 +31,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -39,7 +42,7 @@ import org.springframework.util.StringUtils;
  *
  * <p>两条提交路线收敛到 {@link #handleSubmit}：
  * <ul>
- *   <li><b>URL</b>（POST /api/tasks）：workspace_key = {@code WorkspaceService.normalize → WorkspaceKey.ofHash}，
+ *   <li><b>URL</b>（POST /api/tasks）：workspace_key = {@code RemoteUrl.getContentKey → WorkspaceKey.ofHash}，
  *       <b>只算 key 不触发建目录</b>——目录由管线内的各阶段服务按同一公式懒创建；</li>
  *   <li><b>上传</b>（POST /api/tasks/upload）：流式写盘<b>边写边算 sha256</b>，key = 内容摘要前 12 位，
  *       工作区 = {@code sanitize(原始文件名)-<key>/source.mp4}（断点复用按内容寻址，比「路径+时间戳」指纹稳），
@@ -59,10 +62,14 @@ import org.springframework.util.StringUtils;
 @Service
 public class VideoTaskService {
 
-    /** 临时文件名前缀：上传先落根目录临时文件算内容摘要，再按 key 归位。 */
+    /**
+     * 临时文件名前缀：上传先落根目录临时文件算内容摘要，再按 key 归位。
+     */
     private static final String TEMP_FILE_PREFIX = "upload-";
 
-    /** 临时文件名后缀：明确「未归位」语义，也便于排查残留。 */
+    /**
+     * 临时文件名后缀：明确「未归位」语义，也便于排查残留。
+     */
     private static final String TEMP_FILE_SUFFIX = ".part";
 
     private final VideoTaskRepository repository;
@@ -97,8 +104,7 @@ public class VideoTaskService {
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
         MediaInput.RemoteUrl input = new MediaInput.RemoteUrl(url.trim());
-        SourceUri identity = WorkspaceService.normalize(input);
-        WorkspaceKey workspaceKey = WorkspaceKey.ofHash(identity.value());
+        WorkspaceKey workspaceKey = input.getContentKey(MediaFileInfo.NOT_APPLICABLE);
         rejectIfActive(workspaceKey);
         // 目录名公式单源在 WorkspaceDir.of（sanitize(标签)-key）：
         // 管线阶段会用同一公式懒建出同一目录，落点天然一致
@@ -264,7 +270,7 @@ public class VideoTaskService {
      * source.mp4，从输入重算会写错 workspace_dir。
      */
     private TaskSnapshot handleSubmit(MediaInput input, TaskInputType inputType, String sourceUri,
-                            WorkspaceKey workspaceKey, String dirName) {
+                                      WorkspaceKey workspaceKey, String dirName) {
         VideoTask task = VideoTask.newPending(inputType, sourceUri, workspaceKey, dirName);
         VideoTask inserted = repository.insert(task);
         // 不打 workspaceDir：URL 路线的目录名内嵌 sanitize 后的 URL（查询串参数值原样保留），

@@ -27,6 +27,7 @@ import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.port.VideoTaskRepository;
+import com.vidsage.infrastructure.fs.NioFileStateReader;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -62,7 +63,8 @@ class VideoTaskServiceTest {
      */
     private VideoTaskService service() {
         return new VideoTaskService(repository,
-                new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString())),
+                new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString()),
+                        new NioFileStateReader()),
                 pipeline);
     }
 
@@ -90,8 +92,8 @@ class VideoTaskServiceTest {
         assertEquals(TaskStatus.PENDING, inserted.getStatus());
         assertTrue(inserted.getTaskNo().value().matches("[0-9a-f]{32}"));
         // 目录名与 WorkspaceDir 同公式：sanitize(url)-hash12（非法字符替换为下划线）
-        WorkspaceKey expectedKey = WorkspaceKey.ofHash(WorkspaceService.normalize(
-                new com.vidsage.domain.media.model.MediaInput.RemoteUrl("https://example.com/watch/1")).value());
+        WorkspaceKey expectedKey = new com.vidsage.domain.media.model.MediaInput.RemoteUrl("https://example.com/watch/1")
+                .getContentKey(com.vidsage.domain.media.model.MediaFileInfo.NOT_APPLICABLE);
         String expectedDir = WorkspaceDir.sanitizeName("https://example.com/watch/1") + "-" + expectedKey.value();
         assertEquals(expectedDir, inserted.getWorkspaceDir());
 
