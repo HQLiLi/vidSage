@@ -199,7 +199,7 @@ public Path workspaceFor(MediaInput input) {
 
 | 变更类型 | 判据 | 落点 | grep 验证 |
 |---|---|---|---|
-| 加一个**管线阶段** | 它属于主管线还是按需派生产物？ | ① `SubtitleStageName` 加一条枚举项（值 = 动词-对象 kebab）② 发事件处引用 `SubtitleStageName.X.getStageName()`（sealed/编译器管，漏了编译不过）③ **权重区间仍要手算**（三层 11 个常量未动——扁平化已拆独立任务，见 prd「后续任务」） | `grep -rn '"acquire-media"' backend/src/main \| grep -v SubtitleStageName` → 无命中（值字面量单点） |
+| 加一个**管线阶段** | 它属于主管线还是按需派生产物？ | ① `SubtitleStageName` 加一条枚举项（值 = 动词-对象 kebab，带一个相对份额 `weight`）② 发事件处引用 `SubtitleStageName.X.getStageName()` / `.start()` / `.end()`（sealed/编译器管，漏了编译不过）③ **权重区间自动算出**——按枚举声明顺序累加，无手算、无第二处数字（2026-10-08 扁平化已落地，见 `10-08-progress-weight-flattening`） | `grep -rn '"acquire-media"' backend/src/main \| grep -v SubtitleStageName` → 无命中（值字面量单点） |
 | 加一个**产出物** | 对外可下载吗？什么算完成？ | `SubtitleArtifactSpec` 加一条（文件名模板 + `downloadable` + `checkpoint` 三问同行） | `grep -rn '"segments-\|"context-' backend/src/main \| grep -v SubtitleArtifactSpec` → 无命中 |
 | 加一种**输入来源** | 身份从哪来——位置还是内容？ | ① `MediaInput` 加变体（`permits` 跟改）并实现 `getContentKey()` / `dirLabel()` ② 身份侧 `WorkspaceService` **不动**；提交侧还要跟 `TaskInputType` + `ofTaskInput` 的 case + 提交端点（身份公式之外的落点，列此为诚实说明） | `grep -n 'case MediaInput' WorkspaceService.java` → 无命中（不按变体分派） |
 | 加一个 **provider** | 端口在哪层？ | （故意留空——`provider-pattern.md` 已有规范，但落点清单未成文） | — |
@@ -211,7 +211,7 @@ public Path workspaceFor(MediaInput input) {
 
 ## 六、三处分叉的定论（2026-10-07 用户确认）
 
-1. **阶段** — **A（只单源）**。编排保持手写，权重保持两层结构。理由见 §二。
+1. **阶段** — **A（只单源）**。编排保持手写。当时的「权重两层结构」已于 2026-10-08 扁平化（每阶段单 `weight` 字段、区间按声明顺序累加算出，见 `10-08-progress-weight-flattening`）。理由见 §二。
    - 讨论中曾把 A 描述成"不列表化"，但 **A 本身就是 sealed/record 的使用者**（`MediaInput` 已是 sealed + record）——真正的区别不是"用不用 sealed"，而是**要不要为身份再开一个 sealed 层级**，那是第 3 条的事。
 
 2. **产出物** — **枚举登记表**。理由见 §三。
