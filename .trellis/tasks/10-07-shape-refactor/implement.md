@@ -9,7 +9,7 @@
 |---|---|
 | 1 阶段 | **A** —— 只单源（名字 + 权重边界），编排保持手写，权重保持两层结构（改扁平会改进度数值） |
 | 2 产出物 | **枚举登记表** |
-| 3 身份 | **`contentKey()` 归输入自己 + `InWorkspace` 从"带结果"改成"带身份"** |
+| 3 身份 | **`getContentKey()` 归输入自己 + `InWorkspace` 从"带结果"改成"带身份"** |
 
 **开工前先跑一次基线**（本任务会移动/删除类，必须 `clean`）：
 
@@ -353,41 +353,123 @@ git diff -U0 | grep -E '^[+-].*(ACQUIRE_START|ACQUIRE_DONE|EXTRACT_START|EXTRACT
 
 # 批次 3：身份归属
 
+> ✅ **2026-10-08 已完成并通过验收**（四路线目录名 before/after 逐字一致，AC7 表述已按 prd 打勾时的修正为准）。
+> **与本节计划的偏差**（按实际发生的记录）：
+> ① 实现名为 `FileStateReader.getFileState` / `NioFileStateReader` / `getContentKey`——用户定「按代码名为准」，
+> 文档已全部向代码对齐（本文上一版写的 `FileStatReader.stat` / `contentKey` 是定案讨论时的拟名，作废）。
+> ② 两条 `workspaceFor` **没有合并**——原计划「合并成一条」有鸡生蛋洞（提交时刻 `InWorkspace` 的 value
+> 要等目录算出才能拼），双参 `workspaceFor(label, key)` 保留为「提交时刻专用」，分工写在方法注释里。
+> ③ `WorkspaceServiceTest` 用**真实** `NioFileStateReader` 而非 fake（夹具本来就写真文件，保真）；
+> 另按 ③ 落点补了 `NioFileStateReaderTest` 四例（正常读 / 不存在 / 目录 / null）。
+
 **目标**：身份由输入自己算（`WorkspaceService` 的 switch 消失）；`InWorkspace` 从"带结果"改成"带身份"。
-**改动面**：`MediaInput`（3 个变体各加实现）+ 新增 `MediaFacts` + `WorkspaceService` + `MediaInput.ofTaskInput` + 类注释。
+**改动面**：`MediaInput`（3 个变体各加实现）+ 新增 `MediaFileInfo` + 新增 `FileStateReader` 端口（`application/media/port/`）与 `NioFileStateReader` 实现（`infrastructure/fs/`）+ `WorkspaceService` + `MediaInput.ofTaskInput` + 类注释。
 **风险**：**高**——身份算错就是工作区目录算错，产物落错地方或断点复用失效。
 
 > **复核（2026-10-07，批次 2 之后按当前代码重扫）**——两个原草案没写的落点：
 > ① `WorkspaceService.normalize` 有**跨包消费方**：`VideoTaskService:100` 用它算落库的 `workspace_key`（URL 路线）。
-> 删 `normalize` 时那点要改成 `input.contentKey(MediaFacts.NOT_APPLICABLE)`（URL 路线不需要文件事实，零 I/O）；
+> 删 `normalize` 时那点要改成 `input.getContentKey(MediaFileInfo.NOT_APPLICABLE)`（URL 路线不需要文件事实，零 I/O）；
 > `VideoTaskService:105` 的 `WorkspaceDir.of(input.value(), workspaceKey)` 改用 `input.dirLabel()` 之后目录名逐字不变。
 > ② 测试侧要改的（AI 做）：`WorkspaceServiceTest` 的 `WorkspaceService.localPathKey` ×3 处（:57 :60 :65）与两参
 > `workspaceFor(label, key)` ×3 处（:103 :113 :115）；`VideoTaskServiceTest:93` 的 `WorkspaceService.normalize`。
 > 其余测试只是 `when(workspaceService.workspaceFor(any()))` 打桩，不受影响。
+> ③ 端口化新增的测试落点（2026-10-08 定案后补，AI 做）：`WorkspaceServiceTest` 构造处多传一个 fake
+> `FileStateReader`；原 `localPathKey` 的三处断言改走 fake，或迁移为 `NioFileStateReader` 的真实临时文件单测；
+> 另新增 `NioFileStateReader` 单测（正常读 / 文件不存在 / 传入目录 → 数值 -1 占位、不抛异常、快照 path 与传入一致）。
 
-## 步骤 3.1 — `MediaFacts` 值对象
+## 步骤 3.1 — `MediaFileInfo` 值对象
 
-新文件：`backend/src/main/java/com/vidsage/domain/media/model/MediaFacts.java`
+新文件：`backend/src/main/java/com/vidsage/domain/media/model/MediaFileInfo.java`
 
 ```java
 /**
- * 媒体文件的文件系统事实：大小 + 最后修改时间。
+ * 媒体文件的文件系统快照：路径 + 大小 + 最后修改时间。
  *
- * <p>只有本地文件路线的身份需要它（身份＝路径｜大小｜mtime）。domain 层不做 I/O，
- * 所以 stat 由 application 读出来传进来——**身份公式在 domain，文件事实由外部提供**。
- * 文件不存在 / 不可读时用 {@link #UNAVAILABLE} 占位（与原 localPathKey 的行为一致）。
+ * <p>快照自带参照物（path）——观测必须说得清「看的是哪个文件」。只有本地文件路线的身份
+ * 需要它（身份＝路径｜大小｜mtime）。domain 层不做 I/O，stat 由 {@code FileStateReader}
+ * 端口（infrastructure 实现）采样后传进来——**身份公式在 domain，文件系统读数由外部提供**。
+ * 文件不存在 / 不可读时数值用 {@link #UNAVAILABLE} 占位、path 仍为传入原样
+ * （与原 localPathKey 的行为一致：不报错，权威报错归输入获取适配器）。
  *
+ * @param path           被观测的文件路径，传入原样、不 absolute 化（absolute 化归 {@code SourceUri} 公式）；
+ *                       仅哨兵 {@link #NOT_APPLICABLE} 为 null
  * @param sizeBytes      文件大小；不可用时为 -1
  * @param lastModifiedMs 最后修改时间毫秒；不可用时为 -1
  */
-public record MediaFacts(long sizeBytes, long lastModifiedMs) {
+public record MediaFileInfo(Path path, long sizeBytes, long lastModifiedMs) {
 
     public static final long UNAVAILABLE = -1L;
-    public static final MediaFacts NOT_APPLICABLE = new MediaFacts(UNAVAILABLE, UNAVAILABLE);
+    /** URL / 上传路线的哨兵：没有文件可观测，path 为 null、数值全 -1，接收方一律忽略。 */
+    public static final MediaFileInfo NOT_APPLICABLE = new MediaFileInfo(null, UNAVAILABLE, UNAVAILABLE);
 }
 ```
 
-## 步骤 3.2 — 身份成为输入的属性
+## 步骤 3.2 — `FileStateReader` 端口与 NIO 实现（2026-10-08 定案）
+
+采样动作经端口进 infrastructure——文件读取是基础设施的活。两处落位的判据：
+
+- **端口落 `application/media/port/`**：契约是技术词汇（`Path` 进、stat 读数出），兜底问题
+  「删掉这个端口业务规则还成立吗」答「成立」→ application 端口（directory-structure.md 端口归属判据）。
+- **实现落 `infrastructure/fs/`（新开顶层桶）**：按能力来源分桶——DB→`persistence`、本机进程→`process`、
+  文件→`fs`，`provider/` 留给外部服务与工具。**注意**：`LocalFileMediaAcquirer` 按此分类也属 fs，
+  但批 3 不动它（import 面大、与身份归属无关，要挪另立任务）。
+
+新文件：`backend/src/main/java/com/vidsage/application/media/port/FileStateReader.java`
+
+```java
+/**
+ * 本地文件 stat 采样端口：读「路径 + 大小 + 最后修改时间」快照。
+ * 文件系统读数进应用层的唯一入口——application 不直接碰 {@code Files.size} 这类读数调用。
+ */
+public interface FileStateReader {
+
+    /**
+     * 读文件快照。<b>不抛异常</b>：文件不存在、不可读、不是普通文件时返回 -1 占位数值。
+     *
+     * @param path 被观测路径；快照的 path 与此参数<b>原样一致</b>（不 absolute 化，absolute 化归 SourceUri 公式）
+     * @return 至少包含 path 的快照；{@code null} 参数返回 {@link MediaFileInfo#NOT_APPLICABLE}
+     */
+    MediaFileInfo getFileState(Path path);
+}
+```
+
+新文件：`backend/src/main/java/com/vidsage/infrastructure/fs/NioFileStateReader.java`
+
+```java
+/**
+ * FileStateReader 的 JDK（java.nio.file）实现：stat 读数与原 WorkspaceService.localPathKey 逐字一致——
+ * 读不到就降级为占位值、只 log.debug 不报错（权威报错归输入获取适配器，此处重复报只会让错误来源含糊）。
+ */
+@Component
+public class NioFileStateReader implements FileStateReader {
+
+    @Override
+    public MediaFileInfo getFileState(Path path) {
+        if (path == null) {
+            return MediaFileInfo.NOT_APPLICABLE;
+        }
+        try {
+            if (Files.isRegularFile(path)) {
+                return new MediaFileInfo(path, Files.size(path),
+                        Files.getLastModifiedTime(path).toMillis());
+            }
+        } catch (IOException e) {
+            log.debug("读取本地文件属性失败，按占位值计算工作目录: file={}, reason={}",
+                    path.getFileName(), e.getMessage());
+        }
+        return new MediaFileInfo(path, MediaFileInfo.UNAVAILABLE, MediaFileInfo.UNAVAILABLE);
+    }
+}
+```
+
+**两条容易写错的地方**：
+
+1. **读不到时返回 `(path, -1, -1)`，不是 `NOT_APPLICABLE`**——快照的 path 必须与传入一致，
+   否则下一步 `LocalPath.getContentKey` 的断言会把「读不到」误判成「观测了错文件」而当场抛错
+   （行为对比：原 `localPathKey` 对不存在的文件照样算出 `path|-1|-1` 身份，不报错）。
+2. 日志文案与触发条件（`isRegularFile` 为 false 不打日志、异常才打）**照抄**原 `localPathKey`，行为零变化。
+
+## 步骤 3.3 — 身份成为输入的属性
 
 `MediaInput` **改造前**：
 
@@ -412,9 +494,10 @@ public sealed interface MediaInput {
      * 在这里绕不过去——它的身份是文件内容的 sha256，从位置推不出来，所以只能算出来之后
      * 带着走（见 {@link InWorkspace}）。
      *
-     * @param facts 文件系统事实（大小 / 修改时间）；只有 {@link LocalPath} 需要，其余变体忽略
+     * @param facts 文件系统快照（路径 / 大小 / 修改时间）；只有 {@link LocalPath} 需要
+     *              并校验快照 path 与自己一致，其余变体忽略
      */
-    WorkspaceKey contentKey(MediaFacts facts);
+    WorkspaceKey getContentKey(MediaFileInfo facts);
 
     /** 目录名前半段的人读标签。唯一性完全由 key 保证，这里只是给人看的。 */
     String dirLabel();
@@ -425,7 +508,7 @@ public sealed interface MediaInput {
      */
     record RemoteUrl(String value) implements MediaInput {
         @Override
-        public WorkspaceKey contentKey(MediaFacts facts) {
+        public WorkspaceKey getContentKey(MediaFileInfo facts) {
             return WorkspaceKey.ofHash(value == null ? "" : value);
         }
         @Override
@@ -437,8 +520,14 @@ public sealed interface MediaInput {
     /** 本机可读的媒体文件路径，直接采用，不下载、不拷贝。 */
     record LocalPath(Path value) implements MediaInput {
         @Override
-        public WorkspaceKey contentKey(MediaFacts facts) {
-            return WorkspaceKey.ofHash(SourceUri.ofLocalFile(value, facts.sizeBytes(),
+        public WorkspaceKey getContentKey(MediaFileInfo facts) {
+            // 观测必须关于本输入：path 对不上（含 null 哨兵误传）当场报错，正常路径永不触发
+            if (facts == null || !Objects.equals(value, facts.path())) {
+                throw new IllegalArgumentException(
+                        "文件快照与输入不一致: input=" + value + ", snapshot="
+                                + (facts == null ? null : facts.path()));
+            }
+            return WorkspaceKey.ofHash(SourceUri.ofLocalFile(facts.path(), facts.sizeBytes(),
                     facts.lastModifiedMs()).value());
         }
         @Override
@@ -461,7 +550,7 @@ public sealed interface MediaInput {
      */
     record InWorkspace(Path value, WorkspaceKey key, String dirLabel) implements MediaInput {
         @Override
-        public WorkspaceKey contentKey(MediaFacts facts) {
+        public WorkspaceKey getContentKey(MediaFileInfo facts) {
             return key;      // 身份就在身上，不用算
         }
         // dirLabel() 由 record 的访问器自动满足接口方法
@@ -469,7 +558,7 @@ public sealed interface MediaInput {
 }
 ```
 
-**注意**：`InWorkspace` 的字段名用 `key`（不是 `contentKey`），否则和接口方法同名冲突。
+**注意**：`InWorkspace` 的字段名用 `key`（不是 `getContentKey`），否则和接口方法同名冲突。
 
 **类注释要改写**——现在那句「本类型只承载『位置』」是错的（它自己破了）。改成：
 
@@ -483,7 +572,7 @@ public sealed interface MediaInput {
  */
 ```
 
-## 步骤 3.3 — `WorkspaceService` 去 switch
+## 步骤 3.4 — `WorkspaceService` 去 switch、去 `localPathKey`
 
 ```java
 // 前：三路 switch，还带一个抛异常的第三支
@@ -495,38 +584,42 @@ public static SourceUri normalize(MediaInput input) {
     };
 }
 
-// 后：删掉 normalize；只留下"取事实"这一点残留的类型判断
+// 后：删掉 normalize、删掉 localPathKey；stat 读数全部经端口，本类只剩"取事实"
 public Path workspaceFor(MediaInput input) {
     if (input == null) {
         throw new IllegalArgumentException("媒体输入不能为空：请传 RemoteUrl / LocalPath / InWorkspace");
     }
-    MediaFacts facts = factsOf(input);
+    MediaFileInfo facts = factsOf(input);
     return ensureCreated(rootDir().resolve(
-            WorkspaceDir.of(input.dirLabel(), input.contentKey(facts)).value()));
+            WorkspaceDir.of(input.dirLabel(), input.getContentKey(facts)).value()));
 }
 
-/** stat 只在本地文件路线需要；这是"取事实"，不是"选公式"——公式已经住在变体里了。 */
-private static MediaFacts factsOf(MediaInput input) {
+/**
+ * stat 只在本地文件路线需要；这是"取事实"，不是"选公式"——公式已经住在变体里了。
+ * 路径<b>原样</b>传给端口（快照 path 必须与 input.value 一致，getContentKey 的断言靠这个）；
+ * 降级、占位、日志都在 NioFileStateReader 侧，本类不再 try-catch。
+ */
+private MediaFileInfo factsOf(MediaInput input) {
     if (!(input instanceof MediaInput.LocalPath local) || local.value() == null) {
-        return MediaFacts.NOT_APPLICABLE;
+        return MediaFileInfo.NOT_APPLICABLE;
     }
-    Path absolute = local.value().toAbsolutePath().normalize();
-    try {
-        if (Files.isRegularFile(absolute)) {
-            return new MediaFacts(Files.size(absolute),
-                    Files.getLastModifiedTime(absolute).toMillis());
-        }
-    } catch (IOException e) {
-        log.debug("读取本地文件属性失败，按占位值计算工作目录: file={}, reason={}",
-                absolute.getFileName(), e.getMessage());
-    }
-    return MediaFacts.NOT_APPLICABLE;
+    return fileStateReader.getFileState(local.value());
 }
 ```
 
+**配套改动**：
+
+- 构造函数加 `FileStateReader` 参数（构造注入，quality-guidelines）：
+  `public WorkspaceService(WorkspaceProperties properties, FileStateReader fileStateReader)`。
+- `Files.size` / `Files.isRegularFile` / `Files.getLastModifiedTime` / `IOException` 的 import 移出本类
+  （`Files.createDirectories` 仍留——懒建目录是本类职责，不受影响）。
+- 原 `static SourceUri localPathKey(Path)` **整个删除**：读数进了端口、公式进了 `getContentKey`，它两头都不剩。
+  类注释里「文件 stat 在本类完成（技术 I/O）」改成「文件 stat 经 `FileStateReader` 端口采样」。
+- 包可见性提示：`factsOf` 由 `private static` 变 **`private` 实例方法**（要摸实例的端口字段）。
+
 **原来的两条入口 `workspaceFor(MediaInput)` / `workspaceFor(String label, WorkspaceKey key)` 合并成一条**——第二条（上传路线用）不再需要单独存在，因为 `InWorkspace` 现在能自己给出 key。`VideoTaskService.submitUpload` 的 `settleUpload` 要跟着改成先拼 `InWorkspace` 再调 `workspaceFor`。
 
-## 步骤 3.4 — `ofTaskInput` 跟着改
+## 步骤 3.5 — `ofTaskInput` 跟着改
 
 ```java
 // 前
@@ -548,6 +641,10 @@ grep -rn "normalize(MediaInput\|SourceUri normalize" backend/src/main   # 期望
 # ② WorkspaceService 里不再有按变体分派的 switch
 grep -n "case MediaInput" backend/src/main/java/com/vidsage/application/media/WorkspaceService.java
 # 期望：无命中（残留的 instanceof 只为取 facts，形式不同）
+
+# ③ stat 读数已移出 application（经端口进 infrastructure/fs；懒建目录的 createDirectories 不算读数，不受此约束）
+grep -rn "Files\.size\|Files\.isRegularFile\|getLastModifiedTime" backend/src/main/java/com/vidsage/application
+# 期望：无命中
 ```
 
 **③ 最重要的一条：工作区目录逐字一致（AC7）**
@@ -575,7 +672,9 @@ SELECT task_no, workspace_dir, workspace_key FROM task ORDER BY created_at DESC 
 
 1. **跑一次端到端真实链路**（提交 → 字幕 → 清洗 → 翻译），确认 SSE 事件序列与产物清单都对
 2. **补写 `design.md` 的「变更类型 → 落点清单」终稿**——现在那里是雏形，改造完才知道每条落点**实际**是几处（AC6 要求每行可 grep 验证）
-3. 回写 `.trellis/spec/backend/directory-structure.md`（若新增类的落位有新判据）
+3. 回写 `.trellis/spec/backend/directory-structure.md`——**这次是确定要改的**：分层归属表加
+   `infrastructure/fs/` 一行（文件系统出站适配）；「端口归属判据」处可补 `FileStateReader` 作
+   「技术词汇 → application 端口」的实例
 
 ## 本任务的诚实边界
 

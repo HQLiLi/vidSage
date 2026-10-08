@@ -77,14 +77,14 @@ record InWorkspace(Path value, Path workspaceDir,               // 位置 + 工�
 
 ## Acceptance Criteria
 
-- [ ] **AC1** 后端编译通过 + `mvn clean test` 全绿（基线：45 类 / 465 用例 / 0 失败 / 1 跳过；必须 `clean`——会移动/删除类）
-- [ ] **AC2 阶段名单源**：六个阶段名在全项目**只有一处定义**。`grep -rn '"acquire"\|"extract-audio"\|"transcribe"\|"write-subtitles"\|"clean"\|"translate"' backend/src/main` 的命中必须全部落在定义点（及使用它的引用处，不得再有第二处字面量定义）
-- [ ] ~~**AC3 权重单源**~~ → **已移出本任务**（2026-10-07）。原表述要求「加一个阶段不需要手算任何区间」，那需要把三层权重树**压成一层、每个阶段一个权重**——而扁平化**必然改变进度数值**（现在的任务级边界 `0 / 42 / 66.5 / 70 / 100` 是三层层映射挤出来的半整数，扁平后复现不了）。它是**有意的行为变更**，与 AC7「进度数值不变」直接冲突，混在一起就没法验证。**改为独立任务**（见文末「后续任务」）。本任务只做阶段名的单源（AC2 已覆盖）。
-- [ ] **AC3' 权重不动**：本任务**不碰**那 11 个权重常量（`VideoTaskPipeline` 3 个 / `SubtitlePreparationStage` 4 个 / `AudioPreparationStage` 4 个）。`git diff` 里不该出现它们的改动。
-- [ ] **AC4 产出物三问一处答**：任取一个产出物，命名、检查点判据、对外可见性都能在同一处读到
-- [ ] **AC5 身份归属**：`WorkspaceService` 里不再有按 `MediaInput` 变体分派的 `switch`；`MediaInput.InWorkspace` 不再携带 `workspaceDir` / `workspaceKey`
-- [ ] **AC6 公式成文**：「变更类型 → 落点清单」落到 `design.md`，每行的落点都**可 grep 验证**（不是「大概改这一片」）
-- [ ] **AC7 零行为变化**：`git diff` 不含方法签名 / 注解 / 类名变更；HTTP 契约与数据库零变化；**进度事件的序列与数值逐一比对无差异**（这是本任务最容易破的一条，因为权重重排正是 A1 的动作对象）
+- [x] **AC1** 后端编译通过 + `mvn clean test` 全绿（~~基线：45 类 / 465 用例~~ → **2026-10-08 终值 45 类 / 473 用例 / 0 失败 / 0 错误 / 1 跳过**；用例数随批次递增，必须 `clean`——会移动/删除类）
+- [x] **AC2 阶段名单源**：六个阶段名在全项目**只有一处定义**（`SubtitleStageName` 枚举，2026-10-07 批次 2；值同批改为「动词-对象」kebab）。验：旧六值与 `STAGE_*` 常量在 `backend/src/main` 零命中，新六值只落 `SubtitleStageName.java`（原 grep 命令已随改名过期，改验新六值：`grep -rn '"acquire-media"\|"clean-subtitles"' backend/src/main | grep -v SubtitleStageName` 期望无命中）
+- [x] ~~**AC3 权重单源**~~ → **已移出本任务**（2026-10-07）。原表述要求「加一个阶段不需要手算任何区间」，那需要把三层权重树**压成一层、每个阶段一个权重**——而扁平化**必然改变进度数值**（现在的任务级边界 `0 / 42 / 66.5 / 70 / 100` 是三层层映射挤出来的半整数，扁平后复现不了）。它是**有意的行为变更**，与 AC7「进度数值不变」直接冲突，混在一起就没法验证。**改为独立任务**（见文末「后续任务」）。本任务只做阶段名的单源（AC2 已覆盖）。
+- [x] **AC3' 权重不动**：本任务**不碰**那 11 个权重常量的**数值**。~~`git diff` 里不该出现它们的改动~~（2026-10-08 修正措辞：`AudioPreparationStage` 四个常量出现过**可见性收窄** → `private`——implement 批次 2 明示的顺带项，数值一行未变；其余权重常量零改动，`git diff` 可验）
+- [x] **AC4 产出物三问一处答**：任取一个产出物，命名、检查点判据、对外可见性都能在同一处读到（2026-10-07 批次 1：`SubtitleArtifactSpec`）
+- [x] **AC5 身份归属**：`WorkspaceService` 里不再有按 `MediaInput` 变体分派的 `switch`（2026-10-08 批次 3，grep 验）；`MediaInput.InWorkspace` 不再携带 ~~`workspaceDir` / `workspaceKey`~~（2026-10-08 修正：「带结果 → 带身份」定案后它携带的是**身份** `key` + `dirLabel`，已解析的 `workspaceDir` 已移除——`grep -n workspaceDir MediaInput.java` 零命中）
+- [x] **AC6 公式成文**：「变更类型 → 落点清单」落到 `design.md` §五（2026-10-08 由雏形改写为终稿，每行附 grep 验证命令）
+- [x] **AC7 零行为变化**：~~`git diff` 不含方法签名 / 注解 / 类名变更~~（2026-10-08 删句：批次 3 的核心就是改内部签名——`normalize` 删除、构造器加参、`MediaInput` 加方法——该句按原意只约束**对外行为**）；**对外零变化已实测**：HTTP 契约与数据库零变化 ✓；进度事件序列与数值 before/after 逐条零差异（批次 2，2026-10-07，除四条改名映射）；**三条路线 + 本地夹具的工作区目录名 before/after 逐字一致**（批次 3，2026-10-08：URL `…-acb6245a5db8`、上传 `source.mp4-9466c90f2836` 重传命中同目录、本地 `local-fixture.m4a-f6fdf4ed2885`；after 侧断点复用吃到 before 侧产物为同目录行为学佐证；原始日志已按用户确认删除，结论以 handoff 为准）
 
 ## Out of Scope
 

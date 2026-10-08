@@ -8,18 +8,27 @@
 >
 > **本版是 2026-10-07 第四次刷新**——那次会话把**批次 2 做完并做了真实验收**（枚举化 + 六阶段值改名）。
 > 上一版里「新类名未定案」「批次 2 未开工」等说法已作废。
+>
+> **2026-10-08 第五次刷新**：批次 3 开工前的形状讨论定案（三轮问答）——`MediaFacts` 改名
+> `MediaFileInfo`、快照加 path、stat 采样开 `FileStateReader` 端口、实现落新开的 `infrastructure/fs/`。
+> design.md / implement.md 已按定案重写；main 侧只有 `MediaFileInfo.java` 草稿（半成品，编译不过）。
+>
+> **2026-10-08 第六次刷新（归档前终版）**：批次 3 **完成并通过验收**；文档标识符全部对齐代码实名
+> （用户定「按代码名为准」：`FileStateReader.getFileState` / `getContentKey`——第五次刷新里的
+> `FileStatReader.stat` / `contentKey` 是讨论时的拟名，**作废**）。AC1–AC7 已逐条对账打勾（见 prd）。
+> 验收原始日志与夹具（`ac7-run/`、`works-ac3`、`works-ac7-after`）已按用户确认删除，**结论以上文为准**。
+> 本会话执行收尾链：提交 → 合并 dev → 推送 → finish-work → 完整归档。
 
 ## 一句话状态
 
-**批次 1、批次 2 都已完成并提交（未推送）。批次 3 未开工。
+**批次 1、2、3 全部完成并验收（AC 全勾）。任务处于收尾链：提交 → 合并 dev → 推送 → finish-work → 归档。
 另一个任务 `10-07-pipeline-stage-rename` 已做完、已归档、已合回本分支。**
 
 ## 仓库状态
 
-- 分支 `feature/shape-refactor`（base `dev`），**未推送**（用户明确说「不推」，要推再问）
+- 分支 `feature/shape-refactor`（base `dev`）；用户 2026-10-08 批准合并 `dev` 并**推送**（此前「不推」的口径作废）
 - `feature/pipeline-stage-rename` 分支还在（已合并，停在 `dc2aced`）——获批后该删
-- 工作树干净（批次 2 的改动已提交）
-- 仓库**外**的临时物：`../vidsage-before`（worktree @ `b41a715`，批次 2 的对照代码）、`../ac7-run/`（日志与抓流证据）。**不入库**；worktree 建议留着，批次 3 验「目录名逐字一致」还是这套办法
+- 仓库**外**的临时物：`../vidsage-before`（worktree @ `6bda4f5`，批次 3 验收的对照代码）**保留**——以后验「目录名/事件流逐字一致」还是这套办法；证据日志已删
 
 ## 批次进度
 
@@ -27,9 +36,9 @@
 |---|---|---|
 | 1 产出物登记表 | ✅ 完成并推送 | 45 类 / 469 用例 / 0 失败 / 1 跳过 |
 | 2 阶段名单源 | ✅ **完成**（枚举化 + 六值改名 + 注释/文案 + 真实验收） | 同上；另加 SSE 事件流逐条比对**零差异** |
-| 3 身份归属 | ⬜ 未开工 | 待做 |
+| 3 身份归属 | ✅ **完成**（`getContentKey` 多态 + `MediaFileInfo` + `FileStateReader` 端口 + 去 switch） | 469+4 用例全绿；**四路线目录名 before/after 逐字一致**（URL `…-acb6245a5db8`、上传 `source.mp4-9466c90f2836` 重传命中同目录、本地夹具 `local-fixture.m4a-f6fdf4ed2885`）+ after 侧断点复用吃到 before 侧产物 |
 
-### 批次 2 的真实验收（AC7），证据在 `f:/personal_project/ac7-run/`
+### 批次 2 的真实验收（AC7）~~证据在 `f:/personal_project/ac7-run/`~~（**证据文件 2026-10-08 已删，结论以下文为准**）
 
 同一输入（上传路线，复用已有工作区的 `source.mp4`）在**改动前**（`../vidsage-before` worktree）与**改动后**各跑一次主管线，11 条阶段事件逐条比对：
 
@@ -50,17 +59,25 @@
 
 AI 的职责：给步骤 + 示例代码 + 指出坑 → 用户写 main → AI 改测试 + 跑验证 + 报结果。
 **不要直接动 main 源码**（`backend/src/main/`），除非用户明确说「你改」。
+（2026-10-08：`MediaFileInfo.java` 草稿是用户自己建的，半成品状态归他补——AI 别顺手修。）
 
-## 下一件事：批次 3（身份归属——风险最高的一批）
+## 批次 3（已完成）——形状定案与偏差记录（别再重开）
 
-步骤见 `implement.md` 的「批次 3」节，**已按批次 2 之后的代码重新核对过落点**。核心：`MediaInput.contentKey(MediaFacts)` + 新增 `MediaFacts` + `WorkspaceService` 去 switch 去 `normalize` + `InWorkspace` 从「带结果」改成「带身份」+ `ofTaskInput` 跟着改。
+核心已落地：`MediaInput.getContentKey(MediaFileInfo)` 多态 + 新增 `MediaFileInfo`（快照带 path）+ **`FileStateReader` 端口（`application/media/port/`）与 `NioFileStateReader`（`infrastructure/fs/`，新开桶）** + `WorkspaceService` 去 switch 去 `normalize` 去 `localPathKey` + `InWorkspace` 从「带结果」改成「带身份」+ `ofTaskInput` 跟着改。**验收与偏差见 `implement.md` 批次 3 节的 ✅ 注记**（两条 `workspaceFor` 未合并的鸡生蛋洞、`NioFileStateReaderTest` 四例）。
 
-**风险**：算错 key = 工作区目录算错 = 产物落错地方 / 断点复用失效，**不编译报错、测试也可能不红**。验收与批次 2 同法：before/after 各跑三条路线，比对目录名（见 implement.md）。
+**2026-10-08 形状定案（三轮问答，别再重开）**：
 
-**复核时新发现的两个落点（原草案没写）**：
+1. **改名**：`MediaFacts` → `MediaFileInfo`（「媒体事实」拗口；`MediaInfo` 被否——它承诺的是媒体探测信息，会诱人往里塞 duration/codec）。
+2. **快照带 path**：`MediaFileInfo(Path path, long sizeBytes, long lastModifiedMs)`——观测自带参照物；哨兵 `NOT_APPLICABLE=(null,-1,-1)` 给 URL/上传路线；`LocalPath.getContentKey` 用 `facts.path()` 并断言 `Objects.equals(value, facts.path())`，读不到时实现返回 `(path,-1,-1)` 而非哨兵（否则断言误判）。
+3. **stat 经端口**：`getContentKey(facts)` 签名不变、保持纯函数；端口只换「谁去读」。端口归 application（判据：技术词汇 + 兜底「删掉业务规则还成立」）；实现按**能力来源**分桶落新开的 `infrastructure/fs/`（`provider/` 留给外部服务/工具；`LocalFileMediaAcquirer` 不动，要挪另立任务）。**用户明确否掉的两个形状**：`getContentKey(FileStateReader)` 签名进端口（失败策略渗进 domain）、端口落 `domain/media/port/`（技术词汇不走 domain 判据行）。
 
-1. `WorkspaceService.normalize` 有**跨包消费方**——`VideoTaskService:100` 用它算落库的 `workspace_key`（URL 路线）。删 `normalize` 时这点要改成 `input.contentKey(MediaFacts.NOT_APPLICABLE)`（URL 路线不需要文件事实，零 I/O）。
-2. 测试侧 touchpoints（AI 改）：`WorkspaceServiceTest`（`localPathKey` ×3 处、两参 `workspaceFor(label, key)` ×3 处）、`VideoTaskServiceTest:93`（`WorkspaceService.normalize`）。
+**风险**：算错 key = 工作区目录算错 = 产物落错地方 / 断点复用失效，**不编译报错、测试也可能不红**。验收与批次 2 同法：before/after 各跑三条路线，比对目录名（见 implement.md；身份串公式未变，目录名应逐字一致）。
+
+**复核时新发现的三个落点（原草案没写）→ 全部落地**：
+
+1. `WorkspaceService.normalize` 的跨包消费方 `VideoTaskService:100` → 已改 `input.getContentKey(MediaFileInfo.NOT_APPLICABLE)`（URL 路线零 I/O）。
+2. 测试侧 touchpoints → 已改完（`WorkspaceServiceTest` / `VideoTaskServiceTest:93` / `SubtitlePipelineTest`）。
+3. 端口化测试 → 已补：`WorkspaceServiceTest` 用真实 `NioFileStateReader`（非 fake）+ 新增 `NioFileStateReaderTest` 四例（正常读 / 不存在 / 目录 / null）。
 
 ## 为什么批次 2 不做权重（这个决定容易忘）
 
@@ -87,12 +104,13 @@ AI 的职责：给步骤 + 示例代码 + 指出坑 → 用户写 main → AI �
 
 1. **注释偏多**——用户 2026-10-07 说「现在的注释都太多了……要求后面统一处理」。**同日晚些的口径**：用户原话「**反正 javadoc 最后还要整体重构一遍**」——即**另开一次全局 Javadoc 重构**，不是本任务的活。批次 2 期间只顺手删了明确的复述/过期段（`StageEvent` 的「阶段词表」段、两个 LLM 类的常量注释、`VideoTask.updateStage` 的六词 `@param`、`schema.sql` 列注释里的词表、`AudioPreparationStage.prepare` 的「阶段一/二」两行），并把注释里的 kebab token 换成中文阶段名。判据见 memory `comment-style-plain`。
    - **两条约定还没写进 spec**（用户说「后面再说」）：①「注释里不许抄 kebab 值」；②「**阶段名 = 动词-对象**」（本批正是按它改的值：`acquire-media` / `transcribe-audio` / `clean-subtitles`）。要立规则的话，`directory-structure.md` 命名约定节 + 一条验收 grep 就够。
-2. **`CheckpointPolicy.java:18` 的 Javadoc** 仍点名旧测试类名 `SubtitlePreparationStageTest`（改名任务的 AC2 唯一残留）。属文档类，用户定延后。
-3. ~~SSE 事件流逐条比对~~ → **批次 2 已跑，零差异**（见上）。**`translate` 阶段仍未走真实链路**（只在单测里覆盖）。
+2. ~~`CheckpointPolicy.java:18` 旧测试类名~~ → **已消**（2026-10-08 grep 零命中，改名任务后续已修）。
+3. ~~SSE 事件流逐条比对~~ → **批次 2 已跑，零差异**（见上）。**`translate` 阶段未走真实链路**（单测覆盖，省配额跳过——已接受的边界）。
 4. **`8ccef11` 的提交说明不完整**——没提 `Bcp47Language` / `VerifiedTerms` 两处文档改动（AI 提交前用了过期的 `git status`，流程失误）。已推送，不改。
-5. **`backend-before-reconstruction/`**（873 个文件的旧代码对照副本）：已进 `.gitignore`，**重构完成后删除**。
-6. **未推送**——`feature/shape-refactor` 落后远端十余个提交。用户明确说「不推」，要推再问。
-7. **权重扁平化**那个独立任务**还没建**（记在 `prd.md` 的「后续任务」）。
+5. **`backend-before-reconstruction/`**（873 个文件的旧代码对照副本）：已进 `.gitignore`，**重构完成后删除**（归档后另开清理即可）。
+6. ~~未推送~~ → 用户 2026-10-08 批准推送，随本收尾链执行。
+7. **权重扁平化**独立任务**还没建**（记在 `prd.md` 的「后续任务」）——归档后的**首选下一任务**；连带可议的还有存量 `*Stage` 改名（已定「连同管线一起改」）与 `SubtitlePipeline` 执行模型拆分（AI 建议缓）。
+8. ~~spec 加 `infrastructure/fs/` 一行~~ → **已完成**（2026-10-08，含端口归属实例 `FileStateReader`）。
 
 ## 会话脉络里值得记的（不在任务文档里）
 
