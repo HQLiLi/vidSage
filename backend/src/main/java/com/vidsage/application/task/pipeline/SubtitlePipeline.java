@@ -7,25 +7,20 @@ import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.TaskProgressMessage;
 import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
-import com.vidsage.config.TaskProperties;
-import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
-import com.vidsage.domain.task.model.TaskNo;
-import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.task.VideoTask;
+import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
-
-import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 /**
  * 异步任务管线：按阶段顺序编排各阶段构件，把「一条已落库的任务」跑成终态。
@@ -41,9 +36,11 @@ import org.springframework.stereotype.Component;
  * {@code VideoTaskService} 的快照同源），再 {@link TaskSubscriptionRegistry#complete} 清空该任务全部
  * 订阅者——SSE 连接的收口由订阅方（web/sse/TaskSseHub）看到终态事件后自行完成。
  *
- * <p>执行模型：每次执行占一根虚拟线程（项目已全局开启虚拟线程，阻塞等待不占平台线程）；
- * {@link Semaphore} 按 {@code vidsage.task.max-concurrent} 限流（翻译执行与主管线共用同一配额），
- * <b>超出者保持 PENDING 排队</b>——所以先抢配额、后做 PENDING → RUNNING 迁移，排队中的任务状态保持诚实。
+ * <p>执行模型：交给 {@link TaskConcurrencyGate}——每次执行占一根虚拟线程、按
+ * {@code vidsage.task.max-concurrent} 限流（翻译执行与主管线共用同一配额），超出配额的就排队等。
+ * 两条链路排队的时点不一样：主管线先排队、拿到配额才把任务从 PENDING 迁到 RUNNING（排队期间状态
+ * 保持 PENDING，不撒谎）；翻译反过来——它在同步段就把 translation_status 置 RUNNING 再排队
+ * （重复触发的不重入守卫靠的就是这个提前量），所以翻译排队期间那个状态已经是 RUNNING。
  *
  * <p>任一阶段抛异常 → RUNNING → FAILED（落中文 error_message，广播终态后不再继续后续阶段）；
  * 全部完成 → SUCCEEDED + finished_at。产物按阶段落工作区，失败后重新提交同一输入自动断点复用。
@@ -53,14 +50,13 @@ import org.springframework.stereotype.Component;
 public class SubtitlePipeline {
 
 
+    private final TaskConcurrencyGate concurrencyGate;
     private final VideoTaskRepository repository;
     private final WorkspaceService workspaceService;
     private final SubtitlePreparationCoordinator subtitlePreparationCoordinator;
     private final SubtitleCleanupCoordinator cleanupStage;
     private final SubtitleTranslationCoordinator translationStage;
     private final TaskSubscriptionRegistry subscriptionRegistry;
-    private final Semaphore semaphore;
-    private final ExecutorService executor;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
@@ -71,26 +67,21 @@ public class SubtitlePipeline {
      * @param cleanupStage                   阶段 2：字幕清洗（管线的最后一个自动阶段）
      * @param translationStage               按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
      * @param subscriptionRegistry           中立订阅注册表（进度事件的广播落点）
-     * @param properties                     管线配置（并发上限）
+     * @param concurrencyGate                并行任务闸门
      */
     public SubtitlePipeline(VideoTaskRepository repository, WorkspaceService workspaceService,
                             SubtitlePreparationCoordinator subtitlePreparationCoordinator, SubtitleCleanupCoordinator cleanupStage,
                             SubtitleTranslationCoordinator translationStage,
-                            TaskSubscriptionRegistry subscriptionRegistry, TaskProperties properties) {
-        if (properties.maxConcurrent() < 1) {
-            throw new IllegalStateException("vidsage.task.max-concurrent 必须 ≥ 1：当前为 "
-                    + properties.maxConcurrent() + "；请修正配置");
-        }
+                            TaskSubscriptionRegistry subscriptionRegistry,
+                            TaskConcurrencyGate concurrencyGate
+    ) {
         this.repository = repository;
         this.workspaceService = workspaceService;
         this.subtitlePreparationCoordinator = subtitlePreparationCoordinator;
         this.cleanupStage = cleanupStage;
         this.translationStage = translationStage;
         this.subscriptionRegistry = subscriptionRegistry;
-        this.semaphore = new Semaphore(properties.maxConcurrent());
-        // 命名虚拟线程：日志与线程转储里能认出「这是哪个任务的管线」
-        this.executor = Executors.newThreadPerTaskExecutor(
-                Thread.ofVirtual().name("vidsage-task-", 0).factory());
+        this.concurrencyGate = concurrencyGate;
     }
 
     /**
@@ -99,7 +90,8 @@ public class SubtitlePipeline {
      * @param taskNo 已落库任务的对外任务号
      */
     public void execute(TaskNo taskNo) {
-        executor.execute(() -> runPipeline(taskNo));
+        concurrencyGate.submit(() -> runPipeline(taskNo),
+                () -> log.warn("任务等待执行配额时被中断，保持 PENDING: taskNo={}", taskNo.value()));
     }
 
     /**
@@ -116,7 +108,7 @@ public class SubtitlePipeline {
      *   <li>正常路径：同步段 {@code translationStart} 落库（RUNNING，202 响应视图因此反映触发后
      *       的状态）→ 异步执行翻译，事件自成 0..100 段广播。</li>
      * </ol>
-     * 同步段只做判定与状态落库；LLM 翻译在虚拟线程异步执行，配额与主管线共用同一 {@link Semaphore}。
+     * 同步段只做判定与状态落库；LLM 翻译在虚拟线程异步执行
      *
      * @param taskNo 对外任务号
      * @throws TaskNotFoundException    任务不存在
@@ -155,7 +147,15 @@ public class SubtitlePipeline {
         repository.update(task);
         // 不打 workspaceDir：目录名内嵌 URL / 原始文件名（用户资源，脱敏红线），按 taskNo 可查库还原
         log.info("翻译已触发: taskNo={}, inputType={}", task.getTaskNo().value(), task.getInputType());
-        executor.execute(() -> runTranslationPipeline(task, input));
+
+        // 翻译开始起始时间，用于计算翻译耗时（含排队）
+        long startTimeMs = System.currentTimeMillis();
+        concurrencyGate.submit(() -> runTranslationPipeline(task, input, startTimeMs),
+                () -> {
+                    log.warn("翻译等待执行配额时被中断: taskNo={}", task.getTaskNo().value());
+                    // 翻译已置 RUNNING 才排队，被打断不能吞状态：标记失败（可重新触发），广播终态收口
+                    failTranslation(task, "翻译在等待执行配额时被中断：请重新触发翻译", null);
+                });
     }
 
     /**
@@ -169,14 +169,6 @@ public class SubtitlePipeline {
             return;
         }
         VideoTask task = loaded.get();
-        try {
-            semaphore.acquire();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            // 排队被打断：保持 PENDING，重新提交同一输入即可再入队（内容寻址，代价低）
-            log.warn("任务等待执行配额时被中断，保持 PENDING: taskNo={}", taskNo.value());
-            return;
-        }
         long start = System.currentTimeMillis();
         try {
             try {
@@ -198,37 +190,26 @@ public class SubtitlePipeline {
         } catch (Exception e) {
             // 通过SSE广播任务失败
             failTask(task, e);
-        } finally {
-            semaphore.release();
         }
     }
 
     /**
-     * 按需翻译的异步执行体：与主管线共用同一信号量配额（LLM 翻译同样吃外部配额）。
+     * 按需翻译的异步执行体
      * 翻译阶段事件自成 0..100 段直通广播（无区间映射——主任务的 0..100 已在主管线跑完，
      * 翻译是独立的第二段）；翻译事件的 taskStatus 恒为主状态 SUCCEEDED。
+     *
+     * @param startTimeMs 排队前的时刻——成本日志的口径是「含排队时间」，所以要由调用方在提交前取好传进来
+     *                    （进到本方法时排队已经结束，在这里取就晚了）
      */
-    private void runTranslationPipeline(VideoTask task, MediaInput input) {
-        long start = System.currentTimeMillis();
-        try {
-            semaphore.acquire();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            // 翻译已置 RUNNING 才排队，被打断不能吞状态：标记失败（可重新触发），广播终态收口
-            log.warn("翻译等待执行配额时被中断: taskNo={}", task.getTaskNo().value());
-            failTranslation(task, "翻译在等待执行配额时被中断：请重新触发翻译", null);
-            return;
-        }
+    private void runTranslationPipeline(VideoTask task, MediaInput input, long startTimeMs) {
         try {
             translationStage.translate(input, translationProgressListener(task));
             task.translationSucceed();
             repository.update(task);
             broadcastTranslationTerminal(task);
-            log.info("任务翻译完成: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - start);
+            log.info("任务翻译完成: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - startTimeMs);
         } catch (Exception e) {
             failTranslation(task, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), e);
-        } finally {
-            semaphore.release();
         }
     }
 
