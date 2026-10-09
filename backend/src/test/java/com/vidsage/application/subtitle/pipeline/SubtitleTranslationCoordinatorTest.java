@@ -11,8 +11,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.SubtitleTranslateProperties;
+import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
@@ -70,7 +72,8 @@ class SubtitleTranslationCoordinatorTest {
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
 
-    private final WorkspaceService workspaceService = mock(WorkspaceService.class);
+    private final WorkspaceKeyGenerator workspaceKeyGenerator = mock(WorkspaceKeyGenerator.class);
+    private final WorkspaceDirectoryManager workspaceDirectoryManager = mock(WorkspaceDirectoryManager.class);
     private final ASRProvider asrProvider = mock(ASRProvider.class);
     private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
     private final SubtitleTranslator subtitleTranslator = mock(SubtitleTranslator.class);
@@ -107,7 +110,7 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     private SubtitleTranslationCoordinator service(ObjectProvider<TermLookupProvider> lookupProvider) {
-        return new SubtitleTranslationCoordinator(workspaceService, asrProvider, JSON, PROPS,
+        return new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, asrProvider, JSON, PROPS,
                 contextSummarizer, lookupProvider, subtitleTranslator);
     }
 
@@ -167,7 +170,8 @@ class SubtitleTranslationCoordinatorTest {
         lookupCommands.clear();
         officialTermsReceived.clear();
         stubTranslator(0, 0);
-        when(workspaceService.workspaceFor(any())).thenReturn(workDir);
+        when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
+        when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
         when(contextSummarizer.summarize(any())).thenReturn(Optional.of(SubtitleContext.empty()));
     }
@@ -304,16 +308,16 @@ class SubtitleTranslationCoordinatorTest {
 
     /**
      * 这次修复真正要钉住的东西：配置里语种为空时，<b>一个字节的 I/O 都不该发生</b>——
-     * 尤其不能先调 {@code workspaceFor} 建出工作目录再报错。断言位放在「所有服务调用之前」。
+     * 尤其不能先调 {@code ensureWorkspaceDirectory} 建出工作目录再报错。断言位放在「所有服务调用之前」。
      */
     @Test
     void blankTargetLanguageThrowsBeforeAnyWorkspaceIo() {
-        SubtitleTranslationCoordinator s = new SubtitleTranslationCoordinator(workspaceService, asrProvider, JSON,
-                props("  "), contextSummarizer, absent(), subtitleTranslator);
+        SubtitleTranslationCoordinator s = new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager,
+                asrProvider, JSON, props("  "), contextSummarizer, absent(), subtitleTranslator);
 
         assertThrows(IllegalStateException.class, () -> s.translate(new MediaInput.RemoteUrl("https://x")));
 
-        verify(workspaceService, never()).workspaceFor(any());
+        verify(workspaceDirectoryManager, never()).ensureWorkspaceDirectory(any(), any());
         verify(subtitleTranslator, never()).translate(any(), any(), any(), any(), any());
     }
 

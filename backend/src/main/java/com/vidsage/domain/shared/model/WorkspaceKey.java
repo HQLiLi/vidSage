@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+
 import org.springframework.util.StringUtils;
 
 /**
@@ -12,9 +13,10 @@ import org.springframework.util.StringUtils;
  * 媒体上下文（{@code MediaInput.InWorkspace} 携带的 key）共用同一词汇，放 shared 避免
  * domain/task → domain/media 的跨上下文依赖。
  *
- * <p>生成入口只有本类的两个静态工厂（原 {@code WorkspaceService.shortHash} 与
+ * <p><b>公式</b>的两个静态工厂在本类（原 {@code WorkspaceService.shortHash} 与
  * {@code VideoTaskService.KEY_LENGTH} 两条同宽公式于此合一）：常规路线 {@link #ofHash}
  * （身份串 → sha256 → key）与上传路线 {@link #ofDigest}（流式边写边算出的摘要 → key）。
+ * {@code WorkspaceKeyGenerator} 负责按输入取事实后调它们。
  *
  * <p>值的来源：URL / 本地路径路线取「规范化输入串摘要前 12 位」，上传路线取「文件内容 sha256
  * 前 12 位」，另可经持久化层从数据库行还原。compact constructor 只校验非空白这一条硬不变量，
@@ -26,10 +28,14 @@ import org.springframework.util.StringUtils;
  */
 public record WorkspaceKey(String value) {
 
-    /** sha256 摘要取前多少位十六进制做 workspace_key / 目录后缀；全项目宽度唯一定义点。 */
+    /**
+     * sha256 摘要取前多少位十六进制做 workspace_key / 目录后缀；全项目宽度唯一定义点。
+     */
     public static final int KEY_WIDTH = 12;
 
-    /** 12 位十六进制对应的摘要字节数（每字节 2 个 hex 字符）。 */
+    /**
+     * 12 位十六进制对应的摘要字节数（每字节 2 个 hex 字符）。
+     */
     private static final int DIGEST_BYTES = KEY_WIDTH / 2;
 
     /**

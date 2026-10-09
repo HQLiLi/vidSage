@@ -4,9 +4,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * 任务工作区目录名值对象：{@code <安全化名字>-<工作区短哈希>}。属<b>共享内核</b>——与
- * {@link WorkspaceKey} 同判据：application/task 落库 workspace_dir、application/media 懒建目录
- * 两处共用同一公式，放 shared 防跨上下文依赖。
+ * 任务工作区目录名值对象：{@code <安全化名字>-<工作区短哈希>}
  *
  * <p><b>安全化名字</b>只是给人看的标签，唯一性完全由哈希保证：非法字符与控制字符替换为下划线、
  * 去掉结尾的点与空格、截断长度；结果为空或命中 Windows 保留名（{@code CON} / {@code NUL} /
@@ -16,10 +14,14 @@ import java.util.Set;
  */
 public record WorkspaceDir(String value) {
 
-    /** 安全化名字的最大长度：避免超长输入撑爆路径上限。 */
+    /**
+     * 安全化名字的最大长度：避免超长输入撑爆路径上限。
+     */
     public static final int MAX_NAME_LENGTH = 80;
 
-    /** 结果为空或命中保留名时的兜底名；工作区根未配置时同样回退此名（与 workspaceFor 同口径）。 */
+    /**
+     * 结果为空或命中保留名时的兜底名；工作区根未配置时同样回退此名（与 ensureWorkspaceDirectory 同口径）。
+     */
     public static final String FALLBACK_NAME = "media";
 
     /**
@@ -32,11 +34,13 @@ public record WorkspaceDir(String value) {
             "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
             "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9");
 
-    /** 文件名里非法或需要规避的字符（含 Windows 禁止的 {@code < > : " / \ | ? *}）。 */
+    /**
+     * 文件名里非法或需要规避的字符（含 Windows 禁止的 {@code < > : " / \ | ? *}）。
+     */
     private static final String ILLEGAL_CHARS = "<>:\"/\\|?*";
 
     /**
-     * 目录名公式：{@code sanitize(标签)-key}。{@code WorkspaceService.workspaceFor} 的两条路线与
+     * 目录名公式：{@code sanitize(标签)-key}。{@code WorkspaceDirectoryManager.ensureWorkspaceDirectory} 的两条路线与
      * VideoTaskService 落库 workspace_dir 共用这一处——URL 路线的工作目录由管线按本公式懒建，
      * 提交时落库的 workspace_dir 必须与之逐字一致，公式单源化防「同公式各写一份」漂移。
      *

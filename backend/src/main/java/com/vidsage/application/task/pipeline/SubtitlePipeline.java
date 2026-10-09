@@ -1,6 +1,6 @@
 package com.vidsage.application.task.pipeline;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.application.subtitle.pipeline.SubtitleCleanupCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
@@ -52,36 +52,37 @@ public class SubtitlePipeline {
 
     private final TaskConcurrencyGate concurrencyGate;
     private final VideoTaskRepository repository;
-    private final WorkspaceService workspaceService;
     private final SubtitlePreparationCoordinator subtitlePreparationCoordinator;
     private final SubtitleCleanupCoordinator cleanupStage;
     private final SubtitleTranslationCoordinator translationStage;
     private final TaskSubscriptionRegistry subscriptionRegistry;
+    private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
      * @param repository                     任务持久化入口（管线按 taskNo 装载任务并回写状态）
-     * @param workspaceService               工作区根解析（上传路线按持久化的 workspace_dir 还原媒体路径）
      * @param subtitlePreparationCoordinator 阶段 1：音频准备 + 转写 + 写原始字幕
      * @param cleanupStage                   阶段 2：字幕清洗（管线的最后一个自动阶段）
      * @param translationStage               按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
      * @param subscriptionRegistry           中立订阅注册表（进度事件的广播落点）
      * @param concurrencyGate                并行任务闸门
+     * @param workspaceDirectoryManager      工作区目录管理器
      */
-    public SubtitlePipeline(VideoTaskRepository repository, WorkspaceService workspaceService,
+    public SubtitlePipeline(VideoTaskRepository repository,
                             SubtitlePreparationCoordinator subtitlePreparationCoordinator, SubtitleCleanupCoordinator cleanupStage,
                             SubtitleTranslationCoordinator translationStage,
                             TaskSubscriptionRegistry subscriptionRegistry,
-                            TaskConcurrencyGate concurrencyGate
+                            TaskConcurrencyGate concurrencyGate,
+                            WorkspaceDirectoryManager workspaceDirectoryManager
     ) {
         this.repository = repository;
-        this.workspaceService = workspaceService;
         this.subtitlePreparationCoordinator = subtitlePreparationCoordinator;
         this.cleanupStage = cleanupStage;
         this.translationStage = translationStage;
         this.subscriptionRegistry = subscriptionRegistry;
         this.concurrencyGate = concurrencyGate;
+        this.workspaceDirectoryManager = workspaceDirectoryManager;
     }
 
     /**
@@ -340,6 +341,6 @@ public class SubtitlePipeline {
      */
     private MediaInput toMediaInput(VideoTask task) {
         return MediaInput.ofTaskInput(task.getInputType(), task.getSourceUri(),
-                workspaceService.workspaceRoot().resolve(task.getWorkspaceDir()), task.getWorkspaceKey());
+                workspaceDirectoryManager.getWorkspaceRoot().resolve(task.getWorkspaceDir()), task.getWorkspaceKey());
     }
 }

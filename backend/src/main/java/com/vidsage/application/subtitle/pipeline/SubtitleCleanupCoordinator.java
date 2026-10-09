@@ -1,9 +1,11 @@
 package com.vidsage.application.subtitle.pipeline;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
@@ -48,7 +50,8 @@ import java.util.stream.Collectors;
 @Component
 public class SubtitleCleanupCoordinator {
 
-    private final WorkspaceService workspaceService;
+    private final WorkspaceKeyGenerator workspaceKeyGenerator;
+    private final WorkspaceDirectoryManager workspaceDirectoryManager;
     private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
     private final SubtitleCleanupProperties props;
@@ -60,20 +63,23 @@ public class SubtitleCleanupCoordinator {
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param workspaceService  工作目录解析
-     * @param asrProvider       当前装配的 ASR provider（取路线与产物命名指纹）
-     * @param objectMapper      Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
-     * @param props             字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
-     * @param contextSummarizer 内容总结器（摘要出主题与术语，供跨批上下文用）
-     * @param subtitleCleanser  字幕清洗器（持有清洗专用的 ChatClient）
+     * @param workspaceKeyGenerator     工作区key生成器
+     * @param workspaceDirectoryManager 工作区目录管理器
+     * @param asrProvider               当前装配的 ASR provider（取路线与产物命名指纹）
+     * @param objectMapper              Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
+     * @param props                     字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
+     * @param contextSummarizer         内容总结器（摘要出主题与术语，供跨批上下文用）
+     * @param subtitleCleanser          字幕清洗器（持有清洗专用的 ChatClient）
      */
-    public SubtitleCleanupCoordinator(WorkspaceService workspaceService,
+    public SubtitleCleanupCoordinator(WorkspaceKeyGenerator workspaceKeyGenerator,
+                                      WorkspaceDirectoryManager workspaceDirectoryManager,
                                       ASRProvider asrProvider,
                                       ObjectMapper objectMapper,
                                       SubtitleCleanupProperties props,
                                       SubtitleContextSummarizer contextSummarizer,
                                       SubtitleCleanser subtitleCleanser) {
-        this.workspaceService = workspaceService;
+        this.workspaceKeyGenerator = workspaceKeyGenerator;
+        this.workspaceDirectoryManager = workspaceDirectoryManager;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
         this.props = props;
@@ -134,7 +140,8 @@ public class SubtitleCleanupCoordinator {
                     + "或改用不带 listener 的 clean(input, reference) 两参重载");
         }
         SubtitleRoute route = asrProvider.route();
-        Path workDir = workspaceService.workspaceFor(input);
+        WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
+        Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
         Path rawSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(route, null));
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(route, null));
         Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(route, null));

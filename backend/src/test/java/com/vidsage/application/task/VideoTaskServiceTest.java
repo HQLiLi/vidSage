@@ -10,8 +10,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.application.media.WorkspaceService;
 import com.vidsage.application.task.exception.TaskConflictException;
+import com.vidsage.infrastructure.fs.NioWorkspaceDirectoryManager;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.pipeline.SubtitlePipeline;
 import com.vidsage.application.task.query.TaskArtifactFile;
@@ -44,7 +44,7 @@ import org.mockito.ArgumentCaptor;
 
 /**
  * {@link VideoTaskService} 的纯单元测试：仓储与管线用 Mockito mock，工作区用真实实例 + 临时目录
- * （目录公式单源在 domain/shared，{@code WorkspaceService} 真实落盘——真跑比 mock 更能钉住路径约定）。
+ * （目录公式单源在 domain/shared，{@code NioWorkspaceDirectoryManager} 真实落盘——真跑比 mock 更能钉住路径约定）。
  *
  * <p>覆盖「URL 路线落库与启动管线」「上传路线流式落盘按内容寻址」「查重 409 与孤儿文件清理」「查询」。
  */
@@ -62,10 +62,8 @@ class VideoTaskServiceTest {
      * 不能在字段初始化器里引用。
      */
     private VideoTaskService service() {
-        return new VideoTaskService(repository,
-                new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString()),
-                        new NioFileStateReader()),
-                pipeline);
+        return new VideoTaskService(repository, pipeline,
+                new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())));
     }
 
     @org.junit.jupiter.api.BeforeEach

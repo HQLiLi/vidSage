@@ -11,8 +11,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.domain.media.model.AcquiredMedia;
+import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.media.model.AudioArtifact;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
@@ -40,7 +42,8 @@ class AudioPreparationCoordinatorTest {
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
 
-    private final WorkspaceService workspaceService = mock(WorkspaceService.class);
+    private final WorkspaceKeyGenerator workspaceKeyGenerator = mock(WorkspaceKeyGenerator.class);
+    private final WorkspaceDirectoryManager workspaceDirectoryManager = mock(WorkspaceDirectoryManager.class);
     private final MediaAcquirerDispatcher acquisitionStage = mock(MediaAcquirerDispatcher.class);
     private final AudioExtractor audioExtractor = mock(AudioExtractor.class);
     private final RecordingListener listener = new RecordingListener();
@@ -49,11 +52,12 @@ class AudioPreparationCoordinatorTest {
 
     @BeforeEach
     void setUp() {
-        when(workspaceService.workspaceFor(any())).thenReturn(workDir);
+        when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
+        when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
     }
 
     private AudioPreparationCoordinator service() {
-        return new AudioPreparationCoordinator(workspaceService, acquisitionStage, audioExtractor);
+        return new AudioPreparationCoordinator(acquisitionStage, audioExtractor, workspaceKeyGenerator, workspaceDirectoryManager);
     }
 
     private AcquiredMedia acquiredMedia() {

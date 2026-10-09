@@ -48,7 +48,7 @@ com.vidsage
 | `application/<上下文>/` | 应用服务层：用例编排 | `@Service` 编排类、**读模型**、**应用消息**、**应用异常**、**中立订阅机制**、**本层定义的出站端口**（业务无关者，判据见[端口归属判据](#端口归属判据)） | 实现类、SDK 类型、HTTP 类型、`infrastructure/` 的具体类 |
 | `infrastructure/persistence/` | 出站存储适配 | MyBatis-Plus 三件套：`XxxEntity` / `XxxMapper` / `XxxRepository`（`XxxRepository` 实现 domain 定义的存取端口，如 `MybatisVideoTaskRepository` 实现 `domain/task/port/VideoTaskRepository`） | 业务编排、MP 类型外泄 |
 | `infrastructure/process/` | 调外部程序的**通用机制** | 进程执行器、外部工具路径解析与诊断等**不面向业务契约**的机制类 | 面向业务契约的 Provider 四件套（那属于 `infrastructure/provider/`）、业务编排 |
-| `infrastructure/fs/` | 本机文件系统**读数**适配（2026-10-08 端口定案） | 只读 stat 类端口实现：`NioFileStateReader`（实现 application 的 `FileStateReader` 端口） | 业务编排、写入策略（产物落盘在 `shared/fs/ArtifactFiles`，编排在应用层） |
+| `infrastructure/fs/` | 本机文件系统的**读数与定位/创建**适配（2026-10-08 端口定案，2026-10-09 扩到目录定位/创建） | 文件系统端口实现：`NioFileStateReader`（只读 stat，实现 application 的 `FileStateReader`）、`NioWorkspaceDirectoryManager`（工作区目录定位与创建，实现 application 的 `WorkspaceDirectoryManager`） | 业务编排、产物**写入策略**（产物落盘在 `shared/fs/ArtifactFiles`，编排在应用层；**建目录归本包**——定位/创建不算写入策略） |
 | `infrastructure/concurrency/` | 进程内执行**机制**的通用类 | 任务并发闸这类**有状态、不面向业务契约**的机制类 | 出站端口适配（那属于 `provider/`）、业务编排 |
 | `infrastructure/provider/` | 出站实现（外部 API / 模型服务 / 端口适配器） | 端口适配器 + LLM worker 具体类 + 该实现专用的 `*Properties` | SDK 类型外泄到公开签名 |
 | `web/controller/` | HTTP 入站适配 | `@RestController`、局部 `@ExceptionHandler` | 业务逻辑、**main 源码**直接依赖 `infrastructure/` 或 `domain/`（跨层规则见[依赖规则](#依赖规则)）、**请求/响应契约的定义**（那是 `web/dto/` 的活） |
@@ -69,7 +69,7 @@ com.vidsage
 
 **`application/`（五个上下文）**——用例编排的家，五类一等构件：
 
-- **用例服务**：`@Service` 编排类，**有 web 调用面**（`VideoTaskService`——`TaskController` 唯一注入的应用服务）或**被多处方共用的横切能力**（`WorkspaceService`，被 6 处注入）。组装契约、委托端口，不出现适配器实现类与 SDK 类型。
+- **用例服务**：`@Service` 编排类，**有 web 调用面**（`VideoTaskService`——`TaskController` 唯一注入的应用服务）或**被多处方共用的横切编排能力**（有编排内容才算；单一规则 / 单一事实的机械件归机制/协作件档，见[构件说明](#构件说明服务与管线构件)）。组装契约、委托端口，不出现适配器实现类与 SDK 类型。
 - **管线构件**：`@Component` 编排类，**没有 web 调用面**——`SubtitlePipeline`（管线的所有者：阶段顺序、进度广播、终态收口）与各阶段构件（认领进度阶段的那一步，只被上级管线按顺序调用一次）。判据、命名与「为什么不下沉 domain」见下节[构件说明](#构件说明服务与管线构件)。
 - **读模型**：`TaskSnapshot` / `TaskArtifact` / `TaskArtifactFile`——面向查询的应用层投影，**零 web 注解**（2026-10-06 读模型拆分：对外 @Schema 集中到 `web/dto/TaskResponse`，见[契约类的位置](#契约类的位置)判据 2）。
 - **应用消息 / 应用异常**：`TaskProgressMessage`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`。
@@ -79,12 +79,15 @@ com.vidsage
 
 ### 构件说明：服务与管线构件
 
-`application/` 下的编排类分两档，**判据是「有没有 web 调用面」**：
+`application/` 下的编排类分三档（2026-10-09 增机制/协作件档）：
 
 | 档 | 注解 | 是什么 | 现行成员 |
 |---|---|---|---|
-| **服务** | `@Service` | 有 web 调用面，或被多处方共用的横切能力 | `VideoTaskService`（`TaskController` 唯一注入的应用服务）、`WorkspaceService`（被 6 处共用） |
+| **服务** | `@Service` | 有 web 调用面，或被多处方共用的横切**编排**能力 | `VideoTaskService`（`TaskController` 唯一注入的应用服务） |
 | **管线构件** | `@Component` | 没有 web 调用面，只被上级管线按顺序调用 | `SubtitlePipeline`（管线的所有者）、各 `XxxCoordinator`（认领阶段的一步）、`MediaAcquirerDispatcher` / `Transcriber`（不认领阶段的委托件，2026-10-08 改名落地） |
+| **机制/协作件** | `@Component` | 不干编排的机械件：单一规则、单一事实、或中立机制容器。**多处共用不升「服务」**——看有没有编排内容，不看注入数 | `TaskSubscriptionRegistry`（中立订阅机制）、`WorkspaceKeyGenerator`（`MediaInput` → key，2026-10-09） |
+
+两条分水岭：服务 ↔ 管线构件看**有没有 web 调用面**；服务 ↔ 机制/协作件看**有没有编排内容**。
 
 命名跟着分两条：
 
@@ -98,7 +101,7 @@ com.vidsage
 
 **为什么管线构件不下沉 `domain/`**：它们全是 I/O 密集（读工作区、调端口、写产物文件），而 `domain → shared` 禁止、`domain` 的紧凑构造器不许做 I/O；纯业务判据已下沉完（`CheckpointPolicy` / `TermVerification` / `Bcp47Language` / `TaskArtifactScan` 等）。**问题不在分层，在名字。**
 
-> 判据的来历（2026-10-06 命名对齐）：旧口径下这两档都叫 `XxxService`，但全项目**只有 `VideoTaskService` 有 web 调用面**，其余每一个的调用者都恰好只有一个——没有一个是独立用例（`WorkspaceService` 是唯一的横切例外）。名字在撒谎，故按「有没有 web 调用面」重划，并让 stereotype 跟着判据走。
+> 判据的来历（2026-10-06 命名对齐）：旧口径下这两档都叫 `XxxService`，但全项目**只有 `VideoTaskService` 有 web 调用面**，其余每一个的调用者都恰好只有一个——没有一个是独立用例（当时的横切例外 `WorkspaceService` 已于 2026-10-09 端口倒置任务拆除，能力拆进 `WorkspaceDirectoryManager` 与 `WorkspaceKeyGenerator`）。名字在撒谎，故按「有没有 web 调用面」重划，并让 stereotype 跟着判据走。
 
 **`infrastructure/`（persistence / process / provider）**：
 
@@ -125,8 +128,8 @@ com.vidsage
 | 层 | 允许依赖 |
 |---|---|
 | `domain` | 不依赖任何模块（跨层 import 0 处；`domain → shared` 也禁止） |
-| `application` | `domain`、`shared` |
-| `infrastructure` | `domain`、`application`（**仅窄口白名单**，见下）、`shared` |
+| `application` | `domain`、`shared`、`config` |
+| `infrastructure` | `domain`、`application`（**仅窄口白名单**，见下）、`shared`、`config` |
 | `web` | **main 源码**只依赖 `application`；**test 源码**为构造夹具允许 import `domain` |
 | `config` | 谁的都不依赖（纯 `@Configuration` / `@ConfigurationProperties`） |
 
@@ -160,6 +163,9 @@ com.vidsage
 
 - 例（2026-10-08）：`TaskConcurrencyGate` → application 端口。判据：技术词汇（并发配额），且兜底问
   「删掉它业务规则还成立吗」→ 成立。
+- 例（2026-10-09）：`WorkspaceDirectoryManager` → application 端口。判据：技术词汇（本机文件系统的
+  目录定位与创建），且兜底问「删掉它业务规则还成立吗」→ 成立（目录名公式在 domain 的 `WorkspaceDir`，
+  本端口只管把算出的名字挂到配置根下并把目录建出来）。
 
 **端口实现规则**：两类端口均由 `infrastructure/` 实现，infrastructure 是唯一实现端口的地方；application 只调用端口，不实现出站端口；domain 聚合根不调端口，domain service 可调 domain 端口（本仓当前尚无 domain service）。
 
@@ -257,7 +263,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 | 类型 | 约定 | 例子 |
 |---|---|---|
-| 端口接口 | 用业务名 + 角色后缀，**不加 `I` 前缀** | `ASRProvider`、`VideoTaskRepository`、`ToolDiagnostics` |
+| 端口接口 | 用业务名 + 角色后缀，**不加 `I` 前缀** | `ASRProvider`、`VideoTaskRepository`、`ToolDiagnostics`、`WorkspaceDirectoryManager`（2026-10-09 首个 `-Manager`，登记在案防「Manager」变万能后缀） |
 | 适配器实现类 | **与接口同名，只加技术前缀**（2026-10-06 端口倒置厘清） | `DashScopeAsrProvider`、`MybatisVideoTaskRepository`、`LlmSubtitleCleanser`、`ProcessToolDiagnostics` |
 | 配置属性 | 实现方名 + `Properties` | `DashScopeProperties` |
 | 契约 | 动作名 + `Command` / `Result` | `TranscriptionCommand` / `TranscriptionResult` |
@@ -275,7 +281,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 >
 > 故 `SubmitUrlRequest` = 动作名（SubmitUrl）+ 角色后缀（Request），`TaskConflictResponse` = 语义名 + 角色后缀（Response），完全符合上表「契约」行的既有约定；`DTO` 从来不在本项目的角色词表里（上表「契约子结构」行明确排除）。
 >
-> **已知破例（诚实记录）**：本项目角色包的类名基本都带同名后缀——`web/controller/`→`*Controller`、`application/`→`*Service`、领域端口与适配器→`*Provider`；**`web/dto/` 会是唯一不同字的一个**。但 `web/controller/ApiExceptionHandler` 已是一例（它并非 Controller），**故该模式是倾向而非铁律**。破例不必回避，只需写明。
+> **已知破例（诚实记录）**：本项目角色包的类名基本都带同名后缀——`web/controller/`→`*Controller`、`application/`→`*Service`、领域端口与适配器→`*Provider`；**`web/dto/` 会是唯一不同字的一个**。但 `web/controller/ApiExceptionHandler` 已是一例（它并非 Controller），**故该模式是倾向而非铁律**。破例不必回避，只需写明。又一例：机制/协作件 `WorkspaceKeyGenerator`（2026-10-09）用 `-Generator` 后缀——角色词答「它产出什么」，不套 `-Service`。
 
 ## 契约类的位置
 
