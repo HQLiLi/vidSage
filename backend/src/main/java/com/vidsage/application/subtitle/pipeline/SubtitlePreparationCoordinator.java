@@ -1,12 +1,14 @@
 package com.vidsage.application.subtitle.pipeline;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
 import com.vidsage.application.media.pipeline.AudioPreparationCoordinator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.application.transcription.pipeline.Transcriber;
 import com.vidsage.domain.media.model.AudioArtifact;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
@@ -35,27 +37,33 @@ import java.nio.file.Path;
 public class SubtitlePreparationCoordinator {
 
 
-    private final WorkspaceService workspaceService;
+    private final WorkspaceKeyGenerator workspaceKeyGenerator;
+    private final WorkspaceDirectoryManager workspaceDirectoryManager;
     private final AudioPreparationCoordinator audioPreparationCoordinator;
     private final Transcriber transcriber;
     private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
 
+
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param workspaceService      工作目录解析
+     * @param workspaceKeyGenerator       工作区key生成器
+     * @param workspaceDirectoryManager   工作区目录管理器
      * @param audioPreparationCoordinator 音频准备（复用 2a，本阶段不碰 ffmpeg）
-     * @param transcriber    转写（复用云 provider）
-     * @param asrProvider           当前装配的 ASR provider（用来问规格与路线）
-     * @param objectMapper          Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
+     * @param transcriber                 转写（复用云 provider）
+     * @param asrProvider                 当前装配的 ASR provider（用来问规格与路线）
+     * @param objectMapper                Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      */
-    public SubtitlePreparationCoordinator(WorkspaceService workspaceService,
-                                          AudioPreparationCoordinator audioPreparationCoordinator,
-                                          Transcriber transcriber,
-                                          ASRProvider asrProvider,
-                                          ObjectMapper objectMapper) {
-        this.workspaceService = workspaceService;
+    public SubtitlePreparationCoordinator(
+            WorkspaceKeyGenerator workspaceKeyGenerator,
+            WorkspaceDirectoryManager workspaceDirectoryManager,
+            AudioPreparationCoordinator audioPreparationCoordinator,
+            Transcriber transcriber,
+            ASRProvider asrProvider,
+            ObjectMapper objectMapper) {
+        this.workspaceKeyGenerator = workspaceKeyGenerator;
+        this.workspaceDirectoryManager = workspaceDirectoryManager;
         this.audioPreparationCoordinator = audioPreparationCoordinator;
         this.transcriber = transcriber;
         this.asrProvider = asrProvider;
@@ -92,7 +100,8 @@ public class SubtitlePreparationCoordinator {
         }
 
         SubtitleRoute route = asrProvider.route();
-        Path workDir = workspaceService.workspaceFor(input);
+        WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
+        Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
         Path segmentsPath = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(route, null));
         Path srtPath = workDir.resolve(SubtitleArtifactSpec.SRT_RAW.fileName(route, null));
 

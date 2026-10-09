@@ -1,23 +1,24 @@
 package com.vidsage.application.media.pipeline;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.domain.media.model.AcquiredMedia;
 import com.vidsage.domain.media.model.AudioArtifact;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
-import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.media.port.AudioExtractor;
 import com.vidsage.domain.shared.model.StageEvent;
 import com.vidsage.domain.shared.model.StageEvent.StageState;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
-import com.vidsage.domain.media.port.AudioExtractor;
 import com.vidsage.shared.fs.ArtifactFiles;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 import java.util.Optional;
-
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 /**
  * 音频准备编排：把「一条 {@link MediaInput} + 一个 {@link AudioSpec}」变成一份音频产物。
@@ -45,23 +46,29 @@ import org.springframework.stereotype.Component;
 public class AudioPreparationCoordinator {
 
 
-    private final WorkspaceService workspaceService;
     private final MediaAcquirerDispatcher acquisitionStage;
     private final AudioExtractor audioExtractor;
+    private final WorkspaceKeyGenerator workspaceKeyGenerator;
+    private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param workspaceService 工作目录解析
-     * @param acquisitionStage 媒体获取分派（不感知任何适配器实现类）
-     * @param audioExtractor   音频抽取（不感知 ffmpeg 实现类）
+     * @param workspaceKeyGenerator     工作区key生成器
+     * @param workspaceDirectoryManager 工作区目录管理器
+     * @param acquisitionStage          媒体获取分派（不感知任何适配器实现类）
+     * @param audioExtractor            音频抽取（不感知 ffmpeg 实现类）
      */
-    public AudioPreparationCoordinator(WorkspaceService workspaceService,
-                                       MediaAcquirerDispatcher acquisitionStage,
-                                       AudioExtractor audioExtractor) {
-        this.workspaceService = workspaceService;
+    public AudioPreparationCoordinator(
+            MediaAcquirerDispatcher acquisitionStage,
+            AudioExtractor audioExtractor,
+            WorkspaceKeyGenerator workspaceKeyGenerator,
+            WorkspaceDirectoryManager workspaceDirectoryManager
+    ) {
         this.acquisitionStage = acquisitionStage;
         this.audioExtractor = audioExtractor;
+        this.workspaceKeyGenerator = workspaceKeyGenerator;
+        this.workspaceDirectoryManager = workspaceDirectoryManager;
     }
 
     /**
@@ -104,7 +111,8 @@ public class AudioPreparationCoordinator {
         }
 
         // 获取该媒体的产物目录
-        Path workDir = workspaceService.workspaceFor(input);
+        WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
+        Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
         log.debug("开始准备音频: workDir={}, container={}", workDir.getFileName(), spec.container());
 
         AcquiredMedia media = runAcquireStage(input, workDir, listener);

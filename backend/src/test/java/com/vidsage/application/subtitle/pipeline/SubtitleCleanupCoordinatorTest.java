@@ -11,8 +11,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.SubtitleCleanupProperties;
+import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
@@ -57,7 +59,8 @@ class SubtitleCleanupCoordinatorTest {
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
 
-    private final WorkspaceService workspaceService = mock(WorkspaceService.class);
+    private final WorkspaceKeyGenerator workspaceKeyGenerator = mock(WorkspaceKeyGenerator.class);
+    private final WorkspaceDirectoryManager workspaceDirectoryManager = mock(WorkspaceDirectoryManager.class);
     private final ASRProvider asrProvider = mock(ASRProvider.class);
     private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
     private final SubtitleCleanser subtitleCleanser = mock(SubtitleCleanser.class);
@@ -75,9 +78,10 @@ class SubtitleCleanupCoordinatorTest {
     }
 
     private SubtitleCleanupCoordinator service() {
-        when(workspaceService.workspaceFor(any())).thenReturn(workDir);
+        when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
+        when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
-        return new SubtitleCleanupCoordinator(workspaceService, asrProvider, JSON, PROPS,
+        return new SubtitleCleanupCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, asrProvider, JSON, PROPS,
                 contextSummarizer, subtitleCleanser);
     }
 
@@ -93,7 +97,8 @@ class SubtitleCleanupCoordinatorTest {
         cleanserCalls.set(0);
         stubCleanserEcho();
         when(contextSummarizer.summarize(any())).thenReturn(Optional.of(SubtitleContext.empty()));
-        when(workspaceService.workspaceFor(any())).thenReturn(workDir);
+        when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
+        when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
     }
 

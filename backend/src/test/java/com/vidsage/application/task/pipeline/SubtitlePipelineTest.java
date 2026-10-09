@@ -16,8 +16,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
 import com.vidsage.application.subtitle.pipeline.SubtitleCleanupCoordinator;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.infrastructure.fs.NioWorkspaceDirectoryManager;
 import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.TaskProgressMessage;
@@ -79,9 +81,8 @@ class SubtitlePipelineTest {
     /** 注入假闸门：把线程与配额摘掉，只看管线对「排队被打断」的反应（真实闸门见并发用例）。 */
     private SubtitlePipeline service(TaskConcurrencyGate concurrencyGate) {
         return new SubtitlePipeline(repository,
-                new WorkspaceService(new WorkspaceProperties(tempDir.resolve("works").toString()),
-                        new NioFileStateReader()),
-                subtitlePreparationCoordinator, cleanupStage, translationStage, registry, concurrencyGate);
+                subtitlePreparationCoordinator, cleanupStage, translationStage, registry, concurrencyGate,
+                new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())));
     }
 
     // ---------- 正常路径（自动管线：prepare → clean，两段式后不含翻译） ----------
@@ -144,10 +145,10 @@ class SubtitlePipelineTest {
         Path expectedDir = tempDir.resolve("works").resolve("demo.mp4-a1b2c3d4e5f6");
         assertEquals(expectedDir.resolve("source.mp4"), in.value(),
                 "上传任务必须按持久化的 workspace_dir 定位 source.mp4，不能从输入重算 key");
-        // 身份由 dirLabel + key 随输入携带：workspaceFor 用它们重算目录，必须与持久化的 workspace_dir 逐字一致
-        assertEquals(expectedDir, new WorkspaceService(
-                        new WorkspaceProperties(tempDir.resolve("works").toString()), new NioFileStateReader())
-                .workspaceFor(in),
+        // 身份由 dirLabel + key 随输入携带：组合两件重算目录，必须与持久化的 workspace_dir 逐字一致
+        var manager = new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString()));
+        WorkspaceKey key = new WorkspaceKeyGenerator(new NioFileStateReader()).parseMediaToWorkspaceKey(in);
+        assertEquals(expectedDir, manager.ensureWorkspaceDirectory(in.dirLabel(), key),
                 "dirLabel + key 重建的目录必须与持久化的 workspace_dir 逐字一致（下游零重算）");
         assertEquals("a1b2c3d4e5f6", in.key().value(), "内容 key 应随输入携带");
     }

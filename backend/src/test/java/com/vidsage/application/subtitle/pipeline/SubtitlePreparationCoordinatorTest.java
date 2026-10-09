@@ -10,8 +10,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
 import com.vidsage.application.media.pipeline.AudioPreparationCoordinator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
+import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.application.transcription.pipeline.Transcriber;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
@@ -77,7 +79,7 @@ class SubtitlePreparationCoordinatorTest {
 
         var audioPrep = mock(AudioPreparationCoordinator.class);
         var transcribe = mock(Transcriber.class);
-        var service = new SubtitlePreparationCoordinator(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        var service = new SubtitlePreparationCoordinator(stubKeyGenerator(), tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, ROUTE, AudioSpec.M4A_AAC_48K_MONO), mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
@@ -103,7 +105,7 @@ class SubtitlePreparationCoordinatorTest {
                 tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(
                 new TranscriptionResult(List.of(new TranscriptionSegment(0, 1440, "新转写。")), "zh"));
-        var service = new SubtitlePreparationCoordinator(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        var service = new SubtitlePreparationCoordinator(stubKeyGenerator(), tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, ROUTE, audioSpec), mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
@@ -127,14 +129,20 @@ class SubtitlePreparationCoordinatorTest {
         when(audioPrep.prepare(any(), any(), any())).thenReturn(
                 new AudioArtifact(tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(new TranscriptionResult(segments, language));
-        return new SubtitlePreparationCoordinator(tempDirWorkspace(tempDir), audioPrep, transcribe,
+        return new SubtitlePreparationCoordinator(stubKeyGenerator(), tempDirWorkspace(tempDir), audioPrep, transcribe,
                 mockAsr(tempDir, route, audioSpec), mapper);
     }
 
-    private static WorkspaceService tempDirWorkspace(Path tempDir) {
-        var ws = mock(WorkspaceService.class);
-        when(ws.workspaceFor(any())).thenReturn(tempDir);
-        return ws;
+    private static WorkspaceDirectoryManager tempDirWorkspace(Path tempDir) {
+        var dm = mock(WorkspaceDirectoryManager.class);
+        when(dm.ensureWorkspaceDirectory(any(), any())).thenReturn(tempDir);
+        return dm;
+    }
+
+    private static WorkspaceKeyGenerator stubKeyGenerator() {
+        var kg = mock(WorkspaceKeyGenerator.class);
+        when(kg.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
+        return kg;
     }
 
     private static ASRProvider mockAsr(Path tempDir, SubtitleRoute route, AudioSpec audioSpec) {

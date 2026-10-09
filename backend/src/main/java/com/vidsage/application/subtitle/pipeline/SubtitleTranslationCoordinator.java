@@ -1,41 +1,42 @@
 package com.vidsage.application.subtitle.pipeline;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.WorkspaceKeyGenerator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.SubtitleTranslateProperties;
-import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
-import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
-import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.MediaInput;
-import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.shared.model.StageEvent;
-import com.vidsage.domain.subtitle.policy.Bcp47Language;
-import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
-import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
-import com.vidsage.domain.subtitle.port.TermLookupProvider;
-import com.vidsage.domain.subtitle.policy.TermVerification;
-import com.vidsage.domain.subtitle.model.translation.TranslatedSubtitle;
-import com.vidsage.domain.subtitle.model.translation.TranslatedTrack;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerms;
-import com.vidsage.domain.transcription.port.ASRProvider;
+import com.vidsage.domain.subtitle.model.translation.TranslateResult;
+import com.vidsage.domain.subtitle.model.translation.TranslatedSubtitle;
+import com.vidsage.domain.subtitle.model.translation.TranslatedTrack;
+import com.vidsage.domain.subtitle.policy.Bcp47Language;
+import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
+import com.vidsage.domain.subtitle.policy.TermVerification;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.subtitle.port.SubtitleTranslator;
-import com.vidsage.domain.subtitle.model.translation.TranslateResult;
+import com.vidsage.domain.subtitle.port.TermLookupProvider;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.subtitle.SrtRenderer;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.stream.Collectors;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 字幕翻译编排：把「清洗后的 -clean 字幕」变成「双语 -translate 产物」。
@@ -69,7 +70,9 @@ public class SubtitleTranslationCoordinator {
      */
     private static final int STAGE_DONE = 100;
 
-    private final WorkspaceService workspaceService;
+    private final WorkspaceKeyGenerator workspaceKeyGenerator;
+    private final WorkspaceDirectoryManager workspaceDirectoryManager;
+
     private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
     private final SubtitleTranslateProperties props;
@@ -83,24 +86,27 @@ public class SubtitleTranslationCoordinator {
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param workspaceService   工作目录解析
-     * @param asrProvider        当前装配的 ASR provider（取路线与产物命名指纹）
-     * @param objectMapper       Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
-     * @param props              字幕翻译调参（目标语种 / 批次 / 重试 / 跨批历史上限）
-     * @param contextSummarizer  内容总结器（摘要出主题 / 源语种 / 术语，供跨批上下文与跳过判定）
-     * @param lookupProvider     术语译名查证 provider，用 {@link ObjectProvider} 而不是直接注入：
-     *                           查证是增益不是前提，配置里删掉 {@code vidsage.term-lookup.provider}
-     *                           应当让应用照常起、只关查证，而不是缺 bean 起不来
-     * @param subtitleTranslator 字幕翻译器（持有翻译专用的 ChatClient）
+     * @param workspaceKeyGenerator     工作区key生成器
+     * @param workspaceDirectoryManager 工作区目录管理器
+     * @param asrProvider               当前装配的 ASR provider（取路线与产物命名指纹）
+     * @param objectMapper              Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
+     * @param props                     字幕翻译调参（目标语种 / 批次 / 重试 / 跨批历史上限）
+     * @param contextSummarizer         内容总结器（摘要出主题 / 源语种 / 术语，供跨批上下文与跳过判定）
+     * @param lookupProvider            术语译名查证 provider，用 {@link ObjectProvider} 而不是直接注入：
+     *                                  查证是增益不是前提，配置里删掉 {@code vidsage.term-lookup.provider}
+     *                                  应当让应用照常起、只关查证，而不是缺 bean 起不来
+     * @param subtitleTranslator        字幕翻译器（持有翻译专用的 ChatClient）
      */
-    public SubtitleTranslationCoordinator(WorkspaceService workspaceService,
+    public SubtitleTranslationCoordinator(WorkspaceKeyGenerator workspaceKeyGenerator,
+                                          WorkspaceDirectoryManager workspaceDirectoryManager,
                                           ASRProvider asrProvider,
                                           ObjectMapper objectMapper,
                                           SubtitleTranslateProperties props,
                                           SubtitleContextSummarizer contextSummarizer,
                                           ObjectProvider<TermLookupProvider> lookupProvider,
                                           SubtitleTranslator subtitleTranslator) {
-        this.workspaceService = workspaceService;
+        this.workspaceKeyGenerator = workspaceKeyGenerator;
+        this.workspaceDirectoryManager = workspaceDirectoryManager;
         this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
         this.props = props;
@@ -118,7 +124,7 @@ public class SubtitleTranslationCoordinator {
      * route 与目标语种的知识单源在本类内（与产物命名同处），不向管线泄漏文件名公式；
      * 断点判据语义单源在 {@link CheckpointPolicy}。
      *
-     * <p>定位工作目录复用 {@code workspaceFor}（懒创建）：本方法只在主任务 SUCCEEDED 后被调用，
+     * <p>定位工作目录复用 {@code ensureWorkspaceDirectory}（懒创建）：本方法只在主任务 SUCCEEDED 后被调用，
      * 工作区必然已由主管线建出；目录意外缺失时创建空目录后返回 {@code false}，无副作用危害。
      *
      * @param input 媒体输入（与产字幕、清洗、翻译同源，用于定位工作目录）；不可为空
@@ -127,15 +133,14 @@ public class SubtitleTranslationCoordinator {
      * @throws IllegalStateException    目标语种配置为空（与 translate 同一入口守卫）
      */
     public boolean hasTranslationArtifact(MediaInput input) {
-        // 卫语句先于一切 I/O：真实 WorkspaceService.workspaceFor 对 null 也会拒，但守卫必须
-        // 长在自己身上，不依赖协作者的实现细节（error-handling.md「卫语句优先」）
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
         }
         String targetLanguage = Bcp47Language.resolveTargetLanguage(props.targetLanguage());
         SubtitleRoute route = asrProvider.route();
-        Path workDir = workspaceService.workspaceFor(input);
+        WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
+        Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
         Path translateSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(route, targetLanguage));
         // 检查点判据单源在 CheckpointPolicy：JSON 非空 = 已完成，0 字节/缺失 = 未完成（SRT 派生视图不参与）
         return CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(translateSeg));
@@ -181,10 +186,11 @@ public class SubtitleTranslationCoordinator {
             throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
                     + "或改用不带 listener 的 translate(input) 单参重载");
         }
-        // 目标语种是配置值、边界上即可判定，故卫语句排在最前（早于 workspaceFor 的建目录副作用）
+        // 目标语种是配置值、边界上即可判定，故卫语句排在最前（早于 ensureWorkspaceDirectory 的建目录副作用）
         String targetLanguage = Bcp47Language.resolveTargetLanguage(props.targetLanguage());
         SubtitleRoute route = asrProvider.route();
-        Path workDir = workspaceService.workspaceFor(input);
+        WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
+        Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
 
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(route, null));
         Path translateSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(route, targetLanguage));

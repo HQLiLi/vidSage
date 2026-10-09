@@ -1,6 +1,6 @@
 package com.vidsage.application.task;
 
-import com.vidsage.application.media.WorkspaceService;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.pipeline.SubtitlePipeline;
@@ -8,17 +8,19 @@ import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskSnapshot;
 import com.vidsage.domain.media.model.MediaFileInfo;
-import com.vidsage.domain.shared.model.SourceUri;
+import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.WorkspaceDir;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
-import com.vidsage.domain.task.policy.TaskStageEvent;
-import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
-import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskNo;
+import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import com.vidsage.shared.fs.ArtifactFiles;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,10 +33,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
-
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 /**
  * 任务提交与查询的唯一入口：校验、查重、落库、上传落盘（design.md「数据流」）。
@@ -73,21 +71,23 @@ public class VideoTaskService {
     private static final String TEMP_FILE_SUFFIX = ".part";
 
     private final VideoTaskRepository repository;
-    private final WorkspaceService workspaceService;
+    private final WorkspaceDirectoryManager workspaceDirectoryManager;
     private final SubtitlePipeline pipeline;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
-     * @param repository       任务持久化端口（实现在 infrastructure/persistence/repository/）
-     * @param workspaceService 工作区根解析与显式 key 建目录
-     * @param pipeline         异步管线（insert 成功后异步启动）
+     * @param repository                任务持久化端口（实现在 infrastructure/persistence/repository/）
+     * @param pipeline                  异步管线（insert 成功后异步启动）
+     * @param workspaceDirectoryManager 工作区目录管理器
      */
-    public VideoTaskService(VideoTaskRepository repository, WorkspaceService workspaceService,
-                            SubtitlePipeline pipeline) {
+    public VideoTaskService(VideoTaskRepository repository,
+                            SubtitlePipeline pipeline,
+                            WorkspaceDirectoryManager workspaceDirectoryManager
+    ) {
         this.repository = repository;
-        this.workspaceService = workspaceService;
         this.pipeline = pipeline;
+        this.workspaceDirectoryManager = workspaceDirectoryManager;
     }
 
     /**
@@ -131,7 +131,7 @@ public class VideoTaskService {
             throw new IllegalArgumentException("上传内容不能为空：请重新选择文件后再提交");
         }
         try {
-            Path root = workspaceService.workspaceRoot();
+            Path root = workspaceDirectoryManager.getWorkspaceRoot();
             Files.createDirectories(root);
             Path temp = Files.createTempFile(root, TEMP_FILE_PREFIX, TEMP_FILE_SUFFIX);
             boolean settled = false;
@@ -236,7 +236,7 @@ public class VideoTaskService {
             throw new IllegalArgumentException("fileName 不能为空：请从 GET /api/tasks/{taskNo} 响应的 "
                     + "artifacts 清单里取产物名");
         }
-        Path dir = workspaceService.workspaceRoot()
+        Path dir = workspaceDirectoryManager.getWorkspaceRoot()
                 .resolve(task.getWorkspaceDir())
                 .normalize();
         Path resolved = dir.resolve(fileName).normalize();
@@ -310,7 +310,8 @@ public class VideoTaskService {
      * @return source.mp4 绝对路径（管线重建输入时按同一名字定位）
      */
     private Path settleUpload(Path temp, String originalFileName, WorkspaceKey workspaceKey) throws IOException {
-        Path dir = workspaceService.workspaceFor(originalFileName, workspaceKey);
+        Path dir =
+                workspaceDirectoryManager.ensureWorkspaceDirectory(originalFileName, workspaceKey);
         Path source = dir.resolve(MediaInput.UPLOAD_SOURCE_FILE_NAME);
         Files.move(temp, source, StandardCopyOption.REPLACE_EXISTING);
         return source;
@@ -341,7 +342,7 @@ public class VideoTaskService {
         if (!StringUtils.hasText(workspaceDir)) {
             return List.of();
         }
-        Path dir = workspaceService.workspaceRoot().resolve(workspaceDir);
+        Path dir = workspaceDirectoryManager.getWorkspaceRoot().resolve(workspaceDir);
         if (!Files.isDirectory(dir)) {
             return List.of();
         }
