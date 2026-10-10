@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 31
-- **Last Active**: 2026-10-08
+- **Total Sessions**: 32
+- **Last Active**: 2026-10-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~884 | Active |
+| `journal-1.md` | ~907 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 32 | 2026-10-10 | WorkspaceService 端口倒置：代码审查、拼写订正、测试重分与收尾归档 | `18938a4`, `4f3c43e` | `dev` |
 | 31 | 2026-10-08 | 执行模型拆分：TaskConcurrencyGate 端口 + 行为逐格对照零差异 | `95a8886`, `ef39a14`, `efdbf81`, `4ba9b09`, `133dcdc`, `38ea58e`, `0d388d4` | `dev` |
 | 30 | 2026-10-08 | 进度权重扁平化执行与验收（AC1-AC9 全绿） | `f7a7f96`, `d36b2f8` | `dev` |
 | 29 | 2026-10-08 | 形状重构收尾：批次 2/3 完成验收、合并推送并归档 | `1fb308c`, `f7bdcfb` | `dev` |

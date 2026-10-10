@@ -882,3 +882,26 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 32: WorkspaceService 端口倒置：代码审查、拼写订正、测试重分与收尾归档
+<!-- trellis-session: v=2 fp=52c88b7fe0dc764b -->
+
+**Date**: 2026-10-10
+**Task**: WorkspaceService 端口倒置：代码审查、拼写订正、测试重分与收尾归档
+**Branch**: `dev`
+
+### Summary
+
+审查项目所有者写的批次 1-3 主源码（拼写 WorkSpace→Workspace、ensureWorkspaceDirectory 等按用户动词开头口径定名）；批次 4 测试重分 WorkspaceServiceTest 9 例拆 4+5、6 夹具换构造，482 绿与基线持平；批次 5 spec 三档化与 evidence 落盘；合并 dev 推送删分支，任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `18938a4` | refactor(media): WorkspaceService 端口倒置——工作区定位与创建移出应用层 |
+| `4f3c43e` | chore(task): 10-09-workspace-port-inversion 任务卡与证据入库 |
+
+### Status
+
+[OK] **Completed**
