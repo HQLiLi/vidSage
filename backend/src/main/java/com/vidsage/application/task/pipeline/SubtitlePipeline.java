@@ -4,11 +4,10 @@ import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.application.subtitle.pipeline.SubtitleCleanupCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
-import com.vidsage.application.task.TaskProgressMessage;
-import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.message.TaskProgressMessage;
+import com.vidsage.application.task.notify.TaskProgressNotifier;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
-import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.task.VideoTask;
@@ -23,24 +22,9 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * 异步任务管线：按阶段顺序编排各阶段构件，把「一条已落库的任务」跑成终态。
- *
- *
- * <p>进度回调是<b>复合监听器</b>：① 更新 DB {@code current_stage}（先落库再广播——订阅者看到的
- * 状态有持久化背书）；② 组 {@link TaskProgressMessage}(taskNo, taskStatus, stage, translationStatus)
- * 经 {@link TaskSubscriptionRegistry} 广播给全部订阅者（注册表单订阅者失败自兜底，不会连累管线）。
- * 广播路径上不落库事件本体——「DB 快照 + 重连 snapshot」即权威（design.md「SSE 契约」）。
- * 复合监听器里落库的异常刻意不吞：落库失败说明存储不可用，继续跑只会产出「库与实况脱节」的任务。
- *
- * <p>终态收口：SUCCEEDED / FAILED 落库后广播一条终态 {@link TaskProgressMessage}（阶段形状与
- * {@code VideoTaskService} 的快照同源），再 {@link TaskSubscriptionRegistry#complete} 清空该任务全部
- * 订阅者——SSE 连接的收口由订阅方（web/sse/TaskSseHub）看到终态事件后自行完成。
- *
- * <p>执行模型：交给 {@link TaskConcurrencyGate}——每次执行占一根虚拟线程、按
- * {@code vidsage.task.max-concurrent} 限流（翻译执行与主管线共用同一配额），超出配额的就排队等。
- * 两条链路排队的时点不一样：主管线先排队、拿到配额才把任务从 PENDING 迁到 RUNNING（排队期间状态
- * 保持 PENDING，不撒谎）；翻译反过来——它在同步段就把 translation_status 置 RUNNING 再排队
- * （重复触发的不重入守卫靠的就是这个提前量），所以翻译排队期间那个状态已经是 RUNNING。
+ * 媒体转字幕任务管线
+ * 将任务先交给并行任务闸门，获得许可后执行转换任务。
+ * 每次开始或完成阶段就通过广播通知SSE订阅者
  *
  * <p>任一阶段抛异常 → RUNNING → FAILED（落中文 error_message，广播终态后不再继续后续阶段）；
  * 全部完成 → SUCCEEDED + finished_at。产物按阶段落工作区，失败后重新提交同一输入自动断点复用。
@@ -55,7 +39,7 @@ public class SubtitlePipeline {
     private final SubtitlePreparationCoordinator subtitlePreparationCoordinator;
     private final SubtitleCleanupCoordinator cleanupStage;
     private final SubtitleTranslationCoordinator translationStage;
-    private final TaskSubscriptionRegistry subscriptionRegistry;
+    private final TaskProgressNotifier taskProgressNotifier;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
     /**
@@ -65,14 +49,14 @@ public class SubtitlePipeline {
      * @param subtitlePreparationCoordinator 阶段 1：音频准备 + 转写 + 写原始字幕
      * @param cleanupStage                   阶段 2：字幕清洗（管线的最后一个自动阶段）
      * @param translationStage               按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
-     * @param subscriptionRegistry           中立订阅注册表（进度事件的广播落点）
+     * @param taskProgressNotifier           任务进度通知器
      * @param concurrencyGate                并行任务闸门
      * @param workspaceDirectoryManager      工作区目录管理器
      */
     public SubtitlePipeline(VideoTaskRepository repository,
                             SubtitlePreparationCoordinator subtitlePreparationCoordinator, SubtitleCleanupCoordinator cleanupStage,
                             SubtitleTranslationCoordinator translationStage,
-                            TaskSubscriptionRegistry subscriptionRegistry,
+                            TaskProgressNotifier taskProgressNotifier,
                             TaskConcurrencyGate concurrencyGate,
                             WorkspaceDirectoryManager workspaceDirectoryManager
     ) {
@@ -80,7 +64,7 @@ public class SubtitlePipeline {
         this.subtitlePreparationCoordinator = subtitlePreparationCoordinator;
         this.cleanupStage = cleanupStage;
         this.translationStage = translationStage;
-        this.subscriptionRegistry = subscriptionRegistry;
+        this.taskProgressNotifier = taskProgressNotifier;
         this.concurrencyGate = concurrencyGate;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
     }
@@ -185,8 +169,7 @@ public class SubtitlePipeline {
                     task.getTaskNo().value(), task.getInputType());
             prepareAndClean(task);
             task.succeed();
-            repository.update(task);
-            broadcastTerminal(task);
+            taskProgressNotifier.completeTask(task);
             log.info("任务执行成功: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - start);
         } catch (Exception e) {
             // 通过SSE广播任务失败
@@ -206,8 +189,7 @@ public class SubtitlePipeline {
         try {
             translationStage.translate(input, translationProgressListener(task));
             task.translationSucceed();
-            repository.update(task);
-            broadcastTranslationTerminal(task);
+            taskProgressNotifier.completeTranslation(task);
             log.info("任务翻译完成: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - startTimeMs);
         } catch (Exception e) {
             failTranslation(task, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), e);
@@ -227,18 +209,13 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 管线复合进度回调：阶段名写进 current_stage 并落库（先），再组 {@link TaskProgressMessage} 广播（后）——
-     * 订阅者看到的事件有持久化背书。广播本身不上抛（注册表对单订阅者异常自兜底）；
-     * 落库异常刻意不吞：存储不可用时继续跑只会产出「库与实况脱节」的任务。
+     * 管线复合进度回调
      */
     private ProgressListener progressListener(VideoTask task) {
         return event -> {
             log.debug("任务阶段事件: taskNo={}, stage={}, progress={}, state={}, message={}",
                     task.getTaskNo().value(), event.stage(), event.progress(), event.state(), event.message());
-            task.updateStage(event.stage());
-            repository.update(task);
-            subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(
-                    task.getTaskNo().value(), task.getStatus(), event, task.getTranslationStatus()));
+            taskProgressNotifier.saveCurrentStageAndBroadcast(task, event);
         };
     }
 
@@ -252,40 +229,10 @@ public class SubtitlePipeline {
         return event -> {
             log.debug("翻译阶段事件: taskNo={}, stage={}, progress={}, state={}, message={}",
                     task.getTaskNo().value(), event.stage(), event.progress(), event.state(), event.message());
-            subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(
-                    task.getTaskNo().value(), task.getStatus(), event, task.getTranslationStatus()));
+            taskProgressNotifier.broadcastTranslationStage(task, event);
         };
     }
 
-    /**
-     * 终态收口：广播一条终态 {@link TaskProgressMessage}（阶段形状与 {@link VideoTaskService} 的快照同源——
-     * 在线订阅者与重连订阅者看到的终态渲染一致，两者都经 {@link TaskStageEvent#from} 渲染），
-     * 随后清空该任务全部订阅者。
-     * 广播在前、complete 在后（finally）：哪怕广播路径抛了意外异常，订阅关系也必须清掉。
-     */
-    private void broadcastTerminal(VideoTask task) {
-        try {
-            subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(task.getTaskNo().value(),
-                    task.getStatus(), TaskStageEvent.from(task), task.getTranslationStatus()));
-        } finally {
-            subscriptionRegistry.complete(task.getTaskNo().value());
-        }
-    }
-
-    /**
-     * 翻译终态收口（复用 {@link #broadcastTerminal} 模式）：终态 TaskProgressMessage 的 taskStatus
-     * 用主状态 SUCCEEDED（主状态机不受翻译影响）、stage 用 translate（形状与快照的翻译子状态同源，
-     * 见 {@link TaskStageEvent#fromTranslation}），translationStatus 携带终态子状态；
-     * 推完即清空该任务全部订阅者——翻译终态后任务再无任何事件，连接到此自然结束。
-     */
-    private void broadcastTranslationTerminal(VideoTask task) {
-        try {
-            subscriptionRegistry.broadcast(task.getTaskNo().value(), new TaskProgressMessage(task.getTaskNo().value(),
-                    task.getStatus(), TaskStageEvent.fromTranslation(task), task.getTranslationStatus()));
-        } finally {
-            subscriptionRegistry.complete(task.getTaskNo().value());
-        }
-    }
 
     /**
      * 任一阶段异常 → FAILED：落中文错误信息，广播终态事件并清空订阅者。
@@ -298,8 +245,7 @@ public class SubtitlePipeline {
         String message = "任务执行失败：" + reason;
         try {
             task.fail(message);
-            repository.update(task);
-            broadcastTerminal(task);
+            taskProgressNotifier.completeTask(task);
             log.error("任务执行失败: taskNo={}, status={}, message={}", task.getTaskNo().value(), task.getStatus(),
                     message, cause);
         } catch (RuntimeException e) {
@@ -320,8 +266,7 @@ public class SubtitlePipeline {
         String message = "翻译失败：" + reason;
         try {
             task.translationFail(message);
-            repository.update(task);
-            broadcastTranslationTerminal(task);
+            taskProgressNotifier.completeTranslation(task);
             if (cause == null) {
                 log.warn("任务翻译失败: taskNo={}, message={}", task.getTaskNo().value(), message);
             } else {

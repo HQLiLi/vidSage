@@ -9,7 +9,7 @@ import java.util.List;
  * 任务响应：任务提交与查询端点的对外 HTTP 契约
  *
  *
- * SSE 快照形状是 {@code application/task/TaskProgressMessage}，两者按用途分开。
+ * SSE 快照形状是 {@code application/task/message/TaskProgressMessage}，两者按用途分开。
  *
  * @param taskNo            对外任务号（32 位短 UUID；数据库自增 id 不外泄）
  * @param inputType         输入类型：{@code URL}（链接提交）/ {@code UPLOAD}（本站文件上传）

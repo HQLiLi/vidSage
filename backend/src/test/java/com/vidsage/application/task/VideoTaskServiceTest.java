@@ -11,6 +11,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.application.task.exception.TaskConflictException;
+import com.vidsage.application.task.message.TaskProgressMessage;
+import com.vidsage.application.task.notify.TaskProgressNotifier;
+import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.infrastructure.fs.NioWorkspaceDirectoryManager;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.pipeline.SubtitlePipeline;
@@ -27,7 +30,7 @@ import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.port.VideoTaskRepository;
-import com.vidsage.infrastructure.fs.NioFileStateReader;
+
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -62,8 +65,10 @@ class VideoTaskServiceTest {
      * 不能在字段初始化器里引用。
      */
     private VideoTaskService service() {
+        // 第 4 参是真 notifier（repository mock + 新 registry）：快照组装走 notifier 与在线事件同源
         return new VideoTaskService(repository, pipeline,
-                new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())));
+                new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())),
+                new TaskProgressNotifier(repository, new TaskSubscriptionRegistry()));
     }
 
     @org.junit.jupiter.api.BeforeEach

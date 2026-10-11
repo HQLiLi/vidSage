@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.vidsage.domain.shared.model.StageEvent;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
-import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;

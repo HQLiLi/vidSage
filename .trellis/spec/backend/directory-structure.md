@@ -75,7 +75,7 @@ com.vidsage
 - **应用消息 / 应用异常**：`TaskProgressMessage`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`。
 - **中立订阅机制**：`TaskSubscriptionRegistry` / `Subscription`——application 层管线广播事件、web 层挂「写 emitter」回调，两边都依赖它。判据是「写得出它不许装什么」：**禁 HTTP 类型**（`SseEmitter` 只活 `web/sse/`，此 Javadoc 承诺原样保持）、**禁业务编排**；与 `shared/` 同类「机制包」先例。（历史注：该机制 2026-09-30 曾定调为顶层 `subscribe/` 包，2026-10-05 四层化归入 `application/task/`；升级条件随之带入——出现多传输协议（SSE + WebSocket）并存或包内构件 ≥3 时再议拆分。）
 
-上述五类构件在 `application/task/` 内按角色子包落位（2026-10-05，2026-10-06 补 `pipeline/`）：服务门面与 `TaskProgressMessage` 留根，管线构件进 `pipeline/`、读模型进 `query/`、应用异常进 `exception/`、中立订阅机制进 `subscribe/`（禁 HTTP 类型的承诺随迁入其包说明）；判据见下文[二级包怎么分](#二级包怎么分)。
+上述五类构件在 `application/task/` 内按角色子包落位（2026-10-05，2026-10-06 补 `pipeline/`，2026-10-10 补 `message/`）：服务门面留根，管线构件进 `pipeline/`、读模型进 `query/`、应用消息进 `message/`、应用异常进 `exception/`、中立订阅机制进 `subscribe/`（禁 HTTP 类型的承诺随迁入其包说明）；另有机制/协作件 `TaskProgressNotifier`（非上述五类，三档表见[构件说明](#构件说明服务与管线构件)）进 `notify/`，与 `subscribe/` 的分工是「一个管谁能收、一个管什么时候送、送之前先落库」；判据见下文[二级包怎么分](#二级包怎么分)。
 
 ### 构件说明：服务与管线构件
 
@@ -85,7 +85,7 @@ com.vidsage
 |---|---|---|---|
 | **服务** | `@Service` | 有 web 调用面，或被多处方共用的横切**编排**能力 | `VideoTaskService`（`TaskController` 唯一注入的应用服务） |
 | **管线构件** | `@Component` | 没有 web 调用面，只被上级管线按顺序调用 | `SubtitlePipeline`（管线的所有者）、各 `XxxCoordinator`（认领阶段的一步）、`MediaAcquirerDispatcher` / `Transcriber`（不认领阶段的委托件，2026-10-08 改名落地） |
-| **机制/协作件** | `@Component` | 不干编排的机械件：单一规则、单一事实、或中立机制容器。**多处共用不升「服务」**——看有没有编排内容，不看注入数 | `TaskSubscriptionRegistry`（中立订阅机制）、`WorkspaceKeyGenerator`（`MediaInput` → key，2026-10-09） |
+| **机制/协作件** | `@Component` | 不干编排的机械件：单一规则、单一事实、或中立机制容器。**多处共用不升「服务」**——看有没有编排内容，不看注入数 | `TaskSubscriptionRegistry`（中立订阅机制）、`WorkspaceKeyGenerator`（`MediaInput` → key，2026-10-09）、`TaskProgressNotifier`（进度通知协作件，2026-10-10） |
 
 两条分水岭：服务 ↔ 管线构件看**有没有 web 调用面**；服务 ↔ 机制/协作件看**有没有编排内容**。
 
@@ -181,7 +181,7 @@ com.vidsage
 | 层 | 桶 | 根留什么 |
 |---|---|---|
 | `domain/<上下文>/` | `port/`（接口）、`policy/`（final class + 静态方法的无状态政策）、`model/`（record / enum / sealed 数据词汇） | 主类型（状态机/聚合，如 `VideoTask`） |
-| `application/<上下文>/` | `port/`（本层出站端口）、`pipeline/`（管线构件：管线的所有者与各阶段类）、`query/`（读模型）、`exception/`（应用异常）、`subscribe/`（中立订阅机制） | `@Service` 服务门面 + 应用消息（如 `VideoTaskService` + `TaskProgressMessage`） |
+| `application/<上下文>/` | `port/`（本层出站端口）、`pipeline/`（管线构件：管线的所有者与各阶段类）、`query/`（读模型）、`message/`（应用消息）、`exception/`（应用异常）、`subscribe/`（中立订阅机制）、`notify/`（进度通知协作件） | 只留 `@Service` 服务门面（如 `VideoTaskService`） |
 
 - **`model/` 内可再按子主题分一层**——全项目唯一的二层用法（2026-10-06）：`domain/subtitle/` 的数据载体多到该再分，故有 `model/cleanup/`、`model/translation/`、`model/term/`、`model/common/`。口径是「先角色，角色内再按子主题」。
 - **不再套桶的组合**（已被别的判据定义过，或本来只有一个角色）：`infrastructure/provider/<能力域>/<实现短名>/`（该实现的适配器 + 专用 `*Properties` + 私有助手算一件）、`infrastructure/persistence/`（entity / mapper / repository 三件套）、`web/`（controller / dto / sse）、`shared/<域>/`（纯静态助手）。
@@ -270,6 +270,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | 契约子结构 | 语义名，不叫 `DTO` / `VO` | `TranscriptionSegment` |
 | Spring 组件 | **按包选 stereotype**：`web/controller/`→`@RestController`、`application/` **用例服务与横切服务**→`@Service`、`application/` **管线构件**（`XxxPipeline` / `XxxCoordinator` / `XxxStage`）与机制类→`@Component`、`infrastructure/`→`@Component`、`infrastructure/persistence/`→`@Repository`、`web/sse/`→`@Component` | `TaskController`、`VideoTaskService`、`SubtitlePipeline`、`SubtitlePreparationCoordinator`、`DashScopeAsrProvider` |
 | Controller | 业务名 + `Controller`，平铺在 `web/controller/` | `MediaController`、`TaskController` |
+| 组件后缀登记 | 端口/适配器之外的新角色后缀**用前先登记**（不登记的后缀会变万能）；`-Notifier`（2026-10-10 本仓首例）：角色词答「它把状态变化送出去」，落 `notify/` 桶（桶名同步登记，与 `subscribe/` 成对——一个管「谁能收」，一个管「什么时候送、送之前先落库」） | `TaskProgressNotifier` |
 
 > `ASRProvider` 是全大写缩写开头，与 Spring 常见的 `AsrProvider` 写法不同。**跟随现有代码**，不要"顺手改正"。
 
@@ -300,7 +301,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | `TranscriptionResult` | `domain/transcription/model/` | 字段为 `List<TranscriptionSegment>` + `String`，形状可直接对外 → 直接充当对外契约，补 `@Schema` |
 | `TaskSnapshot` / `TaskArtifact` | `application/task/query/` | 任务查询的应用层读模型（查询期产物扫描随行）→ **零 web 注解**（判据 2）；对外 @Schema 在 `web/dto/TaskResponse` 与元素级 `web/dto/TaskArtifactResponse`。流式下载出参 `TaskArtifactFile`（同在 `query/`）字段走响应头不进 JSON，**不补 @Schema** |
 | `TaskResponse` / `TaskArtifactResponse` | `web/dto/` | 任务提交 / 查询端点的对外响应（判据 2）：@Schema 齐全（自原 `TaskView` / `TaskArtifact` 逐条迁入，注解参数未改写），静态工厂 `from(读模型)` 纯映射，JSON 字段名 / 类型与拆分前逐一一致 |
-| `TaskProgressMessage` | `application/task/` | 应用 → web 的进度消息 → **不带 `@Schema`**：SSE 端点返回的是 `SseEmitter`，本类型只作 `TaskSseHub.send(...)` 的入参流转，注解进不了 `/v3/api-docs`（2026-10-07 删） |
+| `TaskProgressMessage` | `application/task/message/` | 应用 → web 的进度消息 → **不带 `@Schema`**：SSE 端点返回的是 `SseEmitter`，本类型只作 `TaskSseHub.send(...)` 的入参流转，注解进不了 `/v3/api-docs`（2026-10-07 删）；2026-10-10 迁入 `message/` 桶，与 `exception/` 对称 |
 | `SubmitUrlRequest` | `web/dto/` | 入参契约；只带 url 字符串进应用层，`MediaInput` 的构造在 application 内完成（2026-10-06 起 web main 不依赖 `domain/`） |
 | `TaskConflictResponse` | `web/dto/` | HTTP 专属组合形状（错误说明 + 既有任务视图），由 `ApiExceptionHandler` 从 application 异常映射 |
 

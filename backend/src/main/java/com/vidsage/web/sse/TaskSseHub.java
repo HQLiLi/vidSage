@@ -1,6 +1,6 @@
 package com.vidsage.web.sse;
 
-import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.message.TaskProgressMessage;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
