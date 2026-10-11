@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "命名判据正本：值对象落位判据（第 67 行解释了 StageEvent 为何留 domain/shared/）+ 类名排除分类词 Payload/DTO/VO（第 281 行，是否掉 StageProgressPayload 候选的依据）"}
+{"file": ".trellis/spec/backend/index.md", "reason": "spec 索引，确认本任务只触及 directory-structure.md 一处，无其他文档需同步"}
+{"file": "backend/src/main/java/com/vidsage/domain/shared/model/StageEvent.java", "reason": "改名对象本体：record + 嵌套枚举 StageState + 待订正的过渡形态 Javadoc"}
+{"file": "backend/src/main/java/com/vidsage/domain/shared/port/ProgressListener.java", "reason": "回调端口：onEvent → onProgress，参数名改 stageProgress，Javadoc 订正 + 补分层理由"}
+{"file": "frontend/src/types/task.ts", "reason": "前端镜像：StageEvent interface + StageState 类型别名 + 注释里的后端类型名引用"}
