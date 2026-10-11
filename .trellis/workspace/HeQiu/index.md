@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 32
-- **Last Active**: 2026-10-10
+- **Total Sessions**: 33
+- **Last Active**: 2026-10-11
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~907 | Active |
+| `journal-1.md` | ~931 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 33 | 2026-10-11 | 10-08 广播收口全链路收尾：批 0 判据到合并归档 | `901449e`, `53f9377`, `1fbf095` | `dev` |
 | 32 | 2026-10-10 | WorkspaceService 端口倒置：代码审查、拼写订正、测试重分与收尾归档 | `18938a4`, `4f3c43e` | `dev` |
 | 31 | 2026-10-08 | 执行模型拆分：TaskConcurrencyGate 端口 + 行为逐格对照零差异 | `95a8886`, `ef39a14`, `efdbf81`, `4ba9b09`, `133dcdc`, `38ea58e`, `0d388d4` | `dev` |
 | 30 | 2026-10-08 | 进度权重扁平化执行与验收（AC1-AC9 全绿） | `f7a7f96`, `d36b2f8` | `dev` |

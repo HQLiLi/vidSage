@@ -905,3 +905,27 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 33: 10-08 广播收口全链路收尾：批 0 判据到合并归档
+<!-- trellis-session: v=2 fp=89a014b68de4e10c -->
+
+**Date**: 2026-10-11
+**Task**: 10-08 广播收口全链路收尾：批 0 判据到合并归档
+**Branch**: `dev`
+
+### Summary
+
+读交接后 task.py start 并开 feature 分支。批 0 spec 判据 5 处（根包构成收窄+命名登记）；步骤 0 基线 482 全绿+SSE 参照侧 14 格与归档基线零差异、场景 B 三快照；批 3 主源码审查保真 10/10（方法名以代码为准同步工件）；批 4 派发 488 全绿（+6 新用例）+check 三读面 PASS 断言红线干净；批 5 spec §七 #5-9、AC2/AC3 grep 证据（豁免 17 处全列）、AC5 双侧逐字节对照（含翻译增量补抓）；AC1-AC7 全 PASS。两笔提交合并 dev 推送（1fbf095）、任务归档（41a8c8f）。过程事故：5a 子代理 402（文件已写完主线验收）、三次 SSE 抓取竞态（均修正）、target 并发竞态（清后重跑）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `901449e` | chore(task): 10-08-pipeline-state-broadcast 任务卡与证据入库 |
+| `53f9377` | refactor(task): SubtitlePipeline 状态迁移×广播收口——新增 TaskProgressNotifier、消息迁 message/ 桶 |
+| `1fbf095` | Merge branch 'feature/pipeline-state-broadcast' into dev |
+
+### Status
+
+[OK] **Completed**
