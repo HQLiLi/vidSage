@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核查落位判据：StageProgress 应仍在 domain/shared/model/ 未搬动；类名不得沾分类词"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核查零行为变更：改名后不得引入任何逻辑差异"}
+{"file": "backend/src/main/java/com/vidsage/domain/task/policy/TaskStageEvent.java", "reason": "保护对象核查：暂留不改，自引用数应保持 16 处；但内部对旧枚举的引用必须已更新为 StageProgress.State"}
+{"file": ".trellis/tasks/10-11-stage-progress-rename/implement.md", "reason": "验收门 G1–G4 的判据原文，逐条对照"}

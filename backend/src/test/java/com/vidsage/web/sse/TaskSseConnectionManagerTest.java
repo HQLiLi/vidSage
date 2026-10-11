@@ -15,7 +15,7 @@ import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.subscribe.Subscription;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
@@ -75,13 +75,13 @@ class TaskSseConnectionManagerTest {
 
     private static TaskProgressMessage event(TaskStatus status) {
         return TaskProgressMessage.of(TASK_NO, status,
-                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 70, "开始转写", StageEvent.StageState.RUNNING), null);
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 70, "开始转写", StageProgress.State.RUNNING), null);
     }
 
     /** 翻译事件：taskStatus 恒为主状态 SUCCEEDED（主管线终态），翻译子状态随给定值。 */
     private static TaskProgressMessage translationEvent(TranslationStatus translationStatus) {
         return TaskProgressMessage.of(TASK_NO, TaskStatus.SUCCEEDED,
-                new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 50, "第 2/3 批", StageEvent.StageState.RUNNING),
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 50, "第 2/3 批", StageProgress.State.RUNNING),
                 translationStatus);
     }
 

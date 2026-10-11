@@ -1,6 +1,6 @@
 package com.vidsage.domain.task.policy;
 
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskStatus;
@@ -8,7 +8,7 @@ import org.springframework.util.StringUtils;
 
 /**
  * 任务状态 → 阶段事件的渲染政策（纯函数领域政策，无 I/O、无状态）：把持久化的任务状态摊成
- * 一条粗粒度 {@link StageEvent}，供 SSE 快照与管线终态广播共用同一份形状。
+ * 一条粗粒度 {@link StageProgress}，供 SSE 快照与管线终态广播共用同一份形状。
  *
  * <p>进度取状态的大致位置（排队 / 执行中 0、成功 100、失败 0），不追求精确——精确进度由增量
  * 事件携带，快照只保证形状合法。失败事件的消息带终态错误文本，是 SSE 上唯一的错误出口；
@@ -35,21 +35,21 @@ public final class TaskStageEvent {
      * @param task 任务实例；{@code current_stage} 可为 {@code null}
      * @return 粗粒度阶段事件；{@code current_stage} 为空且状态非 FAILED 时为 {@code null}
      */
-    public static StageEvent from(VideoTask task) {
+    public static StageProgress from(VideoTask task) {
         if (task.getStatus() == TaskStatus.SUCCEEDED && task.getTranslationStatus() != null) {
             return fromTranslation(task);
         }
         String stage = task.getCurrentStage();
         return switch (task.getStatus()) {
             case PENDING -> stage == null ? null
-                    : new StageEvent(stage, 0, "任务排队中，等待执行", StageEvent.StageState.RUNNING);
+                    : new StageProgress(stage, 0, "任务排队中，等待执行", StageProgress.State.RUNNING);
             case RUNNING -> stage == null ? null
-                    : new StageEvent(stage, 0, "任务执行中", StageEvent.StageState.RUNNING);
+                    : new StageProgress(stage, 0, "任务执行中", StageProgress.State.RUNNING);
             case SUCCEEDED -> stage == null ? null
-                    : new StageEvent(stage, 100, "任务已完成", StageEvent.StageState.SUCCEEDED);
-            case FAILED -> new StageEvent(stage, 0,
+                    : new StageProgress(stage, 100, "任务已完成", StageProgress.State.SUCCEEDED);
+            case FAILED -> new StageProgress(stage, 0,
                     StringUtils.hasText(task.getErrorMessage()) ? task.getErrorMessage() : "任务已失败",
-                    StageEvent.StageState.FAILED);
+                    StageProgress.State.FAILED);
         };
     }
 
@@ -64,15 +64,15 @@ public final class TaskStageEvent {
      * @param task 翻译子状态非 {@code null} 的任务
      * @return 翻译阶段事件
      */
-    public static StageEvent fromTranslation(VideoTask task) {
+    public static StageProgress fromTranslation(VideoTask task) {
         return switch (task.getTranslationStatus()) {
-            case RUNNING -> new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0, "翻译进行中",
-                    StageEvent.StageState.RUNNING);
-            case SUCCEEDED -> new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "翻译完成",
-                    StageEvent.StageState.SUCCEEDED);
-            case FAILED -> new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0,
+            case RUNNING -> new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0, "翻译进行中",
+                    StageProgress.State.RUNNING);
+            case SUCCEEDED -> new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "翻译完成",
+                    StageProgress.State.SUCCEEDED);
+            case FAILED -> new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0,
                     StringUtils.hasText(task.getErrorMessage()) ? task.getErrorMessage() : "翻译已失败",
-                    StageEvent.StageState.FAILED);
+                    StageProgress.State.FAILED);
         };
     }
 }

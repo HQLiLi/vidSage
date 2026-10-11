@@ -209,10 +209,11 @@ public class SubtitlePipeline {
      * 创建进度回调监听器
      */
     private ProgressListener createProgressListener(VideoTask task) {
-        return event -> {
+        return stageProgress -> {
             log.debug("任务阶段事件: taskNo={}, stage={}, progress={}, state={}, message={}",
-                    task.getTaskNo().value(), event.stage(), event.progress(), event.state(), event.message());
-            taskProgressNotifier.saveCurrentStageAndBroadcast(task, event);
+                    task.getTaskNo().value(), stageProgress.stage(), stageProgress.progress(),
+                    stageProgress.state(), stageProgress.message());
+            taskProgressNotifier.saveCurrentStageAndBroadcast(task, stageProgress);
         };
     }
 
@@ -223,10 +224,11 @@ public class SubtitlePipeline {
      * 精确进度由本回调的实时事件携带。
      */
     private ProgressListener translationProgressListener(VideoTask task) {
-        return event -> {
+        return stageProgress -> {
             log.debug("翻译阶段事件: taskNo={}, stage={}, progress={}, state={}, message={}",
-                    task.getTaskNo().value(), event.stage(), event.progress(), event.state(), event.message());
-            taskProgressNotifier.broadcastTranslationStage(task, event);
+                    task.getTaskNo().value(), stageProgress.stage(), stageProgress.progress(),
+                    stageProgress.state(), stageProgress.message());
+            taskProgressNotifier.broadcastTranslationStage(task, stageProgress);
         };
     }
 

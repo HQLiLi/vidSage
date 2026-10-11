@@ -5,7 +5,7 @@ import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.shared.port.ProgressListener;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
@@ -204,8 +204,8 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
      * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
      */
     private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
-        listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), batchNo * 100 / totalBatches,
-                "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
+        listener.onProgress(new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), batchNo * 100 / totalBatches,
+                "第 " + batchNo + "/" + totalBatches + " 批", StageProgress.State.RUNNING));
     }
 
 

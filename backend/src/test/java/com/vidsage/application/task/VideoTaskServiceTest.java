@@ -24,7 +24,7 @@ import com.vidsage.domain.shared.model.WorkspaceDir;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
@@ -258,7 +258,7 @@ class VideoTaskServiceTest {
         assertEquals(TaskStatus.RUNNING, event.taskStatus());
         assertEquals(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), event.stage().stage());
         assertEquals(0, event.stage().progress(), "快照只保证形状合法，精确进度由增量事件携带");
-        assertEquals(StageEvent.StageState.RUNNING, event.stage().state());
+        assertEquals(StageProgress.State.RUNNING, event.stage().state());
     }
 
     @Test
@@ -274,7 +274,7 @@ class VideoTaskServiceTest {
         assertEquals(TaskStatus.SUCCEEDED, event.taskStatus());
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), event.stage().stage());
         assertEquals(100, event.stage().progress());
-        assertEquals(StageEvent.StageState.SUCCEEDED, event.stage().state());
+        assertEquals(StageProgress.State.SUCCEEDED, event.stage().state());
     }
 
     @Test
@@ -288,7 +288,7 @@ class VideoTaskServiceTest {
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TaskStatus.FAILED, event.taskStatus());
-        assertEquals(StageEvent.StageState.FAILED, event.stage().state());
+        assertEquals(StageProgress.State.FAILED, event.stage().state());
         assertEquals("任务执行失败：boom", event.stage().message(),
                 "失败快照的消息携带终态错误（SSE 上唯一的错误出口）");
     }
@@ -314,7 +314,7 @@ class VideoTaskServiceTest {
                 "快照携带翻译子状态（订阅端终态判定据此保持连接）");
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), event.stage().stage());
         assertEquals(0, event.stage().progress(), "翻译进行中取粗粒度 0，精确进度由增量事件携带");
-        assertEquals(StageEvent.StageState.RUNNING, event.stage().state());
+        assertEquals(StageProgress.State.RUNNING, event.stage().state());
     }
 
     @Test
@@ -327,7 +327,7 @@ class VideoTaskServiceTest {
         assertEquals(TranslationStatus.SUCCEEDED, event.translationStatus());
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), event.stage().stage());
         assertEquals(100, event.stage().progress());
-        assertEquals(StageEvent.StageState.SUCCEEDED, event.stage().state());
+        assertEquals(StageProgress.State.SUCCEEDED, event.stage().state());
     }
 
     @Test
@@ -338,7 +338,7 @@ class VideoTaskServiceTest {
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
         assertEquals(TranslationStatus.FAILED, event.translationStatus());
-        assertEquals(StageEvent.StageState.FAILED, event.stage().state());
+        assertEquals(StageProgress.State.FAILED, event.stage().state());
         assertEquals("翻译失败：LLM 返回掉行", event.stage().message(),
                 "翻译失败快照的消息携带失败原因（重连后仍可见，不只活在实时事件里）");
     }

@@ -2,7 +2,7 @@ package com.vidsage.application.task.notify;
 
 import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
@@ -25,23 +25,23 @@ public class TaskProgressNotifier {
     /**
      * 推进任务，先将任务状态落库再广播
      *
-     * @param videoTask 任务
-     * @param event     阶段事件
+     * @param videoTask     任务
+     * @param stageProgress 阶段进度
      */
-    public void saveCurrentStageAndBroadcast(VideoTask videoTask, StageEvent event) {
-        videoTask.updateStage(event.stage());
+    public void saveCurrentStageAndBroadcast(VideoTask videoTask, StageProgress stageProgress) {
+        videoTask.updateStage(stageProgress.stage());
         videoTaskRepository.update(videoTask);
-        broadcast(videoTask, event);
+        broadcast(videoTask, stageProgress);
     }
 
     /**
      * 翻译阶段推进，只广播
      *
-     * @param videoTask 任务
-     * @param event     阶段事件
+     * @param videoTask     任务
+     * @param stageProgress 阶段进度
      */
-    public void broadcastTranslationStage(VideoTask videoTask, StageEvent event) {
-        broadcast(videoTask, event);
+    public void broadcastTranslationStage(VideoTask videoTask, StageProgress stageProgress) {
+        broadcast(videoTask, stageProgress);
     }
 
     /**
@@ -78,13 +78,13 @@ public class TaskProgressNotifier {
     /**
      * 广播指定任务的状态
      *
-     * @param task  任务
-     * @param event 阶段进度
+     * @param task          任务
+     * @param stageProgress 阶段进度
      */
-    private void broadcast(VideoTask task, StageEvent event) {
+    private void broadcast(VideoTask task, StageProgress stageProgress) {
         String taskNo = task.getTaskNo().value();
         taskSubscriptionRegistry.broadcast(taskNo,
-                TaskProgressMessage.of(taskNo, task.getStatus(), event, task.getTranslationStatus())
+                TaskProgressMessage.of(taskNo, task.getStatus(), stageProgress, task.getTranslationStatus())
         );
     }
 
@@ -92,12 +92,12 @@ public class TaskProgressNotifier {
      * 终态广播：告诉每个订阅者订阅结束。
      * 在广播结束后清除该任务的所有订阅关系
      *
-     * @param task  任务
-     * @param event 阶段进度
+     * @param task          任务
+     * @param stageProgress 阶段进度
      */
-    private void broadcastTerminal(VideoTask task, StageEvent event) {
+    private void broadcastTerminal(VideoTask task, StageProgress stageProgress) {
         try {
-            broadcast(task, event);
+            broadcast(task, stageProgress);
         } finally {
             taskSubscriptionRegistry.complete(task.getTaskNo().value());
         }

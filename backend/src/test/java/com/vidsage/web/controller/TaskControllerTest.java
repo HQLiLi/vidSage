@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
@@ -184,7 +184,7 @@ class TaskControllerTest {
     @Test
     void subscribeEventsPushesSnapshotFirstThenIncrementalBroadcasts() throws Exception {
         when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
-                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageEvent.StageState.RUNNING), null));
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageProgress.State.RUNNING), null));
 
         // 连接建立：连接保持挂起（asyncStarted），快照已随响应写出（emitter 初始化时冲刷缓冲）
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -198,7 +198,7 @@ class TaskControllerTest {
 
         // 模拟管线推进：走注册表广播（生产里的真实路径），事件经该连接自己那个订阅者写进 emitter
         taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
-                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageEvent.StageState.SUCCEEDED), null));
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageProgress.State.SUCCEEDED), null));
         String body = result.getResponse().getContentAsString();
         assertTrue(body.contains("\"progress\":60"), () -> "快照的进度应先到：" + body);
         assertTrue(body.contains("\"progress\":95"), () -> "增量事件应随后到达：" + body);
@@ -211,7 +211,7 @@ class TaskControllerTest {
         // 发送，k 条连接就会把同一条事件写 k 份给每条连接（k² 次写入）。页面开两个标签页时看着
         // 正常（前端按最新一条覆盖），但流量与副作用语义已经错了——这个倍数只能在这里数出来。
         when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
-                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageEvent.StageState.RUNNING), null));
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageProgress.State.RUNNING), null));
 
         MvcResult first = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
                 .andExpect(request().asyncStarted())
@@ -221,7 +221,7 @@ class TaskControllerTest {
                 .andReturn();
 
         taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
-                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageEvent.StageState.SUCCEEDED), null));
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageProgress.State.SUCCEEDED), null));
 
         for (MvcResult each : List.of(first, second)) {
             String body = each.getResponse().getContentAsString();
@@ -234,8 +234,8 @@ class TaskControllerTest {
     @Test
     void subscribeEventsToTerminalTaskCompletesConnectionAfterSnapshot() throws Exception {
         when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.FAILED,
-                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
-                        StageEvent.StageState.FAILED), null));
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
+                        StageProgress.State.FAILED), null));
 
         // 终态快照推完即收口（连接管理器对终态事件 complete emitter），连接不等 30 分钟超时；
         // 响应里应已带终态事件。连接收口的行为细节由 TaskSseConnectionManagerTest 钉住。
@@ -254,10 +254,10 @@ class TaskControllerTest {
         // 且这条订阅既等不到终态事件也永远不会退订（注册表泄漏）。
         when(taskService.snapshot(TASK_NO))
                 .thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
-                        new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageEvent.StageState.RUNNING), null))
+                        new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageProgress.State.RUNNING), null))
                 .thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.FAILED,
-                        new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
-                                StageEvent.StageState.FAILED), null));
+                        new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
+                                StageProgress.State.FAILED), null));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
                 .andExpect(request().asyncStarted())
@@ -332,7 +332,7 @@ class TaskControllerTest {
         // 连接不得按主状态终态收口（终态判定 = 主状态终态且翻译非 RUNNING）
         when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO,
                 TaskStatus.SUCCEEDED,
-                new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0, "翻译进行中", StageEvent.StageState.RUNNING),
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0, "翻译进行中", StageProgress.State.RUNNING),
                 TranslationStatus.RUNNING));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -343,7 +343,7 @@ class TaskControllerTest {
 
         // 模拟管线推进：翻译进度事件经注册表广播写进 emitter（若连接被提前收口，此事件无人可写）
         taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.SUCCEEDED,
-                new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 55, "第 2/3 批", StageEvent.StageState.RUNNING),
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 55, "第 2/3 批", StageProgress.State.RUNNING),
                 TranslationStatus.RUNNING));
 
         String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
@@ -357,7 +357,7 @@ class TaskControllerTest {
         // 主任务 SUCCEEDED + 翻译 SUCCEEDED：真正再无后续事件，快照推完即收口
         when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO,
                 TaskStatus.SUCCEEDED,
-                new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "翻译完成", StageEvent.StageState.SUCCEEDED),
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "翻译完成", StageProgress.State.SUCCEEDED),
                 TranslationStatus.SUCCEEDED));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))

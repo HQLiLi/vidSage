@@ -4,7 +4,7 @@ import com.vidsage.application.media.WorkspaceKeyGenerator;
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.domain.media.model.MediaInput;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
@@ -153,10 +153,10 @@ public class SubtitleCleanupCoordinator {
             // 断点复用不重跑，本趟统计一律为 0（含术语指标），语义与 correctedCount 一致
 
             emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.end(), "已有清洗产物，跳过清洗",
-                    StageEvent.StageState.SKIPPED);
+                    StageProgress.State.SKIPPED);
             return toCleaned(existing, cleanSeg, cleanSrt, 0, 0, 0, 0);
         }
-        emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.start(), "开始清洗", StageEvent.StageState.RUNNING);
+        emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.start(), "开始清洗", StageProgress.State.RUNNING);
 
         if (!ArtifactFiles.isNonEmpty(rawSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
@@ -192,7 +192,7 @@ public class SubtitleCleanupCoordinator {
 
         SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments());
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换
-        emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.end(), "清洗完成", StageEvent.StageState.SUCCEEDED);
+        emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.end(), "清洗完成", StageProgress.State.SUCCEEDED);
         log.info("字幕清洗完成: route={}, segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
                 route.name(), result.segments().size(), result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());
@@ -243,8 +243,8 @@ public class SubtitleCleanupCoordinator {
      * 批级进度不走这里，由 cleanser 经 {@code ProgressMapper} 换算后直接回调 listener）。
      */
     private static void emit(ProgressListener listener, String stage, int progress, String message,
-                             StageEvent.StageState state) {
-        listener.onEvent(new StageEvent(stage, progress, message, state));
+                             StageProgress.State state) {
+        listener.onProgress(new StageProgress(stage, progress, message, state));
     }
 
     /**

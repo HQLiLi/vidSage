@@ -3,7 +3,7 @@ package com.vidsage.application.task.message;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
@@ -21,8 +21,8 @@ class TaskProgressMessageTest {
 
     private static final String TASK_NO = "t0";
 
-    private static final StageEvent STAGE = new StageEvent(
-            SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 70, "开始转写", StageEvent.StageState.RUNNING);
+    private static final StageProgress STAGE = new StageProgress(
+            SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 70, "开始转写", StageProgress.State.RUNNING);
 
     @Test
     void terminalIsTrueForTerminalStatePairs() {
