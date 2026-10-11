@@ -929,3 +929,26 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 34: 10-11 SSE 面收口全链路收尾：批 0 判据到合并归档
+<!-- trellis-session: v=2 fp=6ead9e4a9dcf8867 -->
+
+**Date**: 2026-10-11
+**Task**: 10-11 SSE 面收口全链路收尾：批 0 判据到合并归档
+**Branch**: `dev`
+
+### Summary
+
+读交接后切 feature 分支 + task.py start。批 0 spec 判据 4 处（web/sse 职责补订阅配对、isEventTerminal 登记、-Manager 第二例、terminal 派生字段说明）；步骤 0 基线 488 全绿 + 参照侧 SSE 14 格与 10-08 归档基线逐格零差异、快照落档；批 1 后端所有者写（open() 把 register+subscribe 配对收成单一入口、remove() 空桶回收、TaskProgressMessage 增 terminal 派生字段、TaskSseHub 更名 TaskSseConnectionManager）；批 2 前端派发实现（两处重复终态判据删除改读字段、断连致命/瞬时分流 + 重连提示条）；批 3 测试 497 全绿（+9 用例，另补三处清单外构造点改走 of()）；批 4 AC4/AC5/AC6/AC7 证据（AC7 修后重取：14 格逐格相同、唯一差异是新 terminal 字段、快照逐字节一致）。两轮 trellis-check 三+二读面 + 一轮窄复检，共修 6 处缺陷（remove 原子性与 open catch 过宽经二次迭代才关死）。AC1-AC5/AC7 PASS，AC6 部分（diagnoseFatal 的 loadError 无渲染出口，登记不改）。写失败不退订另立 10-11-sse-connection-pairing。提交 edcbe81、合并 dev b1ffa1d 推送（推送需走本机 7897 代理，git 未配）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `edcbe81` | refactor(task): SSE 面收口——订阅配对内聚、终态判据出 terminal 字段、断连可见 |
+| `b1ffa1d` | Merge branch 'feature/sse-surface-consolidation' into dev |
+
+### Status
+
+[OK] **Completed**
