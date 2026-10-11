@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 
 import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.VideoTask;
@@ -48,8 +48,8 @@ class TaskProgressNotifierTest {
         TaskSubscriptionRegistry broadcastRecorder = Mockito.mock(TaskSubscriptionRegistry.class);
         TaskProgressNotifier local = new TaskProgressNotifier(repository, broadcastRecorder);
         VideoTask task = Mockito.spy(runningTask());
-        StageEvent event = new StageEvent(SubtitleStageName.EXTRACT_AUDIO.getStageName(), 30,
-                "音频抽取完成", StageEvent.StageState.SUCCEEDED);
+        StageProgress event = new StageProgress(SubtitleStageName.EXTRACT_AUDIO.getStageName(), 30,
+                "音频抽取完成", StageProgress.State.SUCCEEDED);
 
         local.saveCurrentStageAndBroadcast(task, event);
 
@@ -65,8 +65,8 @@ class TaskProgressNotifierTest {
     void broadcastTranslationStageBroadcastsWithoutPersisting() {
         VideoTask task = runningTask();
         task.updateStage(SubtitleStageName.EXTRACT_AUDIO.getStageName());
-        StageEvent event = new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 40,
-                "第 1/2 批", StageEvent.StageState.RUNNING);
+        StageProgress event = new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 40,
+                "第 1/2 批", StageProgress.State.RUNNING);
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
 
@@ -84,7 +84,7 @@ class TaskProgressNotifierTest {
     @Test
     void completeTaskBroadcastsFromStageEventAndClearsSubscription() {
         VideoTask task = succeededTask();
-        StageEvent expected = TaskStageEvent.from(task);
+        StageProgress expected = TaskStageEvent.from(task);
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
 
@@ -103,7 +103,7 @@ class TaskProgressNotifierTest {
     @Test
     void completeTranslationBroadcastsFromTranslationStageAndClearsSubscription() {
         VideoTask task = succeededWithTranslation();
-        StageEvent expected = TaskStageEvent.fromTranslation(task);
+        StageProgress expected = TaskStageEvent.fromTranslation(task);
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
 

@@ -10,7 +10,7 @@
  *
  * 本文件保持**纯类型**（构建期整体擦除）：有比较消费的枚举，运行时值对象在
  * `@/enums/task`（enums/ 承载值），这里经 `import type` + `typeof` 派生联合。
- * 仅被同文件引用的从属类型（TaskStatus / StageState / StageEvent / SubtitleRoute）
+ * 仅被同文件引用的从属类型（TaskStatus / State / StageProgress / SubtitleRoute）
  * 是契约主类型的组成部分：留在本文件但不导出（export 只给跨模块消费的类型）。
  */
 import type { TASK_STATUS, TRANSLATION_STATUS } from '@/enums/task'
@@ -66,11 +66,11 @@ export interface TaskConflictResponse {
   existingTask: TaskView
 }
 
-/** 阶段状态——镜像后端 `StageEvent.StageState`；SKIPPED 表示产物已存在且非空（断点复用跳过） */
-type StageState = 'RUNNING' | 'SUCCEEDED' | 'SKIPPED' | 'FAILED'
+/** 阶段状态——镜像后端 `StageProgress.State`；SKIPPED 表示产物已存在且非空（断点复用跳过） */
+type State = 'RUNNING' | 'SUCCEEDED' | 'SKIPPED' | 'FAILED'
 
-/** 阶段进度事件——镜像后端 `StageEvent` */
-interface StageEvent {
+/** 阶段进度——镜像后端 `StageProgress` */
+interface StageProgress {
   /** 阶段名，如 acquire / extract-audio */
   stage: string
   /** 阶段内进度百分比，取值 0–100 */
@@ -78,7 +78,7 @@ interface StageEvent {
   /** 面向用户的中文描述 */
   message: string
   /** 阶段状态 */
-  state: StageState
+  state: State
 }
 
 /**
@@ -92,7 +92,7 @@ export interface TaskProgressMessage {
   /** 事件发出时的任务主状态 */
   taskStatus: TaskStatus
   /** 最近阶段事件；终态广播或尚无阶段事件时为 null */
-  stage: StageEvent | null
+  stage: StageProgress | null
   /** 翻译子状态；从未触发（含全部主管线事件）时为 null，翻译事件携带当前子状态 */
   translationStatus: TranslationStatus | null
   /** 是否这条流的最后一条事件（后端算好送出，前端不再自己判——判据单源在后端状态机） */

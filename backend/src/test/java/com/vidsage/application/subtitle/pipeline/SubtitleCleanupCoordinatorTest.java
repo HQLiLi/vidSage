@@ -18,7 +18,7 @@ import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
@@ -184,23 +184,23 @@ class SubtitleCleanupCoordinatorTest {
         // 真实批级事件来自 SubtitleCleanser（自报 0..100）；本层验「批级换算进 clean 区间 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(3);
-            listener.onEvent(new StageEvent(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 50, "第 1/1 批",
-                    StageEvent.StageState.RUNNING));
+            listener.onProgress(new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 50, "第 1/1 批",
+                    StageProgress.State.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             return new CleanseResult(in, 0, 0, 0, 0);
         }).when(subtitleCleanser).clean(any(), any(), any(), any());
-        List<StageEvent> events = new ArrayList<>();
+        List<StageProgress> events = new ArrayList<>();
 
         service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
         assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
         assertEquals(70, events.get(0).progress(), "开始 = clean 区间起点");
-        assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
+        assertEquals(StageProgress.State.RUNNING, events.get(0).state());
         assertEquals("第 1/1 批", events.get(1).message(), "批级消息原样透传");
         assertEquals(85, events.get(1).progress(), "批级自报 50 应换算进 [70,100)：70 + 50*30/100 = 85");
         assertEquals(100, events.get(2).progress(), "完成 = clean 区间终点");
-        assertEquals(StageEvent.StageState.SUCCEEDED, events.get(2).state());
+        assertEquals(StageProgress.State.SUCCEEDED, events.get(2).state());
     }
 
     @Test
@@ -209,11 +209,11 @@ class SubtitleCleanupCoordinatorTest {
         SubtitleCleanupCoordinator s = service();
         s.clean(new MediaInput.RemoteUrl("https://x"), "");
 
-        List<StageEvent> events = new ArrayList<>();
+        List<StageProgress> events = new ArrayList<>();
         s.clean(new MediaInput.RemoteUrl("https://x"), "", events::add);
 
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
-        assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
+        assertEquals(StageProgress.State.SKIPPED, events.get(0).state());
         assertEquals(100, events.get(0).progress());
         assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
     }
@@ -221,14 +221,14 @@ class SubtitleCleanupCoordinatorTest {
     @Test
     void cleanMissingRawStillEmitsBeginEventBeforeFailing() {
         // 失败也要先留下「阶段已开始」的痕迹：失败消息才能带上所在阶段（管线的复合监听先落库）
-        List<StageEvent> events = new ArrayList<>();
+        List<StageProgress> events = new ArrayList<>();
 
         assertThrows(IllegalStateException.class,
                 () -> service().clean(new MediaInput.RemoteUrl("https://x"), "", events::add));
 
         assertEquals(1, events.size(), () -> "失败前应已发「开始清洗」：" + events);
         assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
-        assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
+        assertEquals(StageProgress.State.RUNNING, events.get(0).state());
     }
 
     // ------------------------------------------------------------------

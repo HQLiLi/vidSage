@@ -7,7 +7,7 @@ import com.vidsage.application.transcription.pipeline.Transcriber;
 import com.vidsage.domain.media.model.AudioArtifact;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
@@ -110,8 +110,8 @@ public class SubtitlePreparationCoordinator {
         SubtitleTrack existing = readCheckpoint(segmentsPath);
         if (existing != null) {
             log.info("字幕断点复用跳过: segments={}, routeToken={}", segmentsPath.getFileName(), route);
-            emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "已有 segments 产物，跳过转写", StageEvent.StageState.SKIPPED);
-            emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(), "已有字幕产物，跳过写盘", StageEvent.StageState.SKIPPED);
+            emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "已有 segments 产物，跳过转写", StageProgress.State.SKIPPED);
+            emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(), "已有字幕产物，跳过写盘", StageProgress.State.SKIPPED);
             return toArtifact(srtPath, segmentsPath, existing);
         }
 
@@ -120,10 +120,10 @@ public class SubtitlePreparationCoordinator {
                 workDir.getFileName(), route, spec.container());
 
         AudioArtifact audio = audioPreparationCoordinator.prepare(input, spec, listener);
-        emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.start(), "开始转写", StageEvent.StageState.RUNNING);
+        emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.start(), "开始转写", StageProgress.State.RUNNING);
         TranscriptionResult result = transcriber.transcribe(
                 new AudioSource.AudioFilePath(audio.audioPath().toString()), null);
-        emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "转写完成", StageEvent.StageState.SUCCEEDED);
+        emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "转写完成", StageProgress.State.SUCCEEDED);
 
         SubtitleTrack track = new SubtitleTrack(route, result.language(), result.segments());
         if (result.segments().isEmpty()) {
@@ -132,10 +132,10 @@ public class SubtitlePreparationCoordinator {
                     segmentsPath.getFileName());
         }
         emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.start(),
-                "开始写字幕产物", StageEvent.StageState.RUNNING);
+                "开始写字幕产物", StageProgress.State.RUNNING);
         writeArtifacts(segmentsPath, srtPath, track);
         emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(),
-                "字幕产物写入完成", StageEvent.StageState.SUCCEEDED);
+                "字幕产物写入完成", StageProgress.State.SUCCEEDED);
         return toArtifact(srtPath, segmentsPath, track);
     }
 
@@ -182,7 +182,7 @@ public class SubtitlePreparationCoordinator {
      * 发一个阶段事件。
      */
     private static void emit(ProgressListener listener, String stage, int progress, String message,
-                             StageEvent.StageState state) {
-        listener.onEvent(new StageEvent(stage, progress, message, state));
+                             StageProgress.State state) {
+        listener.onProgress(new StageProgress(stage, progress, message, state));
     }
 }

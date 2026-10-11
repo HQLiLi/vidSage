@@ -3,7 +3,7 @@
  *
  * 职责分野：这里只承载**值**，不含类型——类型联合由 @/types/task 经 `import type` +
  * `typeof` 派生（types/ 保持纯类型、构建期整体擦除）。比较处用本文件的命名常量，
- * 不写裸字面量；尚无比较消费的枚举（TaskInputType / StageState / SubtitleRoute）
+ * 不写裸字面量；尚无比较消费的枚举（TaskInputType / State / SubtitleRoute）
  * 不在此建对象，保持 types/ 裸联合。
  */
 

@@ -4,7 +4,7 @@ import com.vidsage.application.media.WorkspaceKeyGenerator;
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.domain.media.model.MediaInput;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
@@ -203,10 +203,10 @@ public class SubtitleTranslationCoordinator {
             log.info("字幕翻译断点复用跳过: translate={}", translateSeg.getFileName());
 
             emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE, "已有翻译产物，跳过翻译",
-                    StageEvent.StageState.SKIPPED);
+                    StageProgress.State.SKIPPED);
             return toTranslated(existing, translateSeg, translateSrt, 0, 0);
         }
-        emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageEvent.StageState.RUNNING);
+        emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageProgress.State.RUNNING);
 
         // -clean 缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
         // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮与清洗侧同一取舍（见 SubtitleCleanupCoordinator）：
@@ -269,7 +269,7 @@ public class SubtitleTranslationCoordinator {
         writeArtifacts(translateSeg, translateSrt, track);   // 先 JSON（检查点）再 SRT（派生），都原子替换
         emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE,
                 skippedTranslation ? "源语种与目标语种相同，跳过翻译" : "翻译完成",
-                skippedTranslation ? StageEvent.StageState.SKIPPED : StageEvent.StageState.SUCCEEDED);
+                skippedTranslation ? StageProgress.State.SKIPPED : StageProgress.State.SUCCEEDED);
         log.debug("字幕翻译完成: route={}, sourceLanguage={}, targetLanguage={}, skipped={}, segments={}, "
                         + "retry={}, untranslated={}",
                 route.name(), sourceLanguage, targetLanguage, track.skipped(), track.segments().size(),
@@ -352,8 +352,8 @@ public class SubtitleTranslationCoordinator {
      * 发一个阶段事件
      */
     private static void emit(ProgressListener listener, String stage, int progress, String message,
-                             StageEvent.StageState state) {
-        listener.onEvent(new StageEvent(stage, progress, message, state));
+                             StageProgress.State state) {
+        listener.onProgress(new StageProgress(stage, progress, message, state));
     }
 
     /**

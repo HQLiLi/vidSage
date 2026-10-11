@@ -18,7 +18,7 @@ import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
@@ -406,25 +406,25 @@ class SubtitleTranslationCoordinatorTest {
         // 真实批级事件来自 SubtitleTranslator；本层只验「批级事件原样透传 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(4);
-            listener.onEvent(new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "第 1/1 批",
-                    StageEvent.StageState.RUNNING));
+            listener.onProgress(new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "第 1/1 批",
+                    StageProgress.State.RUNNING));
             List<TranscriptionSegment> in = invocation.getArgument(0);
             List<TranslatedSegment> out = in.stream()
                     .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), "译文:" + s.text()))
                     .toList();
             return new TranslateResult(out, 0, 0);
         }).when(subtitleTranslator).translate(any(), any(), any(), any(), any());
-        List<StageEvent> events = new ArrayList<>();
+        List<StageProgress> events = new ArrayList<>();
 
         service().translate(new MediaInput.RemoteUrl("https://x"), events::add);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), events.get(0).stage());
         assertEquals(0, events.get(0).progress());
-        assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
+        assertEquals(StageProgress.State.RUNNING, events.get(0).state());
         assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
         assertEquals(100, events.get(2).progress());
-        assertEquals(StageEvent.StageState.SUCCEEDED, events.get(2).state());
+        assertEquals(StageProgress.State.SUCCEEDED, events.get(2).state());
     }
 
     @Test
@@ -433,11 +433,11 @@ class SubtitleTranslationCoordinatorTest {
         SubtitleTranslationCoordinator s = service();
         s.translate(new MediaInput.RemoteUrl("https://x"));
 
-        List<StageEvent> events = new ArrayList<>();
+        List<StageProgress> events = new ArrayList<>();
         s.translate(new MediaInput.RemoteUrl("https://x"), events::add);
 
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
-        assertEquals(StageEvent.StageState.SKIPPED, events.get(0).state());
+        assertEquals(StageProgress.State.SKIPPED, events.get(0).state());
         assertEquals(100, events.get(0).progress());
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), events.get(0).stage());
     }
@@ -446,15 +446,15 @@ class SubtitleTranslationCoordinatorTest {
     void sameLanguageSkipEmitsBeginThenSkippedEvent() throws Exception {
         writeCleanTrack();
         when(contextSummarizer.summarize(any())).thenReturn(Optional.of(contextWithLanguage("zh")));
-        List<StageEvent> events = new ArrayList<>();
+        List<StageProgress> events = new ArrayList<>();
 
         service().translate(new MediaInput.RemoteUrl("https://x"), events::add);
 
         // 阶段先「开始」（做完了读 -clean / 上下文这些前置工作），LLM 翻译跳过后以 SKIPPED 收尾
         assertEquals(2, events.size(), () -> "同语种跳过应发「开始 → SKIPPED」两条：" + events);
-        assertEquals(StageEvent.StageState.RUNNING, events.get(0).state());
+        assertEquals(StageProgress.State.RUNNING, events.get(0).state());
         assertEquals(0, events.get(0).progress());
-        assertEquals(StageEvent.StageState.SKIPPED, events.get(1).state());
+        assertEquals(StageProgress.State.SKIPPED, events.get(1).state());
         assertEquals(100, events.get(1).progress());
     }
 

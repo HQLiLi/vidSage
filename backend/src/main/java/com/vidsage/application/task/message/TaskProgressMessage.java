@@ -1,6 +1,6 @@
 package com.vidsage.application.task.message;
 
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.VideoTask;
@@ -19,7 +19,7 @@ import com.vidsage.domain.task.VideoTask;
 public record TaskProgressMessage(
         String taskNo,
         TaskStatus taskStatus,
-        StageEvent stage,
+        StageProgress stage,
         TranslationStatus translationStatus,
         boolean terminal
 ) {
@@ -28,7 +28,7 @@ public record TaskProgressMessage(
     }
 
     public static TaskProgressMessage of(String taskNo, TaskStatus taskStatus,
-                                         StageEvent stage, TranslationStatus translationStatus) {
+                                         StageProgress stage, TranslationStatus translationStatus) {
         return new TaskProgressMessage(taskNo, taskStatus, stage, translationStatus, false);
     }
 }

@@ -76,7 +76,7 @@ public class VideoTask {
     private TaskStatus status;
 
     /**
-     * 最近阶段名（与 StageEvent.stage 同词表）。
+     * 最近阶段名（与 StageProgress.stage 同词表）。
      */
     private String currentStage;
 

@@ -17,7 +17,7 @@ import java.util.List;
  * @param status            任务状态：{@code PENDING} / {@code RUNNING} / {@code SUCCEEDED} / {@code FAILED}
  * @param translationStatus 翻译子状态：{@code RUNNING} / {@code SUCCEEDED} / {@code FAILED}；
  *                          {@code null} = 从未触发（2026-10-02 两段式：翻译按需触发）
- * @param currentStage      最近阶段名（与 StageEvent.stage 同词表）；尚未产生阶段事件时为 {@code null}
+ * @param currentStage      最近阶段名（与 StageProgress.stage 同词表）；尚未产生阶段事件时为 {@code null}
  * @param errorMessage      终态错误信息（中文，面向用户；主任务失败或翻译子状态失败）；无错误时为 {@code null}
  * @param createdAt         创建时间
  * @param startedAt         开始执行时间；未开始时为 {@code null}

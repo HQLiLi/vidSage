@@ -48,7 +48,7 @@ public class VideoTaskEntity {
     /** 任务状态（状态机权威存储）。 */
     private TaskStatus status;
 
-    /** 最近阶段名（与 StageEvent.stage 同词表）。 */
+    /** 最近阶段名（与 StageProgress.stage 同词表）。 */
     private String currentStage;
 
     /**

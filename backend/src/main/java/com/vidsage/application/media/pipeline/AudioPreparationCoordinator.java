@@ -7,8 +7,8 @@ import com.vidsage.domain.media.model.AudioArtifact;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.media.port.AudioExtractor;
-import com.vidsage.domain.shared.model.StageEvent;
-import com.vidsage.domain.shared.model.StageEvent.StageState;
+import com.vidsage.domain.shared.model.StageProgress;
+import com.vidsage.domain.shared.model.StageProgress.State;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
@@ -24,7 +24,7 @@ import java.util.Optional;
  * 音频准备编排：把「一条 {@link MediaInput} + 一个 {@link AudioSpec}」变成一份音频产物。
  *
  * <p>两个阶段：获取媒体 → 抽取音频。每个阶段在开始 /
- * 成功 / 跳过 / 失败时各发一个 {@link StageEvent}；失败路径在发完 {@code FAILED}（消息取异常
+ * 成功 / 跳过 / 失败时各发一个 {@link StageProgress}；失败路径在发完 {@code FAILED}（消息取异常
  * {@code getMessage()}）后<b>原样上抛</b>，不吞异常。
  *
  * <p><b>断点复用</b>（产物存在且大小 &gt; 0 即跳过，0 字节视为不存在、必须重跑）：
@@ -130,15 +130,15 @@ public class AudioPreparationCoordinator {
             Optional<AcquiredMedia> existing = acquisitionStage.reuseExisting(input, workDir);
             if (existing.isPresent()) {
                 log.info("获取媒体阶段跳过（断点复用）: media={}", existing.get().mediaPath().getFileName());
-                emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "已有本地媒体，跳过获取", StageState.SKIPPED);
+                emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "已有本地媒体，跳过获取", State.SKIPPED);
                 return existing.get();
             }
-            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "开始获取媒体", StageState.RUNNING);
+            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "开始获取媒体", State.RUNNING);
             AcquiredMedia media = acquisitionStage.acquire(input, workDir);
-            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "媒体获取完成", StageState.SUCCEEDED);
+            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "媒体获取完成", State.SUCCEEDED);
             return media;
         } catch (RuntimeException e) {
-            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "获取媒体失败：" + describe(e), StageState.FAILED);
+            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "获取媒体失败：" + describe(e), State.FAILED);
             throw e;
         }
     }
@@ -161,15 +161,15 @@ public class AudioPreparationCoordinator {
                 log.info("extract 阶段跳过（断点复用）: file={}, sizeBytes={}",
                         audioPath.getFileName(), existingSize);
 
-                emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "已有音频产物，跳过抽取", StageState.SKIPPED);
+                emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "已有音频产物，跳过抽取", State.SKIPPED);
                 return new AudioArtifact(audioPath, spec, existingSize);
             }
-            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "开始抽取音频", StageState.RUNNING);
+            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "开始抽取音频", State.RUNNING);
             AudioArtifact artifact = audioExtractor.extract(media.mediaPath(), audioPath, spec);
-            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "音频抽取完成", StageState.SUCCEEDED);
+            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "音频抽取完成", State.SUCCEEDED);
             return artifact;
         } catch (RuntimeException e) {
-            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "抽取音频失败：" + describe(e), StageState.FAILED);
+            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "抽取音频失败：" + describe(e), State.FAILED);
             throw e;
         }
     }
@@ -185,8 +185,8 @@ public class AudioPreparationCoordinator {
      * 发一个阶段事件。
      */
     private static void emit(ProgressListener listener, String stage, int progress, String message,
-                             StageState state) {
+                             State state) {
         log.debug("阶段事件: stage={}, progress={}, state={}", stage, progress, state);
-        listener.onEvent(new StageEvent(stage, progress, message, state));
+        listener.onProgress(new StageProgress(stage, progress, message, state));
     }
 }

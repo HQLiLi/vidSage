@@ -19,7 +19,7 @@ import com.vidsage.domain.media.model.AudioArtifact;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
-import com.vidsage.domain.shared.model.StageEvent;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.media.port.AudioExtractor;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -246,20 +246,20 @@ class AudioPreparationCoordinatorTest {
     }
 
     private List<Integer> progresses() {
-        return listener.events().stream().map(StageEvent::progress).toList();
+        return listener.events().stream().map(StageProgress::progress).toList();
     }
 
     /** 记录全部阶段事件的监听器实现。 */
     private static final class RecordingListener implements ProgressListener {
 
-        private final List<StageEvent> events = new ArrayList<>();
+        private final List<StageProgress> events = new ArrayList<>();
 
         @Override
-        public void onEvent(StageEvent event) {
+        public void onProgress(StageProgress event) {
             events.add(event);
         }
 
-        List<StageEvent> events() {
+        List<StageProgress> events() {
             return events;
         }
     }
