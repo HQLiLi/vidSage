@@ -105,8 +105,6 @@ public class SubtitlePreparationCoordinator {
         Path segmentsPath = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(route, null));
         Path srtPath = workDir.resolve(SubtitleArtifactSpec.SRT_RAW.fileName(route, null));
 
-        // 断点复用：已有非空 segments JSON → 反序列化直接返回，不做任何音频/转写/写盘
-
         String transcribeAudioStageName = SubtitleStageName.TRANSCRIBE_AUDIO.getStageName();
         String writeSubtitlesStageName = SubtitleStageName.WRITE_SUBTITLES.getStageName();
         SubtitleTrack existing = readCheckpoint(segmentsPath);

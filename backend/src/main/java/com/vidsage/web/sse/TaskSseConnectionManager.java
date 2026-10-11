@@ -1,7 +1,10 @@
 package com.vidsage.web.sse;
 
 import com.vidsage.application.task.message.TaskProgressMessage;
+import com.vidsage.application.task.subscribe.Subscription;
+import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import jakarta.annotation.PreDestroy;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,6 +12,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -20,9 +25,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * 心跳（design.md「SSE 契约」）。本类是 {@code SseEmitter} 等 HTTP 类型<b>唯一</b>允许出现的包——
  * 订阅机制本体在 {@code application/task/} 的中立注册表里（原顶层包 subscribe/），管线只认识注册表不认识 emitter。
  *
- * <p><b>事件写入</b>：事件名固定 {@code progress}，data 为 {@link TaskProgressMessage} JSON；快照与增量
- * 共用 {@link #send} 一条路。任务到终态（SUCCEEDED / FAILED）的事件推完即 {@code SseEmitter#complete}
- * 并移除——长连接到此自然结束，客户端刷新后重连拿快照恢复。
  *
  * <p><b>清理</b>：客户端断连（onError / onCompletion）与空闲超时（onTimeout）都从表中摘除 emitter；
  * 单个 emitter 写失败只摘除它自己，不影响同任务的其他订阅者。
@@ -33,28 +35,39 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 @Slf4j
 @Component
-public class TaskSseHub {
+public class TaskSseConnectionManager {
 
-    /** SSE 事件名：本任务所有进度事件都叫它（前端按名分发）。 */
+    /**
+     * SSE 事件名：本任务所有进度事件都叫它（前端按名分发）。
+     */
     static final String EVENT_NAME = "progress";
 
-    /** 心跳间隔（秒）：30s 是防代理空闲断连的常规值（design.md「SSE 契约」）。 */
+    /**
+     * 心跳间隔（秒）：30s 是防代理空闲断连的常规值（design.md「SSE 契约」）。
+     */
     private static final int HEARTBEAT_INTERVAL_SECONDS = 30;
 
-    /** 连接空闲超时（毫秒）：心跳失败本会主动断开，这里是最后兜底（容器默认值不可控，显式给定）。 */
+    /**
+     * 连接空闲超时（毫秒）：心跳失败本会主动断开，这里是最后兜底（容器默认值不可控，显式给定）。
+     */
     private static final long EMITTER_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(30);
 
-    /** taskNo → 该任务的全部在线 emitter。 */
+    /**
+     * taskNo → 该任务的全部在线 emitter。
+     */
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>> emitters =
             new ConcurrentHashMap<>();
 
-    /** 心跳调度器：单线程足够——心跳只是逐个 emitter 写注释行，没有并发压力。 */
+    /**
+     * 心跳调度器：单线程足够——心跳只是逐个 emitter 写注释行，没有并发压力。
+     */
     private final ScheduledExecutorService heartbeatExecutor;
 
-    /**
-     * 构造时启动心跳调度（30s 固定间隔）。
-     */
-    public TaskSseHub() {
+    private final TaskSubscriptionRegistry subscriptionRegistry;
+
+
+    public TaskSseConnectionManager(TaskSubscriptionRegistry subscriptionRegistry) {
+        this.subscriptionRegistry = subscriptionRegistry;
         // 创建一个定时任务，用虚拟线程执行
         this.heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(
                 Thread.ofVirtual().name("vidsage-sse-heartbeat-", 0).factory());
@@ -64,16 +77,40 @@ public class TaskSseHub {
     }
 
     /**
-     * 建立一条 SSE 连接：创建 emitter 并挂进表，同时登记断连 / 超时 / 出错三类清理钩子。
+     * 建立一个任务进度订阅
      *
-     * <p>先注册再推快照是刻意顺序：快照经 {@link #send} 走同一条路，终态快照推完即 complete，
-     * 「订阅了已完结任务」的连接立即收尾，不留悬挂连接。
+     * @param taskNo           任务号
+     * @param snapshotSupplier 任务进度快照读取
+     * @return 未初始化的 emitter
+     */
+    public SseEmitter open(String taskNo, Supplier<TaskProgressMessage> snapshotSupplier) {
+        requireTaskNo(taskNo);
+        SseEmitter emitter = register(taskNo);
+        Subscription subscription = subscriptionRegistry.subscribe(taskNo, event -> sendTo(taskNo, emitter, event));
+        emitter.onCompletion(subscription::close);
+        try {
+            TaskProgressMessage taskProgressMessage = snapshotSupplier.get();
+            sendTo(taskNo, emitter, taskProgressMessage);
+            if (taskProgressMessage.terminal()) {
+                subscription.close();
+            }
+        } catch (RuntimeException e) {
+            subscription.close();
+            remove(taskNo, emitter);
+            throw e;
+        }
+        return emitter;
+    }
+
+
+    /**
+     * 建立一条 SSE 连接：创建 emitter 并挂进表，同时登记断连 / 超时 / 出错三类清理钩子。
      *
      * @param taskNo 对外任务号；不可为空白
      * @return 未初始化的 emitter（由 Spring MVC 在请求挂起时接管写出）
      * @throws IllegalArgumentException taskNo 为空白
      */
-    public SseEmitter register(String taskNo) {
+    SseEmitter register(String taskNo) {
         requireTaskNo(taskNo);
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);
         emitters.computeIfAbsent(taskNo, key -> new CopyOnWriteArrayList<>()).add(emitter);
@@ -91,42 +128,23 @@ public class TaskSseHub {
     }
 
     /**
-     * 向该任务全部在线连接写一条进度事件（事件名 {@code progress}，data 为 JSON）。
+     * 向指定SSE连接发送信息。
      *
-     * <p>终态事件（SUCCEEDED / FAILED）推完后 complete 并摘除全部 emitter——这是 SSE 连接唯一的
-     * 正常收口；无人订阅时是无害空操作（管线照常广播，hub 只是没人可写）。
-     *
-     * @param taskNo 对外任务号；不可为空白
-     * @param event  事件本体；不可为 {@code null}
-     * @throws IllegalArgumentException taskNo 为空白或 event 为 {@code null}
+     * @param taskNo 任务号
+     * @param target SSE连接
+     * @param event  任务进度信息
      */
-    public void send(String taskNo, TaskProgressMessage event) {
-        requireTaskNo(taskNo);
-        if (event == null) {
-            throw new IllegalArgumentException("进度事件不能为 null：请传 TaskProgressMessage");
-        }
-        List<SseEmitter> targets = emitters.get(taskNo);
-        if (targets == null) {
-            return;
-        }
-        // 终态判定（2026-10-02 两段式）走 TaskProgressMessage.settled()，判据单源在
-        // VideoTask.isEventSettled：主状态终态且翻译子状态不在进行中，任务才真正不再有后续事件
-        // ——翻译事件的 taskStatus 恒为主状态 SUCCEEDED（主管线终态），若只看主状态，第一条
-        // 翻译进度事件就会把连接收掉；连接必须保持到翻译终态。
-        boolean terminal = event.settled();
-        for (SseEmitter target : targets) {
-            try {
-                target.send(SseEmitter.event().name(EVENT_NAME).data(event, MediaType.APPLICATION_JSON));
-                if (terminal) {
-                    // 终态即收口：推完最后一条就 complete，客户端收到终态后连接自然结束
-                    target.complete();
-                    remove(taskNo, target);
-                }
-            } catch (IOException | IllegalStateException e) {
-                // 客户端已断开或连接已完结：只摘除这个 emitter，不连累同任务其他订阅者
-                log.debug("SSE 事件写入失败，摘除连接: taskNo={}, reason={}", taskNo, e.getMessage());
+    private void sendTo(String taskNo, SseEmitter target, TaskProgressMessage event) {
+        try {
+            target.send(SseEmitter.event().name(EVENT_NAME).data(event, MediaType.APPLICATION_JSON));
+            boolean isTerminal = event.terminal();
+            if (isTerminal) {
+                target.complete();
                 remove(taskNo, target);
             }
+        } catch (IOException | IllegalStateException e) {
+            log.debug("SSE 事件写入失败，摘除连接: taskNo={}, reason={}", taskNo, e.getMessage());
+            remove(taskNo, target);
         }
     }
 
@@ -136,6 +154,14 @@ public class TaskSseHub {
     int emitterCount(String taskNo) {
         List<SseEmitter> list = emitters.get(taskNo);
         return list == null ? 0 : list.size();
+    }
+
+    /**
+     * 该 taskNo 是否还挂着桶。给测试用——{@link #emitterCount} 对「桶已删」与「桶空着」返回同一个
+     * 结果，测不出空桶有没有被回收，业务代码不要依赖它做判断。
+     */
+    boolean hasBucket(String taskNo) {
+        return emitters.containsKey(taskNo);
     }
 
     /**
@@ -159,11 +185,12 @@ public class TaskSseHub {
      * 摘除一个 emitter；该任务最后一个连接被摘走时顺带清掉空表，不为死任务留空桶。
      */
     private void remove(String taskNo, SseEmitter emitter) {
-        CopyOnWriteArrayList<SseEmitter> list = emitters.get(taskNo);
-        if (list != null) {
+        emitters.computeIfPresent(taskNo, (key, list) -> {
             list.remove(emitter);
-        }
+            return list.isEmpty() ? null : list;
+        });
     }
+
 
     /**
      * taskNo 前置校验（卫语句先于一切状态变更）。

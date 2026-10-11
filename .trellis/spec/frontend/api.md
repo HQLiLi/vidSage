@@ -10,6 +10,19 @@
 - `src/api/request.ts` 持有唯一 axios 实例（内部，不导出）+ 类型化门面 `request`（get/post 已解包 data、错误归一化 ApiError；不导出裸实例，扩展方法在 request.ts 内按同款签名追加），**禁止在别处 `axios.create` 或直接用裸 `axios.get`**。
 - SSE（`GET /api/tasks/{taskNo}/events`）**不走 axios**（不支持流）：接入时放 `src/composables/`，用 EventSource / fetch，不进 `src/api/`。
 
+## SSE 订阅的错误处理（2026-10-11 立）
+
+入口在 `src/composables/useTaskEvents.ts`。EventSource 的 `onerror` **不带状态码**，唯一可用的判别依据是 `readyState`，据此分两类：
+
+| 情形 | `readyState` | 浏览器行为 | 前端表现 |
+|---|---|---|---|
+| 非 200（如 404）/ content-type 不符 | `CLOSED` | fail，**不再重连** | **致命**：关流，由消费方重拉一次 `GET /api/tasks/{taskNo}` 确诊——404 走「任务不存在」卡，其余走通用错误卡 |
+| 网络断 / 后端重启 | `CONNECTING` | 自动重连（约 3s） | **瞬时**：不遮挡进度的「连接中断，正在重连…」提示；连上即消失，**不设重连上限** |
+
+- **终态判据不在前端重编码**：SSE 事件里的 `terminal` 字段由后端算好送出（判据单源在后端状态机），前端读它即可，不要再拼「主状态终态 **且** 翻译非 RUNNING」这类组合。
+- 重连后靠后端在连接建立时推的 DB 快照恢复进度，前端不自己攒状态。
+- 连续失败到第几次才亮提示（防闪阈值）是实现细节，写在 composable 里，不进本规范。
+
 ## 同源相对路径（baseURL 统一前缀）
 
 - 实例 baseURL 统一前缀来自 `VITE_API_BASE_URL`（默认回退 `/api`，env 见 `frontend/.env`），request 衍生调用点写相对路径（如 `/tasks`），不带 `/api` 前缀（2026-10-03 定调引入）。

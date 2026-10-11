@@ -23,7 +23,8 @@ const props = defineProps<{
 const router = useRouter()
 
 const store = useTaskStore()
-const { taskView, progress, cues, loadError, isRunning, isFailed, isSucceeded } = storeToRefs(store)
+const { taskView, progress, cues, loadError, isRunning, isFailed, isSucceeded, reconnecting } =
+  storeToRefs(store)
 const { load, subscribe } = store
 
 /** 字幕联动播放器：媒体元素唯一时间源，媒体面板与字幕稿共享同一实例 */
@@ -143,6 +144,16 @@ onUnmounted(() => {
 
 <template>
   <div ref="root" class="flex h-screen min-h-0 flex-col bg-background">
+    <!-- 重连提示条：SSE 断线重连中。shrink-0 让它在 flex 列里推开下方内容而非遮挡
+         （AC5 要求不遮挡进度）；就绪态与非就绪态共用这一条，故放根级、置于两分支之前 -->
+    <p
+      v-if="reconnecting"
+      role="status"
+      class="shrink-0 border-b border-border bg-background py-2 text-center text-sm text-muted"
+    >
+      连接中断，正在重连…
+    </p>
+
     <!-- 就绪态：工作区顶栏 + 左媒体右字幕双栏（布局对齐原型，design §3.4） -->
     <template v-if="isSucceeded && taskView">
       <WorkspaceHeader :task-no="taskNo" data-animate="header" />

@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>覆盖「主状态机合法迁移三条」「非法迁移拒绝」（重点钉住 SUCCEEDED → RUNNING 这类终态再迁移）
  * 「阶段名推进的时机约束」「翻译子状态迁移（2026-10-02 两段式：仅主状态 SUCCEEDED 后流转）」
- * 「newPending / restore 的出生状态」「查询谓词（isEventSettled 终态判定 / ACTIVE_STATUSES active
+ * 「newPending / restore 的出生状态」「查询谓词（isEventTerminal 终态判定 / ACTIVE_STATUSES active
  * 判据，2026-10-06 单源化）」。
  */
 class VideoTaskTest {
@@ -275,22 +275,22 @@ class VideoTaskTest {
     // ---------- 查询谓词（2026-10-06 终态 / active 判据单源化） ----------
 
     @Test
-    void eventSettledOnlyWhenMainTerminalAndTranslationNotRunning() {
+    void eventTerminalOnlyWhenMainTerminalAndTranslationNotRunning() {
         // 主状态终态且翻译不在 RUNNING 才算收敛：SUCCEEDED / FAILED × {null, SUCCEEDED, FAILED}
-        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, null),
+        assertTrue(VideoTask.isEventTerminal(TaskStatus.SUCCEEDED, null),
                 "主任务成功 + 翻译从未触发 → 已收敛");
-        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.SUCCEEDED),
+        assertTrue(VideoTask.isEventTerminal(TaskStatus.SUCCEEDED, TranslationStatus.SUCCEEDED),
                 "翻译已完成 → 已收敛");
-        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.FAILED),
+        assertTrue(VideoTask.isEventTerminal(TaskStatus.SUCCEEDED, TranslationStatus.FAILED),
                 "翻译已失败 → 已收敛");
-        assertTrue(VideoTask.isEventSettled(TaskStatus.FAILED, null), "主任务失败 → 已收敛");
+        assertTrue(VideoTask.isEventTerminal(TaskStatus.FAILED, null), "主任务失败 → 已收敛");
         // 翻译进行中：事件流还有后续，连接不能收（原 web 两处重复判定的核心分支）
-        assertFalse(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.RUNNING),
+        assertFalse(VideoTask.isEventTerminal(TaskStatus.SUCCEEDED, TranslationStatus.RUNNING),
                 "翻译进行中 → 未收敛");
         // 主状态未终态：无论翻译子状态如何都未收敛
-        assertFalse(VideoTask.isEventSettled(TaskStatus.PENDING, null), "排队中 → 未收敛");
-        assertFalse(VideoTask.isEventSettled(TaskStatus.RUNNING, null), "执行中 → 未收敛");
-        assertFalse(VideoTask.isEventSettled(TaskStatus.RUNNING, TranslationStatus.RUNNING),
+        assertFalse(VideoTask.isEventTerminal(TaskStatus.PENDING, null), "排队中 → 未收敛");
+        assertFalse(VideoTask.isEventTerminal(TaskStatus.RUNNING, null), "执行中 → 未收敛");
+        assertFalse(VideoTask.isEventTerminal(TaskStatus.RUNNING, TranslationStatus.RUNNING),
                 "执行中 + 翻译进行中 → 未收敛");
     }
 

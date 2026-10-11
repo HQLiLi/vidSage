@@ -77,14 +77,7 @@ public class VideoTaskService {
     private final SubtitlePipeline pipeline;
     private final TaskProgressNotifier taskProgressNotifier;
 
-    /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
-     * @param repository                任务持久化端口（实现在 infrastructure/persistence/repository/）
-     * @param pipeline                  异步管线（insert 成功后异步启动）
-     * @param workspaceDirectoryManager 工作区目录管理器
-     * @param taskProgressNotifier      任务进度通知器
-     */
+
     public VideoTaskService(VideoTaskRepository repository,
                             SubtitlePipeline pipeline,
                             WorkspaceDirectoryManager workspaceDirectoryManager,
@@ -111,11 +104,10 @@ public class VideoTaskService {
         }
         MediaInput.RemoteUrl input = new MediaInput.RemoteUrl(url.trim());
         WorkspaceKey workspaceKey = input.getContentKey(MediaFileInfo.NOT_APPLICABLE);
+        // 查重，判断是否已经有相同的工作区目录
         rejectIfActive(workspaceKey);
-        // 目录名公式单源在 WorkspaceDir.of（sanitize(标签)-key）：
-        // 管线阶段会用同一公式懒建出同一目录，落点天然一致
-        String dirName = WorkspaceDir.of(input.value(), workspaceKey).value();
-        return handleSubmit(input, TaskInputType.URL, input.value(), workspaceKey, dirName);
+        String directoryName = WorkspaceDir.of(input.value(), workspaceKey).value();
+        return handleSubmit(input, TaskInputType.URL, input.value(), workspaceKey, directoryName);
     }
 
     /**
@@ -207,7 +199,7 @@ public class VideoTaskService {
      * 无需事件回放。主任务 SUCCEEDED 且翻译子状态存在时按翻译子状态粗粒度还原
      * （见 {@link TaskStageEvent#from}）。
      *
-     * <p>快照经 {@code TaskController} 通过 {@code web/sse/TaskSseHub} 推送；阶段事件的进度值取
+     * <p>快照经 {@code TaskController} 通过 {@code web/sse/TaskSseConnectionManager} 推送；阶段事件的进度值取
      * 状态的粗粒度位置（进行中为 0、完成为 100）——精确进度由增量事件携带，快照只保证形状合法。
      *
      * @param taskNo 对外任务号；不可为空白
@@ -278,8 +270,6 @@ public class VideoTaskService {
                                       WorkspaceKey workspaceKey, String dirName) {
         VideoTask task = VideoTask.newPending(inputType, sourceUri, workspaceKey, dirName);
         VideoTask inserted = repository.insert(task);
-        // 不打 workspaceDir：URL 路线的目录名内嵌 sanitize 后的 URL（查询串参数值原样保留），
-        // 上传路线内嵌原始文件名——均属用户资源，踩日志脱敏红线；需要时按 taskNo 查库
         log.info("任务已创建: taskNo={}, inputType={}, status={}",
                 inserted.getTaskNo().value(), inserted.getInputType(), inserted.getStatus());
         pipeline.execute(inserted.getTaskNo());

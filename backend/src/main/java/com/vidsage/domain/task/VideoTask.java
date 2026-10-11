@@ -5,6 +5,7 @@ import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
+
 import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
@@ -39,28 +40,44 @@ import lombok.Getter;
 @Getter
 public class VideoTask {
 
-    /** 数据库内部行 id；insert 回填，新建任务在落库前为 {@code null}。 */
+    /**
+     * 数据库内部行 id；insert 回填，新建任务在落库前为 {@code null}。
+     */
     private Long id;
 
-    /** 对外任务号值对象：32 位短 UUID 语义（去掉连字符的随机 UUID，恰好装进 varchar(32)），见 {@link TaskNo}。 */
+    /**
+     * 对外任务号值对象：32 位短 UUID 语义（去掉连字符的随机 UUID，恰好装进 varchar(32)），见 {@link TaskNo}。
+     */
     private final TaskNo taskNo;
 
-    /** 输入类型。 */
+    /**
+     * 输入类型。
+     */
     private final TaskInputType inputType;
 
-    /** 来源：URL 原文或上传文件原始名（日志不落原值）。 */
+    /**
+     * 来源：URL 原文或上传文件原始名（日志不落原值）。
+     */
     private final String sourceUri;
 
-    /** 工作区短哈希（查重用，见 {@link WorkspaceKey}）：URL / 本地路径取 normalize 串摘要，上传取内容 sha256 前 12 位。 */
+    /**
+     * 工作区短哈希（查重用，见 {@link WorkspaceKey}）：URL / 本地路径取 normalize 串摘要，上传取内容 sha256 前 12 位。
+     */
     private final WorkspaceKey workspaceKey;
 
-    /** 工作区目录相对路径（相对 vidsage.workspace.root）。 */
+    /**
+     * 工作区目录相对路径（相对 vidsage.workspace.root）。
+     */
     private final String workspaceDir;
 
-    /** 任务状态（状态机权威存储）。 */
+    /**
+     * 任务状态（状态机权威存储）。
+     */
     private TaskStatus status;
 
-    /** 最近阶段名（与 StageEvent.stage 同词表）。 */
+    /**
+     * 最近阶段名（与 StageEvent.stage 同词表）。
+     */
     private String currentStage;
 
     /**
@@ -69,19 +86,29 @@ public class VideoTask {
      */
     private TranslationStatus translationStatus;
 
-    /** 终态错误信息（中文，面向用户；主任务失败或翻译子状态失败——后者带「翻译失败：」前缀）。 */
+    /**
+     * 终态错误信息（中文，面向用户；主任务失败或翻译子状态失败——后者带「翻译失败：」前缀）。
+     */
     private String errorMessage;
 
-    /** 创建时间。 */
+    /**
+     * 创建时间。
+     */
     private final LocalDateTime createdAt;
 
-    /** 最近变更时间。 */
+    /**
+     * 最近变更时间。
+     */
     private LocalDateTime updatedAt;
 
-    /** 开始执行时间。 */
+    /**
+     * 开始执行时间。
+     */
     private LocalDateTime startedAt;
 
-    /** 终态时间。 */
+    /**
+     * 终态时间。
+     */
     private LocalDateTime finishedAt;
 
     /**
@@ -247,19 +274,14 @@ public class VideoTask {
     public static final Set<TaskStatus> ACTIVE_STATUSES = Set.of(TaskStatus.PENDING, TaskStatus.RUNNING);
 
     /**
-     * 事件流是否已收敛（终态谓词）：主状态终态（SUCCEEDED / FAILED）<b>且</b>翻译子状态不在进行中，
-     * 任务才真正不再有后续事件。SSE 连接的收口判据——翻译事件的 taskStatus 恒为主状态 SUCCEEDED
-     * （主状态机不受翻译影响），若只看主状态，第一条翻译进度事件就会把还活着的翻译连接提前收掉。
-     *
-     * <p>原 TaskController.isTerminal 与 TaskSseHub.send 各写一遍、注释互指的终态判定，2026-10-06
-     * 单源于此，两处只剩调用。以「状态对」为入参而非实例方法：web 层的判定发生在已展平的
-     * {@code TaskProgressMessage}（taskStatus + translationStatus）上，手头没有聚合实例可调。
+     * 当前任务是否已经结束：完成（SUCCEED）或者失败(FAILED)
+     * 注：翻译后续会改成多语言选择，因此未来会删除判断是否处于翻译
      *
      * @param mainStatus        任务主状态
      * @param translationStatus 翻译子状态；从未触发为 {@code null}
-     * @return 主状态终态且翻译不在 RUNNING（事件流不会再有后续事件）
+     * @return 任务是否结束
      */
-    public static boolean isEventSettled(TaskStatus mainStatus, TranslationStatus translationStatus) {
+    public static boolean isEventTerminal(TaskStatus mainStatus, TranslationStatus translationStatus) {
         boolean mainTerminal = mainStatus == TaskStatus.SUCCEEDED || mainStatus == TaskStatus.FAILED;
         return mainTerminal && translationStatus != TranslationStatus.RUNNING;
     }

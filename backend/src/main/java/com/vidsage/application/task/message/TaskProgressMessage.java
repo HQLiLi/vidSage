@@ -6,14 +6,7 @@ import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.VideoTask;
 
 /**
- * 任务进度事件：SSE payload 的定锤形态（design.md「SSE 契约」）——
- * {@code GET /api/tasks/{taskNo}/events} 以 {@code event: progress} 推送，data 即本类型的 JSON。
- *
- * <p>任务级状态 + 最近阶段事件的组合：订阅方先靠 {@code taskStatus} 判任务整体走到哪了，
- * 再用 {@code stage} 渲染阶段内进度。终态（SUCCEEDED / FAILED）事件是最后一条——推完即完成
- * SSE 连接，故终态事件允许不带阶段细节（{@code stage} 为 {@code null}，状态本身就是信息）。
- *
- *
+ * 任务进度信息，用于SSE负荷。
  *
  * @param taskNo            对外任务号，与订阅端点的 taskNo 一致
  * @param taskStatus        事件发出时的任务主状态
@@ -21,19 +14,21 @@ import com.vidsage.domain.task.VideoTask;
  *                          尚未产生任何阶段事件（current_stage 为空）同样为 {@code null}
  * @param translationStatus 翻译子状态；从未触发（含全部主管线事件）时为 {@code null}，
  *                          翻译事件携带当前子状态（RUNNING / SUCCEEDED / FAILED）
+ * @param terminal          任务是否结束（已完成或者任务失败）
  */
 public record TaskProgressMessage(
         String taskNo,
         TaskStatus taskStatus,
         StageEvent stage,
-        TranslationStatus translationStatus) {
+        TranslationStatus translationStatus,
+        boolean terminal
+) {
+    public TaskProgressMessage {
+        terminal = VideoTask.isEventTerminal(taskStatus, translationStatus);
+    }
 
-    /**
-     * 任务是不是走到终态了（不再有任何后续事件）——主状态终态、且翻译不在进行中。
-     *
-     * @return 已到终态为 {@code true}
-     */
-    public boolean settled() {
-        return VideoTask.isEventSettled(taskStatus, translationStatus);
+    public static TaskProgressMessage of(String taskNo, TaskStatus taskStatus,
+                                         StageEvent stage, TranslationStatus translationStatus) {
+        return new TaskProgressMessage(taskNo, taskStatus, stage, translationStatus, false);
     }
 }

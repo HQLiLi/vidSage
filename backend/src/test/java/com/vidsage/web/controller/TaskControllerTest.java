@@ -2,6 +2,7 @@ package com.vidsage.web.controller;
 
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,7 +32,8 @@ import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
-import com.vidsage.web.sse.TaskSseHub;
+import com.vidsage.web.sse.TaskSseConnectionManager;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,7 +60,7 @@ import org.junit.jupiter.api.io.TempDir;
  * 「SSE 订阅（快照首推 / 增量 / 终态收口 / 窗口竞态重读 / 未知任务）」「产物下载（含穿越 400）」。</p>
  */
 @WebMvcTest(TaskController.class)
-@Import({TaskSseHub.class, TaskSubscriptionRegistry.class})
+@Import({TaskSseConnectionManager.class, TaskSubscriptionRegistry.class})
 class TaskControllerTest {
 
     private static final String TASK_NO = "3f2a9c1e7b5d4a6089abcdef01234567";
@@ -69,8 +71,9 @@ class TaskControllerTest {
     @MockitoBean
     private VideoTaskService taskService;
 
+    /** 真装配的注册表：模拟管线推进要走广播这条真实入口，不能再直接写 emitter。 */
     @Autowired
-    private TaskSseHub sseHub;
+    private TaskSubscriptionRegistry taskSubscriptionRegistry;
 
     @TempDir
     Path tempDir;
@@ -180,7 +183,7 @@ class TaskControllerTest {
 
     @Test
     void subscribeEventsPushesSnapshotFirstThenIncrementalBroadcasts() throws Exception {
-        when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
                 new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageEvent.StageState.RUNNING), null));
 
         // 连接建立：连接保持挂起（asyncStarted），快照已随响应写出（emitter 初始化时冲刷缓冲）
@@ -193,8 +196,8 @@ class TaskControllerTest {
         assertTrue(snapshotBody.contains("event:progress"), () -> "应先推快照：" + snapshotBody);
         assertTrue(snapshotBody.contains("\"taskStatus\":\"RUNNING\""), () -> snapshotBody);
 
-        // 模拟管线推进：经真实 hub 写进同一批 emitter（注册表订阅的就是「写 emitter」这个动作）
-        sseHub.send(TASK_NO, new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
+        // 模拟管线推进：走注册表广播（生产里的真实路径），事件经该连接自己那个订阅者写进 emitter
+        taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
                 new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageEvent.StageState.SUCCEEDED), null));
         String body = result.getResponse().getContentAsString();
         assertTrue(body.contains("\"progress\":60"), () -> "快照的进度应先到：" + body);
@@ -203,13 +206,39 @@ class TaskControllerTest {
     }
 
     @Test
+    void twoConnectionsEachReceiveExactlyOneCopyOfEachEvent() throws Exception {
+        // 投递必须 1:1：每条连接在注册表里各有一个订阅者，若每个订阅者都对「该任务的全部连接」
+        // 发送，k 条连接就会把同一条事件写 k 份给每条连接（k² 次写入）。页面开两个标签页时看着
+        // 正常（前端按最新一条覆盖），但流量与副作用语义已经错了——这个倍数只能在这里数出来。
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
+                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageEvent.StageState.RUNNING), null));
+
+        MvcResult first = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        MvcResult second = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
+                new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageEvent.StageState.SUCCEEDED), null));
+
+        for (MvcResult each : List.of(first, second)) {
+            String body = each.getResponse().getContentAsString();
+            assertEquals(1, countOf(body, "\"progress\":95"), () -> "每条连接应恰收一份增量事件：" + body);
+            assertEquals(1, countOf(body, "\"progress\":60"),
+                    () -> "后一条连接建立时推的快照只该落它自己，不得串到别的连接：" + body);
+        }
+    }
+
+    @Test
     void subscribeEventsToTerminalTaskCompletesConnectionAfterSnapshot() throws Exception {
-        when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.FAILED,
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.FAILED,
                 new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
                         StageEvent.StageState.FAILED), null));
 
-        // 终态快照推完即收口（hub 对终态事件 complete emitter），连接不等 30 分钟超时；
-        // 响应里应已带终态事件。连接收口的行为细节由 TaskSseHubTest 钉住。
+        // 终态快照推完即收口（连接管理器对终态事件 complete emitter），连接不等 30 分钟超时；
+        // 响应里应已带终态事件。连接收口的行为细节由 TaskSseConnectionManagerTest 钉住。
         mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
@@ -224,9 +253,9 @@ class TaskControllerTest {
         // 挂上订阅后重读 FAILED。若实现只推第一次的快照，客户端拿到陈旧 RUNNING、
         // 且这条订阅既等不到终态事件也永远不会退订（注册表泄漏）。
         when(taskService.snapshot(TASK_NO))
-                .thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
+                .thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
                         new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageEvent.StageState.RUNNING), null))
-                .thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.FAILED,
+                .thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.FAILED,
                         new StageEvent(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
                                 StageEvent.StageState.FAILED), null));
 
@@ -301,7 +330,7 @@ class TaskControllerTest {
     void subscribeEventsDuringTranslationKeepsConnectionOpenForTranslateEvents() throws Exception {
         // 主任务已 SUCCEEDED、翻译进行中：快照虽是「主状态终态」，但翻译事件还要继续推，
         // 连接不得按主状态终态收口（终态判定 = 主状态终态且翻译非 RUNNING）
-        when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO,
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO,
                 TaskStatus.SUCCEEDED,
                 new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0, "翻译进行中", StageEvent.StageState.RUNNING),
                 TranslationStatus.RUNNING));
@@ -312,8 +341,8 @@ class TaskControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
                 .andReturn();
 
-        // 模拟管线推进：翻译进度事件经真实 hub 写进同一批 emitter（若连接被提前收口，此事件无人可写）
-        sseHub.send(TASK_NO, new TaskProgressMessage(TASK_NO, TaskStatus.SUCCEEDED,
+        // 模拟管线推进：翻译进度事件经注册表广播写进 emitter（若连接被提前收口，此事件无人可写）
+        taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.SUCCEEDED,
                 new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 55, "第 2/3 批", StageEvent.StageState.RUNNING),
                 TranslationStatus.RUNNING));
 
@@ -326,7 +355,7 @@ class TaskControllerTest {
     @Test
     void subscribeEventsToTranslatedTaskCompletesAfterTranslationTerminalSnapshot() throws Exception {
         // 主任务 SUCCEEDED + 翻译 SUCCEEDED：真正再无后续事件，快照推完即收口
-        when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO,
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO,
                 TaskStatus.SUCCEEDED,
                 new StageEvent(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "翻译完成", StageEvent.StageState.SUCCEEDED),
                 TranslationStatus.SUCCEEDED));
@@ -388,6 +417,15 @@ class TaskControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(taskService, never()).openArtifact(anyString(), anyString());
+    }
+
+    /** needle 在 haystack 里出现的次数——用来数「一条连接收到了几份」。 */
+    private static int countOf(String haystack, String needle) {
+        int count = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) {
+            count++;
+        }
+        return count;
     }
 
     // ---------- 工厂 ----------

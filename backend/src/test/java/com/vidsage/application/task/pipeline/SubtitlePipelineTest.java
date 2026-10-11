@@ -271,7 +271,7 @@ class SubtitlePipelineTest {
         assertEquals(TaskStatus.SUCCEEDED, event.taskStatus());
         // complete 清空了订阅者：终态之后再广播该任务的事件无人可收
         registry.broadcast(task.getTaskNo().value(),
-                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(1, received.size(), "终态收口后注册表不得再向订阅者投递事件");
     }
 
@@ -292,7 +292,7 @@ class SubtitlePipelineTest {
         assertEquals(TaskStatus.FAILED, event.taskStatus());
         assertEquals("任务执行失败：quota exceeded", event.stage().message(), "终态事件的消息应携带错误信息");
         registry.broadcast(task.getTaskNo().value(),
-                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(1, received.size(), "终态收口后注册表不得再向订阅者投递事件");
     }
 
@@ -455,7 +455,7 @@ class SubtitlePipelineTest {
 
         // 终态收口后注册表不再投递
         registry.broadcast(task.getTaskNo().value(),
-                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(2, received.size(), "翻译终态 complete 后订阅者应已清空");
     }
 
@@ -491,7 +491,7 @@ class SubtitlePipelineTest {
                 "翻译失败终态事件的消息携带失败原因（SSE 上唯一的错误出口）");
 
         registry.broadcast(task.getTaskNo().value(),
-                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(2, received.size(), "翻译终态 complete 后订阅者应已清空");
     }
 

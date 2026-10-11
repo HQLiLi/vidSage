@@ -68,6 +68,9 @@ export const useTaskStore = defineStore('task', () => {
     (taskView.value?.artifacts ?? []).some((a) => a.name.includes('-translate-')),
   )
 
+  /** SSE 是否正在重连（连续失败达阈值）——工作区页据此显示不遮挡进度的重连提示。 */
+  const reconnecting = computed(() => events.reconnecting.value)
+
   /**
    * 加载任务快照（GET /tasks/{taskNo}）：先重置既有状态；快照已是 SUCCEEDED 时
    * 直接拉产物建 cues。404 记为 not-found（任务不存在卡），其余错误记通用失败
@@ -112,7 +115,7 @@ export const useTaskStore = defineStore('task', () => {
   /**
    * 触发按需翻译（POST /translate，202）：翻译进度由 SSE 事件流的 translationStatus
    * 推送，完成后 watchProgress 自动重建双语 cues。主任务终态时原 SSE 连接已被收口
-   * （useTaskEvents 终态即 close，后端 TaskSseHub 同步断开），故 202 更新本地视图后
+   * （useTaskEvents 终态即 close，后端 TaskSseConnectionManager 同步断开），故 202 更新本地视图后
    * 必须重开订阅：翻译进行中则事件续推；翻译已跑完则新连接的建立快照即
    * SUCCEEDED+翻译终态，经 latest watch 走 refreshAfterTerminal 重建双语 cues。
    * 请求失败（主任务未成功 400 / 任务不存在 404）原样抛出，由调用方内联展示。
@@ -169,16 +172,41 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  // 终态判定与 useTaskEvents 同口径：主状态终态且翻译非 RUNNING 才有收口动作
+  /**
+   * 致命断连确诊：EventSource 判定这条流已死（非 200 / content-type 不符）时 onerror
+   * 拿不到状态码，故重拉一次快照分类——404 走任务不存在卡，其余走通用错误卡；快照成功
+   * 说明任务还在（只是 SSE 端点坏了），也要给一句明确提示，否则页面看着正常却永不更新。
+   * taskView 为空（还没加载成功）时无任务可确诊，直接返回。
+   */
+  async function diagnoseFatal(): Promise<void> {
+    const taskNo = taskView.value?.taskNo
+    if (!taskNo) return
+    try {
+      await getTask(taskNo)
+      // 快照可达但流已死：SSE 端点故障，给用户明确去向
+      loadError.value = { kind: 'error', message: '进度连接已断开，请刷新页面重试' }
+    } catch (error) {
+      const err = error instanceof ApiError ? error : null
+      loadError.value =
+        err?.status === 404
+          ? { kind: 'not-found' }
+          : { kind: 'error', message: err?.message ?? '进度连接已断开，请刷新页面重试' }
+    }
+  }
+
+  // 终态判据由后端算好经 message.terminal 送出，本处不再自己拼状态组合
   watch(events.latest, (message) => {
     if (!message) return
     // 串台防御：只处理当前任务的事件
     if (message.taskNo !== taskView.value?.taskNo) return
     progress.value = message
-    const terminal =
-      message.taskStatus === TASK_STATUS.SUCCEEDED || message.taskStatus === TASK_STATUS.FAILED
-    if (!terminal || message.translationStatus === TRANSLATION_STATUS.RUNNING) return
+    if (!message.terminal) return
     void refreshAfterTerminal()
+  })
+
+  // 流已死（浏览器不再重连）：重拉一次快照确诊，转进现有错误态通道
+  watch(events.fatal, (isFatal) => {
+    if (isFatal) void diagnoseFatal()
   })
 
   return {
@@ -193,6 +221,7 @@ export const useTaskStore = defineStore('task', () => {
     isFailed,
     isTranslating,
     hasTranslation,
+    reconnecting,
     // actions
     load,
     subscribe,

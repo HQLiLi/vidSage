@@ -70,7 +70,7 @@ public class TaskProgressNotifier {
      * @return 快照事件
      */
     public TaskProgressMessage createSnapshot(VideoTask task) {
-        return new TaskProgressMessage(task.getTaskNo().value(), task.getStatus(),
+        return TaskProgressMessage.of(task.getTaskNo().value(), task.getStatus(),
                 TaskStageEvent.from(task), task.getTranslationStatus());
     }
 
@@ -84,7 +84,7 @@ public class TaskProgressNotifier {
     private void broadcast(VideoTask task, StageEvent event) {
         String taskNo = task.getTaskNo().value();
         taskSubscriptionRegistry.broadcast(taskNo,
-                new TaskProgressMessage(taskNo, task.getStatus(), event, task.getTranslationStatus())
+                TaskProgressMessage.of(taskNo, task.getStatus(), event, task.getTranslationStatus())
         );
     }
 

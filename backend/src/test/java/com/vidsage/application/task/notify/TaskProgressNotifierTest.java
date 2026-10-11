@@ -96,7 +96,7 @@ class TaskProgressNotifierTest {
         assertEquals(TaskStatus.SUCCEEDED, received.get(0).taskStatus());
         // complete 生效：终态之后再广播无人可收
         registry.broadcast(task.getTaskNo().value(),
-                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(1, received.size(), "终态收口后注册表不得再向订阅者投递事件");
     }
 
@@ -114,7 +114,7 @@ class TaskProgressNotifierTest {
         assertEquals(expected, received.get(0).stage(), "翻译终态的 stage 取 TaskStageEvent.fromTranslation");
         assertEquals(TranslationStatus.SUCCEEDED, received.get(0).translationStatus());
         registry.broadcast(task.getTaskNo().value(),
-                new TaskProgressMessage(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(1, received.size(), "翻译终态收口后注册表不得再投递");
     }
 

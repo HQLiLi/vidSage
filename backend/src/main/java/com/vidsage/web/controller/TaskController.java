@@ -1,35 +1,22 @@
 package com.vidsage.web.controller;
 
-import com.vidsage.application.task.message.TaskProgressMessage;
-import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.VideoTaskService;
-import com.vidsage.application.task.subscribe.Subscription;
-import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
+import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.web.dto.SubmitUrlRequest;
 import com.vidsage.web.dto.TaskResponse;
-import com.vidsage.web.sse.TaskSseHub;
+import com.vidsage.web.sse.TaskSseConnectionManager;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.io.IOException;
-import java.io.InputStream;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.io.InputStream;
 
 /**
  * 任务提交、状态查询、按需翻译、进度订阅与产物下载 HTTP 入口（MVP-1 异步管线的唯一前端依赖）。
@@ -37,11 +24,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * <p>本类只做「接收 → 卫语句 → 委托 → 返回」，不写业务逻辑；提交即返回 202 与任务视图，
  * <b>不等管线跑完</b>——长视频不再顶客户端超时。自动管线跑到清洗 / 原文字幕为止（2026-10-02
  * 两段式裁定），翻译由用户对 SUCCEEDED 任务显式触发（{@code POST /{taskNo}/translate}）。
- *
- * <p>SSE 订阅（{@code /events}）的接线：读 DB 快照（未知 taskNo 在此 404）→ 建 emitter →
- * 挂「写 emitter」的 Consumer 进注册表 → 重读快照推送（防「读快照 → 挂订阅」窗口内任务到达
- * 终态造成的陈旧快照与订阅泄漏）→ 挂起等增量。终态快照经 {@link TaskSseHub#send} 推完即收口
- * 连接；终态任务不再有增量，随后退订防泄漏。连接的持有 / 心跳 / 清理全部在 {@code web/sse/TaskSseHub}。
  *
  * <p>日志只记「请求形态」：URL 原文与上传文件原始名指向用户资源，一律不落日志
  * （design.md 任务表 source_uri 注、logging-guidelines 脱敏红线）。
@@ -55,34 +37,31 @@ public class TaskController {
 
     private final VideoTaskService taskService;
 
-    private final TaskSseHub sseHub;
+    private final TaskSseConnectionManager sseConnectionManager;
 
-    private final TaskSubscriptionRegistry subscriptionRegistry;
 
     /**
      * 构造函数注入。
      *
      * @param taskService          提交与查询的唯一服务层入口
-     * @param sseHub               SSE 连接管理（emitter 持有 / 心跳 / 清理，仅本层可见 HTTP 细节）
-     * @param subscriptionRegistry 中立订阅注册表（管线广播的落点）
+     * @param sseConnectionManager SSE 连接管理（emitter 持有 / 心跳 / 清理，仅本层可见 HTTP 细节）
      */
-    public TaskController(VideoTaskService taskService, TaskSseHub sseHub,
-                          TaskSubscriptionRegistry subscriptionRegistry) {
+    public TaskController(VideoTaskService taskService, TaskSseConnectionManager sseConnectionManager
+    ) {
         this.taskService = taskService;
-        this.sseHub = sseHub;
-        this.subscriptionRegistry = subscriptionRegistry;
+        this.sseConnectionManager = sseConnectionManager;
     }
 
     /**
      * 提交 URL 任务：异步执行 下载 → 抽音频 → 转写 → 清洗，到原文字幕就绪为止（2026-10-02
      * 两段式）；翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
-     *
+     * <p>
      * 支持的站点——本项目验证过 B 站视频页与 YouTube；未验证站点不提前拦截，
      * 交给 yt-dlp 提取，失败即任务 FAILED + SSE 推 FAILED 事件
      *
      * @param request 请求体（url 必填）
      * @return 新任务的 PENDING 视图（拿 taskNo 去查询 / 订阅进度）
-     * @throws IllegalArgumentException url 为空白（400）
+     * @throws IllegalArgumentException                                     url 为空白（400）
      * @throws com.vidsage.application.task.exception.TaskConflictException 同 URL 已有进行中任务（409，响应体附既有任务）
      */
     @Operation(summary = "提交 URL 任务",
@@ -107,9 +86,9 @@ public class TaskController {
      *
      * @param file 上传的媒体文件（multipart 字段名 file）；不能为空
      * @return 新任务的 PENDING 视图
-     * @throws IllegalArgumentException 文件缺失或为空（400）
+     * @throws IllegalArgumentException                                     文件缺失或为空（400）
      * @throws com.vidsage.application.task.exception.TaskConflictException 同内容文件已有进行中任务（409）
-     * @throws IllegalStateException    读取上传流失败 / 落盘失败（500）
+     * @throws IllegalStateException                                        读取上传流失败 / 落盘失败（500）
      */
     @Operation(summary = "上传本地文件提交任务",
             description = "multipart 字段名 file；流式落盘按内容寻址，同一文件重复上传命中同一工作区。"
@@ -134,7 +113,7 @@ public class TaskController {
      *
      * @param taskNo 提交响应返回的任务号
      * @return 任务视图（artifacts 为工作区内可见产物）
-     * @throws IllegalArgumentException taskNo 为空（400）
+     * @throws IllegalArgumentException                                     taskNo 为空（400）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "查询任务状态",
@@ -149,13 +128,11 @@ public class TaskController {
     }
 
     /**
-     * 订阅任务进度（SSE）：连接建立即推一条 DB 快照，此后随管线推进增量推送；
-     * 任务到终态（SUCCEEDED / FAILED）推完最后一条即完成连接。事件名 {@code progress}，
-     * data 为 {@code TaskProgressMessage} JSON。刷新页面重连 = 重新拿快照，进度无感恢复。
+     * 订阅任务进度（SSE）
      *
      * @param taskNo 提交响应返回的任务号
      * @return 挂起中的 SSE 连接（text/event-stream）
-     * @throws IllegalArgumentException taskNo 为空（400）
+     * @throws IllegalArgumentException                                     taskNo 为空（400）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404，此时不留悬挂连接）
      */
     @Operation(summary = "订阅任务进度（SSE）",
@@ -167,27 +144,8 @@ public class TaskController {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
         log.info("订阅任务进度: taskNo={}", taskNo);
-        // 先读快照再建 emitter：未知 taskNo 在此 404，不给不存在的任务留悬挂连接
         taskService.snapshot(taskNo);
-        SseEmitter emitter = sseHub.register(taskNo);
-        // 挂「写 emitter」的 Consumer 进中立注册表：管线广播 → hub.send → emitter，HTTP 类型不越出 web/sse
-        Subscription subscription = subscriptionRegistry.subscribe(taskNo, event -> sseHub.send(taskNo, event));
-        // 挂上订阅后重读快照：任务可能恰在「读快照 → 挂订阅」的窗口里到达终态——终态广播与 complete
-        // 都发生在订阅挂上之前，若只推窗口前读到的旧快照，这条订阅既等不到终态事件也永远不会退订
-        // （注册表泄漏）。状态机只前进，重读结果只会更新；此时推的是终态快照，hub 推完即收口连接。
-        TaskProgressMessage snapshot = taskService.snapshot(taskNo);
-        sseHub.send(taskNo, snapshot);
-        // 客户端断连 / 超时 / 终态 complete 都会走 onCompletion（onError、onTimeout 之后容器必补发
-        // onCompletion）——连接没了就必须退订。否则泄漏的订阅者继续留在注册表里，同任务的后续广播
-        // 会经它再写一遍给幸存连接（真实运行证据抓到的重复推送缺陷，见 research/acceptance-evidence.md）。
-        // close 幂等，与上方终态分支的 close 并发安全。
-        emitter.onCompletion(subscription::close);
-        // 终态判定走 TaskProgressMessage.settled()（判据单源在 VideoTask.isEventSettled）
-        if (snapshot.settled()) {
-            // 订阅时任务已终态：快照即最后一条，注册表不会再有 complete 调用，主动退订防泄漏
-            subscription.close();
-        }
-        return emitter;
+        return sseConnectionManager.open(taskNo, () -> taskService.snapshot(taskNo));
     }
 
     /**
@@ -197,7 +155,7 @@ public class TaskController {
      *
      * @param taskNo 提交响应返回的任务号
      * @return 触发后的任务视图（translationStatus 反映翻译子状态；正常触发为 RUNNING）
-     * @throws IllegalArgumentException taskNo 为空（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
+     * @throws IllegalArgumentException                                     taskNo 为空（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "触发字幕翻译（按需）",
@@ -220,7 +178,7 @@ public class TaskController {
      * @param taskNo   提交响应返回的任务号
      * @param fileName 产物文件名（清单里的 name）
      * @return 产物文件流（application/octet-stream，附件下载）
-     * @throws IllegalArgumentException taskNo / fileName 为空、越出工作区或产物不存在（400）
+     * @throws IllegalArgumentException                                     taskNo / fileName 为空、越出工作区或产物不存在（400）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "下载任务产物",
