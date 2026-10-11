@@ -3,6 +3,8 @@ package com.vidsage.application.task;
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.message.TaskProgressMessage;
+import com.vidsage.application.task.notify.TaskProgressNotifier;
 import com.vidsage.application.task.pipeline.SubtitlePipeline;
 import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
@@ -73,6 +75,7 @@ public class VideoTaskService {
     private final VideoTaskRepository repository;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
     private final SubtitlePipeline pipeline;
+    private final TaskProgressNotifier taskProgressNotifier;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
@@ -80,14 +83,17 @@ public class VideoTaskService {
      * @param repository                任务持久化端口（实现在 infrastructure/persistence/repository/）
      * @param pipeline                  异步管线（insert 成功后异步启动）
      * @param workspaceDirectoryManager 工作区目录管理器
+     * @param taskProgressNotifier      任务进度通知器
      */
     public VideoTaskService(VideoTaskRepository repository,
                             SubtitlePipeline pipeline,
-                            WorkspaceDirectoryManager workspaceDirectoryManager
+                            WorkspaceDirectoryManager workspaceDirectoryManager,
+                            TaskProgressNotifier taskProgressNotifier
     ) {
         this.repository = repository;
         this.pipeline = pipeline;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
+        this.taskProgressNotifier = taskProgressNotifier;
     }
 
     /**
@@ -196,7 +202,7 @@ public class VideoTaskService {
     }
 
     /**
-     * 组装 SSE 连接建立时的<b>快照事件</b>（design.md「SSE 契约」：DB 快照即权威，事件不落库）。
+     * 组装 SSE 连接建立时的<b>快照事件</b>
      * 任务当前状态 + 由 current_stage / status 构造的最近阶段事件；前端刷新页面重连后拿它恢复进度，
      * 无需事件回放。主任务 SUCCEEDED 且翻译子状态存在时按翻译子状态粗粒度还原
      * （见 {@link TaskStageEvent#from}）。
@@ -211,8 +217,7 @@ public class VideoTaskService {
      */
     public TaskProgressMessage snapshot(String taskNo) {
         VideoTask task = loadTask(taskNo);
-        return new TaskProgressMessage(task.getTaskNo().value(), task.getStatus(), TaskStageEvent.from(task),
-                task.getTranslationStatus());
+        return taskProgressNotifier.createSnapshot(task);
     }
 
     /**

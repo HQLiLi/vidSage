@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.vidsage.domain.shared.model.StageEvent;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
-import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
 import org.junit.jupiter.api.Test;

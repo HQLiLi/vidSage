@@ -1,6 +1,6 @@
 package com.vidsage.web.controller;
 
-import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.subscribe.Subscription;

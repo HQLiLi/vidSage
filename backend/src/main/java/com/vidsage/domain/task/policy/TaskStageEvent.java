@@ -21,7 +21,7 @@ import org.springframework.util.StringUtils;
  *
  * <p>原是两个内联在 {@code VideoTaskService} 里的包内可见 static，2026-10-06 包结构整理时下沉
  * 至此：判据只吃 domain 类型、与 I/O 无关，住在任务领域更合适；下沉后是 public 政策，
- * {@code VideoTaskService}（快照）与 {@code SubtitlePipeline}（两处终态广播）跨包共用同一份形状。
+ * {@code TaskProgressNotifier}（快照组装与两处终态广播）跨包共用同一份形状。
  */
 public final class TaskStageEvent {
 

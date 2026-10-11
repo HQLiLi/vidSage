@@ -22,13 +22,13 @@ import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.infrastructure.fs.NioWorkspaceDirectoryManager;
 import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
-import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.notify.TaskProgressNotifier;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.config.TaskProperties;
 import com.vidsage.config.WorkspaceProperties;
-import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.media.model.MediaInput;
@@ -80,8 +80,11 @@ class SubtitlePipelineTest {
 
     /** 注入假闸门：把线程与配额摘掉，只看管线对「排队被打断」的反应（真实闸门见并发用例）。 */
     private SubtitlePipeline service(TaskConcurrencyGate concurrencyGate) {
+        // 真 notifier：喂同一个 repository mock 与同一个 registry 实例——
+        // 既有 inOrder/verify 的落库与广播断言靠它们继续成立
         return new SubtitlePipeline(repository,
-                subtitlePreparationCoordinator, cleanupStage, translationStage, registry, concurrencyGate,
+                subtitlePreparationCoordinator, cleanupStage, translationStage,
+                new TaskProgressNotifier(repository, registry), concurrencyGate,
                 new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())));
     }
 

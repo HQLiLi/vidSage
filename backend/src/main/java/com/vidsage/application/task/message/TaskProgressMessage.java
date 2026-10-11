@@ -1,4 +1,4 @@
-package com.vidsage.application.task;
+package com.vidsage.application.task.message;
 
 import com.vidsage.domain.shared.model.StageEvent;
 import com.vidsage.domain.task.model.TaskStatus;
