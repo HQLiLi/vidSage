@@ -952,3 +952,29 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 35: 10-11 进度载荷命名收口：StageEvent → StageProgress 改名、独立核查、合并归档
+<!-- trellis-session: v=2 fp=f158a2dbe0546b4b -->
+
+**Date**: 2026-10-11
+**Task**: 10-11 进度载荷命名收口：StageEvent → StageProgress 改名、独立核查、合并归档
+**Branch**: `dev`
+
+### Summary
+
+执行 10-11-stage-progress-rename：把管线进度载荷归队到本仓 Progress 词族，零行为变更、对 SSE 契约零影响（类型名不进 JSON，payload 键是 stage）。三组改名——StageEvent → StageProgress（含文件改名 domain/shared/model/）、嵌套枚举 StageEvent.StageState → StageProgress.State、回调 ProgressListener.onEvent → onProgress；另按所有者裁定把主代码里指向该载荷的局部变量/参数 event 改成 stageProgress（对齐仓库既有的 VideoTask videoTask 惯例），测试内变量名刻意不动。范围 32 文件；HEAD↔改动后逐模式计数一一对应（StageEvent 156→0、StageState 90→0、onEvent 25→0，新名同数），TaskStageEvent 政策类按裁定暂留（16 处自引用未变）、TaskProgressMessage event 两个参数按判据未动。验证：mvn clean test 498 用例 / 0 失败 / 0 错误 / 1 跳过（基线经核定，journal 旧记的 497 是收尾中途数），前端 npm run type-check 零错误；另设一条门 G5——把新旧两版都归一化掉那三组词后 diff，仅 5 个手工改过的文件有残差，其余 27 个文件的差异恰好只有替换本身，证明只有改名没有夹带。执行期抓到并修正两处：(1) 我漏做 StageProgress.java 的过渡态 Javadoc 订正，被 G5 跑出来；(2) 我写的 Javadoc 声称「transcription、subtitle、task 各自的阶段都上报它」失实——transcription 上下文对 ProgressListener 引用为 0、Transcriber 不接 listener，转写阶段进度实由字幕侧 SubtitlePreparationCoordinator 发出，已改为 media 与 subtitle 两条线；并经所有者裁定把同源失实的 spec directory-structure.md:67「task / transcription / subtitle 三处共用」一并订正为「media / subtitle / task」。trellis-check 独立复核 6 项中 1–4、6 PASS，第 5 项由上述修正闭环；它未自行改码、只报问题并说明不擅改的理由，判断准确。收尾：4 个提交（代码 / spec / 任务工件 / .gitignore 清理），--no-ff 合回 dev 并推送、本地与远端 feature 分支均删。随任务删掉重构期对照 worktree backend-before-reconstruction（detached HEAD e6313b4 在 dev 上可达、无独有内容丢失）及其 .gitignore 条目。已知小瑕疵：StageEvent.java → StageProgress.java 因 Javadoc 扩写使相似度降至约 45%、卡在 git 默认 50% 门槛下，提交里记成 delete+create 而非 rename（40% 阈值下可识别）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b994d31` | refactor(domain): 进度载荷命名收口——StageEvent → StageProgress |
+| `062b11f` | docs(spec): 目录结构规范的进度词汇同步为 StageProgress |
+| `d8b7ca7` | docs(task): 补齐 stage-progress-rename 的执行清单与核查上下文 |
+| `dba6091` | chore: 移除 backend-before-reconstruction 忽略条目 |
+| `5d453fe` | Merge branch 'feature/stage-progress-rename' into dev |
+
+### Status
+
+[OK] **Completed**
