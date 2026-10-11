@@ -1,0 +1,12 @@
+event:progress
+data:{"taskNo":"<TASKNO>","taskStatus":"SUCCEEDED","stage":{"stage":"translate-subtitles","progress":0,"message":"翻译进行中","state":"RUNNING"},"translationStatus":"RUNNING"}
+
+event:progress
+data:{"taskNo":"<TASKNO>","taskStatus":"SUCCEEDED","stage":{"stage":"translate-subtitles","progress":25,"message":"第 1/4 批","state":"RUNNING"},"translationStatus":"RUNNING"}
+
+event:progress
+data:{"taskNo":"<TASKNO>","taskStatus":"SUCCEEDED","stage":{"stage":"translate-subtitles","progress":50,"message":"第 2/4 批","state":"RUNNING"},"translationStatus":"RUNNING"}
+
+event:progress
+data:{"taskNo":"<TASKNO>","taskStatus":"SUCCEEDED","stage":{"stage":"translate-subtitles","progress":75,"message":"第 3/4 批","state":"RUNNING"},"translationStatus":"RUNNING"}
+

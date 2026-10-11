@@ -1,0 +1,54 @@
+# AC2 / AC3 grep 证据（2026-10-11，分支 feature/pipeline-state-broadcast）
+
+## AC2 构造单点：new TaskProgressMessage( 全仓命中
+
+### main 侧（期望：只在 TaskProgressNotifier 内）——2 处，PASS
+
+```
+main/java/com/vidsage/application/task/notify/TaskProgressNotifier.java:73   （createSnapshot）
+main/java/com/vidsage/application/task/notify/TaskProgressNotifier.java:87   （broadcast 私有助手）
+```
+
+### test 侧豁免清单（夹具构造，AC2 明文豁免）——17 处 / 5 文件
+
+```
+test/java/com/vidsage/application/task/notify/TaskProgressNotifierTest.java   :99 :117  （2 处）
+test/java/com/vidsage/application/task/pipeline/SubtitlePipelineTest.java     :274 :295 :458 :494  （4 处）
+test/java/com/vidsage/application/task/subscribe/TaskSubscriptionRegistryTest.java :32  （1 处）
+test/java/com/vidsage/web/controller/TaskControllerTest.java                  :183 :197 :207 :227 :229 :304 :316 :329  （8 处）
+test/java/com/vidsage/web/sse/TaskSseHubTest.java                             :28 :34  （2 处）
+```
+
+> 注（design §九.5 原记仅列 TaskControllerTest:183，实测口径更宽——trellis-check 批 4 上报后修正为全量 17 处）。
+> TaskControllerTest:183 是 prd AC2 点名的豁免项（service 为 mock，夹具自建消息）；其余均为同类夹具构造。
+
+## AC3 送出单点
+
+### SubtitlePipeline 对 TaskSubscriptionRegistry 引用：0 处 —— PASS
+
+```
+$ grep -c "TaskSubscriptionRegistry" backend/src/main/java/com/vidsage/application/task/pipeline/SubtitlePipeline.java
+0
+```
+
+（字段、构造参数、import、Javadoc 引用全部清零。）
+
+### main 侧 .broadcast( 调用点 —— 只在 notifier —— PASS
+
+```
+application/task/notify/TaskProgressNotifier.java:86  taskSubscriptionRegistry.broadcast(taskNo, ...)
+```
+
+### main 侧 .complete( 调用点 —— notifier 一处 + SseEmitter 同名一处 —— PASS
+
+```
+application/task/notify/TaskProgressNotifier.java:102  taskSubscriptionRegistry.complete(...)   ← 注册表清订阅（本条要钉的点）
+web/sse/TaskSseHub.java:122                            target.complete()                        ← SseEmitter#complete（HTTP 连接关闭，同名非注册表，不计入）
+```
+
+## AC1 结构抽查（同轮核实）
+
+```
+application/task/ 根下 java 文件：VideoTaskService.java + package-info.java   ← 只剩门面（prd R2 / AC1）
+application/task/ 子桶：exception / message / notify / pipeline / port / query / subscribe
+```

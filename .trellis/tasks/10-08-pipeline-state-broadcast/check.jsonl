@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "逐条核对：① message/ 与 notify/ 两桶的落位、命名、stereotype；② 根只留门面；③ 依赖方向（application 零 infrastructure import、notify 只依赖 domain + application 内类型、无环）；④ spec 订正清单（桶表、构件说明、命名登记、契约位置表、两处 package-info、TaskStageEvent 与 TaskResponse 注释）是否落地且不自相矛盾"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对 8 条日志逐字未改（级别、字段顺序、文案），且搬家后没有新增踩脱敏红线的日志语句"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流检查：状态迁移 → 落库 → 广播 → SSE emitter 这条链在收口后是否仍单源、有无重复实现；快照（DB 权威）与在线事件是否真的走了同一处组装"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对新构件的构造注入与测试口子；核对既有测试只换夹具、断言未放宽"}
