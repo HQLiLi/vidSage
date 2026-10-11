@@ -149,7 +149,6 @@ public class SubtitlePipeline {
     void runPipeline(TaskNo taskNo) {
         Optional<VideoTask> loaded = repository.findByTaskNo(taskNo);
         if (loaded.isEmpty()) {
-            // 提交刚落库就执行，缺失说明存储出了问题：ERROR 可见，不让任务静默蒸发
             log.error("任务记录缺失，管线放弃执行: taskNo={}", taskNo.value());
             return;
         }
@@ -159,12 +158,10 @@ public class SubtitlePipeline {
             try {
                 task.start();
             } catch (IllegalStateException e) {
-                // 双重触发（同任务被 execute 两次）或状态已被推进：放弃本次执行，绝不把别人的执行打成 FAILED
                 log.warn("任务不处于 PENDING，放弃本次执行: taskNo={}, status={}", taskNo.value(), task.getStatus());
                 return;
             }
             repository.update(task);
-            // 不打 workspaceDir：目录名内嵌 URL / 原始文件名（用户资源，脱敏红线），按 taskNo 可查库还原
             log.info("任务开始执行: taskNo={}, inputType={}",
                     task.getTaskNo().value(), task.getInputType());
             prepareAndClean(task);
@@ -201,7 +198,7 @@ public class SubtitlePipeline {
      */
     private void prepareAndClean(VideoTask task) {
         MediaInput input = toMediaInput(task);
-        ProgressListener listener = progressListener(task);
+        ProgressListener listener = createProgressListener(task);
         // 阶段 1：prepare 准备字幕文件
         subtitlePreparationCoordinator.prepare(input, listener);
         // 阶段 2：清洗字幕文件
@@ -209,9 +206,9 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 管线复合进度回调
+     * 创建进度回调监听器
      */
-    private ProgressListener progressListener(VideoTask task) {
+    private ProgressListener createProgressListener(VideoTask task) {
         return event -> {
             log.debug("任务阶段事件: taskNo={}, stage={}, progress={}, state={}, message={}",
                     task.getTaskNo().value(), event.stage(), event.progress(), event.state(), event.message());

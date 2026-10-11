@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "逐条核对：① web/sse 职责描述已含「订阅配对」且与实现一致；② 全仓无 isEventSettled 残留、命名登记表已更新；③ -Manager 第二例已登记且未删掉「防万能后缀」警告；④ 依赖方向（web → application 允许、application 零 HTTP 类型、subscribe/ 禁 HTTP 类型的承诺未被 open() 破坏）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对新构造依赖的注入方式、hasBucket 探针的可见性与命名、既有测试是否只换夹具未放宽断言（对照批次 3 的 diff）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "核对前端改动的验证口径：三命令全绿的证据是否来自本次改动后、lint --fix 是否顺带改了计划外文件、composable 与 store 的职责边界是否被破坏"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "核对 SSE 错误处理新条目与实现一致（readyState 分致命/瞬时、致命时重拉快照确诊），且与既有的「SSE 走 composables 不走 axios」边界不冲突"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流检查：状态迁移 → 落库 → 广播 → 注册表 → emitter 这条链收口后是否仍单源；terminal 判据是否真的只有 VideoTask.isEventTerminal 一处，前端有无残留重算"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "「同一判据只有一份」——核对前端两处重复编码是否删净、后端 settled 是否只剩 VideoTaskService 那处异义用法（该处是不同意思，须显式保留而非误删）"}
+{"file": ".trellis/tasks/10-11-sse-surface-consolidation/prd.md", "reason": "AC1–AC7 逐条对账：每条要有可机器判或可复现观测的证据，AC7 的双侧对照必须两侧都在本轮同机抓取"}

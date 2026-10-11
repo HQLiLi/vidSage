@@ -84,7 +84,7 @@ interface StageEvent {
 /**
  * 任务进度事件（SSE 事件名 progress 的 data）——镜像后端 `TaskProgressMessage`。
  * 终态事件的 stage 可为 null（状态本身就是信息）；主管线事件的 translationStatus 为 null，
- * 翻译事件的主状态恒为 SUCCEEDED，终态判定须同时看两个状态（见 useTaskEvents）。
+ * 翻译事件的主状态恒为 SUCCEEDED。是否终态由后端算好经 `terminal` 送出，前端不再自己判。
  */
 export interface TaskProgressMessage {
   /** 对外任务号，与订阅端点的 taskNo 一致 */
@@ -95,6 +95,8 @@ export interface TaskProgressMessage {
   stage: StageEvent | null
   /** 翻译子状态；从未触发（含全部主管线事件）时为 null，翻译事件携带当前子状态 */
   translationStatus: TranslationStatus | null
+  /** 是否这条流的最后一条事件（后端算好送出，前端不再自己判——判据单源在后端状态机） */
+  terminal: boolean
 }
 
 /** 产物 segments-*.json 数组元素形状（原文段落）——镜像后端 `TranscriptionSegment` */
