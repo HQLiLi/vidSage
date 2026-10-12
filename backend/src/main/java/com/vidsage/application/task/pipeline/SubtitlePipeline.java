@@ -25,12 +25,10 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * 媒体转字幕任务管线
- * 将任务先交给并行任务闸门，获得许可后执行转换任务。
- * 每次开始或完成阶段就通过广播通知SSE订阅者
+ * 媒体转字幕任务的主管线：任务经并发闸门排队后执行，按顺序驱动各阶段，并收口终态。
  *
- * <p>任一阶段抛异常 → RUNNING → FAILED（落中文 error_message，广播终态后不再继续后续阶段）；
- * 全部完成 → SUCCEEDED + finished_at。产物按阶段落工作区，失败后重新提交同一输入自动断点复用。
+ * <p>任一阶段抛异常 → FAILED（落中文 error_message，不再继续后续阶段）；全部完成 → SUCCEEDED。
+ * 产物按阶段落工作区，失败后重新提交同一输入自动断点复用。
  */
 @Slf4j
 @Component
@@ -48,8 +46,6 @@ public class SubtitlePipeline {
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param repository                     任务持久化入口（管线按 taskNo 装载任务并回写状态）
      * @param keywordRepository              关键词持久化入口（按工作区读用户手填的关键词）
      * @param subtitlePreparationCoordinator 阶段 1：音频准备 + 转写 + 写原始字幕
@@ -94,13 +90,13 @@ public class SubtitlePipeline {
      * 后置会话：按当前关键词重新生成一遍字幕。同步段判定（404 / 400 未就绪 / 409 互斥 / 关键词落库）
      * 在 {@code VideoTaskService} 完成后才调进来——那边要 409 附既有任务快照，快照组装只有 service 有。
      *
-     * <p>异步体三条纪律（design §3.2 / PRD D4、D6）：
+     * <p>异步体三条纪律：
      * <ul>
      *   <li><b>先成功、后删</b>：翻译与术语产物的删除在 {@link SubtitleCleanupCoordinator#regenerate}
      *       内部、清洗成功之后才做——重跑失败时旧字幕和译文一个都不少；</li>
      *   <li><b>{@code finally} 退登记</b>：任何异常路径都不许漏，否则留下永远在跑的幽灵，
-     *       该工作区的互斥再也释放不掉（AC9 / AC10）；</li>
-     *   <li><b>不写 {@code current_stage}</b>（B5）：进度走只广播不落库的通道，重连快照由登记表还原；</li>
+     *       该工作区的互斥再也释放不掉；</li>
+     *   <li><b>不写 {@code current_stage}</b>：进度走只广播不落库的通道，重连快照由登记表还原。</li>
      * </ul>
      *
      * @param task     主状态已 SUCCEEDED 的任务（调用方已校验）
@@ -121,7 +117,7 @@ public class SubtitlePipeline {
                 String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 taskProgressNotifier.failRegenerate(task, reason);
             } finally {
-                // 纪律：登记必须在 finally 退（PRD D4）——漏了会留下永远 RUNNING 的幽灵
+                // 纪律：登记必须在 finally 退——漏了会留下永远 RUNNING 的幽灵
                 taskSessionRegistry.finish(task.getWorkspaceKey());
             }
         }, () -> {
@@ -133,7 +129,7 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 后置会话的进度回调：只广播不落 {@code current_stage}（B5——主状态已终态，
+     * 后置会话的进度回调：只广播不落 {@code current_stage}（主状态已终态，
      * {@code updateStage} 的 RUNNING 守卫也会拒；精确进度由事件携带，快照由登记表还原）。
      */
     private ProgressListener regenerationProgressListener(VideoTask task) {
@@ -146,20 +142,14 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 按需触发翻译（2026-10-02 两段式）：主任务 SUCCEEDED 后由用户显式触发——不看翻译的人不花
-     * LLM 钱。触发判定按序（design.md「翻译按需触发」）：
-     * <ol>
-     *   <li>任务不存在 → {@link TaskNotFoundException}（404）；</li>
-     *   <li>主状态非 SUCCEEDED → {@link IllegalArgumentException}（400，「字幕尚未就绪」——
-     *       错在调用方触发太早，按 error-handling.md「错在调用方 → IAE → 400」走既有映射，
-     *       不为一次映射新建异常类型）；</li>
-     *   <li>翻译进行中 → 直接返回，不重入（同步守卫 + {@code translationStart} 的状态机拒绝双保险）；</li>
-     *   <li>翻译检查点已在（上一次成功的翻译或两段式改造前的存量产物）→ <b>幂等收敛</b>：
-     *       {@code translationSucceed} 落库后返回，绝不发 LLM；</li>
-     *   <li>正常路径：同步段 {@code translationStart} 落库（RUNNING，202 响应视图因此反映触发后
-     *       的状态）→ 异步执行翻译，事件自成 0..100 段广播。</li>
-     * </ol>
-     * 同步段只做判定与状态落库；LLM 翻译在虚拟线程异步执行
+     * 按需触发翻译：主任务 SUCCEEDED 后由用户显式触发——不看翻译的人不花 LLM 钱。
+     *
+     * <p>判定按序：任务不存在 → {@link TaskNotFoundException}（404）；主状态非 SUCCEEDED →
+     * {@link IllegalArgumentException}（400「字幕尚未就绪」——错在调用方触发太早，按
+     * error-handling.md「错在调用方 → IAE → 400」走既有映射，不为一次映射新建异常类型）；
+     * 翻译进行中 → 直接返回、不重入；翻译检查点已在 → <b>幂等收敛</b>为 SUCCEEDED，绝不发 LLM。
+     *
+     * <p>同步段只做判定与状态落库，LLM 翻译在虚拟线程异步执行，事件自成 {@code 0..100} 段广播。
      *
      * @param taskNo 对外任务号
      * @throws TaskNotFoundException    任务不存在
@@ -179,7 +169,7 @@ public class SubtitlePipeline {
         }
         MediaInput input = toMediaInput(task);
         if (translationStage.hasTranslationArtifact(input)) {
-            // 检查点已在,收敛为SUCCEEDED，不看翻译的人不花钱，看过的人不重复花钱
+            // 检查点已在，收敛为 SUCCEEDED：不看翻译的人不花钱，看过的人不重复花钱
             if (task.getTranslationStatus() != TranslationStatus.SUCCEEDED) {
                 task.translationSucceed();
                 repository.update(task);
@@ -241,7 +231,7 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 按需翻译的异步执行体
+     * 按需翻译的异步执行体。
      * 翻译阶段事件自成 0..100 段直通广播（无区间映射——主任务的 0..100 已在主管线跑完，
      * 翻译是独立的第二段）；翻译事件的 taskStatus 恒为主状态 SUCCEEDED。
      *
@@ -349,9 +339,8 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 从持久化字段还原管线的媒体输入：变体选择与落点规则单源在 {@link MediaInput#ofTaskInput}
-     * （提交路线共用同一工厂，重建与提交时身份一致）；本方法只负责取「工作区根 + 持久化的相对
-     * 目录」这一文件系统事实传给工厂（URL 路线用不到它）。
+     * 从持久化字段还原管线的媒体输入：变体选择与落点规则单源在 {@link MediaInput#ofTaskInput}，
+     * 本方法只负责取「工作区根 + 持久化的相对目录」这一文件系统事实传给工厂（URL 路线用不到它）。
      */
     private MediaInput toMediaInput(VideoTask task) {
         return MediaInput.ofTaskInput(task.getInputType(), task.getSourceUri(),

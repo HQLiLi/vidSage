@@ -30,7 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 /**
- * 字幕编排,从媒体音频中提取文本并落盘为字幕文件
+ * 字幕准备编排：从媒体音频中提取文本，落盘为字幕产物。
  */
 @Slf4j
 @Component
@@ -46,11 +46,9 @@ public class SubtitlePreparationCoordinator {
 
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param workspaceKeyGenerator       工作区key生成器
      * @param workspaceDirectoryManager   工作区目录管理器
-     * @param audioPreparationCoordinator 音频准备（复用 2a，本阶段不碰 ffmpeg）
+     * @param audioPreparationCoordinator 音频准备（获取媒体 + 抽取音频两阶段）
      * @param transcriber                 转写（复用云 provider）
      * @param asrProvider                 当前装配的 ASR provider（用来问规格与路线）
      * @param objectMapper                Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
@@ -71,7 +69,7 @@ public class SubtitlePreparationCoordinator {
     }
 
     /**
-     * 产出一份字幕，不关心进度（内部走 {@link ProgressListener#noop()}）。
+     * 产出一份字幕，不报告进度。
      *
      * @param input 媒体输入（URL 或本地文件）
      * @return 两个产物路径与元信息
@@ -81,7 +79,7 @@ public class SubtitlePreparationCoordinator {
     }
 
     /**
-     * 产出一份字幕：要音频 → 转写 → 写两个产物；已有非空 segments JSON 则跳过中间全程。
+     * 产出一份字幕：要音频 → 转写 → 写两个产物；已有非空 segments JSON 则整段跳过。
      *
      * @param input    媒体输入；不可为空
      * @param listener 阶段进度监听；不可为 {@code null}——不关心进度用两参重载
@@ -143,9 +141,7 @@ public class SubtitlePreparationCoordinator {
     /**
      * 读断点：segments JSON 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。
      *
-     * <p>只读 JSON，不看 SRT——SRT 是 JSON 的派生视图，即使 SRT 在而 JSON 不在也必须重跑
-     * （design 决策 4，回归测试守着这条）。判据语义（JSON 非空 = 完成、0 字节 = 未完成、
-     * SRT 不参与幂等）单源在 {@link CheckpointPolicy}。
+     * <p>只读 JSON，不看 SRT——SRT 是 JSON 的派生视图，即使 SRT 在而 JSON 不在也必须重跑。
      */
     private SubtitleTrack readCheckpoint(Path segmentsPath) {
         if (!CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(segmentsPath))) {

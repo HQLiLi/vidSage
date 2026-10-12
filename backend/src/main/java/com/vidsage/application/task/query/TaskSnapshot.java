@@ -14,9 +14,10 @@ import java.util.List;
  *
  * @param taskNo            对外任务号（32 位短 UUID；数据库自增 id 不外泄）
  * @param inputType         输入类型
- * @param sourceUri         来源：URL 原文或上传文件原始名（仅随响应返回给提交方，日志不落原值）
+ * @param sourceUri         来源：URL 原文或上传文件原始名。<b>约束：本字段值不得直接写入日志</b>
+ *                          ——含用户原始文件名，属敏感信息
  * @param status            任务状态
- * @param translationStatus 翻译子状态（2026-10-02 两段式：翻译按需触发）；{@code null} = 从未触发
+ * @param translationStatus 翻译子状态（翻译按需触发）；{@code null} = 从未触发
  * @param currentStage      最近阶段名（与 StageProgress.stage 同词表）；尚未产生阶段事件时为 {@code null}
  * @param errorMessage      终态错误信息（中文，面向用户；主任务失败或翻译子状态失败）；无错误时为 {@code null}
  * @param createdAt         创建时间

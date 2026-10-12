@@ -23,23 +23,16 @@ import java.util.Optional;
 /**
  * 音频准备编排：把「一条 {@link MediaInput} + 一个 {@link AudioSpec}」变成一份音频产物。
  *
- * <p>两个阶段：获取媒体 → 抽取音频。每个阶段在开始 /
- * 成功 / 跳过 / 失败时各发一个 {@link StageProgress}；失败路径在发完 {@code FAILED}（消息取异常
- * {@code getMessage()}）后<b>原样上抛</b>，不吞异常。
+ * <p>两个阶段：获取媒体 → 抽取音频（发出的事件序列见 directory-structure.md「进度事件序列」）。
+ * 失败路径在发完 {@code FAILED}（消息取异常 {@code getMessage()}）后 <b>原样上抛</b>，不吞异常。
  *
- * <p><b>断点复用</b>（产物存在且大小 &gt; 0 即跳过，0 字节视为不存在、必须重跑）：
- * <ul>
- *   <li>获取媒体阶段由 {@link MediaAcquirerDispatcher#reuseExisting} 判断——只有适配器知道
- *       {@code source.<ext>} 的推导规则与 info json 的解析；</li>
- *   <li>抽取音频阶段由本阶段判断——音频产物名由 {@link AudioArtifact#fileName} 按规格指纹给出
- *       （命名规则单源在 domain），且<b>先校验 spec 再判断点</b>，不放过「非法 spec + 文件恰好存在」
- *       这条路径。</li>
- * </ul>
- * 跳过时发 {@code SKIPPED} 事件并记 INFO 日志：<b>断点复用必须可观测</b>，否则「跳过了」与
- * 「没跑」分不出来。
+ * <p><b>断点复用</b>（产物存在且大小 &gt; 0 即跳过，0 字节视为不存在、必须重跑）：获取媒体阶段由
+ * {@link MediaAcquirerDispatcher#reuseExisting} 判断——只有适配器知道 {@code source.<ext>} 的推导
+ * 规则与 info json 的解析；抽取音频阶段由本阶段判断，音频产物名由 {@link AudioArtifact#fileName}
+ * 按规格指纹给出（命名规则单源在 domain），且<b>先校验 spec 再判断点</b>，不放过「非法 spec +
+ * 文件恰好存在」这条路径。
  *
- * <p><b>音频产物名与进度权重都是过渡态</b>：真正的进度形状与阶段划分应由 MVP-1 的
- * 异步管线 / SSE payload 定锤，届时以那边为准。
+
  */
 @Slf4j
 @Component
@@ -52,8 +45,6 @@ public class AudioPreparationCoordinator {
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param workspaceKeyGenerator     工作区key生成器
      * @param workspaceDirectoryManager 工作区目录管理器
      * @param acquisitionStage          媒体获取分派（不感知任何适配器实现类）
@@ -72,7 +63,7 @@ public class AudioPreparationCoordinator {
     }
 
     /**
-     * 准备音频，不关心进度（内部走 {@link ProgressListener#noop()}）。
+     * 准备音频，不报告进度。
      *
      * @param input 媒体输入
      * @param spec  音频输出规格
@@ -84,14 +75,11 @@ public class AudioPreparationCoordinator {
 
     /**
      * 准备音频：获取媒体（必要时下载）后按规格抽取音频，两阶段均支持断点复用。
-     * 断点复用：产物文件本身作为检查点的幂等重跑：同一个输入再次调用 prepare()时，
-     * 某个阶段如果发现上一次跑出来的产物已经好好躺在磁盘上，就跳过这个阶段直接拿现成的，
-     * 而不是重新下载 / 重新转码。
      *
      * @param input    媒体输入；不可为空
      * @param spec     音频输出规格；不可为空（字段合法性由其构造器保证，见 {@link AudioSpec}）
      * @param listener 阶段进度监听；<b>不可为 {@code null}</b>——不关心进度请改用两参重载
-     *                 {@link #prepare(MediaInput, AudioSpec)}（内部走 {@link ProgressListener#noop()}）
+     *                 {@link #prepare(MediaInput, AudioSpec)}
      * @return 音频产物（路径 + 规格 + 字节数）
      * @throws IllegalArgumentException 输入或规格为空、{@code listener} 为 {@code null}，
      *                                  或输入内容不合法（文件不存在、路径非法等）
@@ -110,7 +98,6 @@ public class AudioPreparationCoordinator {
                     + "或改用不带 listener 的 prepare(input, spec) 两参重载（内部走 ProgressListener.noop()）");
         }
 
-        // 获取该媒体的产物目录
         WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
         Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
         log.debug("开始准备音频: workDir={}, container={}", workDir.getFileName(), spec.container());

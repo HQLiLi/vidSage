@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 语音识别阶段：对上屏蔽 {@link ASRProvider} 的装配细节，
- * 把「音频来源 + 可选语种」组装为统一转写命令后委托当前配置的 Provider
- * （Spring 按 vidsage.asr.provider 自动装配唯一的实现 Bean）。
+ * 把「音频来源 + 可选语种」组装为统一转写命令后委托给当前装配的 Provider。
  */
 @Slf4j
 @Component
@@ -18,9 +17,6 @@ public class Transcriber {
 
     private final ASRProvider asrProvider;
 
-    /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     */
     public Transcriber(ASRProvider asrProvider) {
         this.asrProvider = asrProvider;
     }
@@ -29,8 +25,7 @@ public class Transcriber {
      * 转写一段音频，同步阻塞直到转写完成
      * （虚拟线程已全局开启，阻塞等待不占用平台线程）。
      *
-     * <p>音频来源可以是公网 URL，也可以是本进程可读的本地文件路径
-     * （本地文件由云端实现先上传到临时存储再转写）。
+     * <p>音频来源可以是公网 URL，也可以是本进程可读的本地文件路径。
      *
      * @param source   音频来源（{@link AudioSource.AudioUrl} 或 {@link AudioSource.AudioFilePath}）
      * @param language 可选语种提示（如 "zh"）；语种不确定或多语种混合时传 {@code null}

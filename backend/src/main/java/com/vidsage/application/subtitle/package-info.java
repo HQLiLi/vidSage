@@ -5,6 +5,6 @@
  * {@code SubtitleCleanupCoordinator}（切分 + LLM 清洗，两段式第一段）、
  * {@code SubtitleTranslationCoordinator}（术语查证 + LLM 翻译，按需触发的第二段）。
  *
- * <p>三者都是<b>管线阶段</b>，不是用例入口：各自只被上级管线按顺序调用一次，后缀统一为 {@code Stage}。
+ * <p>三者都是<b>管线阶段</b>，不是用例入口：各自只被上级管线按顺序调用一次。
  */
 package com.vidsage.application.subtitle;

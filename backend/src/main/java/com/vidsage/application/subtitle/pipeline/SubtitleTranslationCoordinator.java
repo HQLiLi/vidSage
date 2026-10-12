@@ -40,18 +40,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 字幕翻译编排：把「清洗后的 -clean 字幕」变成「双语 -translate 产物」。
+ * 字幕翻译编排：把清洗后的 -clean 字幕变成双语 -translate 产物；源语种与目标语种相同时不调 LLM，
+ * 直接产出「译文 = 原文」的产物。
  *
- * <p>管线形状：读 -clean segments → 取或摘要跨批上下文（{@link SubtitleContextSummarizer}）→
- * 判定源语种（源语种等于目标语种则跳过、不调 LLM）→ 术语官方译名查证（真翻译前逐条联网查证，
- * 产出 {@code terms-<route>-<target>.json}，见 {@link #verifyTermsIfNeeded}）→
- * {@link SubtitleTranslator} 逐批翻译（查证到译名的术语按给定译名渲染进提示词，
- * 见 {@link #readOfficialTerms}）→
- * 写 {@code segments-<route>-translate-<target>.json} + {@code subtitles-<route>-translate-<target>.srt}。
- *
- * <p><b>断点复用判据</b>：{@code -translate-<target>.json} 存在且非空即跳过翻译，直接反序列化返回。
- * 为什么拿 JSON 当检查点而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当检查点会让空产物永远判「未完成」
- * ——该语义单源在 {@link CheckpointPolicy}（同 {@link SubtitleCleanupCoordinator} / {@link SubtitlePreparationCoordinator}）。
+ * <p><b>断点复用</b>：{@code -translate-<target>.json} 存在且非空即跳过翻译，直接反序列化返回。
+ * 检查点语义（为什么是 JSON 而不是 SRT）单源在 {@link CheckpointPolicy}，本类不另判。
  *
  * <p><b>只读 -clean 产物</b>：输入是 {@code segments-<route>-clean.json}（只读，必须已存在），写
  * {@code -translate} 与 {@code terms-<route>-<target>.json}。<b>不静默回退到原始 segments</b>：
@@ -62,12 +55,12 @@ import java.util.stream.Collectors;
 public class SubtitleTranslationCoordinator {
 
     /**
-     * 阶段进度的起点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。
+     * 翻译阶段的进度起点（0..100 区间自报口径）。
      */
     private static final int STAGE_BEGIN = 0;
 
     /**
-     * 阶段进度的终点（0..100 区间自报口径；2026-10-02 两段式后翻译事件自成一段，不再被管线 remap）。
+     * 翻译阶段的进度终点（0..100 区间自报口径）。
      */
     private static final int STAGE_DONE = 100;
 
@@ -85,8 +78,6 @@ public class SubtitleTranslationCoordinator {
     private final SubtitleTranslator subtitleTranslator;
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param workspaceKeyGenerator     工作区key生成器
      * @param workspaceDirectoryManager 工作区目录管理器
      * @param asrProvider               当前装配的 ASR provider（取路线与产物命名指纹）
@@ -117,16 +108,13 @@ public class SubtitleTranslationCoordinator {
     }
 
     /**
-     * 翻译检查点是否已存在且非空：按需触发（2026-10-02 两段式）的幂等判据。
+     * 翻译检查点是否已存在且非空——管线启动翻译前的幂等判据。
      *
-     * <p>判定与 {@link #translate} 的断点复用完全同源——{@code segments-<route>-translate-<target>.json}
-     * 存在且非空 = 翻译已完成。管线在真正启动翻译（状态机迁移、排队、调 LLM）之前先问这一句，
-     * 命中即幂等收敛为 SUCCEEDED、绝不发 LLM：不看翻译的人不花钱，看过的人不重复花钱。
-     * route 与目标语种的知识单源在本类内（与产物命名同处），不向管线泄漏文件名公式；
-     * 断点判据语义单源在 {@link CheckpointPolicy}。
+     * <p>判定与 {@link #translate} 的断点复用同源：命中即收敛为 SUCCEEDED、绝不发 LLM，
+     * 不看翻译的人不花钱、看过的人不重复花钱。route 与目标语种的知识单源在本类内（与产物命名同处），
+     * 不向管线泄漏文件名公式；断点判据语义单源在 {@link CheckpointPolicy}。
      *
-     * <p>定位工作目录复用 {@code ensureWorkspaceDirectory}（懒创建）：本方法只在主任务 SUCCEEDED 后被调用，
-     * 工作区必然已由主管线建出；目录意外缺失时创建空目录后返回 {@code false}，无副作用危害。
+     * <p>目录意外缺失时创建空目录后返回 {@code false}，无副作用危害。
      *
      * @param input 媒体输入（与产字幕、清洗、翻译同源，用于定位工作目录）；不可为空
      * @return 翻译检查点已在且非空时为 {@code true}
@@ -148,7 +136,7 @@ public class SubtitleTranslationCoordinator {
     }
 
     /**
-     * 翻译一份已清洗的字幕（不关心进度）：内部走 {@link ProgressListener#noop()}。
+     * 翻译一份已清洗的字幕（不报告进度）。
      *
      * @param input 媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
      * @return 翻译产物（双语 SRT + segments 路径 + 源/目标语种 + 是否跳过 + 统计）
@@ -161,16 +149,6 @@ public class SubtitleTranslationCoordinator {
 
     /**
      * 翻译一份已清洗的字幕，产出双语 SRT 与翻译检查点。
-     *
-     * <p>进度事件（{@code 0..100} 自报口径；2026-10-02 两段式后翻译按需触发、事件自成一段，
-     * 调用方按需 remap 或直通）：
-     * <ul>
-     *   <li>断点复用命中 → 一条 SKIPPED（进度 100），直接返回；</li>
-     *   <li>源语种 = 目标语种 → 不调 LLM，写完照抄产物后一条 SKIPPED（进度 100）；</li>
-     *   <li>真翻译 → 开始（0，RUNNING）→ 每批翻译完成各一条（「第 x/N 批」，来自
-     *       {@link SubtitleTranslator}）→ 完成（100，SUCCEEDED）。</li>
-     * </ul>
-     * 开始事件先于「-clean 缺失」卫语句发出——失败任务的用户消息里能带上所在阶段。
      *
      * @param input    媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
      * @param listener 进度监听；不可为 {@code null}——不关心进度用单参重载
@@ -207,11 +185,11 @@ public class SubtitleTranslationCoordinator {
                     StageProgress.State.SKIPPED);
             return toTranslated(existing, translateSeg, translateSrt, 0, 0);
         }
+        // 开始事件先于「-clean 缺失」卫语句发出——失败任务的用户消息里能带上所在阶段
         emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageProgress.State.RUNNING);
 
-        // -clean 缺失：报「缺什么、怎么补」。抛 ISE → ApiExceptionHandler 映射为 500。
-        // 语义上更贴 409/400（调用顺序错，非服务端故障），但本轮与清洗侧同一取舍（见 SubtitleCleanupCoordinator）：
-        // 它是「服务端状态缺失」，可归入 error-handling 的「环境不对」；改成 4xx 超本任务「只新增」范围。
+        // -clean 缺失：报「缺什么、怎么补」。用 ISE 而不是 4xx——它属「服务端状态缺失」，
+        // 归 error-handling 的「环境不对」，且与清洗侧同一取舍（见 SubtitleCleanupCoordinator）。
         if (!ArtifactFiles.isNonEmpty(cleanSeg)) {
             throw new IllegalStateException("字幕尚未清洗：请先调用 POST /api/subtitles/clean 产出 -clean 字幕，再翻译（缺 "
                     + cleanSeg.getFileName() + "）");
@@ -219,22 +197,19 @@ public class SubtitleTranslationCoordinator {
         SubtitleTrack clean = readClean(cleanSeg);
         List<TranscriptionSegment> segments = clean.segments();
 
-        // 上下文：先读缓存，没有才摘要；摘要成功才落盘、空摘要绝不落盘——裁决单源在 CheckpointPolicy
-        // （与清洗阶段同一份）。断点分支留在本层（不在 SubtitleContextSummarizer 里）——与 -clean
-        // 断点判据同处，见 design §3.2。翻译依赖 -clean，所以清洗必定先跑并落下上下文，这里通常命中缓存。
+        // 上下文：先读缓存，没有才摘要；摘要成功才落盘、空摘要绝不落盘——裁决单源在 CheckpointPolicy。
+        // 翻译依赖 -clean，所以清洗必定先跑并落下上下文，这里通常命中缓存。
         Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(route, null));
         SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
         CheckpointPolicy.ContextResolution contextResolution = CheckpointPolicy.resolveContext(cached,
-                // 摘要请求惰性求值：缓存命中时连内容拼接与摘要调用都不发生
-                // 翻译侧传空关键词：主路径上 context-<route>.json 早在清洗阶段就写好了（清洗必定先跑），
-                // 摘要根本不会被调用；真落到这里说明缓存没了，那属于子任务 B（多语言翻译）的范围
+                // 摘要请求惰性求值：缓存命中时连内容拼接与摘要调用都不发生。
+                // 翻译侧传空关键词是安全的：主路径上 context 早在清洗阶段写好（清洗必定先跑）
                 () -> contextSummarizer.summarize(segments.stream()
                         .map(TranscriptionSegment::text)
                         .collect(Collectors.joining("\n")), new SubtitleKeywords(List.of())));
         SubtitleContext context = contextResolution.context();
         switch (contextResolution.source()) {
-            // 摘要成功才落盘：降级出的空上下文绝不能写文件，否则下次会命中这份空缓存，摘要永久丢失且不报错
-            // （design 决策 5）。
+            // 摘要成功才落盘：空上下文落盘会被下次当成缓存命中，摘要永久丢失且不报错
             case FRESH_SUMMARY -> {
                 ArtifactFiles.writeJsonAtomically(context, objectMapper, ctxFile);
                 log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
@@ -246,9 +221,7 @@ public class SubtitleTranslationCoordinator {
         // 源语种：优先摘要推断（主路径），为空回退 ASR 的 language（实测多为 null，兜底），两者皆空则不跳过
         String sourceLanguage = Bcp47Language.resolveSourceLanguage(context, clean.language());
 
-        // 术语官方译名查证：内联在翻译流程里（真翻译分支之前）。为什么挂在翻译而不挂清洗：
-        // 译名是给目标语种的译文用的，只有真的要翻译（源语种 ≠ 目标语种）才值得烧搜索费——
-        // 目标语种默认 zh 的中文素材根本走不到查证。触发条件与失败分流见 verifyTermsIfNeeded。
+        // 术语官方译名查证（触发条件与失败分流见 verifyTermsIfNeeded）
         verifyTermsIfNeeded(context, sourceLanguage, targetLanguage, termsFile);
 
         TranslatedTrack track;
@@ -282,23 +255,14 @@ public class SubtitleTranslationCoordinator {
 
     /**
      * 术语官方译名查证：把上下文里的术语逐条交给 {@link TermLookupProvider} 联网查证，
-     * 结论（官方/通用译名或弃权）落独立的 {@code terms-<route>-<target>.json}。
+     * 结论（官方 / 通用译名或弃权）落独立的 {@code terms-<route>-<target>.json}。文件 I/O 留在本层。
      *
      * <p><b>为什么挂在翻译流程</b>：查证只为译文服务，翻译不发生就不烧搜索费（目标语种默认 zh 的
-     * 中文素材走不到查证）。编排内联在本方法、不另建独立 bean：查证不是独立环节，是翻译的前置增益。
+     * 中文素材走不到查证）。它是翻译的前置增益、不是独立环节，故内联在本类而不另建 bean；
+     * 任何失败形态都不挡翻译主流程。
      *
-     * <p><b>查不查（触发判定单源 {@link TermVerification#decide}）</b>：源语种 ≠ 目标语种
-     * （复用 {@link Bcp47Language#isSameMainLanguage}，翻译真的要发生）、terms 产物未完成
-     * （<b>文件存在且非空 = 已查证</b>，与 -clean/-translate 断点同哲学：删文件即重查，换目标语种
-     * 文件名不同自然重查）、查证 provider 在容器里（yml 删 {@code vidsage.term-lookup.provider}
-     * = 查证整体关闭，跳过不报错——增益缺席不能变成故障）、确有术语可查。
-     *
-     * <p><b>怎么记、落不落（执行与记账单源 {@link TermVerification#verify}）</b>：官方/通用/弃权
-     * 逐条记账；<b>失败与弃权是两条路</b>——查证调用抛异常 = 该词<b>不进产物文件</b>（WARN 记账，
-     * 下次文件缺失时自然补查——写进去反而会把「没查成」永久固化成「已查证」）；查过但无有据译名 =
-     * {@code official} 空串落盘（弃权结论持久化，不再重搜烧钱）；<b>全部失败不落盘</b>——落一份
-     * 空产物会把整批词固化成「已查证」，下次永远不会再补查。查证任何失败形态都不挡翻译主流程——
-     * 与「摘要失败降级空上下文」同一哲学。文件 I/O 留在本层。
+     * <p>触发条件（查不查）单源在 {@link TermVerification#decide}，「失败与弃权两条路」的记账与落盘
+     * 规则单源在 {@link TermVerification#verify}——本类不另判。
      *
      * @param context        字幕上下文（术语表的来源；可为降级的空上下文——术语为空时无事可做）
      * @param sourceLanguage 源语种（可为空串：未知语种按「要翻译」处理，语种判定交给 isSameMainLanguage）
@@ -332,7 +296,7 @@ public class SubtitleTranslationCoordinator {
             }
         }
 
-        // 触发是确定性的：全量逐条查证，不做「哪些值得查」的预过滤（09-28 实证：模型不觉得自己在猜）
+        // 触发是确定性的：全量逐条查证，不做「哪些值得查」的预过滤——模型不觉得自己在猜
         log.info("术语译名查证开始: terms={}, target={}", context.terms().size(), targetLanguage);
         long start = System.currentTimeMillis();
         TermVerification.Outcome outcome = TermVerification.verify(context, targetLanguage, provider);

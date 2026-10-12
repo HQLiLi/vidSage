@@ -43,26 +43,17 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * 任务提交与查询的唯一入口：校验、查重、落库、上传落盘（design.md「数据流」）。
- * 异步执行不在这里——落库后委托 {@link SubtitlePipeline#execute} 启动管线，HTTP 秒级返回。
+ * 任务提交与查询的唯一入口：校验、查重、落库、上传落盘。异步执行不在这里——落库后委托
+ * {@link SubtitlePipeline#execute} 启动管线，HTTP 秒级返回。
  *
- * <p>两条提交路线收敛到 {@link #handleSubmit}：
- * <ul>
- *   <li><b>URL</b>（POST /api/tasks）：workspace_key = {@code RemoteUrl.getContentKey → WorkspaceKey.ofHash}，
- *       <b>只算 key 不触发建目录</b>——目录由管线内的各阶段服务按同一公式懒创建；</li>
- *   <li><b>上传</b>（POST /api/tasks/upload）：流式写盘<b>边写边算 sha256</b>，key = 内容摘要前 12 位，
- *       工作区 = {@code sanitize(原始文件名)-<key>/source.mp4}（断点复用按内容寻址，比「路径+时间戳」指纹稳），
- *       以 {@code MediaInput.InWorkspace} 直通下游——目录已解析，各阶段服务零重算。
- *       请求体是流不是 MultipartFile——HTTP 类型不进 application/。</li>
- * </ul>
+ * <p>两条提交路线（URL / 上传）收敛到 {@link #handleSubmit}，差别只在 key 怎么算：URL 路线只算 key、
+ * 不建目录；上传路线流式落盘并边写边算内容摘要，各阶段服务随后按同一公式懒创建目录。
+ * 请求体是流不是 MultipartFile——HTTP 类型不进 application/。
  *
- * <p>查询面：{@link #findByTaskNo}（视图 + 产物清单）、{@link #snapshot}（SSE 快照，DB 即权威）、
- * {@link #openArtifact}（产物下载，含路径穿越防护）。未知 taskNo 统一抛 {@link TaskNotFoundException}
- * → 404，查询 / 订阅 / 产物三端点口径一致。
- *
- * <p>查重：同 workspace_key 且状态 PENDING / RUNNING → 抛 {@link TaskConflictException}（409）。
- * 查重位置在<b>各自路线第一处副作用之前</b>：URL 路线在落库前；上传路线在临时文件移入工作区前
- * （key 必须等整份文件流写完才算得出，故晚于流式落盘、早于建工作区目录——避免留下无任务的孤儿目录）。
+ * <p>未知 taskNo 一律抛 {@link TaskNotFoundException} → 404，查询 / 订阅 / 产物三端点口径一致。
+ * 查重命中（同 workspace_key 且状态 PENDING / RUNNING）抛 {@link TaskConflictException}（409），
+ * 查重位置在<b>各自路线第一处副作用之前</b>：URL 路线在落库前，上传路线在临时文件移入工作区前
+ * ——上传路线的 key 必须等整份文件流写完才算得出，故查重晚于流式落盘、早于建目录，避免留下孤儿目录。
  */
 @Slf4j
 @Service
@@ -120,7 +111,6 @@ public class VideoTaskService {
         SubtitleKeywords validated = keywords == null ? null : new SubtitleKeywords(keywords);
         MediaInput.RemoteUrl input = new MediaInput.RemoteUrl(url.trim());
         WorkspaceKey workspaceKey = input.getContentKey(MediaFileInfo.NOT_APPLICABLE);
-        // 查重，判断是否已经有相同的工作区目录
         rejectIfActive(workspaceKey);
         String directoryName = WorkspaceDir.of(input.value(), workspaceKey).value();
         return handleSubmit(input, TaskInputType.URL, input.value(), workspaceKey, directoryName, validated);
@@ -129,8 +119,7 @@ public class VideoTaskService {
     /**
      * 上传提交路线：流式写盘边写边算 sha256 → 按内容 key 归位到工作区 → 查重 → 落库 → 异步启动管线。
      *
-     * <p>流程：先落<b>临时文件</b>（工作区根下）并同步算内容摘要 → 查重（命中即弃临时文件抛 409，
-     * 不留孤儿目录）→ 建内容寻址工作区 → 临时文件改名归位为 {@code source.mp4}（同盘 rename，不整份复制）。
+     * <p>查重命中即弃临时文件抛 409，不留孤儿目录；归位用同盘 rename，不整份复制。
      * 同一文件重复上传命中同一目录，既有产物天然可断点复用。
      *
      * @param content          上传文件内容流；不可为 {@code null}（空文件由 HTTP 边界卫语句拦下）
@@ -157,10 +146,10 @@ public class VideoTaskService {
                 rejectIfActive(workspaceKey);
                 Path source = settleUpload(temp, originalFileName, workspaceKey);
                 settled = true;
-                // 以 InWorkspace 直通下游（design.md 权衡记录）：LocalPath 会被各阶段服务按
-                // 「路径+大小+mtime」重算出另一个目录——任务 workspace_dir 与产物落点分家，
-                // 且 mtime 随重传漂移、断点复用失效。变体选择与 source.mp4 落点单源在
-                // MediaInput.ofTaskInput，管线重建走同一工厂，两个时机的输入身份必然一致
+                // 以 InWorkspace 直通下游：LocalPath 会被各阶段服务按「路径+大小+mtime」重算出
+                // 另一个目录——任务 workspace_dir 与产物落点分家，且 mtime 随重传漂移、断点复用失效。
+                // 变体选择与 source.mp4 落点单源在 MediaInput.ofTaskInput，管线重建走同一工厂，
+                // 两个时机的输入身份必然一致
                 MediaInput input = MediaInput.ofTaskInput(TaskInputType.UPLOAD, originalFileName,
                         source.getParent(), workspaceKey);
                 return handleSubmit(input, TaskInputType.UPLOAD, originalFileName, workspaceKey,
@@ -193,9 +182,8 @@ public class VideoTaskService {
     }
 
     /**
-     * 按需触发翻译（2026-10-02 两段式）：主任务 SUCCEEDED 后由用户显式触发——不看翻译的人不花
-     * LLM 钱。判定与幂等语义在 {@link SubtitlePipeline#translateTask}（未知任务 404、
-     * 未就绪 400、翻译中不重入、检查点已在则幂等收敛不发 LLM）；本方法只做装载、委托与
+     * 按需触发翻译：主任务 SUCCEEDED 后由用户显式触发——不看翻译的人不花 LLM 钱。
+     * 判定与幂等语义单源在 {@link SubtitlePipeline#translateTask}；本方法只做装载、委托与
      * <b>重读回视图</b>——translateTask 内部可能已推进翻译子状态（启动 RUNNING / 幂等收敛
      * SUCCEEDED），重读保证 202 响应的视图反映触发后的状态。
      *
@@ -213,15 +201,12 @@ public class VideoTaskService {
     }
 
     /**
-     * 重新生成字幕（后置会话）的同步段：全部判定在这里完成，抢到登记才把异步体交给管线。
-     * 判定顺序（design §3.2；卫语句早于 I/O、409 在 202 之前）：
-     * <ol>
-     *   <li>关键词构造与上限校验（非 null 时）→ IAE 400，<b>不落库、不重跑</b>（AC8）；</li>
-     *   <li>装载任务 → 404；</li>
-     *   <li>主状态非 SUCCEEDED → IAE 400「字幕尚未就绪」（与 translate 同一文案口径）；</li>
-     *   <li>抢工作区登记 → 抢不到 409（附既有任务快照——冲突的出路是去订阅它）；</li>
-     *   <li>keywords 非 null 落库（null = 不动已有列表）→ 读回生效清单 → 委派管线异步体。</li>
-     * </ol>
+     * 重新生成字幕（后置会话）的同步段：全部判定在这里完成，抢到工作区登记才把异步体交给管线。
+     *
+     * <p>顺序是硬要求——卫语句早于 I/O、409 在 202 之前：关键词校验（超限 → 400，<b>不落库、不重跑</b>）→
+     * 装载任务（404）→ 主状态非 SUCCEEDED（400「字幕尚未就绪」，与 translate 同一文案口径）→
+     * 抢工作区登记（抢不到 → 409，附既有任务快照——冲突的出路是去订阅它）→
+     * keywords 非 {@code null} 落库、读回生效清单、委派管线异步体。
      *
      * @param taskNo  对外任务号
      * @param keywords 请求体里的关键词：{@code null} = 不改变已有列表；{@code []} = 清空
@@ -247,7 +232,7 @@ public class VideoTaskService {
         }
         boolean handedOff = false;
         // tryStart 成功后的全部代码就在下面这个 try 里——落库 / 委派任何一步抛了，
-        // 都由 finally 的 handedOff 判据退登记，否则该工作区留下永远在跑的幽灵（AC10）
+        // 都由 finally 的 handedOff 判据退登记，否则该工作区留下永远在跑的幽灵
         try {
             if (validated != null) {
                 keywordRepository.replace(task.getWorkspaceKey(), validated);
@@ -282,13 +267,12 @@ public class VideoTaskService {
     }
 
     /**
-     * 组装 SSE 连接建立时的<b>快照事件</b>
-     * 任务当前状态 + 由 current_stage / status 构造的最近阶段事件；前端刷新页面重连后拿它恢复进度，
-     * 无需事件回放。主任务 SUCCEEDED 且翻译子状态存在时按翻译子状态粗粒度还原
-     * （见 {@link TaskStageEvent#from}）。
+     * 组装 SSE 连接建立时的快照事件：任务当前状态 + 由 {@code current_stage} / {@code status}
+     * 构造的最近阶段事件；前端刷新重连后拿它恢复进度，无需事件回放。主任务 SUCCEEDED 且翻译子状态
+     * 存在时按翻译子状态粗粒度还原（见 {@link TaskStageEvent#from}）。
      *
-     * <p>快照经 {@code TaskController} 通过 {@code web/sse/TaskSseConnectionManager} 推送；阶段事件的进度值取
-     * 状态的粗粒度位置（进行中为 0、完成为 100）——精确进度由增量事件携带，快照只保证形状合法。
+     * <p>阶段事件的进度值取状态的粗粒度位置（进行中 0、完成 100）——精确进度由增量事件携带，
+     * 快照只保证形状合法。
      *
      * @param taskNo 对外任务号；不可为空白
      * @return 快照事件（taskNo + 任务状态 + 最近阶段事件 + 翻译子状态；尚无阶段事件时 stage 为 {@code null}）
