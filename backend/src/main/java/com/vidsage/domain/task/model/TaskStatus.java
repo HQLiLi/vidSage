@@ -3,9 +3,8 @@ package com.vidsage.domain.task.model;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * 任务生命周期状态。合法迁移只有三条，权威定义在 {@code domain/task/VideoTask} 状态机：
- * PENDING → RUNNING（开始执行）、RUNNING → SUCCEEDED（全部阶段完成）、RUNNING → FAILED（任一阶段失败）。
- * SUCCEEDED / FAILED 是终态，不可再迁移。本表与数据库 {@code task.status} 的 ENUM 值一一对应。
+ * 任务生命周期状态。合法迁移的权威定义在 {@code VideoTask} 状态机，此处不重复。
+ * SUCCEEDED / FAILED 是终态，不可再迁移。取值与数据库 {@code task.status} 的 ENUM 一一对应。
  */
 @Schema(description = "任务状态：PENDING（排队中）/ RUNNING（执行中）/ SUCCEEDED（成功）/ FAILED（失败）")
 public enum TaskStatus {

@@ -4,11 +4,7 @@ import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 
 /**
- * 字幕关键词的出口：谁要存关键词、读关键词，都走这个接口，不直接碰数据库那一套。
- *
- * <p>实现在 {@code infrastructure/persistence/repository/}（MyBatis-Plus 那版
- * {@code MybatisSubtitleKeywordRepository}），由 Spring 注进来。本接口只说「能做什么」，
- * 底下是 MySQL 还是别的存储，领域层不关心。
+ * 字幕关键词的出口：领域侧只说「能做什么」，底下是 MySQL 还是别的存储，领域层不关心。
  *
  * <p><b>为什么外键是 {@code workspace_key} 而不是 {@code task_no}</b>：关键词是字幕产物的生成输入，
  * 该跟产物同粒度。挂 {@code task_no} 会漏——同一 URL 重新提交会新插一行 task（查重只拦

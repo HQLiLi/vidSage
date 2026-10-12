@@ -8,23 +8,20 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 /**
- * 媒体输入来源：
- * 1.远程URL
- * 2.本地文件
- * 3.已经上传的文件
+ * 媒体输入来源：远程 URL、本机文件路径、或已经落在工作区的文件（三个嵌套 record 各一种）。
  */
 public sealed interface MediaInput {
 
     /**
-     * 获取媒体的内容寻址key，决定它是在哪个工作区目录
+     * 算出这条输入的内容寻址 key，它决定这份工作落在哪个工作区目录。
      *
-     * @param mediaFileInfo 媒体信息
-     * @return 内容寻址Key
+     * @param mediaFileInfo 本机观测到的文件快照；只有本地文件路线用它算身份，其余路线忽略
+     * @return 工作区短哈希
      */
     WorkspaceKey getContentKey(MediaFileInfo mediaFileInfo);
 
     /**
-     * 目录名前半段标签。唯一性完全由 key 保证。调试阅读用
+     * 目录名里给人看的那半段标签；区分工作区靠 key 后缀，本值只供日志与调试阅读。
      */
     String dirLabel();
 
@@ -82,11 +79,11 @@ public sealed interface MediaInput {
     }
 
     /**
-     * 已经在工作区的媒体文件
+     * 已经在工作区的媒体文件。
      *
-     * @param value    路径
-     * @param key      工作区key
-     * @param dirLabel 目录前半段标签（给人看的）
+     * @param value    工作区里的文件路径
+     * @param key      工作区短哈希
+     * @param dirLabel 目录名里给人看的标签
      */
     record InWorkspace(Path value, WorkspaceKey key, String dirLabel) implements MediaInput {
         @Override

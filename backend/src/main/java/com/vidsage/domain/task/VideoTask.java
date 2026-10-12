@@ -13,29 +13,19 @@ import java.util.UUID;
 import lombok.Getter;
 
 /**
- * 视频任务：任务生命周期<b>状态机</b>的载体。放进 {@code domain/task/} 正是
- * directory-structure.md 预告的升级触发条件——这里有会<b>拒绝非法状态迁移</b>的行为方法，
- * 如 SUCCEEDED → RUNNING。
+ * 视频任务：任务生命周期<b>状态机</b>的载体——它带有<b>拒绝非法状态迁移</b>的行为方法（如
+ * SUCCEEDED → RUNNING），所以由 domain 承载，而不是只做数据容器的实体。
  *
- * <p>主状态机合法迁移只有三条，与数据库 {@code task.status} ENUM 及 TaskStatus 契约一一对应：
- * <ul>
- *   <li>{@link #start()}：PENDING → RUNNING（管线开始执行）</li>
- *   <li>{@link #succeed()}：RUNNING → SUCCEEDED（全部阶段完成）</li>
- *   <li>{@link #fail(String)}：RUNNING → FAILED（任一阶段失败）</li>
- * </ul>
- * SUCCEEDED / FAILED 是终态，任何再迁移、以及 PENDING 直接跳到终态，都抛 {@link IllegalStateException}。
+ * <p>主状态机的合法迁移只有三条（{@link #start()} / {@link #succeed()} / {@link #fail(String)}，
+ * 见各自的方法注释）。SUCCEEDED / FAILED 是终态，任何再迁移、以及 PENDING 直接跳到终态，
+ * 都抛 {@link IllegalStateException}。
  *
- * <p><b>翻译子状态机（2026-10-02 两段式）</b>：翻译不随主管线自动执行，主任务 SUCCEEDED 后由用户
- * 按需触发，{@code translationStatus}（null = 从未触发）刻画这段第二生命周期——
- * {@link #translationStart()} / {@link #translationSucceed()} / {@link #translationFail(String)}，
- * 仅当主状态 SUCCEEDED 后允许流转，非法迁移同样抛 {@link IllegalStateException}；主状态不因翻译
- * 失败而回退。两台状态机共享 updatedAt，翻译失败信息复用 errorMessage（「翻译失败：」前缀）。
+ * <p><b>翻译子状态机</b>：主任务 SUCCEEDED 后由用户按需触发的第二生命周期，见
+ * {@link #translationStart()} / {@link #translationSucceed()} / {@link #translationFail(String)}。
+ * 仅主状态 SUCCEEDED 后允许流转，主状态不因翻译失败而回退。
  *
- * <p>字段不开放 setter：状态与时间戳只能经迁移方法变更；阶段名经 {@link #updateStage(String)} 变更
- * （限 RUNNING 期间）。时间戳随迁移自动落，无需调用方操心。
- *
- * <p>{@code id} 是数据库内部行 id（persistence 层回填），<b>不对外</b>——对外只暴露 taskNo。
- * 重建已持久化任务只能走 {@link #restore}（仅供 persistence 层使用）。
+ * <p>状态与时间戳只能经迁移方法变更；{@code id} 是数据库内部行 id（persistence
+ * 层回填），<b>不对外</b>——对外只暴露 taskNo。重建已持久化任务只能走 {@link #restore}。
  */
 @Getter
 public class VideoTask {
@@ -56,12 +46,14 @@ public class VideoTask {
     private final TaskInputType inputType;
 
     /**
-     * 来源：URL 原文或上传文件原始名（日志不落原值）。
+     * 来源：URL 原文或上传文件原始名。
+     *
+     * <p><b>约束：本字段值不得直接写入日志</b>——含用户原始文件名，属敏感信息。
      */
     private final String sourceUri;
 
     /**
-     * 工作区短哈希（查重用，见 {@link WorkspaceKey}）：URL / 本地路径取 normalize 串摘要，上传取内容 sha256 前 12 位。
+     * 工作区短哈希（查重用，见 {@link WorkspaceKey}）。
      */
     private final WorkspaceKey workspaceKey;
 
@@ -81,13 +73,14 @@ public class VideoTask {
     private String currentStage;
 
     /**
-     * 翻译子状态（2026-10-02 两段式）：{@code null} = 从未触发；仅主状态 SUCCEEDED 后
+     * 翻译子状态：{@code null} = 从未触发；仅主状态 SUCCEEDED 后
      * 经迁移方法流转。与主状态 {@link #status} 相互独立。
      */
     private TranslationStatus translationStatus;
 
     /**
-     * 终态错误信息（中文，面向用户；主任务失败或翻译子状态失败——后者带「翻译失败：」前缀）。
+     * 终态错误信息（中文，面向用户）。主任务失败、翻译子状态失败、重新生成失败
+     * 共用本字段，各自带前缀区分——同一任务同一时刻只有一种「最近失败」。
      */
     private String errorMessage;
 
@@ -216,7 +209,7 @@ public class VideoTask {
     }
 
     /**
-     * 翻译子状态启动（2026-10-02 两段式）：主任务 SUCCEEDED 后按需触发翻译。允许从「从未触发」
+     * 翻译子状态启动：主任务 SUCCEEDED 后按需触发翻译。允许从「从未触发」
      * （null）、失败（FAILED，失败重试）与已完成（SUCCEEDED，检查点被删后的重跑）进入；
      * 翻译进行中（RUNNING）重复触发被拒绝——调用方以此保证「不重入」。
      *
@@ -269,7 +262,7 @@ public class VideoTask {
      * 记一次后置会话（重新生成字幕）的失败原因：主状态保持 SUCCEEDED——旧字幕一个字没少、还能用，
      * 重生成失败只是「这次更新没成」，不是任务失败，所以不能走 {@link #fail}
      * （SUCCEEDED 是终态，不许再迁移）。只刷新 {@code errorMessage} 与 {@code updatedAt}，
-     * 由调用方带「重新生成失败：」前缀组装并广播收口。
+     * 由调用方带 {@link #REGENERATE_FAILURE_PREFIX} 组装并广播收口。
      *
      * @param errorMessage 失败原因（中文，面向用户；调用方带前缀组装）
      * @throws IllegalStateException 主任务不在 SUCCEEDED（后置会话的前置条件被破）
@@ -283,7 +276,7 @@ public class VideoTask {
     /**
      * 重新生成失败原因的前缀：{@link #recordRegenerateFailure} 落的文案都以它开头，
      * 下次重生成成功时按前缀认领并清掉——旧失败文案挂在成功的任务视图上会误导用户。
-     * 单源在这里，组装方（{@code TaskProgressNotifier.failRegenerate}）与清除方共用。
+     * 单源在这里，组装方与清除方共用。
      */
     public static final String REGENERATE_FAILURE_PREFIX = "重新生成失败：";
 
@@ -302,14 +295,14 @@ public class VideoTask {
     /**
      * 「进行中」状态集合（PENDING / RUNNING）：提交查重的 active 判据单源——同一输入已有任务在
      * 排队或执行即视为冲突，终态任务不算 active（重新提交同一输入是断点复用的正常路径）。
-     * {@code VideoTaskRepository.findActiveByWorkspaceKey} 的 SQL 过滤据此构造，规则只有这一处定义
-     * （2026-10-06 自 repository 内联字面量下沉：业务谓词不写在 infrastructure 里）。
+     * {@code VideoTaskRepository.findActiveByWorkspaceKey} 的 SQL 过滤据此构造：业务谓词不写在
+     * infrastructure 里，规则只有这一处定义。
      */
     public static final Set<TaskStatus> ACTIVE_STATUSES = Set.of(TaskStatus.PENDING, TaskStatus.RUNNING);
 
     /**
-     * 当前任务是否已经结束：完成（SUCCEED）或者失败(FAILED)
-     * 注：翻译后续会改成多语言选择，因此未来会删除判断是否处于翻译
+     * 任务是否已经结束：主状态是终态（SUCCEEDED / FAILED），且翻译没在进行中。
+     * 用于事件分发——返回 {@code true} 表示该任务不会再产生后续状态事件。
      *
      * @param mainStatus        任务主状态
      * @param translationStatus 翻译子状态；从未触发为 {@code null}
@@ -321,8 +314,8 @@ public class VideoTask {
     }
 
     /**
-     * 翻译子状态流转的公共前置守卫：翻译只在主任务成功（SUCCEEDED）后的第二生命周期里流转，
-     * 其他主状态下一律拒绝。
+     * 后置生命周期流转的公共前置守卫：翻译、重新生成等第二生命周期动作只在主任务成功
+     * （SUCCEEDED）后允许，其他主状态下一律拒绝。
      */
     private void requireMainSucceededForTranslation(String action) {
         if (status != TaskStatus.SUCCEEDED) {

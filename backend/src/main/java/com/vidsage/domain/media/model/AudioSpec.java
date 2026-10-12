@@ -1,33 +1,25 @@
 package com.vidsage.domain.media.model;
 
 /**
- * 调用方指定的音频输出规格。本环节不猜测「要什么规格」，一律由调用方传入
- * （例如由 ASR provider 声明它需要 WAV 还是 M4A）。
+ * 调用方指定的音频输出规格：本环节不猜测「要什么规格」，一律由调用方传入（例如由 ASR provider
+ * 声明它需要 WAV 还是 M4A）。「容器 → 编码器 / 参数」的映射只写在具体抽取实现里。
  *
- * <p>字段只描述「我要什么音频」，不含任何 ffmpeg 参数名与编码器名；
- * 「容器 → 编码器/参数」的映射只写在具体抽取实现里。
- *
- * <p><b>字段不变量由紧凑构造器结构性保证</b>：违反契约的取值<b>无法构造出实例</b>，
- * 构造即抛 {@link IllegalStateException}。故本类型是一袋<b>保证合法</b>的数据，
- * 使用方无需再做字段校验。异常类型选 {@code ISE} 而非 {@code IAE} 是刻意的：
- * 走到构造器才发现的非法值意味着<b>服务端自己算错了</b>（调用方给的非法值应在 HTTP 边界
- * 就被卫语句拦下，见 web/controller/MediaController），故映射为 500 / ERROR 而非 400 / WARN
- * ——宁可把服务端缺陷大声暴露，也不要藏进「用户错误」里。
+ * <p><b>字段不变量由紧凑构造器结构性保证</b>：违反契约的取值<b>无法构造出实例</b>，构造即抛
+ * {@link IllegalStateException}，使用方无需再做字段校验。选 ISE 而非 IAE 是刻意的：走到构造器
+ * 才发现的非法值意味着<b>服务端自己算错了</b>（调用方的非法值该在 HTTP 边界的卫语句就被拦下），
+ * 故映射为 500 / ERROR 而非 400 / WARN。
  *
  * @param container       目标容器（WAV / M4A）
  * @param sampleRateHz    采样率（赫兹），如 16000；<b>不要传 0</b>，必须给出明确采样率
  * @param channels        声道数，如 1（单声道）；<b>不要传 0</b>
  * @param bitrateKbps     有损容器的目标码率（kbps），如 48；<b>无损容器传 0 表示不适用</b>
- * @param audioTrackIndex 取第几条音频轨（从 0 起）。<b>多音轨媒体必须由调用方显式决定</b>——
- *                        抽取实现的默认选轨跟随元数据 disposition，可能静默取错轨
+ * @param audioTrackIndex 取第几条音频轨（从 0 起）；多音轨媒体必须显式决定，默认选轨会静默取错轨
  */
 public record AudioSpec(AudioContainer container, int sampleRateHz, int channels,
                         int bitrateKbps, int audioTrackIndex) {
 
     /**
-     * 字段不变量（契约级约束，与 ffmpeg 无关）。消息文本与原先写在
-     * {@code AudioPreparationCoordinator} / {@code FfmpegAudioExtractor} 两处的
-     * {@code requireValidSpec} 逐字一致——两处校验各写一遍的做法已被本构造器取代。
+     * 字段不变量（契约级约束，与 ffmpeg 无关）。
      */
     public AudioSpec {
         if (container == null) {

@@ -6,11 +6,7 @@ import com.vidsage.domain.task.model.TaskNo;
 import java.util.Optional;
 
 /**
- * 任务持久化的出口：谁要存任务、读任务，都走这个接口，不直接碰数据库那一套。
- *
- * <p>实现在 {@code infrastructure/persistence/repository/}（当前是 MyBatis-Plus 那版
- * {@code MybatisVideoTaskRepository}），由 Spring 注进来。本接口只说「能做什么」，
- * 底下是 MySQL 还是别的存储，领域层不关心。
+ * 任务持久化的出口：领域侧只说「能做什么」，底下是 MySQL 还是别的存储，领域层不关心。
  *
  * <p>「什么算进行中」是业务判据，单源在 {@link VideoTask#ACTIVE_STATUSES}；实现类只负责
  * 把它落成查询条件，不自己另定一套。

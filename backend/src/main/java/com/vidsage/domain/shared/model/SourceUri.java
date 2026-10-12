@@ -3,22 +3,18 @@ package com.vidsage.domain.shared.model;
 import java.nio.file.Path;
 
 /**
- * 输入身份的规范化串（值对象）：内容寻址的哈希输入——同一输入必须规范化出同一串、
- * 不同输入必须规范化出不同串；工作区 key（{@link WorkspaceKey#ofHash}）由它哈希而来。
+ * 输入身份的规范化串（值对象）：内容寻址的哈希输入。
+ * 同一输入必须规范化出同一串；本类不承诺不同输入一定规范化出不同串
+ * （哈希碰撞无法排除）。工作区 key（{@link WorkspaceKey#ofHash}）由它哈希而来。
  *
- * <p>两条公式（{@code MediaInput.getContentKey} 按变体分派到这里的静态工厂，
- * 本类不感知 MediaInput）：
- * <ul>
- *   <li><b>远程 URL</b>：{@link #ofRemoteUrl}——URL 原文原样参与哈希（{@code null} 视为空串）；</li>
- *   <li><b>本地文件</b>：{@link #ofLocalFile}——{@code 绝对路径|大小|最后修改时间毫秒}。后两段构成
- *       内容指纹：同一份文件即使被重新拷贝成另一路径，只要大小与时间戳不变就落回同一身份；
- *       文件不存在 / 不可读时后两段取 {@link #UNAVAILABLE} 占位。<b>本类不做文件 I/O</b>——
- *       文件 stat（{@code Files.size} / {@code getLastModifiedTime}）由 application 读取后
- *       以三元组传入，身份公式只做纯计算。</li>
- * </ul>
+ * <p>有两条路线：远程 URL 以 URL 原文为身份；本地文件以
+ * {@code 绝对路径|大小|最后修改时间毫秒} 为身份。具体公式、占位与参数语义
+ * 见 {@link #ofRemoteUrl} 与 {@link #ofLocalFile}。
  *
- * <p>与落库的 {@code source_uri} 列（原始来源描述：URL / 原始文件名）是两个概念：本类是
- * 哈希输入的身份规范化串，只在计算 key 时存在，不落库、不出境。
+ * <p><b>本类不做文件 I/O</b>：stat 由 application 读取后以三元组传入。
+ *
+ * <p>与落库的 {@code source_uri} 列（原始来源描述：URL / 原始文件名）是两个概念：
+ * 本类只用于计算 key，不落库、不出境。
  *
  * @param value 规范化后的身份串
  */
@@ -33,7 +29,7 @@ public record SourceUri(String value) {
     /**
      * 远程 URL 路线的身份：URL 原文即规范化串。
      *
-     * @param url 完整 URL；{@code null} 按空串参与哈希（与原 normalize 公式一致，不做改写）
+     * @param url 完整 URL；{@code null} 按空串参与哈希，不做改写
      * @return 规范化后的身份值对象
      */
     public static SourceUri ofRemoteUrl(String url) {
