@@ -266,6 +266,40 @@ public class VideoTask {
     }
 
     /**
+     * 记一次后置会话（重新生成字幕）的失败原因：主状态保持 SUCCEEDED——旧字幕一个字没少、还能用，
+     * 重生成失败只是「这次更新没成」，不是任务失败，所以不能走 {@link #fail}
+     * （SUCCEEDED 是终态，不许再迁移）。只刷新 {@code errorMessage} 与 {@code updatedAt}，
+     * 由调用方带「重新生成失败：」前缀组装并广播收口。
+     *
+     * @param errorMessage 失败原因（中文，面向用户；调用方带前缀组装）
+     * @throws IllegalStateException 主任务不在 SUCCEEDED（后置会话的前置条件被破）
+     */
+    public void recordRegenerateFailure(String errorMessage) {
+        requireMainSucceededForTranslation("记录重新生成失败");
+        this.errorMessage = errorMessage;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 重新生成失败原因的前缀：{@link #recordRegenerateFailure} 落的文案都以它开头，
+     * 下次重生成成功时按前缀认领并清掉——旧失败文案挂在成功的任务视图上会误导用户。
+     * 单源在这里，组装方（{@code TaskProgressNotifier.failRegenerate}）与清除方共用。
+     */
+    public static final String REGENERATE_FAILURE_PREFIX = "重新生成失败：";
+
+    /**
+     * 重新生成成功后清掉上一次的失败原因：<b>只认领自己那个前缀</b>——
+     * 主管线失败（终态后重生成根本不会跑）与翻译失败（「翻译失败：」前缀，另一台生命周期）
+     * 的错误信息一概不动。
+     */
+    public void clearRegenerateFailure() {
+        if (errorMessage != null && errorMessage.startsWith(REGENERATE_FAILURE_PREFIX)) {
+            errorMessage = null;
+            updatedAt = LocalDateTime.now();
+        }
+    }
+
+    /**
      * 「进行中」状态集合（PENDING / RUNNING）：提交查重的 active 判据单源——同一输入已有任务在
      * 排队或执行即视为冲突，终态任务不算 active（重新提交同一输入是断点复用的正常路径）。
      * {@code VideoTaskRepository.findActiveByWorkspaceKey} 的 SQL 过滤据此构造，规则只有这一处定义

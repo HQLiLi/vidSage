@@ -17,6 +17,8 @@ import java.util.function.Supplier;
  *       字节数：政策不接受任何路径/扩展名入参，SRT 大小进不了判定</li>
  *   <li>文件在但解析失败：当未完成重跑（重新跑一遍比留一个坏产物好）——该机制的 I/O 与解析留在应用层，
  *       本政策只承载判据。</li>
+ *   <li><b>产物在但「对不上当前输入」也要重跑</b>（2026-10-12 起，见 {@link #isCurrent}）：
+ *       清洗产物记着生成它的关键词指纹，关键词变了就该重新生成一遍。</li>
  * </ul>
  *
  * <p><b>上下文政策（SubtitleCleanupCoordinator 与 SubtitleTranslationCoordinator 两处近逐字重复，合流于此）</b>：
@@ -42,6 +44,27 @@ public final class CheckpointPolicy {
      */
     public static boolean isCompleted(long checkpointSizeBytes) {
         return checkpointSizeBytes > 0;
+    }
+
+    /**
+     * 检查点是否「就是当前这一份」：字节数 &gt; 0 <b>且</b>指纹与当前一致。
+     *
+     * <p><b>与 {@link #isCompleted} 的分工</b>：那是「这份产物在不在」，这条是「这份产物还对不对得上
+     * 我现在的输入」。产物在但关键词变了，照旧得重跑——否则用户改完关键词看到的是一份按旧关键词生成的
+     * 字幕，而且系统一句话都不说。
+     *
+     * <p><b>存的那份为 {@code null} 一律判 {@code false}</b>（即「不一致，重跑」）：那是与关键词无关的
+     * 产物（原始转写），或存量产物里根本没有这一栏。安全方向永远是重跑。
+     *
+     * @param checkpointSizeBytes 检查点产物字节数（调用方量好传入，缺失/非普通文件传 0）
+     * @param storedFingerprint  产物里记着的指纹；{@code null} = 没记（与关键词无关的产物 / 存量产物）
+     * @param currentFingerprint 当前这份输入算出的指纹
+     * @return 产物非空且指纹一致时为 {@code true}
+     */
+    public static boolean isCurrent(long checkpointSizeBytes, String storedFingerprint, String currentFingerprint) {
+        return isCompleted(checkpointSizeBytes)
+                && storedFingerprint != null
+                && storedFingerprint.equals(currentFingerprint);
     }
 
     /**

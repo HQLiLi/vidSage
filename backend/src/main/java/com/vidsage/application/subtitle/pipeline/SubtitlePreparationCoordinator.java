@@ -125,7 +125,8 @@ public class SubtitlePreparationCoordinator {
                 new AudioSource.AudioFilePath(audio.audioPath().toString()), null);
         emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "转写完成", StageProgress.State.SUCCEEDED);
 
-        SubtitleTrack track = new SubtitleTrack(route, result.language(), result.segments());
+        // 原始转写与关键词无关，指纹恒为 null——纠错发生在下游的 -clean 产物上
+        SubtitleTrack track = new SubtitleTrack(route, result.language(), result.segments(), null);
         if (result.segments().isEmpty()) {
             // 空转写是合法产出：0 字节 SRT + 内容正常（segments:[]）的 JSON
             log.warn("ASR 未识别出任何内容，产出空字幕: segmentsPath={}，可能是纯音乐或无语音音频",

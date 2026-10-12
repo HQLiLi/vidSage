@@ -3,6 +3,7 @@ package com.vidsage.domain.subtitle.port;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import java.util.List;
 
@@ -24,13 +25,16 @@ public interface SubtitleCleanser {
      *
      * @param segments 拆分后的字幕列表
      * @param context  字幕上下文（主题 / 源语种 / 术语表）
-     * @param reference 术语表
+     * @param keywords 用户手填的关键词（专有名词的正确写法；没有就传空清单，不要传 {@code null}）
+     *                 ——<b>它不进术语表</b>：那是 {@code SubtitleContext.Term} 的活，有 {@code asr → fixed}
+     *                 的对照关系。关键词只有「正确写法」，硬编成 {@code asr = fixed} 会被校验里那个
+     *                 「无需替换就跳过」的分支全部跳过，等于失效（design 决策 2）。
      * @param listener 批级进度回调；不可为 {@code null}
      * @return 清洗结果
      * @throws IllegalArgumentException segments 或 listener 为 {@code null}
      */
     CleanseResult clean(List<TranscriptionSegment> segments,
                         SubtitleContext context,
-                        String reference,
+                        SubtitleKeywords keywords,
                         ProgressListener listener);
 }

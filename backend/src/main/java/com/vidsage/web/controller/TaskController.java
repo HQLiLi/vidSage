@@ -3,6 +3,8 @@ package com.vidsage.web.controller;
 import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.web.dto.SubmitUrlRequest;
+import com.vidsage.web.dto.RegenerateSubtitlesRequest;
+import com.vidsage.web.dto.SubtitleKeywordsResponse;
 import com.vidsage.web.dto.TaskResponse;
 import com.vidsage.web.sse.TaskSseConnectionManager;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.List;
 import java.io.InputStream;
 
 /**
@@ -59,50 +62,57 @@ public class TaskController {
      * 支持的站点——本项目验证过 B 站视频页与 YouTube；未验证站点不提前拦截，
      * 交给 yt-dlp 提取，失败即任务 FAILED + SSE 推 FAILED 事件
      *
-     * @param request 请求体（url 必填）
+     * @param request 请求体（url 必填；keywords 可选）
      * @return 新任务的 PENDING 视图（拿 taskNo 去查询 / 订阅进度）
-     * @throws IllegalArgumentException                                     url 为空白（400）
+     * @throws IllegalArgumentException                                     url 为空白 / 关键词超限（400）
      * @throws com.vidsage.application.task.exception.TaskConflictException 同 URL 已有进行中任务（409，响应体附既有任务）
      */
     @Operation(summary = "提交 URL 任务",
             description = "异步执行到原文字幕就绪（下载 → 抽音频 → 转写 → 清洗），立即返回 202 与任务视图；"
                     + "翻译需任务成功后另调 POST /api/tasks/{taskNo}/translate 触发。"
-                    + "同一 URL 已有排队 / 执行中任务时返回 409")
+                    + "同一 URL 已有排队 / 执行中任务时返回 409。"
+                    + "keywords 为 null（字段缺席）= 本次不带关键词、不动该工作区已有的关键词，"
+                    + "[]（显式空数组）= 写入空清单（该工作区此后按原样清洗）；"
+                    + "单条最多 50 字、最多 50 条，超限 400 且不落库")
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     public TaskResponse submitUrl(@RequestBody SubmitUrlRequest request) {
-        // 卫语句先于一切 I/O（error-handling.md）：url 缺失在边界拦下，不进服务层
         if (request == null || !StringUtils.hasText(request.url())) {
             throw new IllegalArgumentException("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
         log.info("收到任务提交: sourceType=URL");
-        return TaskResponse.from(taskService.submitUrl(request.url()));
+        return TaskResponse.from(taskService.submitUrl(request.url(), request.keywords()));
     }
 
     /**
      * 上传本地视频 / 音频文件提交任务：流式落盘（按内容寻址），异步执行到原文字幕就绪为止
      * 翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
      *
-     * @param file 上传的媒体文件（multipart 字段名 file）；不能为空
+     * @param file      上传的媒体文件（multipart 字段名 file）；不能为空
+     * @param keywords  可选关键词，可重复携带（keywords=A&amp;keywords=B）；缺席 = 不带关键词
      * @return 新任务的 PENDING 视图
-     * @throws IllegalArgumentException                                     文件缺失或为空（400）
+     * @throws IllegalArgumentException                                     文件缺失或为空 / 关键词超限（400）
      * @throws com.vidsage.application.task.exception.TaskConflictException 同内容文件已有进行中任务（409）
      * @throws IllegalStateException                                        读取上传流失败 / 落盘失败（500）
      */
     @Operation(summary = "上传本地文件提交任务",
             description = "multipart 字段名 file；流式落盘按内容寻址，同一文件重复上传命中同一工作区。"
-                    + "上限见 spring.servlet.multipart.max-file-size（默认 2GB）")
+                    + "上限见 spring.servlet.multipart.max-file-size（默认 2GB）。"
+                    + "可选 keywords 字段可重复携带（keywords=A&keywords=B），语义与 POST /api/tasks 一致"
+                    + "（缺席 = 不带关键词、不动该工作区已有的关键词；[] = 写入空清单）；"
+                    + "单条最多 50 字、最多 50 条，超限 400 且不落库")
     @PostMapping("/upload")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public TaskResponse submitUpload(@RequestParam("file") MultipartFile file) {
+    public TaskResponse submitUpload(@RequestParam("file") MultipartFile file,
+                                     @RequestParam(value = "keywords", required = false) List<String> keywords) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空：请选择本地视频 / 音频文件后再提交");
         }
         // 原始文件名是用户资源，不落日志；字节数是度量，可以记
         log.info("收到任务提交: sourceType=UPLOAD, sizeBytes={}", file.getSize());
         try (InputStream in = file.getInputStream()) {
-            return TaskResponse.from(taskService.submitUpload(in, file.getOriginalFilename()));
+            return TaskResponse.from(taskService.submitUpload(in, file.getOriginalFilename(), keywords));
         } catch (IOException e) {
             throw new IllegalStateException("读取上传文件流失败：" + e.getMessage() + "；请重试或换一个文件", e);
         }
@@ -169,6 +179,54 @@ public class TaskController {
         }
         log.info("触发字幕翻译: taskNo={}", taskNo);
         return TaskResponse.from(taskService.translate(taskNo));
+    }
+
+    /**
+     * 重新生成字幕（后置会话）：按请求里的关键词重跑清洗，成功后旧的译文与术语产物一并清掉
+     * （译文对不上新字幕了）。同步判定（404 / 400 未就绪 / 409 互斥 / 400 关键词超限）在服务层完成，
+     * 202 返回当前任务视图，进度另走 SSE。
+     *
+     * @param taskNo  提交响应返回的任务号
+     * @param request 关键词清单；<b>{@code null}（字段缺席）= 不改变已有列表，按现有关键词重跑；
+     *                {@code []}（显式空数组）= 清空后重跑</b>
+     * @return 触发后的任务视图
+     * @throws IllegalArgumentException                                     taskNo / 关键词超限（400）、字幕尚未就绪（400）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskConflictException 同一工作区已有重新生成会话在跑（409）
+     */
+    @Operation(summary = "重新生成字幕（改关键词后重跑清洗）",
+            description = "主任务 SUCCEEDED 后可触发；202 返回任务视图，进度走 SSE。"
+                    + "keywords 为 null（字段缺席）= 不改变已有列表，[]（显式空数组）= 清空，两者语义不同。"
+                    + "单条最多 50 字、最多 50 条，超限 400 且不落库不重跑；"
+                    + "同一工作区已有重新生成在跑时 409；主任务未成功时 400（字幕尚未就绪）")
+    @PostMapping("/{taskNo}/subtitles/regenerate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public TaskResponse regenerate(@PathVariable String taskNo,
+                                   @RequestBody RegenerateSubtitlesRequest request) {
+        if (!StringUtils.hasText(taskNo)) {
+            throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
+        }
+        log.info("重新生成字幕: taskNo={}", taskNo);
+        return TaskResponse.from(taskService.regenerate(taskNo,
+                request == null ? null : request.keywords()));
+    }
+
+    /**
+     * 读回该任务的关键词清单与指纹：前端拿指纹与 {@code segments-*-clean.json} 里的
+     * {@code keywordsFingerprint} 比对，就知道「这份字幕对不对得上当前关键词」。
+     *
+     * @param taskNo 提交响应返回的任务号
+     * @return 关键词清单（用户填写顺序）与指纹；从没填过时为空清单
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
+     */
+    @Operation(summary = "查询关键词清单与指纹",
+            description = "按 taskNo 返回该工作区的关键词清单（用户填写顺序）与指纹；不存在的任务返回 404")
+    @GetMapping("/{taskNo}/keywords")
+    public SubtitleKeywordsResponse findKeywords(@PathVariable String taskNo) {
+        if (!StringUtils.hasText(taskNo)) {
+            throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
+        }
+        return SubtitleKeywordsResponse.from(taskService.findKeywords(taskNo));
     }
 
     /**

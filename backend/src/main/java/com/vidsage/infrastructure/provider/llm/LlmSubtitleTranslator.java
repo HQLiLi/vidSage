@@ -448,15 +448,16 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
         // 1. 本批次后面的部分字幕，增加点前后批关联，缓解跨批次的语义坍塌问题。
         if (!after.isEmpty()) {
             sb.append("### 后文参考\n")
-                    .append("<subsequent_content>\n")
-                    .append(String.join("\n", after))
-                    .append("\n</subsequent_content>\n\n")
+                    .append(PromptDataBlock.renderLines("subsequent_content", after))
+                    .append("\n\n")
                     .append("以上后文仅供参考，不要翻译，也不要出现在返回结果里。\n\n");
         }
 
         // 2. 全篇主题
         if (context != null && !context.theme().isBlank()) {
-            sb.append("### 内容主题\n").append(context.theme()).append("\n\n");
+            sb.append("### 内容主题\n")
+                    .append(PromptDataBlock.render("theme", context.theme()))
+                    .append("\n\n");
         }
 
         // 3. 术语参考：语义与清洗侧相反——那边给的是「候选正确写法 + 替换理由」，让模型判断换不换；
@@ -474,24 +475,9 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
                     keepOriginal.add(t);
                 }
             }
-            sb.append("### 术语参考（专有名词，必须严格遵守）\n");
-            if (!withOfficial.isEmpty()) {
-                sb.append("以下术语翻译时必须使用给定的译名，不得使用其他译法：\n");
-                for (SubtitleContext.Term t : withOfficial) {
-                    sb.append("- \"").append(t.fixed()).append("\" → \"")
-                            .append(officialByFixed.get(t.fixed())).append("\"\n");
-                }
-            }
-            if (!keepOriginal.isEmpty()) {
-                if (!withOfficial.isEmpty()) {
-                    sb.append('\n');
-                }
-                sb.append("以下写法是专有名词，翻译时保留原样，不要译成目标语种：\n");
-                for (SubtitleContext.Term t : keepOriginal) {
-                    sb.append("- \"").append(t.fixed()).append("\"\n");
-                }
-            }
-            sb.append('\n');
+            sb.append("### 术语参考（专有名词，必须严格遵守）\n")
+                    .append(PromptDataBlock.renderLines("terms_reference", renderTermLines(withOfficial, keepOriginal, officialByFixed)))
+                    .append('\n');
         }
 
         // 4. 本批正文与翻译要求。目标语种在 system 提示词里已定型一次，这里再贴一遍：
@@ -509,6 +495,40 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
         return sb.toString();
     }
 
+
+    /**
+     * 术语参考的逐行渲染（清洗侧是另一种口径，见 {@link LlmSubtitleCleanser}）：
+     * 先给「有查证译名、必须照译」的，再空一行给「是专有名词、保留原样」的。
+     *
+     * <p>两条小标题也是拼进同一块数据块的——它们和术语条目一样来自摘要层（进而可能来自用户关键词），
+     * 一起归一才是完整的一幅数据。
+     *
+     * @param withOfficial    查到了译名的术语
+     * @param keepOriginal    没有译名、维持原样的术语
+     * @param officialByFixed fixed 写法 → 查证译名
+     * @return 逐行文本；两组都空时是空列表
+     */
+    private static List<String> renderTermLines(List<SubtitleContext.Term> withOfficial,
+                                                List<SubtitleContext.Term> keepOriginal,
+                                                Map<String, String> officialByFixed) {
+        List<String> lines = new ArrayList<>();
+        if (!withOfficial.isEmpty()) {
+            lines.add("以下术语翻译时必须使用给定的译名，不得使用其他译法：");
+            for (SubtitleContext.Term t : withOfficial) {
+                lines.add("- \"" + t.fixed() + "\" → \"" + officialByFixed.get(t.fixed()) + "\"");
+            }
+        }
+        if (!keepOriginal.isEmpty()) {
+            if (!withOfficial.isEmpty()) {
+                lines.add("");
+            }
+            lines.add("以下写法是专有名词，翻译时保留原样，不要译成目标语种：");
+            for (SubtitleContext.Term t : keepOriginal) {
+                lines.add("- \"" + t.fixed() + "\"");
+            }
+        }
+        return lines;
+    }
 
     /**
      * 把查证产物收成「fixed 写法 → 查证译名」的映射，供术语参考渲染查表。

@@ -9,14 +9,20 @@ import com.vidsage.application.task.pipeline.SubtitlePipeline;
 import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskSnapshot;
+import com.vidsage.application.task.query.KeywordsSnapshot;
+import com.vidsage.application.task.session.TaskSessionRegistry;
 import com.vidsage.domain.media.model.MediaFileInfo;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.WorkspaceDir;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskNo;
+import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import com.vidsage.shared.fs.ArtifactFiles;
@@ -73,41 +79,51 @@ public class VideoTaskService {
     private static final String TEMP_FILE_SUFFIX = ".part";
 
     private final VideoTaskRepository repository;
+    private final SubtitleKeywordRepository keywordRepository;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
     private final SubtitlePipeline pipeline;
     private final TaskProgressNotifier taskProgressNotifier;
+    private final TaskSessionRegistry taskSessionRegistry;
 
 
     public VideoTaskService(VideoTaskRepository repository,
+                            SubtitleKeywordRepository keywordRepository,
                             SubtitlePipeline pipeline,
                             WorkspaceDirectoryManager workspaceDirectoryManager,
-                            TaskProgressNotifier taskProgressNotifier
+                            TaskProgressNotifier taskProgressNotifier,
+                            TaskSessionRegistry taskSessionRegistry
     ) {
         this.repository = repository;
+        this.keywordRepository = keywordRepository;
         this.pipeline = pipeline;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
         this.taskProgressNotifier = taskProgressNotifier;
+        this.taskSessionRegistry = taskSessionRegistry;
     }
 
     /**
      * URL 提交路线：算工作区 key → 查重 → 落库 → 异步启动管线。
      *
-     * @param url 公网媒体页面地址（B 站 / YouTube 等）；不可为空白
+     * @param url      公网媒体页面地址（B 站 / YouTube 等）；不可为空白
+     * @param keywords 可选关键词清单；{@code null}（字段缺席）= 本次不带关键词、不动库里那份，
+     *                 {@code []}（显式空数组）= 落一份空清单（该工作区此后按原样清洗）
      * @return 新任务的 PENDING 视图
-     * @throws IllegalArgumentException url 为空白
+     * @throws IllegalArgumentException url 为空白，或关键词超限（单条 &gt; 50 字 / 总数 &gt; 50）
      * @throws TaskConflictException    同 URL 已有进行中任务（409）
      */
-    public TaskSnapshot submitUrl(String url) {
+    public TaskSnapshot submitUrl(String url, List<String> keywords) {
         if (!StringUtils.hasText(url)) {
             throw new IllegalArgumentException("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
+        // 关键词上限校验放在最早：错在调用方 → IAE → 400，且要早于一切 I/O（error-handling 边界卫语句）
+        SubtitleKeywords validated = keywords == null ? null : new SubtitleKeywords(keywords);
         MediaInput.RemoteUrl input = new MediaInput.RemoteUrl(url.trim());
         WorkspaceKey workspaceKey = input.getContentKey(MediaFileInfo.NOT_APPLICABLE);
         // 查重，判断是否已经有相同的工作区目录
         rejectIfActive(workspaceKey);
         String directoryName = WorkspaceDir.of(input.value(), workspaceKey).value();
-        return handleSubmit(input, TaskInputType.URL, input.value(), workspaceKey, directoryName);
+        return handleSubmit(input, TaskInputType.URL, input.value(), workspaceKey, directoryName, validated);
     }
 
     /**
@@ -119,15 +135,18 @@ public class VideoTaskService {
      *
      * @param content          上传文件内容流；不可为 {@code null}（空文件由 HTTP 边界卫语句拦下）
      * @param originalFileName 上传文件原始名（只进 source_uri 与目录标签，不进日志）；可空白，空白时目录标签回退
+     * @param keywords         可选关键词清单；{@code null} = 本次不带关键词、不动库里那份
      * @return 新任务的 PENDING 视图
-     * @throws IllegalArgumentException 内容流为 {@code null}
+     * @throws IllegalArgumentException 内容流为 {@code null}，或关键词超限（单条 &gt; 50 字 / 总数 &gt; 50）
      * @throws TaskConflictException    同内容已有进行中任务（409）
      * @throws IllegalStateException    落盘失败（工作区根不可写等）
      */
-    public TaskSnapshot submitUpload(InputStream content, String originalFileName) {
+    public TaskSnapshot submitUpload(InputStream content, String originalFileName, List<String> keywords) {
         if (content == null) {
             throw new IllegalArgumentException("上传内容不能为空：请重新选择文件后再提交");
         }
+        // 与 URL 路线同一口径：超限在流式落盘之前拦下（400），不留半成品
+        SubtitleKeywords validated = keywords == null ? null : new SubtitleKeywords(keywords);
         try {
             Path root = workspaceDirectoryManager.getWorkspaceRoot();
             Files.createDirectories(root);
@@ -145,7 +164,7 @@ public class VideoTaskService {
                 MediaInput input = MediaInput.ofTaskInput(TaskInputType.UPLOAD, originalFileName,
                         source.getParent(), workspaceKey);
                 return handleSubmit(input, TaskInputType.UPLOAD, originalFileName, workspaceKey,
-                        source.getParent().getFileName().toString());
+                        source.getParent().getFileName().toString(), validated);
             } finally {
                 if (!settled) {
                     // 查重拒绝 / 归位失败：临时文件必须清掉，不让半成品留在工作区根
@@ -191,6 +210,75 @@ public class VideoTaskService {
         return repository.findByTaskNo(task.getTaskNo())
                 .map(this::toSnapshot)
                 .orElseGet(() -> toSnapshot(task));
+    }
+
+    /**
+     * 重新生成字幕（后置会话）的同步段：全部判定在这里完成，抢到登记才把异步体交给管线。
+     * 判定顺序（design §3.2；卫语句早于 I/O、409 在 202 之前）：
+     * <ol>
+     *   <li>关键词构造与上限校验（非 null 时）→ IAE 400，<b>不落库、不重跑</b>（AC8）；</li>
+     *   <li>装载任务 → 404；</li>
+     *   <li>主状态非 SUCCEEDED → IAE 400「字幕尚未就绪」（与 translate 同一文案口径）；</li>
+     *   <li>抢工作区登记 → 抢不到 409（附既有任务快照——冲突的出路是去订阅它）；</li>
+     *   <li>keywords 非 null 落库（null = 不动已有列表）→ 读回生效清单 → 委派管线异步体。</li>
+     * </ol>
+     *
+     * @param taskNo  对外任务号
+     * @param keywords 请求体里的关键词：{@code null} = 不改变已有列表；{@code []} = 清空
+     * @return 任务视图（主状态本就不变，视图反映触发后的快照）
+     * @throws TaskNotFoundException    任务不存在（404）
+     * @throws IllegalArgumentException 字幕尚未就绪（400）、关键词超限（400）
+     * @throws TaskConflictException    同工作区已有后置会话在跑（409）
+     */
+    public TaskSnapshot regenerate(String taskNo, List<String> keywords) {
+        SubtitleKeywords validated = keywords == null ? null : new SubtitleKeywords(keywords);
+        VideoTask task = loadTask(taskNo);
+        if (task.getStatus() != TaskStatus.SUCCEEDED) {
+            throw new IllegalArgumentException("字幕尚未就绪：任务状态为 " + task.getStatus()
+                    + "，重新生成只能在任务成功（SUCCEEDED）后触发；请先等主管线完成（可查 "
+                    + "GET /api/tasks/" + taskNo + " 或订阅其 SSE 事件）再试");
+        }
+        // 工作区级互斥在同步段判（202 之前）：抢不到就 409，不排队等锁——202 后排队是骗人。
+        // 文案不能用查重那套「请勿重复提交」：冲突方手里就是这个任务号（status 还是 SUCCEEDED）
+        if (!taskSessionRegistry.tryStart(task.getWorkspaceKey(), SubtitleStageName.CLEAN_SUBTITLES.getStageName())) {
+            throw new TaskConflictException(toSnapshot(task),
+                    "该工作区已有一次字幕重新生成在跑：taskNo=" + task.getTaskNo().value()
+                            + "；请等它跑完再触发，或用响应体 existingTask 里的 taskNo 订阅其 SSE 事件看进度");
+        }
+        boolean handedOff = false;
+        // tryStart 成功后的全部代码就在下面这个 try 里——落库 / 委派任何一步抛了，
+        // 都由 finally 的 handedOff 判据退登记，否则该工作区留下永远在跑的幽灵（AC10）
+        try {
+            if (validated != null) {
+                keywordRepository.replace(task.getWorkspaceKey(), validated);
+            }
+            SubtitleKeywords effective = validated != null ? validated
+                    : keywordRepository.findByWorkspaceKey(task.getWorkspaceKey());
+            pipeline.regenerateSubtitles(task, effective);
+            handedOff = true;
+        } finally {
+            // 正常路径登记由异步体 finally 退；只有「拿到登记后同步段就抛了」这条异常路径在本层退。
+            // handedOff 让两种退出互斥：异步体已经在跑时绝不能在同步段把它退掉
+            if (!handedOff) {
+                taskSessionRegistry.finish(task.getWorkspaceKey());
+            }
+        }
+        log.info("字幕重新生成已触发: taskNo={}, keywordsSupplied={}", taskNo, validated != null);
+        return toSnapshot(task);
+    }
+
+    /**
+     * 读回该任务工作区的关键词清单与指纹（前端拿指纹与产物里的 keywordsFingerprint 比对，
+     * 判断「这份字幕对不对得上当前关键词」）。
+     *
+     * @param taskNo 对外任务号；不可为空白
+     * @return 关键词清单（用户填写顺序）与指纹；从没填过时为空清单（不是 null）
+     * @throws TaskNotFoundException 任务不存在（404）
+     */
+    public KeywordsSnapshot findKeywords(String taskNo) {
+        VideoTask task = loadTask(taskNo);
+        SubtitleKeywords keywords = keywordRepository.findByWorkspaceKey(task.getWorkspaceKey());
+        return new KeywordsSnapshot(keywords.values(), keywords.computeFingerprint());
     }
 
     /**
@@ -267,7 +355,11 @@ public class VideoTaskService {
      * source.mp4，从输入重算会写错 workspace_dir。
      */
     private TaskSnapshot handleSubmit(MediaInput input, TaskInputType inputType, String sourceUri,
-                                      WorkspaceKey workspaceKey, String dirName) {
+                                      WorkspaceKey workspaceKey, String dirName, SubtitleKeywords keywords) {
+        // 关键词先于任务落库：超限早在入口校验过，这里只剩「存」这一个动作（null = 本次不带关键词，不动库）
+        if (keywords != null) {
+            keywordRepository.replace(workspaceKey, keywords);
+        }
         VideoTask task = VideoTask.newPending(inputType, sourceUri, workspaceKey, dirName);
         VideoTask inserted = repository.insert(task);
         log.info("任务已创建: taskNo={}, inputType={}, status={}",

@@ -8,8 +8,11 @@ import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.notify.TaskProgressNotifier;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
+import com.vidsage.application.task.session.TaskSessionRegistry;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.model.TaskStatus;
@@ -36,35 +39,43 @@ public class SubtitlePipeline {
 
     private final TaskConcurrencyGate concurrencyGate;
     private final VideoTaskRepository repository;
+    private final SubtitleKeywordRepository keywordRepository;
     private final SubtitlePreparationCoordinator subtitlePreparationCoordinator;
     private final SubtitleCleanupCoordinator cleanupStage;
     private final SubtitleTranslationCoordinator translationStage;
     private final TaskProgressNotifier taskProgressNotifier;
+    private final TaskSessionRegistry taskSessionRegistry;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
     /**
      * 构造函数注入，保证可测试性（见 quality-guidelines）。
      *
      * @param repository                     任务持久化入口（管线按 taskNo 装载任务并回写状态）
+     * @param keywordRepository              关键词持久化入口（按工作区读用户手填的关键词）
      * @param subtitlePreparationCoordinator 阶段 1：音频准备 + 转写 + 写原始字幕
      * @param cleanupStage                   阶段 2：字幕清洗（管线的最后一个自动阶段）
      * @param translationStage               按需翻译：{@link #translateTask} 触发后执行（不随主管线自动跑）
      * @param taskProgressNotifier           任务进度通知器
+     * @param taskSessionRegistry            后置会话在途登记（互斥抢锁在调用方，本类只负责 finally 退登记）
      * @param concurrencyGate                并行任务闸门
      * @param workspaceDirectoryManager      工作区目录管理器
      */
     public SubtitlePipeline(VideoTaskRepository repository,
+                            SubtitleKeywordRepository keywordRepository,
                             SubtitlePreparationCoordinator subtitlePreparationCoordinator, SubtitleCleanupCoordinator cleanupStage,
                             SubtitleTranslationCoordinator translationStage,
                             TaskProgressNotifier taskProgressNotifier,
+                            TaskSessionRegistry taskSessionRegistry,
                             TaskConcurrencyGate concurrencyGate,
                             WorkspaceDirectoryManager workspaceDirectoryManager
     ) {
         this.repository = repository;
+        this.keywordRepository = keywordRepository;
         this.subtitlePreparationCoordinator = subtitlePreparationCoordinator;
         this.cleanupStage = cleanupStage;
         this.translationStage = translationStage;
         this.taskProgressNotifier = taskProgressNotifier;
+        this.taskSessionRegistry = taskSessionRegistry;
         this.concurrencyGate = concurrencyGate;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
     }
@@ -77,6 +88,61 @@ public class SubtitlePipeline {
     public void execute(TaskNo taskNo) {
         concurrencyGate.submit(() -> runPipeline(taskNo),
                 () -> log.warn("任务等待执行配额时被中断，保持 PENDING: taskNo={}", taskNo.value()));
+    }
+
+    /**
+     * 后置会话：按当前关键词重新生成一遍字幕。同步段判定（404 / 400 未就绪 / 409 互斥 / 关键词落库）
+     * 在 {@code VideoTaskService} 完成后才调进来——那边要 409 附既有任务快照，快照组装只有 service 有。
+     *
+     * <p>异步体三条纪律（design §3.2 / PRD D4、D6）：
+     * <ul>
+     *   <li><b>先成功、后删</b>：翻译与术语产物的删除在 {@link SubtitleCleanupCoordinator#regenerate}
+     *       内部、清洗成功之后才做——重跑失败时旧字幕和译文一个都不少；</li>
+     *   <li><b>{@code finally} 退登记</b>：任何异常路径都不许漏，否则留下永远在跑的幽灵，
+     *       该工作区的互斥再也释放不掉（AC9 / AC10）；</li>
+     *   <li><b>不写 {@code current_stage}</b>（B5）：进度走只广播不落库的通道，重连快照由登记表还原；</li>
+     * </ul>
+     *
+     * @param task     主状态已 SUCCEEDED 的任务（调用方已校验）
+     * @param keywords 本次要用的关键词（调用方已落库或读回）
+     */
+    public void regenerateSubtitles(VideoTask task, SubtitleKeywords keywords) {
+        MediaInput input = toMediaInput(task);
+        long startTimeMs = System.currentTimeMillis();
+        concurrencyGate.submit(() -> {
+            try {
+                cleanupStage.regenerate(input, keywords, regenerationProgressListener(task));
+                // 成功收口前清掉上一次重生成的失败原因（只认前缀，不动翻译/主管线的错误记录）
+                task.clearRegenerateFailure();
+                taskProgressNotifier.completeTask(task);
+                log.info("字幕重新生成完成: taskNo={}, cost={}ms",
+                        task.getTaskNo().value(), System.currentTimeMillis() - startTimeMs);
+            } catch (Exception e) {
+                String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                taskProgressNotifier.failRegenerate(task, reason);
+            } finally {
+                // 纪律：登记必须在 finally 退（PRD D4）——漏了会留下永远 RUNNING 的幽灵
+                taskSessionRegistry.finish(task.getWorkspaceKey());
+            }
+        }, () -> {
+            // 排队等配额时被打断（202 已发）：释放登记 + 落失败原因广播收口，用户可重新触发
+            taskSessionRegistry.finish(task.getWorkspaceKey());
+            taskProgressNotifier.failRegenerate(task, "重新生成在等待执行配额时被中断：请重新触发");
+            log.warn("重新生成等待执行配额时被中断: taskNo={}", task.getTaskNo().value());
+        });
+    }
+
+    /**
+     * 后置会话的进度回调：只广播不落 {@code current_stage}（B5——主状态已终态，
+     * {@code updateStage} 的 RUNNING 守卫也会拒；精确进度由事件携带，快照由登记表还原）。
+     */
+    private ProgressListener regenerationProgressListener(VideoTask task) {
+        return stageProgress -> {
+            log.debug("重新生成阶段事件: taskNo={}, stage={}, progress={}, state={}, message={}",
+                    task.getTaskNo().value(), stageProgress.stage(), stageProgress.progress(),
+                    stageProgress.state(), stageProgress.message());
+            taskProgressNotifier.broadcastStage(task, stageProgress);
+        };
     }
 
     /**
@@ -195,6 +261,10 @@ public class SubtitlePipeline {
 
     /**
      * 按阶段顺序执行；prepare 的阶段事件与 clean 的批级事件都由回调驱动
+     *
+     * <p>关键词从仓储按<b>工作区</b>读（不按 taskNo）：关键词是字幕产物的生成输入，跟产物同粒度。
+     * 同一 URL 重新提交会新插一行 task，而目录里是同一份产物——挂 task_no 会让新任务读不到那份产物
+     * 用的关键词。
      */
     private void prepareAndClean(VideoTask task) {
         MediaInput input = toMediaInput(task);
@@ -202,7 +272,7 @@ public class SubtitlePipeline {
         // 阶段 1：prepare 准备字幕文件
         subtitlePreparationCoordinator.prepare(input, listener);
         // 阶段 2：清洗字幕文件
-        cleanupStage.clean(input, "", listener);
+        cleanupStage.clean(input, keywordRepository.findByWorkspaceKey(task.getWorkspaceKey()), listener);
     }
 
     /**
