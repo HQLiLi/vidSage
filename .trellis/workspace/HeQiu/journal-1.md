@@ -978,3 +978,31 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 36: 10-11 关键词纠错与字幕重生成：六批实现到合并归档
+<!-- trellis-session: v=2 fp=9ca534277bfb11b3 -->
+
+**Date**: 2026-10-12
+**Task**: 10-11 关键词纠错与字幕重生成：六批实现到合并归档
+**Branch**: `dev`
+
+### Summary
+
+执行 10-11-subtitle-keyword-regenerate（父任务 10-11-subtitle-keywords-multilang 的子任务 A）。从 dev 切 feature/subtitle-keyword-regenerate，task.py start 后按 implement.md 六批推进：批 1 DB（subtitle_keyword 表、SubtitleKeywords 值对象含归一化/去重保序/上限校验/指纹、仓储端口与三件套）；批 2 产物指纹（SubtitleTrack 加 keywordsFingerprint、CheckpointPolicy.isCurrent）；批 3 清洗链路（端口签名改 SubtitleKeywords、PromptDataBlock 四段数据块、三处 system 补声明、SubtitleCleanupCoordinator 指纹断点与 regenerate 先成功后删 translate/terms）；批 4 会话地基（TaskSessionRegistry、TaskStageEvent.from 收在途阶段名、terminal 双条件派生）；批 5 HTTP 面（两新端点、提交路径带关键词、service 同步段四条错误映射、finally 退登记）。两处计划外改动：SubtitleArtifactSpec.compileTemplate 路由交替缺括号组致 matches 恒 false（artifacts 清单恒空），经所有者拍板一并修并加往返测试；TaskSseConnectionManagerTest 与 TaskProgressMessageTest 的终态事件夹具按「stage 状态位跟主状态走」的生产形状改（旧夹具 SUCCEEDED+RUNNING-stage 在旧规则下碰巧成立）。trellis-check 独立审查六维度 + AC 对照，修 8 类问题（409 文案分场景加 TaskConflictException message 构造器、spec 登记 6 处、keywords→findKeywords 动词化、补 5 个钉子用例含 regenerateSubtitles 的 finally 退登记、Javadoc 失实等），报 2 项待决——所有者裁定：成功后按前缀清失败原因（VideoTask.REGENERATE_FAILURE_PREFIX 单源 + clearRegenerateFailure，只认前缀不误伤翻译/主管线记录）；翻译侧摘要缓存不看指纹的偏差记入子任务 B 的 prd。另发现并修复存量 swagger 故障：openai-java-core 传递的非 jakarta swagger-annotations:2.2.31 与 springdoc 的 jakarta 版同名同包冲突，classpath 装载到缺 $dynamicRef() 的那份，/v3/api-docs 500；pom 加 exclusion 后实测恢复 200、两个新端点与 DTO schema 均入文档、swagger-ui 200。收尾：6 笔提交（功能 / 测试 / 建表语句 / pom 修复 / spec / 任务工件）+ merge，--no-ff 合回 dev，归档并删除本地 feature 分支。测试 570 用例 / 0 失败 / 0 错误 / 1 跳过（基线 498 → 净增 72，AC13 满足；1 跳过是存量 ModelProbeTest）。批 6.1 运行期验收（AC1–AC11 端到端）所有者在实例上自行验证后选择跳过，未由本会话执行；dev 领先 origin 11 笔尚未推送。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `198244c` | feat(subtitle): 关键词纠错与字幕重生成 |
+| `7fca0c0` | test(subtitle): 关键词与重生成的单测 |
+| `63b36fb` | feat(subtitle): 新增 subtitle_keyword 建表语句 |
+| `ad85780` | fix(deps): 排除 openai SDK 传递的非 jakarta swagger-annotations |
+| `87794e3` | chore(spec): 登记关键词任务引入的桶、表与终态派生改判 |
+| `cb00a25` | chore(task): 关键词任务 planning 工件与回归卡登记 |
+| `2de2ae5` | Merge branch 'feature/subtitle-keyword-regenerate' into dev |
+
+### Status
+
+[OK] **Completed**
