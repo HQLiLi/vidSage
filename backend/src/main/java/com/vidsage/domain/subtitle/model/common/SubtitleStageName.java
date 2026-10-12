@@ -5,10 +5,10 @@ import lombok.Getter;
 import java.util.EnumMap;
 import java.util.Map;
 
-/***
- * 从媒体源生成字幕管线的所有阶段
- * 注意：枚举声明顺序就是进度区间的累加顺序，别随意调换。
- * 每个主管线阶段只声明一个相对份额，任务级区间在类加载时按顺序算出来。
+/**
+ * 从媒体源生成字幕管线的所有阶段。
+ *
+ * <p><b>枚举声明顺序就是进度区间的累加顺序，不要随意调换。</b>
  */
 @Getter
 public enum SubtitleStageName {
@@ -25,7 +25,7 @@ public enum SubtitleStageName {
     private final int weight;
 
     /**
-     * 是否处于主管线上
+     * 是否处于主管线上。
      */
     private final boolean inMainPipeline;
 
@@ -35,7 +35,6 @@ public enum SubtitleStageName {
      */
     private static final Map<SubtitleStageName, int[]> RANGES = new EnumMap<>(SubtitleStageName.class);
 
-    /* 静态块，用于构造每个阶段的起始结束区间*/
     static {
         int total = 0;
         for (SubtitleStageName stage : values()) {
@@ -64,9 +63,9 @@ public enum SubtitleStageName {
     }
 
     /**
-     * 根据Stage获取它的起始和结束区间
+     * 取本阶段的任务级区间。
      *
-     * @return 起始和结束区间 [start,end)
+     * @throws IllegalStateException 本阶段不在区间表里（翻译）
      */
     private int[] getRange() {
         int[] range = RANGES.get(this);

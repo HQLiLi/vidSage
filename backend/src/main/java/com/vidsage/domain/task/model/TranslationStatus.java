@@ -3,8 +3,8 @@ package com.vidsage.domain.task.model;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * 翻译子状态（2026-10-02 两段式改造新增）：翻译不随主管线自动执行，主任务 SUCCEEDED 后由用户
- * 按需触发（{@code POST /api/tasks/{taskNo}/translate}），本枚举刻画这段第二生命周期的位置。
+ * 翻译子状态：翻译不随主管线自动执行，主任务 SUCCEEDED 后由用户按需触发
+ * （{@code POST /api/tasks/{taskNo}/translate}），本枚举刻画这段第二生命周期的位置。
  *
  * <p>与主状态 {@link TaskStatus} 相互独立：翻译流转只发生在主状态 SUCCEEDED 之后，主状态不会因
  * 翻译失败而回退。持久化在 {@code task.translation_status}（ENUM 同名词表）；

@@ -16,10 +16,8 @@ import org.springframework.util.StringUtils;
  *
  * <p><b>为什么挂在翻译流程而不挂清洗</b>：译名是给目标语种的译文用的，只有真的要翻译
  * （源语种 ≠ 目标语种）才值得烧搜索费——目标语种默认 zh 的中文素材根本走不到查证。
- * 触发经济学的判定见 {@link #decide}，执行与记账见 {@link #verify}。
  *
- * <p>无状态、不做文件 I/O：查证经 {@link TermLookupProvider}（本包端口）逐条联网发起；
- * 产物落盘由调用方按 {@link Outcome#persistable()} 执行。
+ * <p>无状态、不做文件 I/O：查证经 {@link TermLookupProvider}（本包端口）逐条联网发起。
  */
 public final class TermVerification {
 
@@ -27,20 +25,12 @@ public final class TermVerification {
     }
 
     /**
-     * 查证触发判定：<b>三条同时成立才查，否则静默跳过</b>——
-     * 源语种 ≠ 目标语种（同主语言，翻译真的要发生；复用 {@link Bcp47Language#isSameMainLanguage}，
-     * 由调用方先算好传入）、terms 产物未完成（<b>文件存在且非空 = 已查证</b>，与 -clean/-translate
-     * 断点同哲学：删文件即重查，换目标语种文件名不同自然重查；完成与否按 {@link CheckpointPolicy}，
-     * 由调用方先量好传入）、查证 provider 在容器里（yml 删 {@code vidsage.term-lookup.provider}
-     * = 查证整体关闭，跳过不报错——增益缺席不能变成故障）。此外上下文里得<b>有术语可查</b>：
-     * 无术语时也不落空产物——空产物没有信息量，徒增一个「已完成」假象。
-     *
-     * <p>判定顺序即旧守卫顺序（同语种 → 产物已存在 → 未启用 → 无术语），短路语义与迁移前逐字节一致。
+     * 查证触发判定：<b>四条同时成立才查</b>（不同语种 → 产物未查证 → provider 未装配 → 无术语），否则静默跳过。
      *
      * @param sameMainLanguage      源语种与目标语种是否同一门主语言（同语种不翻译，也就不需要目标语种译名）
-     * @param termsArtifactCompleted terms 查证产物是否已存在且非空（存在 = 已查证）
-     * @param lookupEnabled         查证 provider 是否在容器里
-     * @param hasTerms              上下文里是否有术语可查
+     * @param termsArtifactCompleted terms 查证产物是否已存在且非空（删文件即重查，换目标语种文件名不同自然重查）
+     * @param lookupEnabled         查证 provider 是否在容器里（yml 删配置 = 查证整体关闭，跳过不报错）
+     * @param hasTerms              上下文里是否有术语可查（无术语时也不落空产物——空产物徒增一个「已完成」假象）
      * @return 触发判定结论；跳过结论附带原因，供调用方记 debug 日志
      */
     public static Decision decide(boolean sameMainLanguage, boolean termsArtifactCompleted,
@@ -61,7 +51,7 @@ public final class TermVerification {
     }
 
     /**
-     * 查证触发判定结论：按旧守卫顺序短路给出。
+     * 查证触发判定结论；按 {@link #decide} 的顺序短路给出。
      */
     public enum Decision {
 
@@ -84,12 +74,11 @@ public final class TermVerification {
     /**
      * 逐条查证并记账：把上下文里的术语全量交给 {@link TermLookupProvider} 联网查证，
      * 按结论分类计数并组装 {@link VerifiedTerm}。触发是确定性的：全量逐条查证，
-     * 不做「哪些值得查」的预过滤（09-28 实证：模型不觉得自己在猜）。
+     * 不做「哪些值得查」的预过滤——模型不觉得自己在猜，没有可靠信号可依据。
      *
      * <p><b>失败与弃权是两条路</b>：查证调用抛异常 = 该词<b>不进产物</b>（记入
      * {@link Outcome#failures()}，下次文件缺失时自然补查——写进去反而会把「没查成」永久固化成
      * 「已查证」）；查过但无有据译名 = {@code official} 空串记账（弃权结论持久化，不再重搜烧钱）。
-     * 查证任何失败形态都不抛出本方法——与「摘要失败降级空上下文」同一哲学。
      *
      * @param context        字幕上下文（术语表的来源；可为降级的空上下文——术语为空时无事可做）
      * @param targetLanguage 目标语种（调用方已在入口保证非空）

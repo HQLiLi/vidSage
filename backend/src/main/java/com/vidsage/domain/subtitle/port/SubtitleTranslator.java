@@ -9,14 +9,6 @@ import java.util.List;
 
 /**
  * 字幕翻译的出口：把清洗后的每条字幕译成目标语种，术语与称谓全片一致。
- *
- * <p>实现在 {@code infrastructure/provider/llm/}（当前是调 LLM 的 {@code LlmSubtitleTranslator}），
- * 由 Spring 注进来。上层只认这个接口。
- *
- * <p>「译文合不合格」的判据（键集必须与原文完全一致、每条译文非空）属于实现细节，住实现类里，
- * 不进本接口。
- *
- * <p>只声明上层真正调用的那一个重载；不带 listener 的便捷重载留在实现类内部给测试用。
  */
 public interface SubtitleTranslator {
 

@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * 字幕登记产出表，叫什么 / 能不能下载 / 是不是检查点
+ * 字幕产物的登记表：生成产物名，并回答一个文件是不是可下载的产物。
  */
 public enum SubtitleArtifactSpec {
     /**
@@ -78,10 +78,10 @@ public enum SubtitleArtifactSpec {
     }
 
     /**
-     * 传入的文件是否可下载
+     * 文件名是否匹配某条「可下载」的产物模板。
      *
-     * @param fileName 传入文件
-     * @return 是否可下载
+     * @param fileName 产物文件名（不含目录）
+     * @return 命中任一可下载模板时为 {@code true}
      */
     public static boolean isDownloadable(String fileName) {
         for (SubtitleArtifactSpec spec : values()) {
@@ -114,7 +114,7 @@ public enum SubtitleArtifactSpec {
             regex.append(switch (slot) {
                 // 必须包非捕获组：| 的优先级最低，不加括号的话整条正则会被交替拆成四选一，
                 // 前缀字面量只跟第一个分支粘在一起，任何完整产物名都匹配不上
-                // （2026-10-12 实测踩过：matches 恒 false → artifacts 清单恒空、重生成删不掉译文产物）
+                // （后果是 matches 恒 false → artifacts 清单恒空、重生成删不掉译文产物）
                 case "{route}" -> "(?:" + RouteAlternation.VALUE + ")";
                 case "{lang}" -> "[a-z0-9-]+";
                 // 占位符名字写错时早失败：否则它会被当成字面量，永远匹配不到任何文件，且不报错

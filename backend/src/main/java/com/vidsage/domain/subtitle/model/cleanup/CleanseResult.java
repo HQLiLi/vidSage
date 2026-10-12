@@ -4,7 +4,7 @@ import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import java.util.List;
 
 /**
- * 一趟字幕纠错的产出：清洗后的字幕，外带几个用来观察"这趟干了多少事"的计数。
+ * 一趟字幕纠错的产出：清洗后的字幕，外带几个用来观察「这趟干了多少事」的计数。
  *
  * <p>计数只用于日志与验收观察，不参与任何判定。
  *

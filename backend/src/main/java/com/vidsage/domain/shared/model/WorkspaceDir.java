@@ -6,9 +6,9 @@ import java.util.Set;
 /**
  * 任务工作区目录名值对象：{@code <安全化名字>-<工作区短哈希>}
  *
- * <p><b>安全化名字</b>只是给人看的标签，唯一性完全由哈希保证：非法字符与控制字符替换为下划线、
- * 去掉结尾的点与空格、截断长度；结果为空或命中 Windows 保留名（{@code CON} / {@code NUL} /
- * {@code COM1}…，含带扩展名形式）时回退成 {@link #FALLBACK_NAME}。
+ * <p><b>安全化名字</b>只是给人看的标签；区分不同工作区靠尾部的 key 后缀（哈希碰撞无法完全排除）。
+ * 非法字符与控制字符替换为下划线、去掉结尾的点与空格、截断长度；结果为空或命中 Windows 保留名
+ * （{@code CON} / {@code NUL} / {@code COM1}…，含带扩展名形式）时回退成 {@link #FALLBACK_NAME}。
  *
  * @param value 目录名（不含根路径，不含任何建目录副作用）
  */
@@ -20,7 +20,7 @@ public record WorkspaceDir(String value) {
     public static final int MAX_NAME_LENGTH = 80;
 
     /**
-     * 结果为空或命中保留名时的兜底名；工作区根未配置时同样回退此名（与 ensureWorkspaceDirectory 同口径）。
+     * 结果为空或命中保留名时的兜底名；工作区根未配置时同样回退此名。
      */
     public static final String FALLBACK_NAME = "media";
 
@@ -40,12 +40,11 @@ public record WorkspaceDir(String value) {
     private static final String ILLEGAL_CHARS = "<>:\"/\\|?*";
 
     /**
-     * 目录名公式：{@code sanitize(标签)-key}。{@code WorkspaceDirectoryManager.ensureWorkspaceDirectory} 的两条路线与
-     * VideoTaskService 落库 workspace_dir 共用这一处——URL 路线的工作目录由管线按本公式懒建，
-     * 提交时落库的 workspace_dir 必须与之逐字一致，公式单源化防「同公式各写一份」漂移。
+     * 目录名公式：{@code sanitize(标签)-key}。建目录与落库 {@code workspace_dir} 共用这一处——
+     * 两条路线都按本公式取名，落库的值必须与磁盘上的目录名逐字一致。
      *
      * @param label 供人阅读的标签（可为 {@code null} 或空白，sanitize 后回退 {@link #FALLBACK_NAME}）
-     * @param key   内容寻址 key（{@link WorkspaceKey}，12 位十六进制）；取值由调用方保证
+     * @param key   内容寻址 key（取值由调用方保证）
      * @return 目录名值对象
      */
     public static WorkspaceDir of(String label, WorkspaceKey key) {
@@ -57,7 +56,6 @@ public record WorkspaceDir(String value) {
      * 结果为空或命中 Windows 保留名时回退成 {@link #FALLBACK_NAME}。
      *
      * <p>保留名判定只看第一个点之前的基名，因此 {@code CON.txt} 也命中保留名。
-     * VideoTaskServiceTest（application/task）跨包复用公式断言。
      *
      * @param raw 原始候选名；可为 {@code null} 或空白
      * @return 安全化的名字，非空且不含非法字符

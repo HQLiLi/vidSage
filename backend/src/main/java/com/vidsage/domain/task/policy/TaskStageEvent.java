@@ -14,14 +14,8 @@ import org.springframework.util.StringUtils;
  * 事件携带，快照只保证形状合法。失败事件的消息带终态错误文本，是 SSE 上唯一的错误出口；
  * {@code current_stage} 尚空时阶段名允许为 {@code null}，形状仍合法。
  *
- * <p><b>翻译子状态覆盖（2026-10-02 两段式）</b>：主任务 SUCCEEDED 且翻译子状态存在时，改由翻译
- * 子状态粗粒度还原（{@link #fromTranslation}）——翻译是主任务成功后的第二生命周期，重连订阅者
- * 最关心的是它。主管线终态广播发生时翻译子状态必为 null（翻译只能在主状态 SUCCEEDED 后触发），
- * 不受这条分支影响。
- *
- * <p>原是两个内联在 {@code VideoTaskService} 里的包内可见 static，2026-10-06 包结构整理时下沉
- * 至此：判据只吃 domain 类型、与 I/O 无关，住在任务领域更合适；下沉后是 public 政策，
- * {@code TaskProgressNotifier}（快照组装与两处终态广播）跨包共用同一份形状。
+ * <p><b>翻译子状态覆盖</b>：主任务 SUCCEEDED 且翻译子状态存在时，改由翻译子状态粗粒度还原
+ * （{@link #fromTranslation}）。主管线终态广播时翻译子状态必为 {@code null}，不受这条分支影响。
  */
 public final class TaskStageEvent {
 
@@ -32,9 +26,9 @@ public final class TaskStageEvent {
      * 由持久化状态构造阶段事件：主状态渲染；SUCCEEDED 且翻译子状态存在时转派
      * {@link #fromTranslation} 走翻译子状态。
      *
-     * <p><b>登记表查询在调用方</b>（2026-10-12 起）：后置会话在跑时，快照要渲染成该阶段的 RUNNING 事件，
+     * <p><b>登记表查询在调用方</b>：后置会话在跑时，快照要渲染成该阶段的 RUNNING 事件，
      * 而「有没有在途会话」是 {@code TaskSessionRegistry} 里的事实——查完把事实当入参传进来，
-     * 本政策保持纯函数（与 {@code CheckpointPolicy} 的既有分工一致）。没人跑会话就传 {@code null}。
+     * 本政策保持纯函数。没人跑会话就传 {@code null}。
      *
      * @param task         任务实例；{@code current_stage} 可为 {@code null}
      * @param runningStage 在途后置会话的阶段名；{@code null} = 没有在途会话
@@ -65,11 +59,7 @@ public final class TaskStageEvent {
 
     /**
      * 翻译子状态的粗粒度阶段事件（stage 固定 translate，进度取子状态粗粒度位置：进行中 0、
-     * 完成 100、失败 0 + 失败信息）。与主状态渲染（{@link #from}）同哲学：精确进度由增量事件
-     * 携带，快照 / 终态广播只保证形状合法。
-     *
-     * <p>前置条件：{@code task.getTranslationStatus() != null}（调用点已保证——主管线终态广播时
-     * 翻译从未触发，走不到这里；由 {@link #from} 转派时也已判过）。
+     * 完成 100、失败 0 + 失败信息）。
      *
      * @param task 翻译子状态非 {@code null} 的任务
      * @return 翻译阶段事件

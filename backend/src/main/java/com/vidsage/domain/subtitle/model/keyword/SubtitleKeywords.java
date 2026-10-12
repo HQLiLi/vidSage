@@ -7,27 +7,14 @@ import java.util.*;
 
 /**
  * 用户手填的一份关键词清单：纯字符串数组，<b>没有</b>「原写法 → 正确写法」的对照关系
- * （对照关系要的是 {@code SubtitleContext.Term}，那份由摘要器产出，见 design 决策 2）。
+ * （对照关系要的是 {@code SubtitleContext.Term}，那份由摘要器产出）。
  *
  * <p>最典型的用途是视频发布者的名字——ASR 几乎必然把它转错，而用户知道正确写法。
- * 这份清单由 HTTP 两个入口（提交任务 / 重新生成）与持久化层共用，
- * <b>归一化、去重、上限校验全部收在紧凑构造器里</b>，谁构造谁就一定拿到干净的一份。
- *
- * <p><b>归一化做了两件事</b>：
- * <ol>
- *   <li><b>结构性字符转空格</b>：换行、回车与其它 ISO 控制字符一律换成空格再 {@code trim}，
- *       空串丢弃。它们能从结构上凭空造出提示词里的「另一段指令」，落库与进提示词之前就该处理掉；
- *       顺带也让 {@code U+0001}（落库的分隔符）到不了持久化层。</li>
- *   <li><b>去重且保首次出现顺序</b>：同一份列表换个填写顺序提交，不该导致指纹变化、进而触发一次重跑。</li>
- * </ol>
+ * 无论从哪条路径构造，拿到的都是归一化、去重、通过上限校验的一份。
  *
  * <p><b>为什么超限抛 {@link IllegalArgumentException} 而不是 {@code IllegalStateException}</b>：
  * 清单里的每一条都是调用方（用户）发过来的，越界是「调用方传参不合法」，既有 REST 映射接成 400；
- * 违反时构造器就炸，什么都不会落库、不会重跑（见任务 prd AC8）。
- *
- * <p><b>为什么指纹算法住在值对象身上</b>：它是对「这份清单是什么」的自问自答，
- * 与 {@link com.vidsage.domain.shared.model.WorkspaceKey#ofHash(String)} 里那两条同宽公式是同一个道理——
- * 单源在本类，调用方 {@code keywords.computeFingerprint()} 直接拿结果，不必跨类跳转。
+ * 构造器当场就炸，什么都不会落库、不会重跑。
  *
  * @param values 归一化后的关键词清单（用户填写顺序、无重复、无空串）；{@code null} 当空列表处理
  */
@@ -55,7 +42,7 @@ public record SubtitleKeywords(List<String> values) {
     private static final int FINGERPRINT_WIDTH = 16;
 
     /**
-     * 紧凑构造器：归一化 → 去重保序 → 上限校验。三件事都在这里做完，调用方拿到的永远是干净的一份。
+     * 紧凑构造器：归一化 → 去重保序 → 上限校验。
      *
      * @param values 用户填的原始列表，可为 {@code null}（当空列表处理）；元素为 {@code null} 的条目直接丢弃
      * @throws IllegalArgumentException 单条超过 {@value #MAX_VALUE_LENGTH} 字，或总数超过 {@value #MAX_COUNT} 条
@@ -88,7 +75,6 @@ public record SubtitleKeywords(List<String> values) {
      *
      * <p><b>先排序是刻意的</b>：用户调换填写顺序不该导致指纹变化、进而白白触发一次重跑。
      * 排序 → 以 {@code U+0001} 连接 → SHA-256 → 取十六进制前 16 位。
-     * 不带算法版本位：将来改归一化规则时，旧产物自然判为「不一致」而重跑，那正是想要的行为。
      *
      * <p>空清单也算得出指纹（就是空串的哈希），不是 {@code null}——
      * 「当前关键词是空的」是一个需要参与判定的正经事实。
@@ -139,11 +125,13 @@ public record SubtitleKeywords(List<String> values) {
     }
 
     /**
-     * 把结构性字符（换行、回车与其它 ISO 控制字符）替换成空格。
+     * 把结构性字符（换行、回车与其它 ISO 控制字符）替换成空格——换行能从结构上凭空造出提示词里的
+     * 「另一段指令」，落库与进提示词之前就该处理掉；落库的分隔符 {@code U+0001} 也在其中，
+     * 顺带就到不了持久化层。
      *
-     * <p>只动结构性的，<b>内容性字符（{@code <}、{@code "}、{@code {} 等）一律保留</b>——
-     * 剥字符是黑名单思路，会误伤真术语（比如一个叫 {@code C++ <memory>} 的词）。
-     * 那类字符靠标签包裹与 system 提示词里的声明来定性，见 design 决策 5。
+     * <p><b>只动结构性的，内容性字符（{@code <}、{@code "}、{@code {} 等）一律保留</b>——
+     * 剥字符是黑名单思路，会误伤真术语（比如一个叫 {@code C++ <memory>} 的词）。那类字符靠标签
+     * 包裹与 system 提示词里的声明来定性。
      */
     private static String replaceStructuralCharacters(String raw) {
         StringBuilder sb = new StringBuilder(raw.length());

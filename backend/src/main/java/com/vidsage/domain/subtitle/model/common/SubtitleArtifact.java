@@ -3,14 +3,13 @@ package com.vidsage.domain.subtitle.model.common;
 import java.nio.file.Path;
 
 /**
- * 字幕产出描述：两个产物路径 + 路线 + 语种 + 句数 + SRT 字节数。
+ * 字幕阶段的产出描述：两条落盘产物与它们的元数据。
  *
- * <p>**本类型不直接对外**：含 {@code Path} 与枚举，HTTP 响应走 {@code web/dto/} 展平后再返
- * （见设计 §七），故**不加 {@code @Schema}**——与 {@code domain/media} 加 {@code @Schema} 的
- * 类型不同，那些会直接序列化成响应，这里不会。
+ * <p><b>本类型不直接对外</b>：含 {@code Path} 与枚举，HTTP 响应走 {@code web/dto/} 展平后再返，
+ * 故<b>不加 {@code @Schema}</b>。
  *
  * @param srtPath       SRT 字幕文件路径。已原子落盘——路径存在即代表文件完整。空转写时是
- *                      0 字节文件（合法产出，见设计决策 5）
+ *                      0 字节文件（合法产出）
  * @param segmentsPath  段落 JSON 文件路径（{@code segments-<路线>.json}），此文件是检查点
  * @param route         字幕来源路线
  * @param language      识别出的语种，可能为 {@code null}

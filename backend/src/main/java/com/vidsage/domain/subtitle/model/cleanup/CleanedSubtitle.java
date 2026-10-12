@@ -1,14 +1,11 @@
 package com.vidsage.domain.subtitle.model.cleanup;
 
-import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import java.nio.file.Path;
 
 /**
- * 字幕清洗产出描述：两个 -clean 产物路径 + 路线 + 语种 + 句数 + SRT 字节数 + 纠错统计。
- *
- * <p>**本类型不直接对外**：含 {@code Path} 与枚举，HTTP 响应走 {@code web/dto/} 展平后再返（同
- * {@link SubtitleArtifact} 的处理），故**不加 {@code @Schema}**。
+ * 字幕清洗阶段的产出描述：两条 -clean 产物与它们的元数据，含本趟纠错统计。
+ * <b>不直接对外</b>——含 {@code Path} 与枚举，响应走 {@code web/dto/} 展平后再返，不加 {@code @Schema}。
  *
  * @param srtPath       清洗后 SRT 文件路径（{@code subtitles-<route>-clean.srt}），已原子落盘
  * @param segmentsPath  清洗后 segments JSON 路径（{@code segments-<route>-clean.json}），是检查点

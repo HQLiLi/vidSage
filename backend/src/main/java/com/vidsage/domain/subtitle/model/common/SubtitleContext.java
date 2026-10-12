@@ -1,25 +1,20 @@
 package com.vidsage.domain.subtitle.model.common;
 
-import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import java.util.List;
 
 
 /**
  * 字幕上下文：一次摘要把全篇读进去后提炼出的东西，清洗与翻译共用同一份。
  *
- * <p>三样东西各有用处：{@code theme} 给两边的提示词当全局背景；{@code terms} 是整篇出现的
- * 专有名词表；{@code sourceLanguage} 是模型推断出的源语种，翻译后拿它决定要不要跳过。
- *
- * @param theme          视频主题
- * @param sourceLanguage 源语种的 BCP-47 短码（如 zh / en / ja），模型拿不准时为空串。
- *                       字段名不叫 language：{@link SubtitleTrack#language()} 已经叫这个，
- *                       在同时有目标语种的语境里两者会看岔
+ * @param theme          视频主题，给两侧提示词当全局背景
+ * @param sourceLanguage 源语种的 BCP-47 短码（如 zh / en / ja），模型拿不准时为空串；
+ *                       翻译侧拿它决定要不要跳过
  * @param terms          全篇专有名词表
  */
 public record SubtitleContext(String theme, String sourceLanguage, List<Term> terms) {
 
     /**
-     * 紧凑构造器兜底：null 一律收敛成空值，调用方不必判空。
+     * 紧凑构造器兜底：null 一律收敛成空串 / 空表，调用方不必判空。
      */
     public SubtitleContext {
         theme = theme == null ? "" : theme;
