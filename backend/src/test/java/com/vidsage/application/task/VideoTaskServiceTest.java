@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,6 +28,8 @@ import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
+import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
@@ -40,6 +44,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
+import com.vidsage.application.task.session.TaskSessionRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
@@ -59,16 +64,23 @@ class VideoTaskServiceTest {
     private final VideoTaskRepository repository = org.mockito.Mockito.mock(VideoTaskRepository.class);
     private final SubtitlePipeline pipeline = org.mockito.Mockito.mock(SubtitlePipeline.class);
 
+    private final SubtitleKeywordRepository keywordRepository =
+            org.mockito.Mockito.mock(SubtitleKeywordRepository.class);
+    private final TaskSessionRegistry sessionRegistry = new TaskSessionRegistry();
+
     /**
      * 工作区用真实实例（目录公式单源在 domain/shared，workspaceFor 真实落盘，真跑比 mock
      * 更能钉住路径约定）。{@code @TempDir} 在字段初始化之后才注入，故只能方法内构造，
      * 不能在字段初始化器里引用。
      */
     private VideoTaskService service() {
-        // 第 4 参是真 notifier（repository mock + 新 registry）：快照组装走 notifier 与在线事件同源
-        return new VideoTaskService(repository, pipeline,
+        // 第 5 参是真 notifier（repository mock + 新 registry）：快照组装走 notifier 与在线事件同源
+        return new VideoTaskService(repository, keywordRepository, pipeline,
                 new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())),
-                new TaskProgressNotifier(repository, new TaskSubscriptionRegistry()));
+                // notifier 与 service 共用同一个登记表：生产里它们也是同一个 bean，
+                // 分开建会让「在途会话 → 快照渲染成 RUNNING」这条链在本测试里断掉
+                new TaskProgressNotifier(repository, new TaskSubscriptionRegistry(), sessionRegistry),
+                sessionRegistry);
     }
 
     @org.junit.jupiter.api.BeforeEach
@@ -85,7 +97,7 @@ class VideoTaskServiceTest {
     void submitUrlInsertsPendingTaskAndStartsPipeline() {
         when(repository.findActiveByWorkspaceKey(any())).thenReturn(Optional.empty());
 
-        TaskSnapshot view = service().submitUrl("https://example.com/watch/1");
+        TaskSnapshot view = service().submitUrl("https://example.com/watch/1", null);
 
         ArgumentCaptor<VideoTask> captor = ArgumentCaptor.forClass(VideoTask.class);
         verify(repository).insert(captor.capture());
@@ -108,7 +120,7 @@ class VideoTaskServiceTest {
 
     @Test
     void submitUrlRejectsBlankUrlWithoutTouchingRepository() {
-        assertThrows(IllegalArgumentException.class, () -> service().submitUrl("   "));
+        assertThrows(IllegalArgumentException.class, () -> service().submitUrl("   ", null));
 
         verify(repository, never()).insert(any());
         verify(pipeline, never()).execute(any());
@@ -121,7 +133,7 @@ class VideoTaskServiceTest {
         when(repository.findActiveByWorkspaceKey(any())).thenReturn(Optional.of(existing));
 
         TaskConflictException e = assertThrows(TaskConflictException.class,
-                () -> service().submitUrl("https://example.com/watch/1"));
+                () -> service().submitUrl("https://example.com/watch/1", null));
 
         assertEquals(existing.getTaskNo().value(), e.getExistingTask().taskNo());
         assertEquals(TaskStatus.PENDING, e.getExistingTask().status());
@@ -138,7 +150,7 @@ class VideoTaskServiceTest {
         byte[] media = "fake-video-bytes-0123456789".getBytes(StandardCharsets.UTF_8);
         String expectedKey = sha256Prefix(media);
 
-        TaskSnapshot view = service().submitUpload(new ByteArrayInputStream(media), "我的 视频.mp4");
+        TaskSnapshot view = service().submitUpload(new ByteArrayInputStream(media), "我的 视频.mp4", null);
 
         Path dir = tempDir.resolve("works").resolve("我的 视频.mp4-" + expectedKey);
         Path source = dir.resolve("source.mp4");
@@ -164,8 +176,8 @@ class VideoTaskServiceTest {
         when(repository.findActiveByWorkspaceKey(any())).thenReturn(Optional.empty());
         byte[] media = "same-content".getBytes(StandardCharsets.UTF_8);
 
-        service().submitUpload(new ByteArrayInputStream(media), "  ");
-        service().submitUpload(new ByteArrayInputStream(media), "  ");
+        service().submitUpload(new ByteArrayInputStream(media), "  ", null);
+        service().submitUpload(new ByteArrayInputStream(media), "  ", null);
 
         Path dir = tempDir.resolve("works").resolve(
                 WorkspaceDir.FALLBACK_NAME + "-" + sha256Prefix(media));
@@ -179,7 +191,7 @@ class VideoTaskServiceTest {
         byte[] media = "duplicate-content".getBytes(StandardCharsets.UTF_8);
 
         assertThrows(TaskConflictException.class,
-                () -> service().submitUpload(new ByteArrayInputStream(media), "a.mp4"));
+                () -> service().submitUpload(new ByteArrayInputStream(media), "a.mp4", null));
 
         Path root = tempDir.resolve("works");
         try (Stream<Path> entries = Files.list(root)) {
@@ -195,7 +207,7 @@ class VideoTaskServiceTest {
 
     @Test
     void submitUploadRejectsNullStream() {
-        assertThrows(IllegalArgumentException.class, () -> service().submitUpload(null, "a.mp4"));
+        assertThrows(IllegalArgumentException.class, () -> service().submitUpload(null, "a.mp4", null));
     }
 
     // ---------- 查询 ----------
@@ -503,6 +515,118 @@ class VideoTaskServiceTest {
     /**
      * 主任务已成功、翻译子状态随给定值构造的任务（errorMessage 由调用方给，模拟翻译失败落库的形状）。
      */
+    // ---------- 重新生成字幕（后置会话同步段，2026-10-12） ----------
+
+    @Test
+    void regenerateWithKeywordsReplacesStoreAndDelegates() {
+        VideoTask task = succeededWithTranslation(null, null);
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+
+        service().regenerate(task.getTaskNo().value(), List.of("影视飓风"));
+
+        ArgumentCaptor<SubtitleKeywords> captor = ArgumentCaptor.forClass(SubtitleKeywords.class);
+        verify(keywordRepository).replace(eq(task.getWorkspaceKey()), captor.capture());
+        assertEquals(List.of("影视飓风"), captor.getValue().values());
+        verify(pipeline).regenerateSubtitles(eq(task), captor.capture());
+    }
+
+    @Test
+    void regenerateWithNullKeywordsKeepsExistingList() {
+        VideoTask task = succeededWithTranslation(null, null);
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        when(keywordRepository.findByWorkspaceKey(task.getWorkspaceKey()))
+                .thenReturn(new SubtitleKeywords(List.of("旧词")));
+
+        service().regenerate(task.getTaskNo().value(), null);
+
+        verify(keywordRepository, never()).replace(any(), any());
+        ArgumentCaptor<SubtitleKeywords> captor = ArgumentCaptor.forClass(SubtitleKeywords.class);
+        verify(pipeline).regenerateSubtitles(eq(task), captor.capture());
+        assertEquals(List.of("旧词"), captor.getValue().values(), "null = 不动已有列表，按库里那份重跑");
+    }
+
+    @Test
+    void regenerateRejectsNotReadyTaskWithoutTouchingRegistry() {
+        VideoTask pending = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir");
+        when(repository.findByTaskNo(pending.getTaskNo())).thenReturn(Optional.of(pending));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service().regenerate(pending.getTaskNo().value(), null));
+
+        verify(pipeline, never()).regenerateSubtitles(any(), any());
+        assertNull(sessionRegistry.findRunningStage(pending.getWorkspaceKey()),
+                "未就绪不该抢登记——抢了不退就是幽灵（AC10 的同步段这一半）");
+    }
+
+    @Test
+    void regenerateRejectsOverLimitBeforeTouchingAnything() {
+        VideoTask task = succeededWithTranslation(null, null);
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        List<String> tooMany = new java.util.ArrayList<>();
+        for (int i = 0; i < 51; i++) {
+            tooMany.add("词" + i);
+        }
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service().regenerate(task.getTaskNo().value(), tooMany));
+
+        verify(keywordRepository, never()).replace(any(), any());
+        verify(pipeline, never()).regenerateSubtitles(any(), any());
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()), "超限连登记都不该抢（AC8）");
+    }
+
+    @Test
+    void regenerateConflictReturns409WithoutTouchingKeywords() {
+        VideoTask task = succeededWithTranslation(null, null);
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(), SubtitleStageName.CLEAN_SUBTITLES.getStageName()),
+                "先占住模拟「已有会话在跑」");
+
+        assertThrows(TaskConflictException.class,
+                () -> service().regenerate(task.getTaskNo().value(), List.of("新词")));
+
+        verify(keywordRepository, never()).replace(any(), any());
+        verify(pipeline, never()).regenerateSubtitles(any(), any());
+    }
+
+    @Test
+    void regenerateReleasesRegistryWhenHandoffFails() {
+        // AC10 的同步段这一半：抢到登记之后、委派出去之前任何一步抛了，登记必须在 finally 退掉——
+        // 漏了该工作区的互斥就再也释放不掉（比卡 loading 更严重）
+        VideoTask task = succeededWithTranslation(null, null);
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        doThrow(new IllegalStateException("模拟关键词落库失败：库不可达"))
+                .when(keywordRepository).replace(any(), any());
+
+        assertThrows(IllegalStateException.class,
+                () -> service().regenerate(task.getTaskNo().value(), List.of("影视飓风")));
+
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "同步段异常必须退登记，否则留下永远在跑的幽灵");
+        verify(pipeline, never()).regenerateSubtitles(any(), any());
+        // 紧接着再触发一次必须能抢到登记（AC9 的下半句）
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.CLEAN_SUBTITLES.getStageName()));
+    }
+
+    // ---------- 关键词查询 ----------
+
+    @Test
+    void keywordsReturnsStoreContentsAndFingerprint() {
+        VideoTask task = succeededWithTranslation(null, null);
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        SubtitleKeywords stored = new SubtitleKeywords(List.of("影视飓风"));
+        when(keywordRepository.findByWorkspaceKey(task.getWorkspaceKey())).thenReturn(stored);
+
+        var snapshot = service().findKeywords(task.getTaskNo().value());
+
+        assertEquals(List.of("影视飓风"), snapshot.values());
+        assertEquals(stored.computeFingerprint(), snapshot.fingerprint(),
+                "指纹必须与产物里那一栏同算法（单源在 SubtitleKeywords）");
+    }
+
+
     private static VideoTask succeededWithTranslation(TranslationStatus translationStatus, String errorMessage) {
         return VideoTask.restore(7L, new TaskNo("abc123def456abc123def456abc123de"), TaskInputType.URL,
                 "https://example.com/v", new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, SubtitleStageName.CLEAN_SUBTITLES.getStageName(),

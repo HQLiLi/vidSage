@@ -32,10 +32,20 @@ public final class TaskStageEvent {
      * 由持久化状态构造阶段事件：主状态渲染；SUCCEEDED 且翻译子状态存在时转派
      * {@link #fromTranslation} 走翻译子状态。
      *
-     * @param task 任务实例；{@code current_stage} 可为 {@code null}
-     * @return 粗粒度阶段事件；{@code current_stage} 为空且状态非 FAILED 时为 {@code null}
+     * <p><b>登记表查询在调用方</b>（2026-10-12 起）：后置会话在跑时，快照要渲染成该阶段的 RUNNING 事件，
+     * 而「有没有在途会话」是 {@code TaskSessionRegistry} 里的事实——查完把事实当入参传进来，
+     * 本政策保持纯函数（与 {@code CheckpointPolicy} 的既有分工一致）。没人跑会话就传 {@code null}。
+     *
+     * @param task         任务实例；{@code current_stage} 可为 {@code null}
+     * @param runningStage 在途后置会话的阶段名；{@code null} = 没有在途会话
+     * @return 粗粒度阶段事件；{@code runningStage} 为 {@code null} 且 {@code current_stage} 为空
+     *         且状态非 FAILED 时为 {@code null}
      */
-    public static StageProgress from(VideoTask task) {
+    public static StageProgress from(VideoTask task, String runningStage) {
+        if (runningStage != null) {
+            // 后置会话在跑：非终态、进度 0（精确进度由增量事件携带，快照只保证形状合法）
+            return new StageProgress(runningStage, 0, "任务执行中", StageProgress.State.RUNNING);
+        }
         if (task.getStatus() == TaskStatus.SUCCEEDED && task.getTranslationStatus() != null) {
             return fromTranslation(task);
         }

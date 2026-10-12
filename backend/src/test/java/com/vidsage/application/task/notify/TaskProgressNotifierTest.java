@@ -1,6 +1,8 @@
 package com.vidsage.application.task.notify;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -23,6 +25,7 @@ import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import com.vidsage.application.task.session.TaskSessionRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
@@ -38,7 +41,9 @@ class TaskProgressNotifierTest {
 
     private final VideoTaskRepository repository = Mockito.mock(VideoTaskRepository.class);
     private final TaskSubscriptionRegistry registry = new TaskSubscriptionRegistry();
-    private final TaskProgressNotifier notifier = new TaskProgressNotifier(repository, registry);
+    private final TaskSessionRegistry sessionRegistry = new TaskSessionRegistry();
+    private final TaskProgressNotifier notifier =
+            new TaskProgressNotifier(repository, registry, sessionRegistry);
 
     // ---------- 阶段进度 ----------
 
@@ -46,7 +51,7 @@ class TaskProgressNotifierTest {
     void saveCurrentStageAndBroadcastUpdatesStagePersistsThenBroadcasts() {
         // 广播要进 inOrder，注册表这例用 mock（真注册表不参与 Mockito 顺序验证）
         TaskSubscriptionRegistry broadcastRecorder = Mockito.mock(TaskSubscriptionRegistry.class);
-        TaskProgressNotifier local = new TaskProgressNotifier(repository, broadcastRecorder);
+        TaskProgressNotifier local = new TaskProgressNotifier(repository, broadcastRecorder, new TaskSessionRegistry());
         VideoTask task = Mockito.spy(runningTask());
         StageProgress event = new StageProgress(SubtitleStageName.EXTRACT_AUDIO.getStageName(), 30,
                 "音频抽取完成", StageProgress.State.SUCCEEDED);
@@ -84,7 +89,7 @@ class TaskProgressNotifierTest {
     @Test
     void completeTaskBroadcastsFromStageEventAndClearsSubscription() {
         VideoTask task = succeededTask();
-        StageProgress expected = TaskStageEvent.from(task);
+        StageProgress expected = TaskStageEvent.from(task, null);
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
 
@@ -121,7 +126,7 @@ class TaskProgressNotifierTest {
     @Test
     void completeTaskClearsSubscriptionEvenWhenBroadcastThrows() {
         TaskSubscriptionRegistry throwing = Mockito.mock(TaskSubscriptionRegistry.class);
-        TaskProgressNotifier local = new TaskProgressNotifier(repository, throwing);
+        TaskProgressNotifier local = new TaskProgressNotifier(repository, throwing, new TaskSessionRegistry());
         VideoTask task = succeededTask();
         doThrow(new IllegalStateException("模拟广播失败")).when(throwing).broadcast(anyString(), any());
 
@@ -144,10 +149,29 @@ class TaskProgressNotifierTest {
 
         assertEquals(task.getTaskNo().value(), snapshot.taskNo());
         assertEquals(task.getStatus(), snapshot.taskStatus());
-        assertEquals(TaskStageEvent.from(task), snapshot.stage(), "快照与终态广播挑同一个渲染器");
+        assertEquals(TaskStageEvent.from(task, null), snapshot.stage(), "快照与终态广播挑同一个渲染器");
         assertEquals(task.getTranslationStatus(), snapshot.translationStatus());
         verify(repository, never()).update(any());
         assertEquals(0, received.size(), "快照只组装不发送，不碰注册表");
+    }
+
+    @Test
+    void createSnapshotRendersRunningStageWhilePostSessionIsInFlight() {
+        // AC12 的地基：后置会话在跑时重连，快照要渲染成该阶段的 RUNNING，terminal 必须为 false——
+        // 否则重连的人一连上就被终态收口，后半程进度全收不到
+        VideoTask task = succeededTask();
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.CLEAN_SUBTITLES.getStageName()));
+
+        TaskProgressMessage snapshot = notifier.createSnapshot(task);
+
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), snapshot.stage().stage());
+        assertEquals(StageProgress.State.RUNNING, snapshot.stage().state());
+        assertFalse(snapshot.terminal(), "在途后置会话 → 未收敛");
+
+        sessionRegistry.finish(task.getWorkspaceKey());
+        TaskProgressMessage afterFinish = notifier.createSnapshot(task);
+        assertTrue(afterFinish.terminal(), "会话退掉后快照回到 DB 派生的终态");
     }
 
     // ---------- 工厂 ----------

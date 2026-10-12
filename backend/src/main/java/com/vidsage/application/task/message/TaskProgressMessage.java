@@ -23,8 +23,18 @@ public record TaskProgressMessage(
         TranslationStatus translationStatus,
         boolean terminal
 ) {
+    /**
+     * terminal 派生：主状态与翻译子状态都收敛了（{@link VideoTask#isEventTerminal}），
+     * <b>且没有在途后置会话</b>（阶段事件不是 RUNNING 态）。
+     *
+     * <p>为什么不需要新字段（2026-10-12 拍板，隐式派生）：后置会话在跑时，快照的 stage 必定是
+     * RUNNING 态（由 {@code TaskStageEvent.from} 按登记表产出）；主状态终态时，DB 派生的 stage 必定不是
+     * RUNNING。两个事实合起来，「stage 非 RUNNING」就是「没有在途会话」的等价判据——
+     * 在途会话这件事被隐式编码进 stage 的状态位，保住「一条判据一个来源」，代价是读代码要意识到这层含义。
+     */
     public TaskProgressMessage {
-        terminal = VideoTask.isEventTerminal(taskStatus, translationStatus);
+        terminal = VideoTask.isEventTerminal(taskStatus, translationStatus)
+                && (stage == null || stage.state() != StageProgress.State.RUNNING);
     }
 
     public static TaskProgressMessage of(String taskNo, TaskStatus taskStatus,

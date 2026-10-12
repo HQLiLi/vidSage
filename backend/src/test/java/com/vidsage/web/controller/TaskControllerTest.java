@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.application.task.message.TaskProgressMessage;
+import com.vidsage.application.task.query.KeywordsSnapshot;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
@@ -82,7 +84,7 @@ class TaskControllerTest {
 
     @Test
     void submitUrlReturnsAcceptedWithTaskResponse() throws Exception {
-        when(taskService.submitUrl("https://example.com/watch/1"))
+        when(taskService.submitUrl("https://example.com/watch/1", null))
                 .thenReturn(pendingView(TaskInputType.URL, "https://example.com/watch/1"));
 
         mockMvc.perform(post("/api/tasks")
@@ -108,7 +110,7 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.error").value("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                         + "上传本地文件请走 POST /api/tasks/upload"));
 
-        verify(taskService, never()).submitUrl(anyString());
+        verify(taskService, never()).submitUrl(anyString(), isNull());
     }
 
     @Test
@@ -117,7 +119,7 @@ class TaskControllerTest {
                 "demo.mp4", TaskStatus.RUNNING, null, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), null,
                 LocalDateTime.of(2026, 9, 30, 10, 0), LocalDateTime.of(2026, 9, 30, 10, 0, 1), null,
                 List.of());
-        when(taskService.submitUrl(anyString())).thenThrow(new TaskConflictException(existing));
+        when(taskService.submitUrl(anyString(), isNull())).thenThrow(new TaskConflictException(existing));
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -134,7 +136,7 @@ class TaskControllerTest {
 
     @Test
     void submitUploadReturnsAcceptedWithTaskResponse() throws Exception {
-        when(taskService.submitUpload(any(), any()))
+        when(taskService.submitUpload(any(), any(), isNull()))
                 .thenReturn(pendingView(TaskInputType.UPLOAD, "视频.mp4"));
         MockMultipartFile file = new MockMultipartFile("file", "视频.mp4", "video/mp4",
                 "fake-bytes".getBytes(StandardCharsets.UTF_8));
@@ -154,7 +156,7 @@ class TaskControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("上传文件不能为空：请选择本地视频 / 音频文件后再提交"));
 
-        verify(taskService, never()).submitUpload(any(), any());
+        verify(taskService, never()).submitUpload(any(), any(), isNull());
     }
 
     // ---------- 查询 ----------
@@ -323,6 +325,108 @@ class TaskControllerTest {
 
         verify(taskService, never()).translate(anyString());
     }
+
+    // ---------- 重新生成字幕（关键词，2026-10-12） ----------
+
+    @Test
+    void regenerateReturnsAcceptedAndPassesKeywordsThrough() throws Exception {
+        when(taskService.regenerate(TASK_NO, List.of("影视飓风")))
+                .thenReturn(succeededView(null));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"keywords":["影视飓风"]}"""))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.taskNo").value(TASK_NO))
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+
+        verify(taskService).regenerate(TASK_NO, List.of("影视飓风"));
+    }
+
+    @Test
+    void regenerateMapsMissingTaskToNotFound() throws Exception {
+        when(taskService.regenerate("ghost", null)).thenThrow(new TaskNotFoundException("ghost"));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", "ghost")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void regenerateMapsNotReadyTaskToBadRequest() throws Exception {
+        when(taskService.regenerate(TASK_NO, null)).thenThrow(new IllegalArgumentException(
+                "字幕尚未就绪：任务状态为 RUNNING，重新生成只能在任务成功（SUCCEEDED）后触发"));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("字幕尚未就绪")));
+    }
+
+    @Test
+    void regenerateOverLimitMapsToBadRequest() throws Exception {
+        // 超限（>50 条 / 单条 >50 字）在 service 构造 SubtitleKeywords 时就抛 → 400；
+        // 这里钉的是映射不被吞，超限的判据本身在 SubtitleKeywordsTest
+        when(taskService.regenerate(TASK_NO, List.of("词"))).thenThrow(new IllegalArgumentException(
+                "关键词条数不能超过 50 条：本次收到 51 条；请删掉不用的，或分几次提交"));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"keywords":["词"]}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("50 条")));
+    }
+
+    @Test
+    void regenerateConflictReturns409() throws Exception {
+        // 同一工作区已有重新生成会话在跑：复用既有 TaskConflictException → 409 + 既有任务视图
+        when(taskService.regenerate(TASK_NO, null)).thenThrow(
+                new TaskConflictException(succeededView(null)));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.existingTask.taskNo").value(TASK_NO));
+    }
+
+    @Test
+    void regenerateRejectsBlankTaskNoBeforeTouchingService() throws Exception {
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", " ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verify(taskService, never()).regenerate(anyString(), any());
+    }
+
+    // ---------- 关键词查询 ----------
+
+    @Test
+    void keywordsReturnsListAndFingerprint() throws Exception {
+        when(taskService.findKeywords(TASK_NO))
+                .thenReturn(new KeywordsSnapshot(
+                        List.of("影视飓风", "Tim"), "a1b2c3d4e5f60708"));
+
+        mockMvc.perform(get("/api/tasks/{taskNo}/keywords", TASK_NO))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keywords[0]").value("影视飓风"))
+                .andExpect(jsonPath("$.keywords[1]").value("Tim"))
+                .andExpect(jsonPath("$.fingerprint").value("a1b2c3d4e5f60708"));
+    }
+
+    @Test
+    void keywordsMapsMissingTaskToNotFound() throws Exception {
+        when(taskService.findKeywords("ghost")).thenThrow(new TaskNotFoundException("ghost"));
+
+        mockMvc.perform(get("/api/tasks/{taskNo}/keywords", "ghost"))
+                .andExpect(status().isNotFound());
+    }
+
 
     // ---------- SSE 订阅：翻译期间（2026-10-02 两段式） ----------
 

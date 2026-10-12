@@ -12,6 +12,7 @@ import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerms;
 import com.vidsage.domain.subtitle.model.translation.TranslateResult;
@@ -225,9 +226,11 @@ public class SubtitleTranslationCoordinator {
         SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
         CheckpointPolicy.ContextResolution contextResolution = CheckpointPolicy.resolveContext(cached,
                 // 摘要请求惰性求值：缓存命中时连内容拼接与摘要调用都不发生
+                // 翻译侧传空关键词：主路径上 context-<route>.json 早在清洗阶段就写好了（清洗必定先跑），
+                // 摘要根本不会被调用；真落到这里说明缓存没了，那属于子任务 B（多语言翻译）的范围
                 () -> contextSummarizer.summarize(segments.stream()
                         .map(TranscriptionSegment::text)
-                        .collect(Collectors.joining("\n"))));
+                        .collect(Collectors.joining("\n")), new SubtitleKeywords(List.of())));
         SubtitleContext context = contextResolution.context();
         switch (contextResolution.source()) {
             // 摘要成功才落盘：降级出的空上下文绝不能写文件，否则下次会命中这份空缓存，摘要永久丢失且不报错

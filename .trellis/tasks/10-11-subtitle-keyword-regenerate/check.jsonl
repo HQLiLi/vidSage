@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "逐类核落位与命名：新桶是否有成员、根是否只留门面、端口是否在 domain/port、entity-mapper-repository 三件套是否齐全且 Mapper 未外泄"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "按 workspace_key upsert 的写法与 MyBatis-Plus 用法，按这份判据核 SubtitleKeywordRepository 的实现（表是一工作区一行、列表挤一列，不走 DELETE + 批量 INSERT）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核三个新增错误分支的异常类型选得对不对（错在调用方 → IAE → 400；服务端状态缺失 → ISE → 500），以及 409 是否复用了既有冲突异常"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核是否有重复判据（指纹算法、上限校验、结构性字符归一化各只应有一处）、是否有为单次使用提前抽出的抽象"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核新增日志：关键词原文与字幕正文不得落盘；失败原因落 error_message 时是否只带原因不带用户正文"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核跨层数据流是否闭环：关键词从 HTTP → 应用 → 仓储 → 摘要器/清洗器，以及指纹从领域政策 → 编排 → 产物文件 → HTTP 响应这条链每一跳都对得上"}

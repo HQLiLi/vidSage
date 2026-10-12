@@ -3,6 +3,7 @@ package com.vidsage.infrastructure.provider.llm;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import java.util.List;
 import java.util.Optional;
@@ -45,7 +46,7 @@ class LlmSubtitleContextSummarizerTest {
                 "{\"theme\": \"中世纪德国剑术\", \"sourceLanguage\": \"zh\", \"terms\": ["
                         + "{\"asr\": \"亮子纠缠\", \"fixed\": \"量子纠缠\", \"note\": \"物理术语\"}]}");
 
-        SubtitleContext context = summarizerOver(model).summarize("亮子纠缠是什么").orElseThrow();
+        SubtitleContext context = summarizerOver(model).summarize("亮子纠缠是什么", new SubtitleKeywords(List.of())).orElseThrow();
 
         assertEquals("中世纪德国剑术", context.theme());
         assertEquals("zh", context.sourceLanguage());
@@ -57,7 +58,7 @@ class LlmSubtitleContextSummarizerTest {
 
     @Test
     void 请求异常返回空Optional_不外抛() {
-        Optional<SubtitleContext> context = summarizerOver(throwingModel()).summarize("随便什么内容");
+        Optional<SubtitleContext> context = summarizerOver(throwingModel()).summarize("随便什么内容", new SubtitleKeywords(List.of()));
 
         assertTrue(context.isEmpty(), "请求失败该返回空 Optional，交给调用方降级");
     }
@@ -66,7 +67,7 @@ class LlmSubtitleContextSummarizerTest {
     void 回复不是合法JSON返回空Optional_不外抛() {
         ChatModel model = scriptedModel("这不是JSON，是模型的一段废话");
 
-        Optional<SubtitleContext> context = summarizerOver(model).summarize("随便什么内容");
+        Optional<SubtitleContext> context = summarizerOver(model).summarize("随便什么内容", new SubtitleKeywords(List.of()));
 
         assertTrue(context.isEmpty(), "坏 JSON 该返回空 Optional，交给调用方降级");
     }

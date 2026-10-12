@@ -61,20 +61,22 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * 同一输入重复提交（错在调用方）→ 409，记 WARN。
+     * 冲突（错在调用方）→ 409，记 WARN。两个场景共用本映射（2026-10-12 起）：提交查重命中、
+     * 同工作区已有后置会话（重新生成字幕）在跑——故日志文案写「冲突」不写「重复提交」，
+     * 具体是哪种由异常携带的 message 说明。
      *
      * <p>响应体是 {@code { "error": ... }} 的有意扩展（{@link TaskConflictResponse}）：冲突的可操作
      * 出路是「改用既有任务」，光有文字说明不够，把既有任务视图一并返回。异常载荷是应用层读模型
      * {@code TaskSnapshot}（零 web 注解），经 {@link TaskResponse#from} 映射为对外响应。
      * 例外原因与引入时机见 {@link TaskConflictException} 的类注释。
      *
-     * @param e 提交查重命中的冲突异常（携带既有任务快照）
+     * @param e 冲突异常（携带既有任务快照）
      * @return 冲突体：错误说明 + 既有任务视图
      */
     @ExceptionHandler(TaskConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public TaskConflictResponse handleTaskConflict(TaskConflictException e) {
-        log.warn("任务重复提交被拒绝: {}", errorMessage(e));
+        log.warn("任务冲突被拒绝: {}", errorMessage(e));
         return new TaskConflictResponse(errorMessage(e), TaskResponse.from(e.getExistingTask()));
     }
 

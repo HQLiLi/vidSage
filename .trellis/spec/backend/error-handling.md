@@ -159,14 +159,20 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 模式由首个 Controller 确立（该类已于 2026-10-02 收编旧同步端点时移除）；第二个 Controller（`web/controller/MediaController.java`）落地时局部处理开始重复，**按原规范预告的条件提取成了全局处理器** `web/controller/ApiExceptionHandler`（`@RestControllerAdvice`）。后续 Controller **不必再写局部 `@ExceptionHandler`**。
 
 - **入参校验用卫语句**：Controller 层判空白/越界即抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
-- **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）
-- **日志级别按「谁之过」分**：调用方输入问题（400）记 **WARN**——不该触发 ERROR 告警；服务端或环境故障（500）记 **ERROR** 并**带上异常对象**（保留调用栈供定位）
+- **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）；`TaskNotFoundException` → **404**；`TaskConflictException` → **409**（载荷额外附既有任务视图，见 `TaskConflictResponse`）
+- **409 现有两个场景**（2026-10-12 起并列，同一个异常类、同一条映射）：
+  1. **同 URL / 同内容已有进行中任务**——提交查重命中（`VideoTaskService.rejectIfActive`）；
+  2. **同工作区已有后置会话（重新生成字幕）在跑**——`TaskSessionRegistry.tryStart` 抢登记失败
+     （任务 `10-11-subtitle-keyword-regenerate`）。判定在同步段、202 之前：抢不到就 409，不排队等锁。
+     **文案必须区分场景**——场景 2 的冲突方手里就是那个任务号（主状态还是 SUCCEEDED），
+     套用场景 1 的「请勿重复提交」会让人以为提交写错了，故走 `TaskConflictException` 带 message 的构造器。
+- **日志级别按「谁之过」分**：调用方输入问题（400 / 404 / 409）记 **WARN**——不该触发 ERROR 告警；服务端或环境故障（500）记 **ERROR** 并**带上异常对象**（保留调用栈供定位）
 - **响应体形状只有一处定义**：`{ "error": message }` 由 `ApiExceptionHandler` 统一产出，接口文档也不逐接口重复声明
 
 ## 尚未建立的约定
 
 - **错误码体系**：未定义。
-- **自定义异常类**：未定义——等到需要跨层区分错误类型（例如给前端不同错误码）时再引入，不要提前造。
+- **自定义异常类**：已按「需要跨层区分错误码时再引入」的既定条件落地**两个**——`TaskNotFoundException`（404，按 taskNo 取资源的三个端点统一）与 `TaskConflictException`（409，载荷附既有任务快照，2026-10-12 起覆盖「重复提交」与「后置会话互斥」两个场景）。**不再为别的场景提前造**：其余错误仍按 IAE / ISE 的语义表达。
 - **日志**：已落地，规范见 [logging-guidelines.md](./logging-guidelines.md)。
 
 

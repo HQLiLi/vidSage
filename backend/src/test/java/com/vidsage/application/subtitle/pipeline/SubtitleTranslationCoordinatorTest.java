@@ -173,7 +173,7 @@ class SubtitleTranslationCoordinatorTest {
         when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
         when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
         when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(SubtitleContext.empty()));
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(SubtitleContext.empty()));
     }
 
     /**
@@ -187,7 +187,7 @@ class SubtitleTranslationCoordinatorTest {
     private void writeCleanTrack(String language) throws Exception {
         SubtitleTrack clean = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, language, List.of(
                 new TranscriptionSegment(0, 5000, "我防关这边露出"),
-                new TranscriptionSegment(5000, 10000, "今天天气不错")));
+                new TranscriptionSegment(5000, 10000, "今天天气不错")), null);
         JSON.writeValue(cleanFile().toFile(), clean);
     }
 
@@ -349,7 +349,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void skipsWhenSourceLanguageEqualsTarget() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(contextWithLanguage("zh")));
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(contextWithLanguage("zh")));
         SubtitleTranslationCoordinator s = service();
 
         TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"));
@@ -362,7 +362,7 @@ class SubtitleTranslationCoordinatorTest {
     void skipsWhenSourceLanguageHasRegionSubtag() throws Exception {
         writeCleanTrack();
         // LLM 可能回 zh-CN：直接 equals 会失配 → 中文被送去译成中文。只比主语言子标签才对
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(contextWithLanguage("zh-CN")));
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(contextWithLanguage("zh-CN")));
         SubtitleTranslationCoordinator s = service();
 
         assertSkipped(s.translate(new MediaInput.RemoteUrl("https://x")));
@@ -371,7 +371,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void doesNotSkipWhenLanguagesDiffer() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(contextWithLanguage("en")));
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(contextWithLanguage("en")));
         SubtitleTranslationCoordinator s = service();
 
         TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"));
@@ -385,7 +385,7 @@ class SubtitleTranslationCoordinatorTest {
     void doesNotSkipWhenSourceLanguageUnknown() throws Exception {
         // 摘要降级（空上下文）+ ASR language 为 null：源语种不可知，宁可多跑一趟也不静默漏译
         writeCleanTrack(null);
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.empty());
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
         SubtitleTranslationCoordinator s = service();
 
         TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"));
@@ -402,7 +402,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void translateWithListenerEmitsBeginBatchAndEndEvents() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(contextWithLanguage("en")));
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(contextWithLanguage("en")));
         // 真实批级事件来自 SubtitleTranslator；本层只验「批级事件原样透传 + 首尾事件齐全」
         doAnswer(invocation -> {
             ProgressListener listener = invocation.getArgument(4);
@@ -445,7 +445,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void sameLanguageSkipEmitsBeginThenSkippedEvent() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.of(contextWithLanguage("zh")));
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(contextWithLanguage("zh")));
         List<StageProgress> events = new ArrayList<>();
 
         service().translate(new MediaInput.RemoteUrl("https://x"), events::add);
@@ -472,7 +472,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void summarizeSuccessWritesContextFile() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any()))
+        when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
         SubtitleTranslationCoordinator s = service();
 
@@ -482,7 +482,7 @@ class SubtitleTranslationCoordinatorTest {
                 "摘要成功应把上下文落盘");
         SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
         assertEquals("de", persisted.sourceLanguage(), "落盘的该是成功那份上下文");
-        verify(contextSummarizer).summarize(any());
+        verify(contextSummarizer).summarize(any(), any());
     }
 
     @Test
@@ -493,13 +493,13 @@ class SubtitleTranslationCoordinatorTest {
 
         s.translate(new MediaInput.RemoteUrl("https://x"));
 
-        verify(contextSummarizer, never()).summarize(any());
+        verify(contextSummarizer, never()).summarize(any(), any());
     }
 
     @Test
     void summarizeDegradeDoesNotWriteContextFile() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.empty());
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
         SubtitleTranslationCoordinator s = service();
 
         TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"));
@@ -525,7 +525,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void realTranslateLooksUpAllTermsAndWritesTermsFile() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any()))
+        when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(contextWithTerms("en")));
         // 只狼=官方、弹刀=弃权（查过无据）、架势条=没配结论（调用失败）——三种结论一次钉住
         SubtitleTranslationCoordinator s = service(present(stubLookup(
@@ -557,7 +557,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void existingTermsFileSkipsLookup() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any()))
+        when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(contextWithTerms("en")));
         JSON.writeValue(termsFile().toFile(), new VerifiedTerms(List.of(
                 new VerifiedTerm("只狼", "只狼", "游戏名", "Sekiro", "官方译名（来源：example.com）"))));
@@ -572,7 +572,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void sameLanguageDoesNotLookUp() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any()))
+        when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(contextWithTerms("zh")));
         SubtitleTranslationCoordinator s = service(present(stubLookup("只狼", "official:Sekiro")));
 
@@ -588,7 +588,7 @@ class SubtitleTranslationCoordinatorTest {
         // 摘要降级（空上下文、无术语）+ ASR language 为 null：源语种不可知。翻译照常（宁可多跑一趟），
         // 但无术语可查——零查证调用、不落 terms 文件
         writeCleanTrack(null);
-        when(contextSummarizer.summarize(any())).thenReturn(Optional.empty());
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
         SubtitleTranslationCoordinator s = service(present(stubLookup("只狼", "official:Sekiro")));
 
         TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"));
@@ -601,7 +601,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void providerAbsentSkipsLookupAndWritesNoTermsFile() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any()))
+        when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(contextWithTerms("en")));
         SubtitleTranslationCoordinator s = service(absent());
 
@@ -615,7 +615,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void allLookupsFailWritesNoTermsFile() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any()))
+        when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(contextWithTerms("en")));
         // 桩没给任何术语配结论 → 全部抛异常 = 全部查证失败
         SubtitleTranslationCoordinator s = service(present(stubLookup()));
@@ -635,7 +635,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void realTranslatePassesVerifiedTermsToTranslator() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any()))
+        when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(contextWithTerms("en")));
         JSON.writeValue(termsFile().toFile(), new VerifiedTerms(List.of(
                 new VerifiedTerm("只狼", "只狼", "游戏名", "Sekiro", "官方译名（来源：example.com）"),
@@ -653,7 +653,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void missingTermsFilePassesEmptyOfficialTerms() throws Exception {
         writeCleanTrack();
-        when(contextSummarizer.summarize(any()))
+        when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(contextWithTerms("en")));
         // provider 缺席 = 查证关闭 = terms 文件不存在：翻译照常，官方译名按空表
         service().translate(new MediaInput.RemoteUrl("https://x"));

@@ -112,7 +112,10 @@ public enum SubtitleArtifactSpec {
             int slotEnd = template.indexOf('}', slotStart);
             String slot = template.substring(slotStart, slotEnd + 1);
             regex.append(switch (slot) {
-                case "{route}" -> RouteAlternation.VALUE;
+                // 必须包非捕获组：| 的优先级最低，不加括号的话整条正则会被交替拆成四选一，
+                // 前缀字面量只跟第一个分支粘在一起，任何完整产物名都匹配不上
+                // （2026-10-12 实测踩过：matches 恒 false → artifacts 清单恒空、重生成删不掉译文产物）
+                case "{route}" -> "(?:" + RouteAlternation.VALUE + ")";
                 case "{lang}" -> "[a-z0-9-]+";
                 // 占位符名字写错时早失败：否则它会被当成字面量，永远匹配不到任何文件，且不报错
                 default -> throw new IllegalStateException("未知的模板占位符：" + slot);

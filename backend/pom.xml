@@ -51,6 +51,21 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
+            <exclusions>
+                <!--
+                  openai-java-core 传递进 swagger-annotations:2.2.31（**非 jakarta** 版），
+                  而 springdoc 走 swagger-core-jakarta → swagger-annotations-jakarta（2.2.38）。
+                  两个 jar 装着同名同包（io.swagger.v3.oas.annotations.*）的类，classpath 上
+                  非 jakarta 那份在前被装载，而它缺少 $dynamicRef() 等方法——访问 /v3/api-docs
+                  即 NoSuchMethodError（swagger-core-jakarta 2.2.55 需要 2.2.38 的方法集）。
+                  排除掉：jakarta 版提供同包同名类，SDK 就算真引用也解析得到，不会 NoClassDefFound。
+                  （2026-10-12 实测；修法见任务 10-11-subtitle-keyword-regenerate 的会话记录）
+                -->
+                <exclusion>
+                    <groupId>io.swagger.core.v3</groupId>
+                    <artifactId>swagger-annotations</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- DeepSeek 官方 starter：翻译走 LLM 唯一路线（DeepSeek，OpenAI 兼容） -->

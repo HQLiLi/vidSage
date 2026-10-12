@@ -272,6 +272,54 @@ class VideoTaskTest {
                 "被拒绝的失败标记不应覆盖已有错误信息");
     }
 
+    @Test
+    void regenerateFailureRecordsMessageAndKeepsMainState() {
+        VideoTask task = succeeded();
+
+        task.recordRegenerateFailure("重新生成失败：字幕摘要失败，无法按当前关键词重新生成");
+
+        assertEquals("重新生成失败：字幕摘要失败，无法按当前关键词重新生成", task.getErrorMessage(),
+                "失败原因带前缀落 error_message（AC5）");
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(),
+                "重生成失败不得动主状态——旧字幕一个字没少，任务本身还是成功的");
+        assertNotNull(task.getUpdatedAt());
+    }
+
+    @Test
+    void rejectsRegenerateFailureWhenMainNotSucceeded() {
+        VideoTask pending = newPending();
+        assertThrows(IllegalStateException.class,
+                () -> pending.recordRegenerateFailure("x"),
+                "主任务非 SUCCEEDED 不该有重生成失败可记（同步段已挡住，这里防漏）");
+    }
+
+    @Test
+    void clearRegenerateFailureRemovesOnlyOwnPrefix() {
+        VideoTask task = succeeded();
+        task.recordRegenerateFailure(VideoTask.REGENERATE_FAILURE_PREFIX + "字幕摘要失败");
+
+        task.clearRegenerateFailure();
+
+        assertNull(task.getErrorMessage(), "上一次重生成的失败原因应随成功一起清掉");
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus());
+    }
+
+    @Test
+    void clearRegenerateFailureKeepsForeignErrorMessages() {
+        VideoTask translationFailed = succeededWithFailedTranslation();
+        String kept = translationFailed.getErrorMessage();
+
+        translationFailed.clearRegenerateFailure();
+
+        assertEquals(kept, translationFailed.getErrorMessage(),
+                "「翻译失败：」是另一台生命周期的记录，不归重生成清除");
+        VideoTask untouched = succeeded();
+        untouched.clearRegenerateFailure();
+        assertNull(untouched.getErrorMessage(), "没有失败记录时清除是无害空操作");
+    }
+
+
+
     // ---------- 查询谓词（2026-10-06 终态 / active 判据单源化） ----------
 
     @Test
