@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "本次新增两个桶（application/task/session/、domain/subtitle/model/keyword/）、一个 domain 端口与其持久化三件套、两个 web/dto 契约类，落位与命名全部按这份判据"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "反模式清单与构造器注入要求；本次新增 SubtitleKeywordRepository / TaskSessionRegistry / PromptDataBlock 都要过「不预先抽接口」与「同一判据只有一份」两道判据"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "重生成端点的四条错误映射（404 / 400 未就绪 / 409 冲突 / 400 超限）与卫语句顺序，按这份判据写"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志级别分层（Provider 内部节点 DEBUG、应用层 INFO）与脱敏红线——字幕正文与关键词都是用户内容，一律不进日志"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "SubtitleCleanser 端口签名从 String reference 改成 SubtitleKeywords 后，端口与适配器的分工口径按这份判据核"}
