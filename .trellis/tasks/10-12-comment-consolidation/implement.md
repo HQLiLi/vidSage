@@ -41,7 +41,7 @@ domain 试点因此从 26 个文件扩到 32 个。**后续每层都必须跑第
 
 中位数那批（既无变更史、不超 15 行、也不命中第 3 批）不碰。
 
-**Step B · 逐文件过内容分流表**（`design.md` §1.2）
+**Step B · 逐文件过内容分流表**（正典 §二）
 
 对每个待动文件：把注释按四问分类 → 该上移的上移 → 该删的删 → 该留的压缩。
 **上移优先于删除**：能搬去 `package-info` / spec / `design.md` 的，先搬再删本地副本。
@@ -83,18 +83,11 @@ grep -rnE "<正典 §六 的模式清单>" <本层目录>            # 期望命
 | 1 | `backend/src/main/java/com/vidsage/web/dto/TaskResponse.java:45-47` | Javadoc 断句残句：「字段一一对应，产物清单逐元素映射为」后无下文 | 补全或删整句，归 web 子任务 |
 | 2 | `web/dto/*` 等 13 文件 50 字段 | `@param` 与 `@Schema(description=…)` 文案重复 | **本任务不动**（父 `prd.md`「不做」），只在两者不一致时订正 |
 
-## 4. 正典文档骨架（子任务 1 产出）
+## 4. 正典文档骨架（子任务 1 产出，**已完成**）
 
-`.trellis/spec/guides/comment-guidelines.md` 至少含：
-
-1. 第一原理（删了会不会有人踩坑）
-2. 内容分流表（`design.md` §1.2 的表格）
-3. 按层级的写法（§1.3，Java 与 TS 各配例子）
-4. 正例 / 反例对照：拿本仓库真实前后各一段（如 `TaskConflictException` 收口前后）
-5. 改代码前去哪找「为什么」（`.trellis/tasks/archive/**/design.md`）
-6. 钩子：脚本全文 + 重装方法 + 已知缺口
-
-同时在两份 `quality-guidelines.md` 的注释章节头部落一行指针。
+正典已落地：`.trellis/spec/guides/comment-guidelines.md`（十三条禁令版）。
+原先列在本节的六点骨架清单**已删**——正典一旦产出，它就是第二份结构描述，留着必然漂移（正典 §七）。
+后续各层只读正典，不再回看本节。
 
 ## 5. 收尾（子任务 6 之后）
 
