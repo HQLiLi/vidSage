@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 /**
  * 后置会话的在途登记：回答「哪个工作区的哪个后置会话正在跑」。
  *
- * <p><b>它是一把锁，不是状态</b>（design 决策 6 / PRD D6）：跑会话的虚拟线程与登记它的表同生共死，
+ * <p><b>它是一把锁，不是状态</b>：跑会话的虚拟线程与登记它的表同生共死，
  * 不落库、不跨重启、不进 SSE 快照的持久化部分，只在组装快照时被查一次。
  * 不上 Redis——搬进分布式锁反而要多补 TTL / 启动清理去擦自己造的谎。
  *
@@ -15,13 +15,10 @@ import org.springframework.stereotype.Component;
  * <ol>
  *   <li><b>{@link #finish} 必须写在调用方的 {@code finally} 里</b>，任何异常路径都不能漏。
  *       漏了会留下永远 RUNNING 的幽灵：前端卡 loading，且该工作区的互斥再也释放不掉
- *       ——比卡 loading 更严重（PRD AC9 / AC10 钉的就是这两条）。</li>
+ *       ——比卡 loading 更严重。</li>
  *   <li>互斥判定在<b>同步段</b>（202 之前）：抢不到就 409，不排队等锁——用户看到 202 以为成功了，
  *       实际在等别人跑完，语义上是骗人。</li>
  * </ol>
- *
- * <p>落位 {@code application/task/session/}：读它的是 {@code TaskProgressNotifier}（快照组装），
- * 写它的是字幕管线，与订阅表「管线广播 / web 挂回调」的分工同形。
  */
 @Component
 public class TaskSessionRegistry {
@@ -48,9 +45,6 @@ public class TaskSessionRegistry {
 
     /**
      * 查该工作区有没有在跑的后置会话，有就返回它的阶段名。
-     *
-     * <p>原名是名词式取值器（{@code runningStage}），2026-10-12 命名收口按「动词开头」改为动词——
-     * 它答的是「给我查一下」而不是「这是什么」。
      *
      * @param key 工作区短哈希
      * @return 在跑的阶段名；没在跑为 {@code null}（不是空串，调用方判 null 即可）

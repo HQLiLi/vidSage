@@ -29,7 +29,6 @@ public class MediaAcquirerDispatcher {
      * 构造函数注入容器里的全部媒体获取适配器。
      *
      * <p>注入 List 而不是某个具体实现：两个实现都要在，选谁不归本类决定（见类注释）。
-     * 测试也可以直接 {@code new} 出来传一个 List，不用起 Spring。
      *
      * @param acquirers 容器里的全部适配器；两个实现的 {@code supports} 互斥，
      *                  故 {@link #select} 用 {@code findFirst()} 取到的总是唯一那个

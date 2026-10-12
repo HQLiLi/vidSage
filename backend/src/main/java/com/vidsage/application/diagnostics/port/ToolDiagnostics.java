@@ -10,9 +10,7 @@ import java.util.List;
  * （工具名、版本号、路径、可用与否），是环境自检 / 运维排障能力，端点只为让运维知道
  * 机器上工具装没装。
  *
- * <p>实现在 {@code infrastructure/process/}（当前是走本机进程的 {@code ProcessToolDiagnostics}），
- * 由 Spring 注进来。这是 infrastructure 反向依赖 application 的唯一入口——只为实现这个端口，
- * 不得反向调用本层的用例服务。
+ * <p>实现方只为实现这个端口，<b>不得反向调用本层的用例服务</b>。
  */
 public interface ToolDiagnostics {
 

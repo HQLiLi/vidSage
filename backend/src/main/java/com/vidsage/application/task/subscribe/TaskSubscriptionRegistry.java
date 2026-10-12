@@ -10,11 +10,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * 任务进度的订阅中心
+ * 任务进度的订阅中心。
+ *
  * <p><b>并发模型</b>：每个 taskNo 一条 {@link CopyOnWriteArrayList}——订阅 / 退订改副本，
  * 广播遍历快照，读写互不阻塞；管线的广播跑在虚拟线程上，与 HTTP 线程的订阅并发发生。
  * 事件量小（阶段边界 + 批级），写时复制的代价可忽略。
- *
  */
 @Slf4j
 @Component

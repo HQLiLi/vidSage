@@ -18,7 +18,7 @@ public class WorkspaceKeyGenerator {
     }
 
     /**
-     * 解析媒体并转化为工作区Key
+     * 解析媒体输入，转化为工作区 Key。
      *
      * @param input 输入媒体
      * @return 工作区key

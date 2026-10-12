@@ -123,6 +123,22 @@ com.vidsage
 >    **边界**：派生查询必须**不改状态、可重复计算**（同样的输入给同样的输出，不留痕迹、不缓存、不发消息）。
 >    一旦某个方法要改状态、要查外部、或者结果随时间变，它就不是这个类型的事了，该走状态机或政策类。
 
+#### 进度事件序列（2026-10-12 自各 `*Coordinator` 的类注释上移）
+
+阶段名、区间与权重单源在 `domain/subtitle/model/common/SubtitleStageName`；各 Coordinator 只负责在自己
+认领的区间内发事件。原先这些序列写在类的 Javadoc 里，现按「流程步骤归 spec」集中到此处。
+
+| 构件 | 认领的阶段 | 事件序列 |
+|---|---|---|
+| `SubtitleCleanupCoordinator` | `CLEAN_SUBTITLES` | 断点复用命中 → 一条 SKIPPED（区间终点）直接返回；正常路径 → 开始（区间起点 RUNNING）→ 每批清洗完成各一条（「第 x/N 批」，来自 cleanser 自报 `0..100` 换算进本区间）→ 完成（区间终点 SUCCEEDED） |
+| `SubtitleTranslationCoordinator` | `TRANSLATE_SUBTITLES` | 断点复用命中 / 源语种 = 目标语种 → 一条 SKIPPED（进度 100）；真翻译 → 开始（0，RUNNING）→ 每批翻译完成各一条 → 完成（100，SUCCEEDED） |
+| `AudioPreparationCoordinator` | `ACQUIRE_MEDIA` + `EXTRACT_AUDIO` | 每个阶段在开始 / 成功 / 跳过 / 失败时各发一个；失败路径在发完 FAILED（消息取异常 `getMessage()`）后原样上抛 |
+
+两条跨构件的口径：
+
+- **开始事件先于「前置产物缺失」卫语句发出**（清洗、翻译两处）：失败任务的用户消息里能带上所在阶段。
+- 翻译阶段的事件自成 `0..100` 段直通广播，不在主管线的区间映射之内；调用方按需 remap。
+
 ## 依赖规则
 
 > **本文件是依赖规则的正典落点**，其余 spec 文件引用本节、不复述全文。

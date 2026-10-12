@@ -77,7 +77,7 @@ public class TaskProgressNotifier {
      * 阶段进度，只广播不落库（与 {@link #broadcastTranslationStage} 同形的「不落 current_stage」通道）。
      *
      * <p>后置会话（重新生成字幕）走这条：主状态已终态，{@code updateStage} 的 RUNNING 守卫本来也会拒；
-     * 精确进度由增量事件携带，重连快照由登记表粗粒度还原（B5：后置会话不写 {@code current_stage}）。
+     * 精确进度由增量事件携带，重连快照由登记表粗粒度还原。
      *
      * @param task 任务
      * @param stageProgress 阶段进度
@@ -110,7 +110,7 @@ public class TaskProgressNotifier {
     }
 
     /**
-     * 组装 SSE 连接建立时的<b>快照事件</b>（design.md「SSE 契约」：DB 快照即权威，事件不落库）：
+     * 组装 SSE 连接建立时的<b>快照事件</b>（DB 快照即权威，事件不落库）：
      * 只组装不发送——发送由 web 层决定，本方法不碰注册表、不落库。
      *
      * @param task 任务实例
@@ -139,8 +139,8 @@ public class TaskProgressNotifier {
     }
 
     /**
-     * 终态广播：告诉每个订阅者订阅结束。
-     * 在广播结束后清除该任务的所有订阅关系
+     * 终态广播：告诉每个订阅者订阅结束；
+     * 在广播结束后清除该任务的所有订阅关系。
      *
      * @param task          任务
      * @param stageProgress 阶段进度

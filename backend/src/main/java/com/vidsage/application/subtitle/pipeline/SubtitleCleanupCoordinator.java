@@ -38,23 +38,14 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * 字幕清洗编排：把「2b 产出的原始 segments」变成「切分 + LLM 纠错后的 -clean 产物」。
+ * 字幕清洗编排：把产字幕阶段产出的原始 segments，变成「切分 + LLM 纠错后的 -clean 产物」。
  *
- * <p>管线形状：读原始 segments → 摘要出跨批上下文（{@link SubtitleContextSummarizer}）→
- * {@link SubtitleSegmentSplitter} 切分超长段 → {@link SubtitleCleanser} 逐批清洗 →
- * 写 {@code segments-<route>-clean.json} + {@code subtitles-<route>-clean.srt}。
+ * <p><b>断点复用靠关键词指纹</b>：{@code -clean.json} 存在、字节数 &gt; 0，且它记着的指纹与当前关键词
+ * 一致，才跳过切分与纠错直接返回。摘要缓存的有效性由同一枚指纹决定——{@code -clean} 只在清洗成功后才
+ * 落盘，所以「指纹一致」蕴含「当初写的上下文也是这一份」；判不一致就重新摘要，<b>安全方向永远是重跑</b>。
  *
- * <p><b>断点复用判据</b>（2026-10-12 起）：{@code -clean.json} 存在、字节数 &gt; 0
- * <b>且它记着的关键词指纹与当前一致</b>才跳过切分与纠错，直接反序列化返回。
- * 为什么拿 JSON 当检查点而不是 SRT：空转写产出 0 字节 SRT，拿 SRT 当检查点会让空清洗永远判「未完成」
- * ——该语义单源在 {@link CheckpointPolicy}（design 决策 4，同 {@link SubtitlePreparationCoordinator}）。
- *
- * <p><b>摘要缓存的可用性由同一枚指纹决定</b>：上下文总是先于同一次 {@code -clean} 写入，而
- * {@code -clean} 只在清洗成功后才落盘——所以「指纹 = F 的那份 -clean」蕴含「当初写的上下文也是 F 的」。
- * 反过来（上下文写了、清洗失败了），{@code -clean} 还停在旧指纹上 → 判不一致 → 重新摘要。
- * <b>安全方向永远是重跑。</b>这样 {@code SubtitleContext} 的形状一个字不用改（它还被翻译侧读）。
- *
- * <p><b>不碰 2b 原始产物</b>：读 {@code segments-<route>.json}（原始，只读，必须已存在）、写 {@code -clean}。
+ * <p>检查点语义（为什么是 JSON 而不是 SRT）单源在 {@link CheckpointPolicy}，本类不另判。
+ * 只读产字幕阶段的原始产物（{@code segments-<route>.json}，必须已存在），只写 {@code -clean}。
  */
 @Slf4j
 @Component
@@ -71,8 +62,6 @@ public class SubtitleCleanupCoordinator {
     private final SubtitleCleanser subtitleCleanser;
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param workspaceKeyGenerator     工作区key生成器
      * @param workspaceDirectoryManager 工作区目录管理器
      * @param asrProvider               当前装配的 ASR provider（取路线与产物命名指纹）
@@ -98,7 +87,7 @@ public class SubtitleCleanupCoordinator {
     }
 
     /**
-     * 清洗一份字幕（不带关键词、不关心进度）。
+     * 清洗一份字幕（不带关键词、不报告进度）。
      *
      * @param input 媒体输入（与产字幕同源，用于定位工作目录）；不可为空
      * @return 清洗产物（-clean SRT + segments 路径 + 统计）
@@ -110,7 +99,7 @@ public class SubtitleCleanupCoordinator {
     }
 
     /**
-     * 清洗一份字幕（不关心进度）：内部走 {@link ProgressListener#noop()}。
+     * 清洗一份字幕（不报告进度）。
      *
      * @param input    媒体输入；不可为空
      * @param keywords 用户手填的关键词（专有名词正确写法，纠正同音误写）；空清单就是「不纠这一类」
@@ -123,15 +112,7 @@ public class SubtitleCleanupCoordinator {
     }
 
     /**
-     * 清洗一份字幕：读原始 segments → 摘要出上下文 → 切分 → 逐批清洗 → 写 -clean 产物。
-     *
-     * <p>进度事件（端点取 {@code CLEAN_SUBTITLES} 的区间；批级进度 cleanser 自报 {@code 0..100}，本类换算进该区间）：
-     * <ul>
-     *   <li>断点复用命中 → 一条 SKIPPED（区间终点），直接返回；</li>
-     *   <li>正常路径 → 开始（区间起点，RUNNING）→ 每批清洗完成各一条（「第 x/N 批」，来自
-     *       {@link SubtitleCleanser} 的自报进度换算后）→ 完成（区间终点，SUCCEEDED）。</li>
-     * </ul>
-     * 开始事件先于「原始字幕缺失」卫语句发出——失败任务的用户消息里能带上所在阶段。
+     * 清洗一份字幕。
      *
      * @param input    媒体输入；不可为空
      * @param keywords 用户手填的关键词（专有名词正确写法）；不可为 {@code null}
@@ -145,20 +126,18 @@ public class SubtitleCleanupCoordinator {
     }
 
     /**
-     * <b>按当前关键词重新生成一遍清洗产物</b>（2026-10-12 起，任务 {@code 10-11-subtitle-keyword-regenerate}）：
-     * 与 {@link #clean} 只差两条规则。
+     * <b>按当前关键词重新生成一遍清洗产物</b>：与 {@link #clean} 只差两条规则。
      *
      * <ol>
      *   <li><b>跳过 {@code -clean} 检查点</b>——关键词没变也照样重跑。用户点「重新生成」就是想要一份
      *       新的（模型温度不是零，同样的输入也值得再试一次）。</li>
-     *   <li><b>摘要失败即整体失败</b>。首次跑宁可没上下文也要出字幕，那是 {@code clean} 的取舍；
-     *       这里用户已经明确要求「用这批关键词重生成」，拿空上下文出一份没纠错的字幕等于没执行他的要求，
-     *       而且他看不出来。抛 {@link IllegalStateException} → 调用方广播 FAILED，<b>什么都不删</b>。</li>
+     *   <li><b>摘要失败即整体失败</b>，抛 {@link IllegalStateException} → 调用方广播 FAILED，<b>什么都不删</b>。
+     *       首次跑宁可没上下文也要出字幕，那是 {@link #clean} 的取舍；这里用户已明确要求「用这批关键词
+     *       重生成」，拿空上下文出一份没纠错的字幕等于没执行他的要求，而且他看不出来。</li>
      * </ol>
      *
-     * <p><b>删除顺序是「先成功、后删」</b>（design 决策 2）：清洗产物写成功之后才删
-     * {@code -translate-*} 与 {@code terms-*}。反过来先删，重跑失败时用户会同时失去字幕和译文，
-     * 从「能用」掉到「什么都没有」。代价只是多一步「成功后清理」。
+     * <p><b>删除顺序是「先成功、后删」</b>：清洗产物写成功之后才删 {@code -translate-*} 与 {@code terms-*}。
+     * 反过来先删，重跑失败时用户会同时失去字幕和译文，从「能用」掉到「什么都没有」。
      *
      * @param input    媒体输入；不可为空
      * @param keywords 本次要用的关键词（调用方已落库）；不可为 {@code null}
@@ -202,7 +181,7 @@ public class SubtitleCleanupCoordinator {
         SubtitleTrack existing = readCheckpoint(cleanSeg);
         String fingerprint = keywords.computeFingerprint();
 
-        // 「这份产物就是当前关键词生成的」——既管断点复用，也管摘要缓存能不能用（见类注释）
+        // 「这份产物就是当前关键词生成的」——既管断点复用，也管摘要缓存能不能用
         boolean current = existing != null
                 && CheckpointPolicy.isCurrent(ArtifactFiles.sizeOrZero(cleanSeg), existing.keywordsFingerprint(), fingerprint);
 
@@ -215,6 +194,7 @@ public class SubtitleCleanupCoordinator {
                     StageProgress.State.SKIPPED);
             return toCleaned(existing, cleanSeg, cleanSrt, 0, 0, 0, 0);
         }
+        // 开始事件先于「原始字幕缺失」卫语句发出——失败任务的用户消息里能带上所在阶段
         emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.start(),
                 regenerate ? "开始重新生成字幕" : "开始清洗", StageProgress.State.RUNNING);
 
@@ -222,9 +202,7 @@ public class SubtitleCleanupCoordinator {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
                     + rawSeg.getFileName() + "）");
         }
-        // 字幕文件
         SubtitleTrack raw = readRaw(rawSeg);
-        // 媒体内容
         List<TranscriptionSegment> segments = raw.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
         Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(route, null));
@@ -236,15 +214,14 @@ public class SubtitleCleanupCoordinator {
                 () -> contextSummarizer.summarize(radioContent, keywords));
         SubtitleContext subtitleContext = contextResolution.context();
         switch (contextResolution.source()) {
-            // 摘要成功才落盘：降级出的空上下文绝不能写文件，否则下次会命中这份空缓存，
-            // 摘要永久丢失且不报错（design 决策 5）。
+            // 摘要成功才落盘：空上下文落盘会被下次当成缓存命中，摘要永久丢失且不报错
             case FRESH_SUMMARY -> {
                 ArtifactFiles.writeJsonAtomically(subtitleContext, objectMapper, ctxFile);
                 log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
             }
             case DEGRADED_EMPTY -> {
                 if (regenerate) {
-                    // 用户点名要「用这批关键词重生成」，拿空上下文出一份没纠错的字幕等于没执行他的要求
+                    // 重新生成的语义不允许空上下文（见方法注释第 2 条）
                     throw new IllegalStateException("字幕摘要失败，无法按当前关键词重新生成："
                             + "请检查摘要所用的模型配置与网络后重试；现有字幕与译文都未改动");
                 }
