@@ -1031,3 +1031,26 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 38: 注释收口 application 层：清变更史、粒度归位、订正腐坏
+<!-- trellis-session: v=2 fp=7dc2d11007cbdd5c -->
+
+**Date**: 2026-10-12
+**Task**: 注释收口 application 层：清变更史、粒度归位、订正腐坏
+**Branch**: `dev`
+
+### Summary
+
+按注释写法正典（十三条禁令）收口 application 层 25 个文件：变更史与决策引用清零并改指其单源、类注释只留四件事、进度事件序列上移 spec 新增小节、两处失实（subtitle/package-info 的 Stage 后缀、AudioPreparationCoordinator 的 MVP-1 过渡态预言）订正。非注释行改动 0，mvn test 570/0/0 绿；独立质检两条硬不变量均成立。门 G2 用户裁定保留 spec 小节，随后提交、合并回 dev、删除 feature 分支并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c29156b` | docs(application): 注释收口 —— 清变更史与决策引用、订正腐坏 |
+| `dd2798a` | chore(task): 回填 application 层执行结果，修父计划的失效指针 |
+
+### Status
+
+[OK] **Completed**
