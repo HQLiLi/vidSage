@@ -111,6 +111,22 @@ class SubtitleArtifactSpecTest {
     }
 
     @Test
+    void artifactNamesRoundTripThroughMatches() {
+        // 2026-10-12 踩过：compileTemplate 没给路由交替加括号组，| 把整条正则拆成四选一，
+        // matches 对任何完整产物名恒 false——artifacts 清单恒空、重新生成删不掉译文产物。
+        // 这条钉住「fileName 产出来的名字必须能被自己的 matches 认出来」这个往返不变量。
+        for (SubtitleRoute route : SubtitleRoute.values()) {
+            for (SubtitleArtifactSpec spec : SubtitleArtifactSpec.values()) {
+                String name = spec.fileName(route, spec == SubtitleArtifactSpec.CONTEXT ? null : "en");
+                assertTrue(spec.matches(name), spec + " 应认得出自己生成的文件名：" + name);
+            }
+        }
+        // 反例：带 -clean 后缀的名字不许被 raw 版认去，垃圾名更不许
+        assertFalse(SubtitleArtifactSpec.SEGMENTS_RAW.matches("segments-asr-local-clean.json"));
+        assertFalse(SubtitleArtifactSpec.SEGMENTS_RAW.matches("garbage.txt"));
+    }
+
+    @Test
     void downloadabilityMatchesThePreviousSuffixWhitelist() {
         // 判据从「后缀白名单」换成「声明的属性」后，对外清单必须与改造前逐项一致：
         // *.srt 与 segments-*.json 可见，context- / terms- 等内部缓存不可见

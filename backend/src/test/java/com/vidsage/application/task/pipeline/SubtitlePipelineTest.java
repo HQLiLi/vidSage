@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -38,6 +39,8 @@ import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
+import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import com.vidsage.infrastructure.concurrency.SemaphoreTaskConcurrencyGate;
 import com.vidsage.infrastructure.fs.NioFileStateReader;
@@ -47,6 +50,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import com.vidsage.application.task.session.TaskSessionRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
@@ -69,10 +73,13 @@ class SubtitlePipelineTest {
     Path tempDir;
 
     private final VideoTaskRepository repository = Mockito.mock(VideoTaskRepository.class);
+    private final SubtitleKeywordRepository keywordRepository = Mockito.mock(SubtitleKeywordRepository.class);
     private final SubtitlePreparationCoordinator subtitlePreparationCoordinator = Mockito.mock(SubtitlePreparationCoordinator.class);
     private final SubtitleCleanupCoordinator cleanupStage = Mockito.mock(SubtitleCleanupCoordinator.class);
     private final SubtitleTranslationCoordinator translationStage = Mockito.mock(SubtitleTranslationCoordinator.class);
     private final TaskSubscriptionRegistry registry = new TaskSubscriptionRegistry();
+    /** 后置会话在途登记：notifier（读）与 pipeline（写 / finally 退）必须是同一个实例，否则断言盯不住。 */
+    private final TaskSessionRegistry sessionRegistry = new TaskSessionRegistry();
 
     private SubtitlePipeline service(int maxConcurrent) {
         return service(new SemaphoreTaskConcurrencyGate(new TaskProperties(maxConcurrent)));
@@ -80,11 +87,14 @@ class SubtitlePipelineTest {
 
     /** 注入假闸门：把线程与配额摘掉，只看管线对「排队被打断」的反应（真实闸门见并发用例）。 */
     private SubtitlePipeline service(TaskConcurrencyGate concurrencyGate) {
+        // 该工作区没有存过关键词：读回空清单（不是 null），清洗照常按原样纠错
+        when(keywordRepository.findByWorkspaceKey(any())).thenReturn(new SubtitleKeywords(List.of()));
         // 真 notifier：喂同一个 repository mock 与同一个 registry 实例——
         // 既有 inOrder/verify 的落库与广播断言靠它们继续成立
-        return new SubtitlePipeline(repository,
+        return new SubtitlePipeline(repository, keywordRepository,
                 subtitlePreparationCoordinator, cleanupStage, translationStage,
-                new TaskProgressNotifier(repository, registry), concurrencyGate,
+                new TaskProgressNotifier(repository, registry, sessionRegistry),
+                sessionRegistry, concurrencyGate,
                 new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())));
     }
 
@@ -99,7 +109,7 @@ class SubtitlePipelineTest {
             ProgressListener listener = invocation.getArgument(2);
             listener.onProgress(new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 0, "开始清洗", StageProgress.State.RUNNING));
             return null;
-        }).when(cleanupStage).clean(any(MediaInput.class), anyString(), any(ProgressListener.class));
+        }).when(cleanupStage).clean(any(MediaInput.class), any(SubtitleKeywords.class), any(ProgressListener.class));
         SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
@@ -107,7 +117,7 @@ class SubtitlePipelineTest {
         MediaInput input = new MediaInput.RemoteUrl("https://example.com/v");
         InOrder order = inOrder(subtitlePreparationCoordinator, cleanupStage);
         order.verify(subtitlePreparationCoordinator).prepare(eq(input), any(ProgressListener.class));
-        order.verify(cleanupStage).clean(eq(input), eq(""), any(ProgressListener.class));
+        order.verify(cleanupStage).clean(eq(input), any(SubtitleKeywords.class), any(ProgressListener.class));
 
         assertEquals(TaskStatus.SUCCEEDED, task.getStatus());
         assertNotNull(task.getFinishedAt(), "成功应落 finished_at");
@@ -191,7 +201,7 @@ class SubtitlePipelineTest {
         assertEquals("任务执行失败：ASR 转写任务失败：quota exceeded", task.getErrorMessage(),
                 "首个阶段尚无阶段名，错误信息不带阶段前缀");
         assertNotNull(task.getFinishedAt());
-        verify(cleanupStage, never()).clean(any(), anyString(), any());
+        verify(cleanupStage, never()).clean(any(), any(), any());
     }
 
     @Test
@@ -203,7 +213,7 @@ class SubtitlePipelineTest {
             ProgressListener listener = invocation.getArgument(2);
             listener.onProgress(new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 0, "开始清洗", StageProgress.State.RUNNING));
             throw new IllegalStateException("字幕尚未获取：缺 segments-cloud.json");
-        }).when(cleanupStage).clean(any(MediaInput.class), anyString(), any(ProgressListener.class));
+        }).when(cleanupStage).clean(any(MediaInput.class), any(SubtitleKeywords.class), any(ProgressListener.class));
         SubtitlePipeline pipeline = service(2);
 
         pipeline.runPipeline(task.getTaskNo());
@@ -493,6 +503,71 @@ class SubtitlePipelineTest {
         registry.broadcast(task.getTaskNo().value(),
                 TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
         assertEquals(2, received.size(), "翻译终态 complete 后订阅者应已清空");
+    }
+
+    // ---------- 后置会话：重新生成字幕（AC9 / AC10 / AC12 的异步体这一半） ----------
+
+    @Test
+    void regenerateRunsCleanupBroadcastsTerminalAndReleasesSession() {
+        VideoTask task = succeededTask("https://example.com/v");
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
+        registry.subscribe(task.getTaskNo().value(), received::add);
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.CLEAN_SUBTITLES.getStageName()), "模拟 service 同步段已抢到登记");
+        // 上一次重生成失败留下的原因：这次成功后必须被清掉，否则成功的任务视图挂着失败文案（拍板 2026-10-12）
+        task.recordRegenerateFailure(VideoTask.REGENERATE_FAILURE_PREFIX + "上一次的失败原因");
+
+        service(inlineGate()).regenerateSubtitles(task, new SubtitleKeywords(List.of("影视飓风")));
+
+        verify(cleanupStage).regenerate(eq(new MediaInput.RemoteUrl("https://example.com/v")),
+                any(SubtitleKeywords.class), any(ProgressListener.class));
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "成功路径的登记必须在 finally 退掉（AC10），否则该工作区的互斥再也放不开");
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "重生成不改主状态（本来就是 SUCCEEDED）");
+        assertNull(task.getErrorMessage(), "成功收口要按前缀清掉上一次重生成的失败原因");
+        assertEquals(1, received.size(), () -> "跑完只广播一条终态：" + received);
+        assertTrue(received.get(0).terminal(), "跑完收到终态，订阅者得以收口（AC12）");
+    }
+
+    @Test
+    void regenerateFailureRecordsReasonBroadcastsFailedAndReleasesSession() {
+        VideoTask task = succeededTask("https://example.com/v");
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
+        registry.subscribe(task.getTaskNo().value(), received::add);
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.CLEAN_SUBTITLES.getStageName()));
+        doThrow(new IllegalStateException("字幕摘要失败，无法按当前关键词重新生成：请检查摘要所用的模型配置与网络后重试"))
+                .when(cleanupStage).regenerate(any(MediaInput.class), any(SubtitleKeywords.class),
+                        any(ProgressListener.class));
+
+        service(inlineGate()).regenerateSubtitles(task, new SubtitleKeywords(List.of()));
+
+        assertEquals("重新生成失败：字幕摘要失败，无法按当前关键词重新生成：请检查摘要所用的模型配置与网络后重试",
+                task.getErrorMessage(), "失败原因带「重新生成失败：」前缀落 error_message（AC5）");
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "重生成失败不得回退主状态——旧字幕还能用");
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "异常路径的登记也必须在 finally 退掉（AC10），否则留下永远 RUNNING 的幽灵");
+        assertEquals(1, received.size(), () -> "失败收口只广播一条：" + received);
+        assertEquals(StageProgress.State.FAILED, received.get(0).stage().state());
+        verify(repository).update(task);
+    }
+
+    @Test
+    void queuedRegenerateInterruptReleasesSessionAndReportsFailure() {
+        VideoTask task = succeededTask("https://example.com/v");
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.CLEAN_SUBTITLES.getStageName()));
+
+        service(interruptOnQueueGate()).regenerateSubtitles(task, new SubtitleKeywords(List.of()));
+
+        verify(cleanupStage, never()).regenerate(any(MediaInput.class), any(SubtitleKeywords.class),
+                any(ProgressListener.class));
+        assertEquals("重新生成失败：重新生成在等待执行配额时被中断：请重新触发", task.getErrorMessage());
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "排队被打断是另一条异常路径，登记同样必须退干净（AC10）");
     }
 
     // ---------- 并发限流（走真实 execute + 虚拟线程） ----------

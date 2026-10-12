@@ -81,4 +81,32 @@ class CheckpointPolicyTest {
         assertEquals(CheckpointPolicy.Source.DEGRADED_EMPTY, resolution.source());
         assertFalse(resolution.shouldPersistSummary(), "降级成空上下文绝不能落盘，否则下次会命中这份空缓存");
     }
+
+    // ------------------------------------------------------------------
+    // 检查点「就是当前这一份」：字节数非空 + 指纹一致
+    // ------------------------------------------------------------------
+
+    @Test
+    void currentWhenNonEmptyAndFingerprintMatches() {
+        assertTrue(CheckpointPolicy.isCurrent(2048, "abc123", "abc123"),
+                "产物非空且指纹一致 = 这份字幕就是当前关键词生成的");
+    }
+
+    @Test
+    void notCurrentWhenFingerprintDiffers() {
+        assertFalse(CheckpointPolicy.isCurrent(2048, "abc123", "999999"),
+                "关键词变了就该重跑，否则用户改完关键词看到的还是按旧关键词生成的字幕");
+    }
+
+    @Test
+    void notCurrentWhenStoredFingerprintMissing() {
+        assertFalse(CheckpointPolicy.isCurrent(2048, null, "abc123"),
+                "存量产物没有这一栏 / 与关键词无关的产物，一律判不一致——安全方向永远是重跑");
+    }
+
+    @Test
+    void notCurrentWhenArtifactEmpty() {
+        assertFalse(CheckpointPolicy.isCurrent(0, "abc123", "abc123"),
+                "0 字节仍按未完成处理，指纹一致也救不回来");
+    }
 }

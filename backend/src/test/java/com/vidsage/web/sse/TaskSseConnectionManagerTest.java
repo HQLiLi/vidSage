@@ -74,14 +74,35 @@ class TaskSseConnectionManagerTest {
     }
 
     private static TaskProgressMessage event(TaskStatus status) {
+        // stage 状态位跟主状态走（与 TaskStageEvent 的粗粒度渲染同形）：
+        // terminal 是「主状态收敛 && stage 非 RUNNING」的联合派生，终态事件若还顶着 RUNNING 态的
+        // stage，在新规则下会被判成「在途后置会话」而收不了口——生产的终态广播从不发这种形状
+        StageProgress.State state = switch (status) {
+            case SUCCEEDED -> StageProgress.State.SUCCEEDED;
+            case FAILED -> StageProgress.State.FAILED;
+            default -> StageProgress.State.RUNNING;
+        };
+        int progress = status == TaskStatus.SUCCEEDED ? 100 : 0;
+        String message = switch (status) {
+            case SUCCEEDED -> "任务已完成";
+            case FAILED -> "任务已失败";
+            default -> "任务执行中";
+        };
         return TaskProgressMessage.of(TASK_NO, status,
-                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 70, "开始转写", StageProgress.State.RUNNING), null);
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), progress, message, state), null);
     }
 
     /** 翻译事件：taskStatus 恒为主状态 SUCCEEDED（主管线终态），翻译子状态随给定值。 */
     private static TaskProgressMessage translationEvent(TranslationStatus translationStatus) {
+        // 同上：翻译终态事件的 stage 跟翻译子状态走，RUNNING 那条才是真正的增量事件
+        StageProgress.State state = switch (translationStatus) {
+            case SUCCEEDED -> StageProgress.State.SUCCEEDED;
+            case FAILED -> StageProgress.State.FAILED;
+            default -> StageProgress.State.RUNNING;
+        };
+        int progress = translationStatus == TranslationStatus.SUCCEEDED ? 100 : 50;
         return TaskProgressMessage.of(TASK_NO, TaskStatus.SUCCEEDED,
-                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 50, "第 2/3 批", StageProgress.State.RUNNING),
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), progress, "第 2/3 批", state),
                 translationStatus);
     }
 

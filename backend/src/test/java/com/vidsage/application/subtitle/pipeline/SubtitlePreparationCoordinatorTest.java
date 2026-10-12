@@ -72,7 +72,7 @@ class SubtitlePreparationCoordinatorTest {
         ObjectMapper mapper = new ObjectMapper();
         // 预置非空 segments JSON → prepare 应跳过音频准备与转写
         var track = new SubtitleTrack(ROUTE, "zh",
-                List.of(new TranscriptionSegment(0, 1440, "已有内容。")));
+                List.of(new TranscriptionSegment(0, 1440, "已有内容。")), null);
         Path segmentsPath = tempDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(ROUTE, null));
         Files.writeString(segmentsPath, mapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(track));
