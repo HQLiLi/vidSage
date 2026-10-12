@@ -271,6 +271,30 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | Spring 组件 | **按包选 stereotype**：`web/controller/`→`@RestController`、`application/` **用例服务与横切服务**→`@Service`、`application/` **管线构件**（`XxxPipeline` / `XxxCoordinator` / `XxxStage`）与机制类→`@Component`、`infrastructure/`→`@Component`、`infrastructure/persistence/`→`@Repository`、`web/sse/`→`@Component` | `TaskController`、`VideoTaskService`、`SubtitlePipeline`、`SubtitlePreparationCoordinator`、`DashScopeAsrProvider` |
 | Controller | 业务名 + `Controller`，平铺在 `web/controller/` | `MediaController`、`TaskController` |
 | 组件后缀登记 | 端口/适配器之外的新角色后缀**用前先登记**（不登记的后缀会变万能）；`-Notifier`（2026-10-10 本仓首例）：角色词答「它把状态变化送出去」，落 `notify/` 桶（桶名同步登记，与 `subscribe/` 成对——一个管「谁能收」，一个管「什么时候送、送之前先落库」）；`-Manager`（2026-10-11 第二例）：角色词答「管理一组 SSE 连接」，落 `web/sse/`——**该后缀仍受限**：首例 `WorkspaceDirectoryManager` 是端口、登记在上方「端口接口」行并附「防 Manager 变万能后缀」警告，第二例不解除该警告 | `TaskProgressNotifier`、`TaskSseConnectionManager` |
+| 方法 | **动词开头**（2026-10-12 立） | `prepare` / `clean` / `translate` / `acquire` / `saveCurrentStageAndBroadcast` |
+
+### 方法名动词开头（2026-10-12 立）
+
+新写的方法一律动词开头，让调用点读起来就是一句话。存量有不符合的（见下方待改清单），本次只立规则、不动代码。
+
+判定式前缀算动词，不用改：`isXxx` / `hasXxx` / `supports` / `matches` / `fail` —— `isEventTerminal`、`hasTranslationArtifact` 都已合规。
+
+**待改清单**（2026-10-12 登记，按优先级分三档；本规则立规时**不改代码**，另开任务处理）：
+
+| 档 | 家族 | 名字与位置 |
+|---|---|---|
+| 高 | 属性式取值器——省掉 `get`，读起来像字段不像动作 | `fileName`（`AudioArtifact:34`、`SubtitleArtifactSpec:65`）、`dirLabel`（`MediaInput:29,55,78`——含接口声明与两个 record 实现）、`end`（`SubtitleStageName:90`）、`chars`（`MessageHistory:54`）、`batchJson`（`LlmSubtitleCleanser:350`、`LlmSubtitleTranslator:335`）、`configKey`（`ProcessToolDiagnostics:355`）、`emitterCount`（`TaskSseConnectionManager:154`） |
+| 中 | 名词化——动作整个丢了，或退化成介词短语 | `beat`（`TaskSseConnectionManager:170`）、`snapshot`（`VideoTaskService:210`）、`tools`（`MediaController:50`）、`ratio`（`TextSimilarity:29`）、`noop`（`ProgressListener:33`）、`baselineOf`（`LlmSubtitleCleanser:489`）、`durationMsOf`（`YtDlpMediaAcquirer:350`）、`daysSinceRelease`（`ProcessToolDiagnostics:235`）、`freshnessWarning`（同文件 `:265`）、`missingHint`（同文件 `:324`）、`warningLines`（`YtDlpMediaAcquirer:384`） |
+| 低 | 静态工厂——介词/形容词开头，社区惯例如此，但字面违反本规则 | `of`（`TaskProgressMessage:30`、`WorkspaceDir:51`）、`ofTaskInput`（`MediaInput:34`）、`ofRemoteUrl` / `ofLocalFile`（`SourceUri:39,52`）、`ofHash` / `ofDigest`（`WorkspaceKey:49,68`）、`from`（`TaskStageEvent:38`、`TaskResponse:48`、`TaskArtifactResponse:23`）、`fromTranslation`（`TaskStageEvent:67`）、`none`（`TermLookupResult:21`）、`empty`（`SubtitleContext:45`）、`persistable`（`TermVerification:156`） |
+
+复算命令（改完一档就把该档从表里划掉；两个分支分别抓**有访问修饰符**与**无修饰符的包私有声明**，缺一不可）：
+
+```bash
+grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0-9_]*\(|^ +(static +)?[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0-9_]*\(' \
+  --include=*.java backend/src/main | awk '{print $NF}' | tr -d '(' | sort -u
+```
+
+**不在这张清单里**，三类不必改：Lombok `@Getter` 生成的（`subtitleTranslateChatClient` 等，改不动也不该改）、JDK 入口 `main` 与 `Set.of` 这类标准库静态方法、**record 自动访问器**（组件名即访问器名，如 `MediaInput` 的 `input()`——那是字段不是函数，改它等于改字段名）。测试方法另有口径（行为描述式陈述句，见 [quality-guidelines.md 的「工具与风格」](./quality-guidelines.md#工具与风格)），本就全部动词开头。
 
 > `ASRProvider` 是全大写缩写开头，与 Spring 常见的 `AsrProvider` 写法不同。**跟随现有代码**，不要"顺手改正"。
 
