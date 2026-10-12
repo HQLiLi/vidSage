@@ -1006,3 +1006,28 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 37: 注释收口：domain 层试点 + 注释写法正典定稿
+<!-- trellis-session: v=2 fp=fc84889cb00aca14 -->
+
+**Date**: 2026-10-12
+**Task**: 注释收口：domain 层试点 + 注释写法正典定稿
+**Branch**: `dev`
+
+### Summary
+
+domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释净减 193 行）：删变更史与归档指针、类注释按「只回答四件事」重写、修 4 处失实、删 3 行失效 import。新建 .trellis/spec/guides/comment-guidelines.md 作注释规则唯一正典（十三条禁令 + 内容分流表 + 正例反例 + 防复发钩子 + 元规则「标准只住一处」），两份 quality-guidelines 改指针。审查窗口里用户逐轮校准，禁令从 5 条长到 13 条；父 design.md 的过期标准副本已删、改指正典，5 个子任务 prd 同步改指正典，模式清单收敛到正典 §六 一处。tests=570 全绿、AC1=0。另开 10-12-failure-prefix-and-guard 承接跨层代码项。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6965134` | chore(task): 注释收口任务树 planning 工件登记 |
+| `6b45f24` | docs(comment): 新增注释写法正典（十三条禁令），两份 quality-guidelines 改指针 |
+| `d4a0dda` | docs(domain): 注释收口 —— 删变更史与决策记录、修正粒度错位 |
+| `d210de5` | Merge branch 'feature/comment-domain-pilot' into dev |
+
+### Status
+
+[OK] **Completed**

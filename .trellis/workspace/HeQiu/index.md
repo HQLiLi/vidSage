@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 36
+- **Total Sessions**: 37
 - **Last Active**: 2026-10-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1008 | Active |
+| `journal-1.md` | ~1033 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 37 | 2026-10-12 | 注释收口：domain 层试点 + 注释写法正典定稿 | `6965134`, `6b45f24`, `d4a0dda`, `d210de5` | `dev` |
 | 36 | 2026-10-12 | 10-11 关键词纠错与字幕重生成：六批实现到合并归档 | `198244c`, `7fca0c0`, `63b36fb`, `ad85780`, `87794e3`, `cb00a25`, `2de2ae5` | `dev` |
 | 35 | 2026-10-11 | 10-11 进度载荷命名收口：StageEvent → StageProgress 改名、独立核查、合并归档 | `b994d31`, `062b11f`, `d8b7ca7`, `dba6091`, `5d453fe` | `dev` |
 | 34 | 2026-10-11 | 10-11 SSE 面收口全链路收尾：批 0 判据到合并归档 | `edcbe81`, `b1ffa1d` | `dev` |
