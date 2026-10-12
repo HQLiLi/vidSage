@@ -167,3 +167,37 @@ npm run lint         # oxlint + eslint
 | 手工加换行/分号/双引号 | 与 Prettier 配置冲突 |
 | 编辑 `frontend/dist/` 下的文件 | 构建产物，且已被 ignore |
 | 提交前不跑 `type-check` | 严格模式下的类型错误会漏到构建期 |
+
+---
+
+## 八、函数命名（项目级硬性要求）
+
+**函数名动词开头**，让调用点读起来就是一句话。
+
+```ts
+// ✅ 三行都是仓库里真实存在的调用，读出来就是一句话
+const cues = buildCues(source, translated)
+await runSubmit(submitUrl({ url: link }))
+await startTranslate()
+```
+
+- composable 的 `use` 前缀、`store` 的 `useXxxStore` 都在动词之前，不受本条影响
+- `isXxx` / `hasXxx` / `onXxx` 这类判定式与事件式前缀算动词，不用改（`isTaskConflictResponse`、`onWaveSeek` 都已合规）
+
+**待改清单**（2026-10-12 登记，本次只立规则、不动代码）：
+
+| 名字 | 位置 | 性质 |
+|---|---|---|
+| `artifactHref` | `views/workspace/components/WorkspaceHeader.vue:39` | 属性式取值器——叫这个名字，调用点读出来是「产物 href」这个字段，不是「算出产物 URL」这个动作 |
+
+复算命令（抓 `function` 声明与 `export const` 箭头函数）：
+
+```bash
+grep -rhoE 'export const [a-zA-Z_][a-zA-Z0-9_]* = (async )?\(|export function [a-zA-Z_][a-zA-Z0-9_]*|function [a-zA-Z_][a-zA-Z0-9_]*\(' \
+  --include=*.ts --include=*.vue frontend/src \
+  | sed -E 's/.*(const|function) //' | tr -d '(' | sort -u
+```
+
+非导出的箭头函数这条命令抓不到（`<script setup>` 里的 `const handleXxx = () => {}`），但 2026-10-12 全量扫过只有 3 个，全是 `onPause` / `onPlay` / `onTime` 这类事件处理器，已合规。
+
+后端同名规则见 [backend/directory-structure.md](../backend/directory-structure.md#方法名动词开头2026-10-12-立)。

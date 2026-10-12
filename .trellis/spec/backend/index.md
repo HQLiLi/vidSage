@@ -9,7 +9,7 @@
 
 | 文档 | 内容 | 何时读 |
 |------|------|--------|
-| [directory-structure.md](./directory-structure.md) | 四层结构（domain / application / infrastructure / web）、依赖规则与端口归属判据、类与文件命名 | 新增模块或类时 |
+| [directory-structure.md](./directory-structure.md) | 四层结构（domain / application / infrastructure / web）、依赖规则与端口归属判据、类与文件命名、方法名动词开头 | 新增模块、类或方法时 |
 | [provider-pattern.md](./provider-pattern.md) | Provider 抽象 + 条件装配 + record 配置属性 | 新增或切换本地/云端实现时 |
 | [error-handling.md](./error-handling.md) | 卫语句、异常类型选择、错误信息写法与语言 | 写任何校验与失败路径时 |
 | [quality-guidelines.md](./quality-guidelines.md) | 契约设计、注释要求、测试写法、依赖原则、主流选型 | 写任何代码前 |
