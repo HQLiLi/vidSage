@@ -41,7 +41,7 @@ public class SemaphoreTaskConcurrencyGate implements TaskConcurrencyGate {
     }
 
     /**
-     * 提交任务到虚拟线程排队执行
+     * 提交任务到虚拟线程排队执行。
      *
      * @param body               主任务
      * @param onQueueInterrupted 排队等待时被打断时执行的回调

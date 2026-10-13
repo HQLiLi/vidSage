@@ -130,7 +130,7 @@ com.vidsage
 
 | 构件 | 认领的阶段 | 事件序列 |
 |---|---|---|
-| `SubtitleCleanupCoordinator` | `CLEAN_SUBTITLES` | 断点复用命中 → 一条 SKIPPED（区间终点）直接返回；正常路径 → 开始（区间起点 RUNNING）→ 每批清洗完成各一条（「第 x/N 批」，来自 cleanser 自报 `0..100` 换算进本区间）→ 完成（区间终点 SUCCEEDED） |
+| `SubtitleCleanupCoordinator` | `CLEAN_SUBTITLES` | 断点复用命中 → 一条 SKIPPED（区间终点）直接返回；正常路径 → 开始（区间起点 RUNNING）→ 每批清洗完成各一条（「第 x/N 批」，来自 cleanser 自报 `0..100` 换算进本区间；清单为空时 cleanser 不发批级事件）→ 完成（区间终点 SUCCEEDED） |
 | `SubtitleTranslationCoordinator` | `TRANSLATE_SUBTITLES` | 断点复用命中 / 源语种 = 目标语种 → 一条 SKIPPED（进度 100）；真翻译 → 开始（0，RUNNING）→ 每批翻译完成各一条 → 完成（100，SUCCEEDED） |
 | `AudioPreparationCoordinator` | `ACQUIRE_MEDIA` + `EXTRACT_AUDIO` | 每个阶段在开始 / 成功 / 跳过 / 失败时各发一个；失败路径在发完 FAILED（消息取异常 `getMessage()`）后原样上抛 |
 

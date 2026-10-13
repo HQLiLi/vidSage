@@ -38,8 +38,8 @@ import tools.jackson.databind.ObjectMapper;
  * 意义。没过就带着原因重试，最多 maxSteps 轮；全败整批回退原文（宁可没译，不可乱译），并把回退的
  * 段数计进 {@link TranslateResult#untranslatedCount()}。
  *
- * <p>与 {@link LlmSubtitleCleanser} <b>刻意各自独立</b>，本期不抽公共骨架（design 决策 8）：要抽的正是
- * 「切批判据」与「校验循环」，而这两套东西现在都还处于待审状态，抽了会返工。唯一共用的是一条已定型的
+ * <p>与 {@link LlmSubtitleCleanser} <b>刻意各自独立</b>，不抽公共骨架：待抽的正是「切批判据」与
+ * 「校验循环」，而这两套判据的形态还不稳定，抽了会返工。唯一共用的是一条已定型的
  * 纯函数判定——跨批历史的按对裁剪（{@link MessageHistory}）。
  *
  * <p>跨批上下文走两条路：<b>后窗</b>（下一批开头几行）和<b>对话历史</b>（前面几批的原文与已采纳的
@@ -47,13 +47,9 @@ import tools.jackson.databind.ObjectMapper;
  * 能看见前面把某个称呼译成了什么。历史是本类里唯一的可变状态，但它只在单次 {@link #translate} 调用内
  * 活着，调用结束即丢。
  *
- * <p><b>批级进度</b>：带 {@link ProgressListener} 的重载会在<b>每批翻译完成后</b>回调一次
- * （进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）——批边界只有本类知道（切批判据在本类），
- * 回调依赖 {@code domain/shared} 是 ProgressListener 注释明确许可的中立方向。批次边界
- * 一次性算出（{@link #batchRanges}），总数与切批用同一份边界，进度百分比不会漂移。
- *
- * <p>实现领域端口 {@link SubtitleTranslator}——上层只认那个接口，不认识本类。上层用不到的三参 /
- * 四参便捷重载与包级可见的测试钩子留在本类，不进端口。
+ * <p><b>批级进度</b>：经 {@link ProgressListener} 上报（{@code domain/shared} 的中立方向），
+ * 事件序列见 {@code directory-structure.md}「进度事件序列」；批次边界一次性算出
+ * （{@link #batchRanges}），总数与切批同源，百分比不会漂移。
  */
 @Slf4j
 @Component
@@ -69,8 +65,8 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     /**
      * 结构化输出的「格式说明 + 解析器」。
      *
-     * <p>与 {@link LlmSubtitleCleanser} 同一套路：不用 {@code .entity()}，因为它只给解析结果、不给原文，
-     * 而重试历史里要放的正是模型回复的原文。所以把「拼格式说明」与「解析」两步显式提出来自己做。
+     * <p>不用 {@code .entity()}：它只给解析结果、不给原文，而重试历史里要放的正是模型回复的原文。
+     * 所以把「拼格式说明」与「解析」两步显式提出来自己做。
      */
     private static final BeanOutputConverter<Map<String, String>> FORMAT =
             new BeanOutputConverter<>(new ParameterizedTypeReference<>() {
@@ -102,7 +98,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     }
 
     /**
-     * 翻译字幕（不关心进度）：内部走 {@link ProgressListener#noop()}。
+     * 翻译字幕，不报告进度。
      */
     public TranslateResult translate(List<TranscriptionSegment> segments,
                                      SubtitleContext context,
@@ -121,9 +117,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
      * @param officialTerms  术语官方译名查证产物（{@code terms-<route>-<target>.json} 的内容），可为空表：
      *                       命中术语里查到译名的按「给定的译名照翻」渲染进提示词，弃权（空串）与没查的
      *                       按「保留原样」渲染
-     * @param listener       批级进度回调；每批翻译完成后回调一次
-     *                       进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」），批数为 0 时无批级事件；
-     *                       不可为 {@code null}——不关心进度用四参重载
+     * @param listener       批级进度回调；不可为 {@code null}——不关心进度用四参重载
      * @return 逐条双语段落 + 重试轮数 + 未翻译段数
      * @throws IllegalArgumentException segments 或 listener 为 {@code null}
      */
@@ -201,7 +195,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     }
 
     /**
-     * 发一条批级进度事件（stage 固定 {state 为 RUNNING）。
+     * 发一条批级进度事件（stage 固定为翻译阶段，state 为 RUNNING）。
      * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
      */
     private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
@@ -368,8 +362,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     /**
      * 把模型回复解析成「条号 → 译文」。
      *
-     * <p>{@link BeanOutputConverter#convert} 会先过一遍文本清洗（空白、思维链标签、代码围栏），
-     * 与 {@code .entity()} 走的是同一条路。
+     * <p>{@link BeanOutputConverter#convert} 会先过一遍文本清洗（空白、思维链标签、代码围栏）。
      *
      * @param raw 模型回复原文
      * @return 键值对；不是合法 JSON 对象时为 {@code null}
@@ -407,8 +400,6 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
      *
      * <p>两条硬约束：键集必须与输入完全一致（不许掉行 / 加行 / 串行）；每条译文 trim 后非空。
      * <b>不设相似度守卫</b>：译文与原文天然不相似，「最小改动」那套判据在翻译里没有意义。
-     *
-     * <p>包级可见是为了直接单测。
      *
      * @param original  原文键值对
      * @param candidate 模型回复键值对
@@ -462,7 +453,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
 
         // 3. 术语参考：语义与清洗侧相反——那边给的是「候选正确写法 + 替换理由」，让模型判断换不换；
         //    这边给的是「这个词是专有名词，照给定的写法输出、不要译」（命中判定已在 hitTermsByFixed 里做好）。
-        //    查证产物里有译名的词按给定译名翻（09-28 实证：对 zh→en，「保留原样」压不住模型按读音意译，
+        //    查证产物里有译名的词按给定译名翻（对 zh→en，「保留原样」压不住模型按读音意译，
         //    与其让它猜不如直接告诉它译名）；弃权与没查到的维持「保留原样」——宁可不动，不可乱译。
         if (!hits.isEmpty()) {
             Map<String, String> officialByFixed = officialByFixed(officialTerms);

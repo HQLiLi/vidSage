@@ -15,10 +15,6 @@ import org.apache.ibatis.annotations.Param;
  * 用「先 select 再 insert / updateById」凑出来的两语句在并发下会撞唯一索引；
  * MySQL 原生的 {@code ON DUPLICATE KEY UPDATE} 就是一条语句、原子、也是当前主流做法。
  * 只有这一条覆盖写偏离了纯 BaseMapper，读仍然走 Wrapper。
- *
- * <p>可见性边界（硬规则）：仅 {@code infrastructure/persistence/repository/} 可注入，{@code application/} 禁止出现
- * 本接口与 BaseMapper / Wrapper 等 MP 类型。{@code @Mapper} 交给启动类的全量扫描发现，
- * 不另写 {@code @MapperScan}。
  */
 @Mapper
 public interface SubtitleKeywordMapper extends BaseMapper<SubtitleKeywordEntity> {

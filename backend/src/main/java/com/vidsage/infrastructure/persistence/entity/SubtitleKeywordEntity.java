@@ -14,10 +14,9 @@ import lombok.Setter;
  *
  * <p><b>整份清单挤在一列 {@code keywords} 里</b>，不是一个词一行：
  * 唯一的查询是「按工作区取整份清单」，从来没有「按词反查哪些工作区用了它」；
- * 单列还白送两件事——用户填写顺序天然保序（行存储得再加一列 position 才能还原，
- * InnoDB 不保证按插入序返回），覆盖全量就是一条 upsert 而不是 DELETE + 批量 INSERT。
  *
- * <p>普通类 + Lombok {@code @Getter/@Setter}，与 {@code VideoTaskEntity} 同形态。
+ * <p>Lombok {@code @Getter/@Setter}，不用 {@code @Data}——可变实体不需要 equals/hashCode/toString
+ * 语义。
  */
 @Getter
 @Setter

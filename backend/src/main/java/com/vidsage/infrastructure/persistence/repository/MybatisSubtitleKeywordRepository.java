@@ -13,22 +13,13 @@ import org.springframework.stereotype.Repository;
 
 /**
  * {@code subtitle_keyword} 表的 MyBatis-Plus 实现：包装 {@link SubtitleKeywordMapper}，
- * 做「整份清单 ↔ 一列字符串」的成对转换——<b>分隔符只在本类出现</b>，领域侧与 HTTP 侧
- * 一辈子只见 {@link SubtitleKeywords}，不接触它。
- *
- * <p>实现的是领域端口 {@link SubtitleKeywordRepository}——上层（application）只认那个接口，
- * 不认识本类。本类只做存取与转换，不写业务规则；Wrapper 等 MP 类型不出本包。
+ * 做「整份清单 ↔ 一列字符串」的成对转换——<b>分隔符只在本类出现</b>
  */
 @Repository
 public class MybatisSubtitleKeywordRepository implements SubtitleKeywordRepository {
 
     private final SubtitleKeywordMapper mapper;
 
-    /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
-     * @param mapper subtitle_keyword 表数据访问接口
-     */
     public MybatisSubtitleKeywordRepository(SubtitleKeywordMapper mapper) {
         this.mapper = mapper;
     }

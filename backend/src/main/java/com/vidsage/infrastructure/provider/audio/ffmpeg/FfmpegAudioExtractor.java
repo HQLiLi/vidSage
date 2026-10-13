@@ -43,8 +43,8 @@ public class FfmpegAudioExtractor implements AudioExtractor {
 
     /**
      * ffmpeg 报「{@code -map} 取值非法」（通常音频轨越界）时的稳定子串。
-     * 实测原文形如 {@code Failed to set value '0:a:9' for option 'map': Invalid argument}
-     * （研究 §8.3）。<b>该报错不含总轨数</b>，故消息里不写「共 N 条轨」。
+     * 实测原文形如 {@code Failed to set value '0:a:9' for option 'map': Invalid argument}。
+     * <b>该报错不含总轨数</b>，故消息里不写「共 N 条轨」。
      */
     private static final String MAP_OPTION_MARKER = "option 'map'";
 
@@ -56,8 +56,6 @@ public class FfmpegAudioExtractor implements AudioExtractor {
     private final ExternalToolProperties properties;
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param runner     外部进程执行器（全项目唯一进程出口）
      * @param tools      工具路径解析（ffmpeg 路径一处配置、两处使用的同一入口）
      * @param properties 外部工具配置（取默认超时）
@@ -97,7 +95,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         if (Files.exists(output)) {
             // 不覆盖已有产物：Files.move(...ATOMIC_MOVE) 在目标已存在时的行为实现相关
             // （可能抛 FileAlreadyExistsException，也可能替换），不能依赖；且静默覆盖会掩盖
-            // 「两条不同规格映射到同一路径」这类缺陷（design §六）。正常路径下上层已先判存在即跳过
+            // 「两条不同规格映射到同一路径」这类缺陷。正常路径下上层已先判存在即跳过
             throw new IllegalStateException("音频产物已存在：" + output
                     + "；extractor 不覆盖已存在的产物，请先删除该文件，或由上层断点复用逻辑跳过本阶段");
         }
@@ -117,7 +115,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         if (outcome.timedOut()) {
             ArtifactFiles.deleteQuietly(part);
             // 失败信息分层：面向用户的异常消息有界、可操作（不带 stderr 全文），
-            // 完整 stderr 在此落 DEBUG 供深挖——否则完整内容既不在消息也不在日志里（design §八）
+            // 完整 stderr 在此落 DEBUG 供深挖——否则完整内容既不在消息也不在日志里
             log.debug("ffmpeg 抽音频超时，完整 stderr: {}", outcome.stderr());
             throw new IllegalStateException("外部命令执行超时（" + properties.defaultTimeoutSeconds()
                     + " 秒）：ffmpeg；可用 vidsage.tools.default-timeout-seconds 调整");
@@ -125,7 +123,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         if (outcome.exitCode() != 0) {
             ArtifactFiles.deleteQuietly(part);
             // 失败信息分层：异常消息只带 stderr 尾部 20 行（有界、可操作），
-            // 完整 stderr 在此落 DEBUG 供深挖（design §八；执行器 WARN 也只打尾部）
+            // 完整 stderr 在此落 DEBUG 供深挖（执行器 WARN 也只打尾部）
             log.debug("ffmpeg 抽音频失败，完整 stderr: exit={}, stderr={}", outcome.exitCode(), outcome.stderr());
             throw new IllegalStateException(failureMessage(outcome.exitCode(), outcome.stderr(), spec));
         }
@@ -146,9 +144,6 @@ public class FfmpegAudioExtractor implements AudioExtractor {
     /**
      * 组装 ffmpeg 命令行（不含任何字符串拼接）。
      *
-     * <p>顺序：{@code -hide_banner -nostdin -y -i <media> -vn -map 0:a:<n> -ac <c> -ar <r>}
-     * → 容器编码参数 → {@code -f <muxer>} → 输出（{@code .part}）。
-     *
      * @param ffmpeg ffmpeg 可执行文件路径
      * @param media  输入媒体绝对路径
      * @param part   临时输出路径（以 {@code .part} 结尾）
@@ -167,7 +162,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         command.add(media.toString());
         command.add("-vn");
         // 显式选轨：ffmpeg 的默认音频选择跟随元数据的 default disposition，多音轨源上不写 -map
-        // 会静默抽到非预期轨且不报错（研究 §8.2 实测：第 2 轨标 default 后默认就抽第 2 轨）
+        // 会静默抽到非预期轨且不报错（实测：第 2 轨标 default 后默认就抽第 2 轨）
         command.add("-map");
         command.add("0:a:" + spec.audioTrackIndex());
         command.add("-ac");
@@ -197,7 +192,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
     /**
      * 容器 → ffmpeg muxer 名。
      *
-     * <p>实测（ffmpeg 9.0.2-essentials_build，2026-09-25）：{@code -f wav} 正常产出 PCM WAV；
+     * <p>实测：{@code -f wav} 正常产出 PCM WAV；
      * M4A 用 {@code -f ipod}（产物 {@code ftyp} brand 为 {@code M4A}），而 {@code -f mp4}
      * 产出的是 {@code isom} brand —— 取 {@code ipod} 才是标准的 .m4a 品牌，也顺带让行为不依赖
      * ffmpeg 的扩展名表。
@@ -214,19 +209,19 @@ public class FfmpegAudioExtractor implements AudioExtractor {
      *
      * <p>只对两条**有稳定子串**的失败做专门指引（{@code -map} 越界、编码器缺失）；其余一律
      * 「未知失败 + stderr 尾部」，<b>不按 stderr 文案猜业务错误类型</b>（文案属外部实现细节，
-     * 会随 ffmpeg 版本变化，见研究 §二）。
+     * 会随 ffmpeg 版本变化）。
      */
     private static String failureMessage(int exitCode, String stderr, AudioSpec spec) {
         String tail = TextTail.tailLines(stderr, STDERR_TAIL_LINES);
         String raw = stderr == null ? "" : stderr;
         if (raw.contains(MAP_OPTION_MARKER)) {
-            // 透传 ffmpeg 原文；不写「共 N 条轨」——该报错不含总轨数（研究 §8.3）
+            // 透传 ffmpeg 原文；不写「共 N 条轨」——该报错不含总轨数
             return "ffmpeg 抽音频失败（exit=" + exitCode + "）：" + tail
                     + "；音频轨不存在，请检查 AudioSpec.audioTrackIndex（当前为 "
                     + spec.audioTrackIndex() + "）";
         }
         if (raw.contains(UNKNOWN_ENCODER_MARKER)) {
-            // 按容器分流：WAV 失败时不能再建议「改用 WAV」——那正是失败的规格（design §八）
+            // 按容器分流：WAV 失败时不能再建议「改用 WAV」——那正是失败的规格
             return switch (spec.container()) {
                 case M4A -> "该 ffmpeg 构建不支持 aac 编码器：请把 vidsage.tools.ffmpeg-path 指向完整构建"
                         + "（容器里的精简构建常缺），或改用 AudioSpec.WAV_PCM_16K_MONO；ffmpeg 原文：" + tail;

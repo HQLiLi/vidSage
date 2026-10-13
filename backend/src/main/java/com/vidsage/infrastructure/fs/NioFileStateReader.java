@@ -11,7 +11,7 @@ import java.nio.file.Path;
 
 
 /**
- * 文件状态阅读实现
+ * 读取本机文件的大小与最后修改时间；读不到（不是普通文件 / I/O 失败）时返回不可用标记。
  */
 @Slf4j
 @Component
