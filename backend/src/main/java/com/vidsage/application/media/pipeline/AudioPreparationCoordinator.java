@@ -31,8 +31,6 @@ import java.util.Optional;
  * 规则与 info json 的解析；抽取音频阶段由本阶段判断，音频产物名由 {@link AudioArtifact#fileName}
  * 按规格指纹给出（命名规则单源在 domain），且<b>先校验 spec 再判断点</b>，不放过「非法 spec +
  * 文件恰好存在」这条路径。
- *
-
  */
 @Slf4j
 @Component

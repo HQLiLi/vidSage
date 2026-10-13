@@ -110,8 +110,7 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
      * 解析 ffmpeg 可执行文件路径；未找到时抛异常，消息含「缺什么 + 怎么补」。
      *
      * <p>供抽音频实现使用：ffmpeg 路径是「一处配置、两处使用」（Java 抽音频 +
-     * yt-dlp {@code --ffmpeg-location}），解析规则与提示语的唯一入口留在本类，
-     * 避免调用方各写一份。</p>
+     * yt-dlp {@code --ffmpeg-location}）。</p>
      *
      * @return ffmpeg 可执行文件的绝对路径
      * @throws IllegalStateException 未配置且不在 PATH 上；消息说明如何补齐
@@ -125,9 +124,7 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
     /**
      * 解析 ffprobe 可执行文件路径；未找到时抛异常，消息含「缺什么 + 怎么补」。
      *
-     * <p>供本地输入路线读取媒体时长使用。与 {@link #requireFfmpeg()} 共用同一条
-     * 「配置优先，否则扫 PATH」规则与同一份提示文案（{@link #requireResolved}），
-     * 不另写第二份。
+     * <p>供本地输入路线读取媒体时长使用。
      *
      * @return ffprobe 可执行文件的绝对路径
      * @throws IllegalStateException 未配置且不在 PATH 上；消息说明如何补齐
@@ -139,7 +136,7 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
     /**
      * 解析 yt-dlp 可执行文件路径；未找到时抛异常，消息含「缺什么 + 怎么补」。
      *
-     * <p>供 yt-dlp 下载实现使用——二进制解析收敛在它里面，调用方只给额外参数。
+     * <p>供 yt-dlp 下载实现使用。
      *
      * @return yt-dlp 可执行文件的绝对路径
      * @throws IllegalStateException 未配置且不在 PATH 上；消息说明如何补齐

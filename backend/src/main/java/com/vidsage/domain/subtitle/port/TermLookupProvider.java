@@ -6,9 +6,8 @@ import com.vidsage.domain.subtitle.model.term.TermLookupResult;
 /**
  * 术语译名查证：查一个专有名词在目标语种里的官方/通用译名。
  *
- * <p>这是「同一能力、多种来源」的缝（见 provider-pattern）：查证也是模型调用，接口落在领域包根。
- * 具体来源可替换——接独立搜索 API 或其他带检索的模型时各成一个实现，
- * 由 {@code vidsage.term-lookup.provider} 配置切换。
+ * <p>这是「同一能力、多种来源」的缝（见 provider-pattern）：具体来源可替换——接独立搜索 API
+ * 或其他带检索的模型时各成一个实现，由 {@code vidsage.term-lookup.provider} 配置切换。
  *
  * <p>触发确定性（哪些词要查、什么时机查）由上层编排负责，<b>不属于本接口</b>：
  * 「要不要查」不能交给人或模型临场决定——模型不觉得自己在猜，给不出可依据的信号。

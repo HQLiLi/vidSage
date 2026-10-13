@@ -52,7 +52,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
     /** 产物文件名前缀，用于目录扫描兜底。 */
     static final String PRODUCT_PREFIX = "source.";
 
-    /** 失败消息里附带的 stderr 行数上限（与执行器一致）。 */
+    /** 失败消息里附带的 stderr 行数上限。 */
     private static final int STDERR_TAIL_LINES = 20;
 
     /** 扫描兜底时要排除的非产物后缀（info json / 未完成的 .part / yt-dlp 的 .ytdl 标记）。 */

@@ -5,8 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 /**
  * 单个工具链的诊断报告。
  *
- * <p>形状直接对外（诊断端点就返回它），故按 directory-structure.md「契约类的位置」判据 1
- * 留在所属层并带 {@code @Schema}。
+ * <p>形状直接对外（诊断端点就返回它），故带 {@code @Schema}。
  *
  * @param toolName  工具名（如 "yt-dlp" / "ffmpeg" / "ffprobe"）
  * @param available 是否找到可用二进制

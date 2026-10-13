@@ -3,8 +3,6 @@
  * diagnostics 分包。阶段顺序、断点复用等流程知识住在这里；领域规则本身仍归 {@code domain/}。
  *
  * <p>依赖规则：本层依赖 {@code domain} 与 {@code shared}，不依赖 {@code infrastructure} 与
- * {@code web}——对外部能力的调用一律经端口。本层也<b>定义业务无关的出站端口</b>
- * （如 {@code diagnostics/port/ToolDiagnostics}）：端口归谁定义看契约的语义职责，判据见
- * directory-structure.md「端口归属判据」。
+ * {@code web}——对外部能力的调用一律经端口。
  */
 package com.vidsage.application;

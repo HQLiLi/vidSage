@@ -33,7 +33,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class LocalFileMediaAcquirer implements MediaAcquirer {
 
-    /** 失败消息里附带的 ffprobe stderr 行数上限（与执行器一致）。 */
+    /** 失败消息里附带的 ffprobe stderr 行数上限。 */
     private static final int STDERR_TAIL_LINES = 20;
 
     private final ExternalProcessRunner runner;

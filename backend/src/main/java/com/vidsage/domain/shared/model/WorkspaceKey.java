@@ -8,8 +8,7 @@ import java.util.HexFormat;
 import org.springframework.util.StringUtils;
 
 /**
- * 工作区短哈希值对象：内容寻址 key。属<b>共享内核</b>：任务上下文与媒体上下文共用同一词汇，
- * 放 shared 避免 domain/task → domain/media 的跨上下文依赖。
+ * 工作区短哈希值对象：内容寻址 key。
  *
  * <p>有两条路线：常规路线 {@link #ofHash} 取身份串的摘要；上传路线 {@link #ofDigest} 接收已经
  * 算好的摘要。另有持久化层从数据库行还原。

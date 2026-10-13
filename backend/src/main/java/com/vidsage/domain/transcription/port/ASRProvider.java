@@ -30,8 +30,7 @@ public interface ASRProvider {
     TranscriptionResult transcribe(TranscriptionCommand command);
 
     /**
-     * 本实现需要什么音频规格。上层据此向音频准备阶段要对应格式的音频，
-     * 不在管线里写死容器名。
+     * 本实现需要什么音频规格。
      *
      * @return 本实现要求的音频规格
      */

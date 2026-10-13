@@ -253,8 +253,6 @@ public class SubtitlePipeline {
      * 按阶段顺序执行；prepare 的阶段事件与 clean 的批级事件都由回调驱动
      *
      * <p>关键词从仓储按<b>工作区</b>读（不按 taskNo）：关键词是字幕产物的生成输入，跟产物同粒度。
-     * 同一 URL 重新提交会新插一行 task，而目录里是同一份产物——挂 task_no 会让新任务读不到那份产物
-     * 用的关键词。
      */
     private void prepareAndClean(VideoTask task) {
         MediaInput input = toMediaInput(task);
