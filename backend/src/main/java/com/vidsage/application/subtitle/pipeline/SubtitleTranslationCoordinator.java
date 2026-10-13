@@ -18,7 +18,7 @@ import com.vidsage.domain.subtitle.model.term.VerifiedTerms;
 import com.vidsage.domain.subtitle.model.translation.TranslateResult;
 import com.vidsage.domain.subtitle.model.translation.TranslatedSubtitle;
 import com.vidsage.domain.subtitle.model.translation.TranslatedTrack;
-import com.vidsage.domain.subtitle.policy.Bcp47Language;
+import com.vidsage.domain.subtitle.policy.Bcp47LanguagePolicy;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.subtitle.policy.TermVerification;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
@@ -126,7 +126,7 @@ public class SubtitleTranslationCoordinator {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
         }
-        String targetLanguage = Bcp47Language.resolveTargetLanguage(props.targetLanguage());
+        String targetLanguage = Bcp47LanguagePolicy.resolveTargetLanguage(props.targetLanguage());
         SubtitleRoute route = asrProvider.route();
         WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
         Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
@@ -166,7 +166,7 @@ public class SubtitleTranslationCoordinator {
                     + "或改用不带 listener 的 translate(input) 单参重载");
         }
         // 目标语种是配置值、边界上即可判定，故卫语句排在最前（早于 ensureWorkspaceDirectory 的建目录副作用）
-        String targetLanguage = Bcp47Language.resolveTargetLanguage(props.targetLanguage());
+        String targetLanguage = Bcp47LanguagePolicy.resolveTargetLanguage(props.targetLanguage());
         SubtitleRoute route = asrProvider.route();
         WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
         Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
@@ -219,7 +219,7 @@ public class SubtitleTranslationCoordinator {
         }
 
         // 源语种：优先摘要推断（主路径），为空回退 ASR 的 language（实测多为 null，兜底），两者皆空则不跳过
-        String sourceLanguage = Bcp47Language.resolveSourceLanguage(context, clean.language());
+        String sourceLanguage = Bcp47LanguagePolicy.resolveSourceLanguage(context, clean.language());
 
         // 术语官方译名查证（触发条件与失败分流见 verifyTermsIfNeeded）
         verifyTermsIfNeeded(context, sourceLanguage, targetLanguage, termsFile);
@@ -227,10 +227,10 @@ public class SubtitleTranslationCoordinator {
         TranslatedTrack track;
         int retrySteps = 0;
         int untranslated = 0;
-        boolean skippedTranslation = Bcp47Language.isSameMainLanguage(sourceLanguage, targetLanguage);
+        boolean skippedTranslation = Bcp47LanguagePolicy.isSameMainLanguage(sourceLanguage, targetLanguage);
         if (skippedTranslation) {
             // 源语种等于目标语种：不调 LLM，每条译文 = 原文（双语渲染器会把相同的两行并成一行）
-            track = new TranslatedTrack(route, sourceLanguage, targetLanguage, true, Bcp47Language.skipAll(segments));
+            track = new TranslatedTrack(route, sourceLanguage, targetLanguage, true, Bcp47LanguagePolicy.skipAll(segments));
             log.info("源语种与目标语种相同，跳过翻译: source={}, targetLanguage={}, segments={}",
                     sourceLanguage, targetLanguage, segments.size());
         } else {
@@ -273,7 +273,7 @@ public class SubtitleTranslationCoordinator {
                                      String targetLanguage, Path termsFile) {
         TermLookupProvider provider = lookupProvider.getIfAvailable();
         TermVerification.Decision decision = TermVerification.decide(
-                Bcp47Language.isSameMainLanguage(sourceLanguage, targetLanguage),
+                Bcp47LanguagePolicy.isSameMainLanguage(sourceLanguage, targetLanguage),
                 CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(termsFile)),
                 provider != null,
                 !context.terms().isEmpty());

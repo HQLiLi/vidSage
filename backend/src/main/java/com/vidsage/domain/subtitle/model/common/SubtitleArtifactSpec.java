@@ -1,6 +1,6 @@
 package com.vidsage.domain.subtitle.model.common;
 
-import com.vidsage.domain.subtitle.policy.Bcp47Language;
+import com.vidsage.domain.subtitle.policy.Bcp47LanguagePolicy;
 import lombok.Getter;
 
 import java.util.Arrays;
@@ -64,7 +64,7 @@ public enum SubtitleArtifactSpec {
 
     public String fileName(SubtitleRoute route, String lang) {
         String name = template.replace("{route}", routeToken(route));
-        return name.contains("{lang}") ? name.replace("{lang}", Bcp47Language.resolveTargetLanguage(lang)) : name;
+        return name.contains("{lang}") ? name.replace("{lang}", Bcp47LanguagePolicy.resolveTargetLanguage(lang)) : name;
     }
 
     /**

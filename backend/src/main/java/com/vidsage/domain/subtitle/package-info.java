@@ -6,7 +6,7 @@
  * ——由 {@code infrastructure/provider/llm/} 的 {@code Llm*} 适配器实现。
  *
  * <p>{@code policy/} 装纯函数领域政策：无状态、零 I/O，事实由应用层采集、判据单源在此。
- * {@code Bcp47Language}（语种政策：resolve 目标语种 / 源语种、主语言子标签比较）、
+ * {@code Bcp47LanguagePolicy}（语种政策：resolve 目标语种 / 源语种、主语言子标签比较）、
  * {@code TermVerification}（术语查证政策：触发三条件 + official/common/none 记账）、
  * {@code CheckpointPolicy}（检查点语义 + 上下文缓存-or-摘要）。
  *

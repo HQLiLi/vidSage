@@ -298,7 +298,7 @@ class SubtitleTranslationCoordinatorTest {
 
     // ------------------------------------------------------------------
     // 目标语种：卫语句须早于 I/O（error-handling.md 的硬规则）
-    // （语种归一化与守卫本身的断言在 domain/subtitle/policy/Bcp47LanguageTest）
+    // （语种归一化与守卫本身的断言在 domain/subtitle/policy/Bcp47LanguagePolicyTest）
     // ------------------------------------------------------------------
 
     /**

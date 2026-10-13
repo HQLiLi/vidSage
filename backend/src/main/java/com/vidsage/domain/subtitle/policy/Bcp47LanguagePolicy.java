@@ -11,11 +11,11 @@ import org.springframework.util.StringUtils;
 
 /**
  * BCP-47 语种政策（纯函数领域服务）：翻译的「跳不跳、按什么语种跳、跳了产出什么」三件事的单源。
- * 无状态、零 I/O：不做文件读写、不调模型，语种知识随调用入参而来。
+ *
  */
-public final class Bcp47Language {
+public final class Bcp47LanguagePolicy {
 
-    private Bcp47Language() {
+    private Bcp47LanguagePolicy() {
     }
 
     /**

@@ -76,7 +76,7 @@ class SubtitleArtifactSpecTest {
     @Test
     void normalizesTargetLanguageCaseAndSurroundingWhitespace() {
         // ZH /  zh  必须落到同一个文件名，否则大小写一变就静默产出第二份产物、绕开断点判据。
-        // 归一化口径单源在 Bcp47Language.resolveTargetLanguage，登记表不复制它，只是调它。
+        // 归一化口径单源在 Bcp47LanguagePolicy.resolveTargetLanguage，登记表不复制它，只是调它。
         assertEquals("segments-asr-cloud-translate-zh.json",
                 SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(SubtitleRoute.ASR_CLOUD, "ZH"));
         assertEquals("segments-asr-cloud-translate-zh.json",
