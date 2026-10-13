@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "注释写法正典（唯一正文 · 十三条禁令）——本层主用：§一 那把尺子（五种「解释既成安排」形态 + 删完回查两件事）、§二 分流表（「什么时候改的」→ 不留；「流程步骤」→ 构件内部步骤序列直接删）+「两条边界」第 1 条（本层撞在 stores/task.ts 的数据流箭头链上）、§三 禁令 2（现状快照改职责边界，本层撞在 enums/task.ts 与 routes/index.ts）、禁令 5/10（同一处细节只写一遍，本层撞在 useTranscriptPlayer 的类型标注句）、§五 两类指针表（spec 指针留 / 归档品删——本层 design §N 与 R#/D#/AC# 全靠这张表）、§六 唯一模式清单"}
+{"file": ".trellis/tasks/10-12-comment-frontend/prd.md", "reason": "本层需求：Goal（frontend/src 25 文件）、层内重点（变更史 5 处 + 密度最高的文件）、范围与「不做」（不改 TS 类型定义 / 组件模板 / 样式；不动 lib/gsap.ts 的统一入口约定）、本层六条 AC（含 types/ 准入规则必须在、装钩子验 AC7）"}
+{"file": ".trellis/tasks/10-12-comment-frontend/implement.md", "reason": "本层执行计划（本文件）：§0.1 六条筛选线实测（工作集 19 文件、210 块、19 块的 ≥6 行清单、三条误报）、§0.3 逐处预判（design §N 族删括注保正文 / R#D#AC# 整处删 / request.ts 门面块上移已完成压成一句 + 指针 / gsap.ts 一字不动）、§4 三条新发现待裁"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "父需求、边界与跨子任务 AC1–AC7，含「只改注释」「不做无差别重写」等硬约束；AC3 上移确实落地、AC7 钩子机器可判"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "四处目的地的移动代价、验证策略与风险处置（误删承载知识的 why、把腐坏注释当正确依据），以及「模式清单只住正典 §六、其他文件引用不复制」"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/implement.md", "reason": "父执行计划 Step A→E：四条筛选线并集、先过尺子再过分流表、订正腐坏、自检（含删完回查两件事）、报审查三段格式；§5 是本层归档之后的收尾步骤（全量 AC1 + 装钩子 + 三层回归扫描）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端注释章节（「规则正文在正典」的三句话摘要 + 本语言例子）与「写与删是两件事」口径；另含**双 linter 机制**（oxlint + ESLint 分工）——本层自检要跑 npm run lint，改注释不得引 lint 报错"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "「唯一例外：request.ts 门面对 axios 方法返回值的 1 处受控断言」的完整出处（含条件类型推导）——本层据此把 request.ts:42 的整段推导压成一句 + 指针，并核实压缩没丢约束"}
+{"file": ".trellis/spec/frontend/animation.md", "reason": "GSAP 三条硬规则与「统一入口」约定——lib/gsap.ts 的注释指向它（spec 指针，按 §五 保留）；本层 prd 明文不动那处统一入口说明，用它复核判定"}
+{"file": ".trellis/tasks/archive/2026-10/10-12-comment-backend-test/implement.md", "reason": "上一层（子任务 5）的成稿：§0.1 筛选线实测表的写法、§2/§3 的表怎么填、「用户手改后不登记不还原」的写法、§4 标准补充表头（本层继承）、§5 自检留实测值、§6 报审查五段式"}
+{"file": ".trellis/tasks/archive/2026-10/10-03-vidsage-fe-v0/design.md", "reason": "代码里 14 处 `design §N` 指针指向它（§1.1 / §2.1 / §3.2–§3.6 / §4）——按正典 §五 这些指针要删，删前用它核对「被删的段落确实在那份 design.md 里有对应表述」（AC3 上移确实落地），而不是凭空消失"}

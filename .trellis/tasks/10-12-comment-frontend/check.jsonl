@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "质检判据全在这里：§六 脚本与模式清单（AC1 变更史归零）、§一 尺子与「删完回查两件事」（删对了没）、§二 两条边界（构件内部步骤序列直接删）、§三 禁令 2/5/10（本层高频病灶：现状快照、同处写两遍）、§五 两类指针表（归档品删 / spec 留）"}
+{"file": ".trellis/tasks/10-12-comment-frontend/prd.md", "reason": "逐条对本层 AC：frontend/src 下变更史与归档指针命中为 0、按尺子通读并回查悬空引用与裸空行、npm run type-check 与 npm run lint 均过、「两级类型策略」的准入规则仍在 types/ 有一句可执行表述、改的确实是注释"}
+{"file": ".trellis/tasks/10-12-comment-frontend/implement.md", "reason": "质检对象：§1 逐文件登记是否与实际 diff 对得上、§0.3 的预判有没有被无声跳过、§2 例外登记是否写了砍不动的理由、§3 是否逐条已订正、§4 是否只剩待裁项、§5 自检是否留实测值"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "跨子任务 AC 的判据（AC1 机器可判 / AC2 只答四件事 / AC4 腐坏逐处订正并留清单 / AC5 行为不变且基线实测），以及「只改注释」「不做无差别重写」的硬约束"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "验证策略表与「只改注释」的复核口径（git diff -w 通读确认无手滑改代码）；§6 风险表里「误删承载知识的 why」「把腐坏的注释当成正确依据」是质检重点——本层尤其要盯 R#/D#/AC# 整处删有没有连带删掉正文口径"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "「写与删是两件事」：质检不得因某处没注释判违规、也不得要求补写；只判该留的有没有被删；另含双 linter 机制，用于判断 lint 全绿是否是有效证据"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "request.ts 受控断言的完整口径在 spec 里——质检要点：代码里压缩后的那一句 + 指针是否仍能让读者知道「断言只许出现在该文件门面边界，调用点零 as」，且没有把约束悄悄丢掉"}
