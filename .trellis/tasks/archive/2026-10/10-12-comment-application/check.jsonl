@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "核查基准：收口后的注释是否符合 §二 分流表与 §三 十三条禁令；「块只回答那四件事」是 AC2 的真判据（行数只作粗筛）"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "AC1–AC7 的判定口径；特别核「只改注释」（diff 里不应出现非注释行）与 AC3「上移确实落地」两条最容易漏的"}
+{"file": ".trellis/tasks/10-12-comment-application/prd.md", "reason": "本层四条 AC + 「不动 TaskProgressMessage 载荷契约描述」这条本层特有的排除项"}
+{"file": ".trellis/tasks/10-12-comment-application/implement.md", "reason": "工作集口径（三条线并集，含集外扩入）与例外登记表——核查「该动的都动了、登记的理由站得住」"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核 AC3：被移出的包级描述与进度事件序列，是否真在本文件找到对应表述（允许改写措辞，不允许凭空消失）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核 TaskConflictException 被删的决策记录在 175 行确有对等表述——删了是否真零损失"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」的反向判据：确认没有把「有意不留」误判成缺陷、也没有代写事实推不出来的注释"}

@@ -27,14 +27,23 @@
 
 ## 二、注释要求（项目级硬性要求）
 
-**每个函数/方法都要写注释。**
+> **规则正文在 [guides/comment-guidelines.md](../guides/comment-guidelines.md)**——项目级正典，
+> 前后端共用一份，含内容分流表、按层级的写法、真实正反例与防复发钩子。本节只留前端该看的例子。
+
+**三句话摘要**
+
+1. **第一原理**：删了会不会有人踩坑。会 → 留；不会 → 不留。
+2. **写与删是两件事**：新写的成员一律先写上注释；**「这里没有注释」不等于违规**——很可能是有意删的。
+3. **内容分流**：为什么这样设计 → 任务卡 `design.md`；什么时候改的 → `git log`；
+   **约束与边界条件留在代码里**。
 
 ### 前端怎么写
 
 - 语言：**中文**（与后端代码注释一致）
 - 导出的函数、composable、store action、工具函数：**必须有注释**
-- 注释说明**做什么、有什么约束**，不要复述函数名
+- 注释说明**做什么、有什么约束**，不要复述函数名、不要复述参数签名
 - 简单到自解释的一行 getter 可省，但**凡有分支、副作用、边界条件的必须写**
+- **不写**：日期、任务号、`设计决策 N`、「迁移前…」——归 `git log` 与任务卡
 
 ```ts
 /**
@@ -45,6 +54,9 @@ export async function submitTranscription(videoId: string): Promise<string> {
   // ...
 }
 ```
+
+> 上面留了「重复提交不会重复计费」（使用者不敢自己假设的边界约束），
+> 没写 `@returns 任务 id`（复述签名，删）。
 
 > 脚手架的 `counter` 演示 store 已删除。**新增代码必须写注释**，不要以旧代码为准。
 
@@ -167,3 +179,37 @@ npm run lint         # oxlint + eslint
 | 手工加换行/分号/双引号 | 与 Prettier 配置冲突 |
 | 编辑 `frontend/dist/` 下的文件 | 构建产物，且已被 ignore |
 | 提交前不跑 `type-check` | 严格模式下的类型错误会漏到构建期 |
+
+---
+
+## 八、函数命名（项目级硬性要求）
+
+**函数名动词开头**，让调用点读起来就是一句话。
+
+```ts
+// ✅ 三行都是仓库里真实存在的调用，读出来就是一句话
+const cues = buildCues(source, translated)
+await runSubmit(submitUrl({ url: link }))
+await startTranslate()
+```
+
+- composable 的 `use` 前缀、`store` 的 `useXxxStore` 都在动词之前，不受本条影响
+- `isXxx` / `hasXxx` / `onXxx` 这类判定式与事件式前缀算动词，不用改（`isTaskConflictResponse`、`onWaveSeek` 都已合规）
+
+**待改清单**（2026-10-12 登记，本次只立规则、不动代码）：
+
+| 名字 | 位置 | 性质 |
+|---|---|---|
+| `artifactHref` | `views/workspace/components/WorkspaceHeader.vue:39` | 属性式取值器——叫这个名字，调用点读出来是「产物 href」这个字段，不是「算出产物 URL」这个动作 |
+
+复算命令（抓 `function` 声明与 `export const` 箭头函数）：
+
+```bash
+grep -rhoE 'export const [a-zA-Z_][a-zA-Z0-9_]* = (async )?\(|export function [a-zA-Z_][a-zA-Z0-9_]*|function [a-zA-Z_][a-zA-Z0-9_]*\(' \
+  --include=*.ts --include=*.vue frontend/src \
+  | sed -E 's/.*(const|function) //' | tr -d '(' | sort -u
+```
+
+非导出的箭头函数这条命令抓不到（`<script setup>` 里的 `const handleXxx = () => {}`），但 2026-10-12 全量扫过只有 3 个，全是 `onPause` / `onPlay` / `onTime` 这类事件处理器，已合规。
+
+后端同名规则见 [backend/directory-structure.md](../backend/directory-structure.md#方法名动词开头2026-10-12-立)。

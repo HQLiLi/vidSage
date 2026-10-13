@@ -1,7 +1,7 @@
 /**
- * 外部进程执行能力（原 provider/tool 与 model/process 合并）：运行 yt-dlp / ffmpeg 等命令行工具——
+ * 外部进程执行能力：运行 yt-dlp / ffmpeg 等命令行工具——
  * {@code ExternalProcessRunner}（执行器）、{@code ProcessOutcome}（执行出参）、
- * {@code ProcessToolDiagnostics}（工具可用性诊断，实现 {@code application/diagnostics/ToolDiagnostics}
+ * {@code ProcessToolDiagnostics}（工具可用性诊断，实现 {@code application/diagnostics/port/ToolDiagnostics}
  * 端口——出参 {@code ToolDiagnosticReport} 随端口落在 application 层）、
  * {@code ExternalToolProperties}（工具路径等配置）。
  *

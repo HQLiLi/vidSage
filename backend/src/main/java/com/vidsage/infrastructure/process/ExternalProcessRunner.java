@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 /**
  * 外部进程执行器：本项目<b>唯一</b>的子进程出口（yt-dlp 与 ffmpeg 共用）。
  *
- * <p>关键行为（逐条有实测依据，见 research/external-process-integration.md）：
+ * <p>关键行为：
  * <ul>
  *   <li>命令行以 {@code List<String>} 逐项传给 {@link ProcessBuilder}，<b>永不拼字符串、永不 shell</b>
  *       —— 规避编码与注入双重风险，也避免 Windows 引号转义地狱；</li>
@@ -61,16 +61,10 @@ public class ExternalProcessRunner {
 
     private final Charset consoleCharset;
 
-    /**
-     * Spring 使用的构造函数：按 JVM 属性 native.encoding 解析控制台编码。
-     */
     public ExternalProcessRunner() {
         this(resolveConsoleCharset());
     }
 
-    /**
-     * 包级可见：供测试注入确定性的输出编码，不依赖运行机器的 native.encoding。
-     */
     ExternalProcessRunner(Charset consoleCharset) {
         this.consoleCharset = consoleCharset;
     }
@@ -184,9 +178,6 @@ public class ExternalProcessRunner {
 
     /**
      * 取出读取结果并按指定编码解码，最多等 {@code graceMs} 毫秒。
-     *
-     * <p>包级可见：便于测试直接喂一个永不完成的 future，确定性验证「读线程被孤儿进程挂住时
-     * {@code run()} 仍能在有限时间内返回」。
      *
      * @param future  由 {@link #readFully(InputStream)} 提交的读尽任务
      * @param charset 解码用字符集（生产路径为控制台编码）

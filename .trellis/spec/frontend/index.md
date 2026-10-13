@@ -16,7 +16,7 @@
 | [styling.md](./styling.md) | Tailwind vs SCSS 的分工 | 写样式时 |
 | [animation.md](./animation.md) | GSAP 动画：生命周期、性能分层、缓动基线 | 写任何 GSAP 动效时 |
 | [api.md](./api.md) | axios 实例、api 包组织、错误处理约定 | 写与后端通信的请求时 |
-| [quality-guidelines.md](./quality-guidelines.md) | 双 linter、格式化、注释要求 | 写任何代码前 |
+| [quality-guidelines.md](./quality-guidelines.md) | 双 linter、格式化、注释要求、函数名动词开头 | 写任何代码前 |
 
 ---
 

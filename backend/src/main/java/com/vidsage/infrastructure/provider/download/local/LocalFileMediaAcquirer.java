@@ -1,9 +1,9 @@
 package com.vidsage.infrastructure.provider.download.local;
 
-import com.vidsage.domain.media.AcquiredMedia;
-import com.vidsage.domain.media.MediaInput;
+import com.vidsage.domain.media.model.AcquiredMedia;
+import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.infrastructure.process.ProcessOutcome;
-import com.vidsage.domain.media.MediaAcquirer;
+import com.vidsage.domain.media.port.MediaAcquirer;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
 import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
@@ -22,20 +22,18 @@ import org.springframework.stereotype.Component;
  * 本地文件路线的输入获取：直接采用本机媒体文件，不下载、不拷贝。
  *
  * <p>承接两种输入：{@link MediaInput.LocalPath}（调用方给的本机文件）与
- * {@link MediaInput.InWorkspace}（MVP-1 上传落盘后的工作区文件）——两者都是「文件已在本机」，
+ * {@link MediaInput.InWorkspace}（上传落盘后的工作区文件）——两者都是「文件已在本机」，
  * 采用方式完全一致。
  *
  * <p>标题取文件名；时长用 {@code ffprobe} 补齐（ffprobe 本就在必检工具清单里），
  * 顺带起到「是否是可解析的媒体文件」的校验作用。本地路线没有 info json，
  * 故 {@link AcquiredMedia#infoJsonPath()} 恒为 {@link Optional#empty()}。
- *
- * <p>两个下载器同时驻留容器，故<b>不加</b> {@code @ConditionalOnProperty}。
  */
 @Slf4j
 @Component
 public class LocalFileMediaAcquirer implements MediaAcquirer {
 
-    /** 失败消息里附带的 ffprobe stderr 行数上限（与执行器一致）。 */
+    /** 失败消息里附带的 ffprobe stderr 行数上限。 */
     private static final int STDERR_TAIL_LINES = 20;
 
     private final ExternalProcessRunner runner;
@@ -43,8 +41,6 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
     private final ExternalToolProperties properties;
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param runner     外部进程执行器（ffprobe 经它调用）
      * @param tools      工具路径解析（ffprobe 路径的唯一入口）
      * @param properties 外部工具配置（取默认超时）
@@ -63,7 +59,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
 
     /**
      * 本地路线恒返回空：它<b>不下载、不拷贝</b>——输入文件本身就是产物，始终原地可读，
-     * 没有「上一轮留下的下载物」可复用。若这里返回已存在的文件，反而会让 acquire 阶段永远被
+     * 没有「上一轮留下的下载物」可复用。若这里返回已存在的文件，反而会让获取媒体阶段永远被
      * 跳过、把「文件不存在 / 不可读」的校验与 ffprobe 时长读取一并省掉。
      *
      * <p>因此本路线每次都由 {@link #acquire} 重新校验并读时长；真正的断点复用落在
@@ -118,7 +114,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
         }
         // 媒体时长（毫秒）
         long durationMs = probeDurationMs(file);
-        // 本地路线不拷贝，直接采用；workDir 留给 2b 落字幕产物用，本阶段不需要
+        // 本地路线不拷贝，直接采用；workDir 留给后续阶段落字幕产物用
         log.info("采用本地媒体文件: file={}, durationMs={}, sizeBytes={}",
                 file.getFileName(), durationMs, ArtifactFiles.sizeOrZero(file));
         return new AcquiredMedia(file, file.getFileName().toString(), durationMs, Optional.empty());
@@ -152,8 +148,6 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
 
     /**
      * 解析 ffprobe 的 {@code format=duration} 输出（形如 {@code 47.717000}）为毫秒。
-     *
-     * <p>包级 static：测试可直接喂字符串，不必拉起真实 ffprobe（见 quality-guidelines）。
      *
      * @param stdout ffprobe 的标准输出
      * @return 毫秒；输出为空、非数字或为负时返回空

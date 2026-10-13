@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 26
-- **Last Active**: 2026-10-06
+- **Total Sessions**: 43
+- **Last Active**: 2026-10-13
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~747 | Active |
+| `journal-1.md` | ~1174 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,23 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 43 | 2026-10-13 | 注释收口：三层回归扫描（domain / application / infrastructure） | `96cd921`, `0f0a173` | `dev` |
+| 42 | 2026-10-13 | 注释收口 frontend 层（子任务 6，注释任务树最后一个） | `8c5a5d0`, `9a5bc0d` | `dev` |
+| 41 | 2026-10-13 | 注释收口 backend test 层（子任务 5）+ 任务树对齐正典当前版本 | `8afb33a`, `b309a06`, `f7f4fc8` | `dev` |
+| 40 | 2026-10-13 | 注释收口 web/shared/config 层：清变更史、删「解释既成安排」的废话，并把判据回写正典 | `65bf3ca`, `30409f7`, `caaf2d2`, `69019cb`, `05f34e4` | `dev` |
+| 39 | 2026-10-13 | 注释收口 infrastructure 层：清变更史、粒度归位、订正腐坏 | `d4cf2f9` | `dev` |
+| 38 | 2026-10-12 | 注释收口 application 层：清变更史、粒度归位、订正腐坏 | `c29156b`, `dd2798a` | `dev` |
+| 37 | 2026-10-12 | 注释收口：domain 层试点 + 注释写法正典定稿 | `6965134`, `6b45f24`, `d4a0dda`, `d210de5` | `dev` |
+| 36 | 2026-10-12 | 10-11 关键词纠错与字幕重生成：六批实现到合并归档 | `198244c`, `7fca0c0`, `63b36fb`, `ad85780`, `87794e3`, `cb00a25`, `2de2ae5` | `dev` |
+| 35 | 2026-10-11 | 10-11 进度载荷命名收口：StageEvent → StageProgress 改名、独立核查、合并归档 | `b994d31`, `062b11f`, `d8b7ca7`, `dba6091`, `5d453fe` | `dev` |
+| 34 | 2026-10-11 | 10-11 SSE 面收口全链路收尾：批 0 判据到合并归档 | `edcbe81`, `b1ffa1d` | `dev` |
+| 33 | 2026-10-11 | 10-08 广播收口全链路收尾：批 0 判据到合并归档 | `901449e`, `53f9377`, `1fbf095` | `dev` |
+| 32 | 2026-10-10 | WorkspaceService 端口倒置：代码审查、拼写订正、测试重分与收尾归档 | `18938a4`, `4f3c43e` | `dev` |
+| 31 | 2026-10-08 | 执行模型拆分：TaskConcurrencyGate 端口 + 行为逐格对照零差异 | `95a8886`, `ef39a14`, `efdbf81`, `4ba9b09`, `133dcdc`, `38ea58e`, `0d388d4` | `dev` |
+| 30 | 2026-10-08 | 进度权重扁平化执行与验收（AC1-AC9 全绿） | `f7a7f96`, `d36b2f8` | `dev` |
+| 29 | 2026-10-08 | 形状重构收尾：批次 2/3 完成验收、合并推送并归档 | `1fb308c`, `f7bdcfb` | `dev` |
+| 28 | 2026-10-07 | 命名判据重立 + 管线与阶段构件改名（*Stage → *Coordinator） | `399126f`, `1af5f25`, `e144df5`, `f899d4b`, `27c8b65`, `5fe9742`, `5c09fe8`, `fcf0750`, `dc2aced`, `ef571a5` | `feature/shape-refactor` |
+| 27 | 2026-10-07 | 包结构整理归档 + 架构「形状」设计讨论 | `35c7a83`, `3e13c54`, `866e647` | `dev` |
 | 26 | 2026-10-06 | 命名与构件语义整理：Task 前缀对齐、管线方法与阶段类改名 | `7b9db46`, `bcb1629` | `dev` |
 | 25 | 2026-10-06 | application 出站依赖倒置：端口归 domain/application，infrastructure 实现 | `62e9b47`, `9bb8cae` | `dev` |
 | 24 | 2026-10-06 | 业务逻辑下沉 domain：四批重构 + 读模型拆分 | `efe80ae`, `7afe71f`, `48dabe7`, `6743a3e` | `feature/domain-logic-sink` |

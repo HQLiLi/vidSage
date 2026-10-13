@@ -1,0 +1,33 @@
+{
+  "id": "comment-consolidation",
+  "name": "comment-consolidation",
+  "title": "注释收口：删变更史与决策记录、修正粒度错位",
+  "description": "把散落在 Javadoc 里的变更史、决策记录与流程口径移出代码，按层把注释粒度收敛到「一句话 + 防坑的为什么 + 契约」，并落地一份注释写法正典。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "HeQiu",
+  "assignee": "HeQiu",
+  "createdAt": "2026-10-12",
+  "completedAt": "2026-10-13",
+  "branch": null,
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-12-comment-domain-pilot",
+    "10-12-comment-application",
+    "10-12-comment-infrastructure",
+    "10-12-comment-web-shared-config",
+    "10-12-comment-backend-test",
+    "10-12-comment-frontend"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

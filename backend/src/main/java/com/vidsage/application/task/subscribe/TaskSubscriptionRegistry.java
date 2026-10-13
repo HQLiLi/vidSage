@@ -1,6 +1,6 @@
 package com.vidsage.application.task.subscribe;
 
-import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.application.task.message.TaskProgressMessage;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -10,24 +10,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * 任务进度的中立发布-订阅注册表：{@code taskNo → List<Consumer<TaskProgressMessage>>}（design.md「SSE 契约」，
- * 2026-09-30 定调的原顶层包 {@code subscribe/}，2026-10-05 DDD 四层化并入 {@code application/task/}）。
- *
- * <p><b>包内禁止出现的东西</b>：HTTP 类型（{@code SseEmitter} 等只活在 {@code web/sse/}）、
- * 业务编排（阶段顺序、状态迁移都归 application/）。本类只知道「按 taskNo 把事件交给订阅者」，
- * 判据是「写得出它不许装什么」——把 Spring 容器拿掉它照样成立，事件流向：
- * 管线 → {@link #broadcast} → 订阅者（web 层注册的「写 emitter」Consumer 只是其中一种）。
+ * 任务进度的订阅中心。
  *
  * <p><b>并发模型</b>：每个 taskNo 一条 {@link CopyOnWriteArrayList}——订阅 / 退订改副本，
  * 广播遍历快照，读写互不阻塞；管线的广播跑在虚拟线程上，与 HTTP 线程的订阅并发发生。
  * 事件量小（阶段边界 + 批级），写时复制的代价可忽略。
- *
- * <p><b>单个订阅者失败不连累别人</b>：broadcast 对每个 Consumer 单独捕获异常记 WARN 后继续，
- * 绝不上抛——回调在管线的编排路径上，一个写失败的 emitter 不能把整条任务拖成 FAILED。
- *
- * <p><b>生命周期</b>：任务到达终态（SUCCEEDED / FAILED）后管线先广播终态事件、再调
- * {@link #complete} 清空该 taskNo 的全部订阅者——事件不落库，订阅关系也不为死任务保留；
- * 迟来的订阅者拿 DB 快照（{@code VideoTaskService.snapshot}）即可恢复进度。
  */
 @Slf4j
 @Component

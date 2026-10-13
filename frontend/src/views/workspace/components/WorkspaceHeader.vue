@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 工作区顶栏（页面私有组件）：外壳用跨页公共组件 AppHeader，本组件只管页面差异内容——
 // 返回 / 任务标题 / 按需翻译入口 / 产物下载面板。
-// 翻译态机：就绪可点 → isTranslating 禁用显示「翻译中…」→ 已有译文隐藏（R6）；
+// 翻译态机：就绪可点 → isTranslating 禁用显示「翻译中…」→ 已有译文隐藏；
 // 「产物」与翻译失败提示均为绝对定位小面板，document 点击外部收起（onScopeDispose 清监听）。
 import { computed, onMounted, onScopeDispose, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
@@ -153,7 +153,7 @@ onScopeDispose(() => {
       </div>
     </div>
 
-    <!-- 产物面板：artifacts 清单（文件名 + 体积），原生 <a download> 直连下载端点（R6） -->
+    <!-- 产物面板：artifacts 清单（文件名 + 体积），原生 <a download> 直连下载端点 -->
     <div ref="artifactsWrap" class="relative shrink-0">
       <button
         type="button"

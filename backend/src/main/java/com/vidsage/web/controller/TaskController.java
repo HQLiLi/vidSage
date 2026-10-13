@@ -1,50 +1,32 @@
 package com.vidsage.web.controller;
 
-import com.vidsage.application.task.TaskProgressMessage;
-import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.VideoTaskService;
-import com.vidsage.application.task.subscribe.Subscription;
-import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
+import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.web.dto.SubmitUrlRequest;
+import com.vidsage.web.dto.RegenerateSubtitlesRequest;
+import com.vidsage.web.dto.SubtitleKeywordsResponse;
 import com.vidsage.web.dto.TaskResponse;
-import com.vidsage.web.sse.TaskSseHub;
+import com.vidsage.web.sse.TaskSseConnectionManager;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.io.IOException;
-import java.io.InputStream;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.util.List;
+import java.io.InputStream;
+
 /**
- * 任务提交、状态查询、按需翻译、进度订阅与产物下载 HTTP 入口（MVP-1 异步管线的唯一前端依赖）。
+ * 任务提交、状态查询、按需翻译、进度订阅与产物下载 HTTP 入口。
  *
  * <p>本类只做「接收 → 卫语句 → 委托 → 返回」，不写业务逻辑；提交即返回 202 与任务视图，
- * <b>不等管线跑完</b>——长视频不再顶客户端超时。自动管线跑到清洗 / 原文字幕为止（2026-10-02
- * 两段式裁定），翻译由用户对 SUCCEEDED 任务显式触发（{@code POST /{taskNo}/translate}）。
- *
- * <p>SSE 订阅（{@code /events}）的接线：读 DB 快照（未知 taskNo 在此 404）→ 建 emitter →
- * 挂「写 emitter」的 Consumer 进注册表 → 重读快照推送（防「读快照 → 挂订阅」窗口内任务到达
- * 终态造成的陈旧快照与订阅泄漏）→ 挂起等增量。终态快照经 {@link TaskSseHub#send} 推完即收口
- * 连接；终态任务不再有增量，随后退订防泄漏。连接的持有 / 心跳 / 清理全部在 {@code web/sse/TaskSseHub}。
- *
- * <p>日志只记「请求形态」：URL 原文与上传文件原始名指向用户资源，一律不落日志
- * （design.md 任务表 source_uri 注、logging-guidelines 脱敏红线）。
+ * <b>不等管线跑完</b>——长视频不会顶客户端超时。自动管线跑到清洗 / 原文字幕为止，
+ * 翻译由用户对 SUCCEEDED 任务显式触发（{@code POST /{taskNo}/translate}）。
  */
 @Slf4j
 @Tag(name = "任务", description = "任务提交（URL / 文件上传）、状态查询、按需翻译、进度订阅（SSE）与"
@@ -55,79 +37,72 @@ public class TaskController {
 
     private final VideoTaskService taskService;
 
-    private final TaskSseHub sseHub;
+    private final TaskSseConnectionManager sseConnectionManager;
 
-    private final TaskSubscriptionRegistry subscriptionRegistry;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param taskService          提交与查询的唯一服务层入口
-     * @param sseHub               SSE 连接管理（emitter 持有 / 心跳 / 清理，仅本层可见 HTTP 细节）
-     * @param subscriptionRegistry 中立订阅注册表（管线广播的落点）
-     */
-    public TaskController(VideoTaskService taskService, TaskSseHub sseHub,
-                          TaskSubscriptionRegistry subscriptionRegistry) {
+    public TaskController(VideoTaskService taskService, TaskSseConnectionManager sseConnectionManager
+    ) {
         this.taskService = taskService;
-        this.sseHub = sseHub;
-        this.subscriptionRegistry = subscriptionRegistry;
+        this.sseConnectionManager = sseConnectionManager;
     }
 
     /**
-     * 提交 URL 任务：异步执行 下载 → 抽音频 → 转写 → 清洗，到原文字幕就绪为止（2026-10-02
-     * 两段式）；翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
+     * 提交 URL 任务：异步执行 下载 → 抽音频 → 转写 → 清洗，到原文字幕就绪为止；
+     * 翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
+     * <p>
+     * 支持的站点——本项目验证过 B 站视频页与 YouTube；未验证站点不提前拦截，
+     * 交给 yt-dlp 提取，失败即任务 FAILED + SSE 推 FAILED 事件
      *
-     * <p><b>当前支持的输入（2026-10-02 记录，待前端落地后复议校验层级）</b>：公网媒体页面 URL，
-     * 实测可用的是 yt-dlp 支持的站点——本项目验证过 B 站视频页与 YouTube；未验证站点不提前拦截，
-     * 交给 yt-dlp 提取，失败即任务 FAILED + SSE 推 FAILED 事件（不做站点白名单：等于把 yt-dlp 的
-     * 站点知识复制一份进来，维护成本高）。本条是 PRD 验收标准「不支持的链接 → 4xx」被
-     * 项目所有者改为「暂以 FAILED 呈现」的依据；提交口预检（如域名白名单）与解析期失败
-     * 何者更合适，等前端做完按真实交互再定（见 09-24-vidsage-mvp1-submit prd.md 验收标准）。
-     *
-     * @param request 请求体（url 必填）
+     * @param request 请求体（url 必填；keywords 可选）
      * @return 新任务的 PENDING 视图（拿 taskNo 去查询 / 订阅进度）
-     * @throws IllegalArgumentException url 为空白（400）
+     * @throws IllegalArgumentException                                     url 为空白 / 关键词超限（400）
      * @throws com.vidsage.application.task.exception.TaskConflictException 同 URL 已有进行中任务（409，响应体附既有任务）
      */
     @Operation(summary = "提交 URL 任务",
             description = "异步执行到原文字幕就绪（下载 → 抽音频 → 转写 → 清洗），立即返回 202 与任务视图；"
                     + "翻译需任务成功后另调 POST /api/tasks/{taskNo}/translate 触发。"
-                    + "同一 URL 已有排队 / 执行中任务时返回 409")
+                    + "同一 URL 已有排队 / 执行中任务时返回 409。"
+                    + "keywords 为 null（字段缺席）= 本次不带关键词、不动该工作区已有的关键词，"
+                    + "[]（显式空数组）= 写入空清单（该工作区此后按原样清洗）；"
+                    + "单条最多 50 字、最多 50 条，超限 400 且不落库")
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     public TaskResponse submitUrl(@RequestBody SubmitUrlRequest request) {
-        // 卫语句先于一切 I/O（error-handling.md）：url 缺失在边界拦下，不进服务层
         if (request == null || !StringUtils.hasText(request.url())) {
             throw new IllegalArgumentException("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
         log.info("收到任务提交: sourceType=URL");
-        return TaskResponse.from(taskService.submitUrl(request.url()));
+        return TaskResponse.from(taskService.submitUrl(request.url(), request.keywords()));
     }
 
     /**
      * 上传本地视频 / 音频文件提交任务：流式落盘（按内容寻址），异步执行到原文字幕就绪为止
-     * （2026-10-02 两段式）；翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
+     * 翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
      *
-     * @param file 上传的媒体文件（multipart 字段名 file）；不能为空
+     * @param file      上传的媒体文件（multipart 字段名 file）；不能为空
+     * @param keywords  可选关键词，可重复携带（keywords=A&amp;keywords=B）；缺席 = 不带关键词
      * @return 新任务的 PENDING 视图
-     * @throws IllegalArgumentException 文件缺失或为空（400）
+     * @throws IllegalArgumentException                                     文件缺失或为空 / 关键词超限（400）
      * @throws com.vidsage.application.task.exception.TaskConflictException 同内容文件已有进行中任务（409）
-     * @throws IllegalStateException    读取上传流失败 / 落盘失败（500）
+     * @throws IllegalStateException                                        读取上传流失败 / 落盘失败（500）
      */
     @Operation(summary = "上传本地文件提交任务",
             description = "multipart 字段名 file；流式落盘按内容寻址，同一文件重复上传命中同一工作区。"
-                    + "上限见 spring.servlet.multipart.max-file-size（默认 2GB）")
+                    + "上限见 spring.servlet.multipart.max-file-size（默认 2GB）。"
+                    + "可选 keywords 字段可重复携带（keywords=A&keywords=B），语义与 POST /api/tasks 一致"
+                    + "（缺席 = 不带关键词、不动该工作区已有的关键词；[] = 写入空清单）；"
+                    + "单条最多 50 字、最多 50 条，超限 400 且不落库")
     @PostMapping("/upload")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public TaskResponse submitUpload(@RequestParam("file") MultipartFile file) {
+    public TaskResponse submitUpload(@RequestParam("file") MultipartFile file,
+                                     @RequestParam(value = "keywords", required = false) List<String> keywords) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空：请选择本地视频 / 音频文件后再提交");
         }
         // 原始文件名是用户资源，不落日志；字节数是度量，可以记
         log.info("收到任务提交: sourceType=UPLOAD, sizeBytes={}", file.getSize());
         try (InputStream in = file.getInputStream()) {
-            return TaskResponse.from(taskService.submitUpload(in, file.getOriginalFilename()));
+            return TaskResponse.from(taskService.submitUpload(in, file.getOriginalFilename(), keywords));
         } catch (IOException e) {
             throw new IllegalStateException("读取上传文件流失败：" + e.getMessage() + "；请重试或换一个文件", e);
         }
@@ -138,7 +113,7 @@ public class TaskController {
      *
      * @param taskNo 提交响应返回的任务号
      * @return 任务视图（artifacts 为工作区内可见产物）
-     * @throws IllegalArgumentException taskNo 为空（400）
+     * @throws IllegalArgumentException                                     taskNo 为空（400）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "查询任务状态",
@@ -153,13 +128,11 @@ public class TaskController {
     }
 
     /**
-     * 订阅任务进度（SSE）：连接建立即推一条 DB 快照，此后随管线推进增量推送；
-     * 任务到终态（SUCCEEDED / FAILED）推完最后一条即完成连接。事件名 {@code progress}，
-     * data 为 {@code TaskProgressMessage} JSON。刷新页面重连 = 重新拿快照，进度无感恢复。
+     * 订阅任务进度（SSE）
      *
      * @param taskNo 提交响应返回的任务号
      * @return 挂起中的 SSE 连接（text/event-stream）
-     * @throws IllegalArgumentException taskNo 为空（400）
+     * @throws IllegalArgumentException                                     taskNo 为空（400）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404，此时不留悬挂连接）
      */
     @Operation(summary = "订阅任务进度（SSE）",
@@ -171,37 +144,18 @@ public class TaskController {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
         log.info("订阅任务进度: taskNo={}", taskNo);
-        // 先读快照再建 emitter：未知 taskNo 在此 404，不给不存在的任务留悬挂连接
         taskService.snapshot(taskNo);
-        SseEmitter emitter = sseHub.register(taskNo);
-        // 挂「写 emitter」的 Consumer 进中立注册表：管线广播 → hub.send → emitter，HTTP 类型不越出 web/sse
-        Subscription subscription = subscriptionRegistry.subscribe(taskNo, event -> sseHub.send(taskNo, event));
-        // 挂上订阅后重读快照：任务可能恰在「读快照 → 挂订阅」的窗口里到达终态——终态广播与 complete
-        // 都发生在订阅挂上之前，若只推窗口前读到的旧快照，这条订阅既等不到终态事件也永远不会退订
-        // （注册表泄漏）。状态机只前进，重读结果只会更新；此时推的是终态快照，hub 推完即收口连接。
-        TaskProgressMessage snapshot = taskService.snapshot(taskNo);
-        sseHub.send(taskNo, snapshot);
-        // 客户端断连 / 超时 / 终态 complete 都会走 onCompletion（onError、onTimeout 之后容器必补发
-        // onCompletion）——连接没了就必须退订。否则泄漏的订阅者继续留在注册表里，同任务的后续广播
-        // 会经它再写一遍给幸存连接（真实运行证据抓到的重复推送缺陷，见 research/acceptance-evidence.md）。
-        // close 幂等，与上方终态分支的 close 并发安全。
-        emitter.onCompletion(subscription::close);
-        // 终态判定走 TaskProgressMessage.settled()（判据单源在 VideoTask.isEventSettled）
-        if (snapshot.settled()) {
-            // 订阅时任务已终态：快照即最后一条，注册表不会再有 complete 调用，主动退订防泄漏
-            subscription.close();
-        }
-        return emitter;
+        return sseConnectionManager.open(taskNo, () -> taskService.snapshot(taskNo));
     }
 
     /**
-     * 按需触发字幕翻译（2026-10-02 两段式）：提交后的自动管线只跑到清洗 / 原文字幕为止，
+     * 按需触发字幕翻译：提交后的自动管线只跑到清洗 / 原文字幕为止，
      * 用户点「翻译」才触发——不看翻译的人不花 LLM 钱。幂等语义见服务层：
      * 已有翻译产物则幂等收敛（不发 LLM），翻译进行中重复触发返回当前视图不重入。
      *
      * @param taskNo 提交响应返回的任务号
      * @return 触发后的任务视图（translationStatus 反映翻译子状态；正常触发为 RUNNING）
-     * @throws IllegalArgumentException taskNo 为空（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
+     * @throws IllegalArgumentException                                     taskNo 为空（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "触发字幕翻译（按需）",
@@ -218,13 +172,61 @@ public class TaskController {
     }
 
     /**
+     * 重新生成字幕（后置会话）：按请求里的关键词重跑清洗，成功后旧的译文与术语产物一并清掉
+     * （译文对不上新字幕了）。同步判定（404 / 400 未就绪 / 409 互斥 / 400 关键词超限）在服务层完成，
+     * 202 返回当前任务视图，进度另走 SSE。
+     *
+     * @param taskNo  提交响应返回的任务号
+     * @param request 关键词清单；<b>{@code null}（字段缺席）= 不改变已有列表，按现有关键词重跑；
+     *                {@code []}（显式空数组）= 清空后重跑</b>
+     * @return 触发后的任务视图
+     * @throws IllegalArgumentException                                     taskNo / 关键词超限（400）、字幕尚未就绪（400）
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskConflictException 同一工作区已有重新生成会话在跑（409）
+     */
+    @Operation(summary = "重新生成字幕（改关键词后重跑清洗）",
+            description = "主任务 SUCCEEDED 后可触发；202 返回任务视图，进度走 SSE。"
+                    + "keywords 为 null（字段缺席）= 不改变已有列表，[]（显式空数组）= 清空，两者语义不同。"
+                    + "单条最多 50 字、最多 50 条，超限 400 且不落库不重跑；"
+                    + "同一工作区已有重新生成在跑时 409；主任务未成功时 400（字幕尚未就绪）")
+    @PostMapping("/{taskNo}/subtitles/regenerate")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public TaskResponse regenerate(@PathVariable String taskNo,
+                                   @RequestBody RegenerateSubtitlesRequest request) {
+        if (!StringUtils.hasText(taskNo)) {
+            throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
+        }
+        log.info("重新生成字幕: taskNo={}", taskNo);
+        return TaskResponse.from(taskService.regenerate(taskNo,
+                request == null ? null : request.keywords()));
+    }
+
+    /**
+     * 读回该任务的关键词清单与指纹：前端拿指纹与 {@code segments-*-clean.json} 里的
+     * {@code keywordsFingerprint} 比对，就知道「这份字幕对不对得上当前关键词」。
+     *
+     * @param taskNo 提交响应返回的任务号
+     * @return 关键词清单（用户填写顺序）与指纹；从没填过时为空清单
+     * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
+     */
+    @Operation(summary = "查询关键词清单与指纹",
+            description = "按 taskNo 返回该工作区的关键词清单（用户填写顺序）与指纹；不存在的任务返回 404")
+    @GetMapping("/{taskNo}/keywords")
+    public SubtitleKeywordsResponse findKeywords(@PathVariable String taskNo) {
+        if (!StringUtils.hasText(taskNo)) {
+            throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
+        }
+        return SubtitleKeywordsResponse.from(taskService.findKeywords(taskNo));
+    }
+
+    /**
      * 下载任务产物：流式返回工作区内的文件，文件名来自任务视图的 artifacts 清单。
      * 路径穿越防护（{@code ../} / 绝对路径 / 编码绕过）在服务层 resolve 后校验，越界一律 400。
      *
      * @param taskNo   提交响应返回的任务号
      * @param fileName 产物文件名（清单里的 name）
      * @return 产物文件流（application/octet-stream，附件下载）
-     * @throws IllegalArgumentException taskNo / fileName 为空、越出工作区或产物不存在（400）
+     * @throws IllegalArgumentException                                     taskNo / fileName 为空、越出工作区或产物不存在（400）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "下载任务产物",

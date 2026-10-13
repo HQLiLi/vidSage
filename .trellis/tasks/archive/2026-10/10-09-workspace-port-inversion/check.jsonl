@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "逐条核对：① 端口/实现/resolver 三处落位与 stereotype；② application 零 infrastructure import、实现类零 application import（除 implements）；③ 规范订正清单（fs 行、依赖表 config、WorkspaceService 例子与历史注）是否落地且不自相矛盾"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对新增构件的构造注入与测试口子是否符合质量规范"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "行为保真清单里有两条日志文案（debug「任务工作目录」）；核对搬家后未改字、且未新增踩脱敏红线的日志"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流检查：MediaInput → WorkspaceKey → Path 这条链在拆分后是否仍单源、有无重复实现"}

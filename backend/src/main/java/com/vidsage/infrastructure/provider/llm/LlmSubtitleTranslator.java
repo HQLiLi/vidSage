@@ -1,14 +1,15 @@
 package com.vidsage.infrastructure.provider.llm;
 
 import com.vidsage.config.SubtitleTranslateProperties;
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.shared.ProgressListener;
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.domain.subtitle.SubtitleContext;
-import com.vidsage.domain.subtitle.SubtitleTranslator;
-import com.vidsage.domain.subtitle.TranslateResult;
-import com.vidsage.domain.subtitle.TranslatedSegment;
-import com.vidsage.domain.subtitle.VerifiedTerm;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.shared.model.StageProgress;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.port.SubtitleTranslator;
+import com.vidsage.domain.subtitle.model.translation.TranslateResult;
+import com.vidsage.domain.subtitle.model.translation.TranslatedSegment;
+import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
 import com.vidsage.shared.subtitle.TermMatcher;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -37,29 +38,18 @@ import tools.jackson.databind.ObjectMapper;
  * 意义。没过就带着原因重试，最多 maxSteps 轮；全败整批回退原文（宁可没译，不可乱译），并把回退的
  * 段数计进 {@link TranslateResult#untranslatedCount()}。
  *
- * <p>与 {@link LlmSubtitleCleanser} <b>刻意各自独立</b>，本期不抽公共骨架（design 决策 8）：要抽的正是
- * 「切批判据」与「校验循环」，而这两套东西现在都还处于待审状态，抽了会返工。唯一共用的是一条已定型的
- * 纯函数判定——跨批历史的按对裁剪（{@link MessageHistory}）。
- *
  * <p>跨批上下文走两条路：<b>后窗</b>（下一批开头几行）和<b>对话历史</b>（前面几批的原文与已采纳的
  * 译文，成对留着）。历史在翻译里的作用比清洗更强：它是「术语与称谓全片一致」的主要载体——后续批次
  * 能看见前面把某个称呼译成了什么。历史是本类里唯一的可变状态，但它只在单次 {@link #translate} 调用内
  * 活着，调用结束即丢。
  *
- * <p><b>批级进度</b>：带 {@link ProgressListener} 的重载会在<b>每批翻译完成后</b>回调一次
- * （进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）——批边界只有本类知道（切批判据在本类），
- * 回调依赖 {@code domain/shared} 是 ProgressListener 注释明确许可的中立方向。批次边界
- * 一次性算出（{@link #batchRanges}），总数与切批用同一份边界，进度百分比不会漂移。
- *
- * <p>实现领域端口 {@link SubtitleTranslator}——上层只认那个接口，不认识本类。上层用不到的三参 /
- * 四参便捷重载与包级可见的测试钩子留在本类，不进端口。
+ * <p><b>批级进度</b>：经 {@link ProgressListener} 上报（{@code domain/shared} 的中立方向），
+ * 事件序列见 {@code directory-structure.md}「进度事件序列」；批次边界一次性算出
+ * （{@link #batchRanges}），总数与切批同源，百分比不会漂移。
  */
 @Slf4j
 @Component
 public class LlmSubtitleTranslator implements SubtitleTranslator {
-
-    // 本类承担的管线阶段名（"translate"）单源在 StageEvent.STAGE_TRANSLATE——阶段词表是
-    // domain/shared 的进度词汇，不住实现类里（2026-10-06 随逻辑下沉归位）。
 
     private final ChatClient translator;
 
@@ -71,8 +61,8 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     /**
      * 结构化输出的「格式说明 + 解析器」。
      *
-     * <p>与 {@link LlmSubtitleCleanser} 同一套路：不用 {@code .entity()}，因为它只给解析结果、不给原文，
-     * 而重试历史里要放的正是模型回复的原文。所以把「拼格式说明」与「解析」两步显式提出来自己做。
+     * <p>不用 {@code .entity()}：它只给解析结果、不给原文，而重试历史里要放的正是模型回复的原文。
+     * 所以把「拼格式说明」与「解析」两步显式提出来自己做。
      */
     private static final BeanOutputConverter<Map<String, String>> FORMAT =
             new BeanOutputConverter<>(new ParameterizedTypeReference<>() {
@@ -104,7 +94,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     }
 
     /**
-     * 翻译字幕（不关心进度）：内部走 {@link ProgressListener#noop()}。
+     * 翻译字幕，不报告进度。
      */
     public TranslateResult translate(List<TranscriptionSegment> segments,
                                      SubtitleContext context,
@@ -123,9 +113,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
      * @param officialTerms  术语官方译名查证产物（{@code terms-<route>-<target>.json} 的内容），可为空表：
      *                       命中术语里查到译名的按「给定的译名照翻」渲染进提示词，弃权（空串）与没查的
      *                       按「保留原样」渲染
-     * @param listener       批级进度回调；每批翻译完成后回调一次（stage={@link StageEvent#STAGE_TRANSLATE}，
-     *                       进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」），批数为 0 时无批级事件；
-     *                       不可为 {@code null}——不关心进度用四参重载
+     * @param listener       批级进度回调；不可为 {@code null}——不关心进度用四参重载
      * @return 逐条双语段落 + 重试轮数 + 未翻译段数
      * @throws IllegalArgumentException segments 或 listener 为 {@code null}
      */
@@ -203,12 +191,12 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     }
 
     /**
-     * 发一条批级进度事件（stage 固定 {@link StageEvent#STAGE_TRANSLATE}，state 为 RUNNING）。
+     * 发一条批级进度事件（stage 固定为翻译阶段，state 为 RUNNING）。
      * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
      */
     private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
-        listener.onEvent(new StageEvent(StageEvent.STAGE_TRANSLATE, batchNo * 100 / totalBatches,
-                "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
+        listener.onProgress(new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), batchNo * 100 / totalBatches,
+                "第 " + batchNo + "/" + totalBatches + " 批", StageProgress.State.RUNNING));
     }
 
     /**
@@ -370,8 +358,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
     /**
      * 把模型回复解析成「条号 → 译文」。
      *
-     * <p>{@link BeanOutputConverter#convert} 会先过一遍文本清洗（空白、思维链标签、代码围栏），
-     * 与 {@code .entity()} 走的是同一条路。
+     * <p>{@link BeanOutputConverter#convert} 会先过一遍文本清洗（空白、思维链标签、代码围栏）。
      *
      * @param raw 模型回复原文
      * @return 键值对；不是合法 JSON 对象时为 {@code null}
@@ -409,8 +396,6 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
      *
      * <p>两条硬约束：键集必须与输入完全一致（不许掉行 / 加行 / 串行）；每条译文 trim 后非空。
      * <b>不设相似度守卫</b>：译文与原文天然不相似，「最小改动」那套判据在翻译里没有意义。
-     *
-     * <p>包级可见是为了直接单测（同 {@link SubtitleCleanser#validate}）。
      *
      * @param original  原文键值对
      * @param candidate 模型回复键值对
@@ -450,20 +435,21 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
         // 1. 本批次后面的部分字幕，增加点前后批关联，缓解跨批次的语义坍塌问题。
         if (!after.isEmpty()) {
             sb.append("### 后文参考\n")
-                    .append("<subsequent_content>\n")
-                    .append(String.join("\n", after))
-                    .append("\n</subsequent_content>\n\n")
+                    .append(PromptDataBlock.renderLines("subsequent_content", after))
+                    .append("\n\n")
                     .append("以上后文仅供参考，不要翻译，也不要出现在返回结果里。\n\n");
         }
 
         // 2. 全篇主题
         if (context != null && !context.theme().isBlank()) {
-            sb.append("### 内容主题\n").append(context.theme()).append("\n\n");
+            sb.append("### 内容主题\n")
+                    .append(PromptDataBlock.render("theme", context.theme()))
+                    .append("\n\n");
         }
 
         // 3. 术语参考：语义与清洗侧相反——那边给的是「候选正确写法 + 替换理由」，让模型判断换不换；
         //    这边给的是「这个词是专有名词，照给定的写法输出、不要译」（命中判定已在 hitTermsByFixed 里做好）。
-        //    查证产物里有译名的词按给定译名翻（09-28 实证：对 zh→en，「保留原样」压不住模型按读音意译，
+        //    查证产物里有译名的词按给定译名翻（对 zh→en，「保留原样」压不住模型按读音意译，
         //    与其让它猜不如直接告诉它译名）；弃权与没查到的维持「保留原样」——宁可不动，不可乱译。
         if (!hits.isEmpty()) {
             Map<String, String> officialByFixed = officialByFixed(officialTerms);
@@ -476,24 +462,9 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
                     keepOriginal.add(t);
                 }
             }
-            sb.append("### 术语参考（专有名词，必须严格遵守）\n");
-            if (!withOfficial.isEmpty()) {
-                sb.append("以下术语翻译时必须使用给定的译名，不得使用其他译法：\n");
-                for (SubtitleContext.Term t : withOfficial) {
-                    sb.append("- \"").append(t.fixed()).append("\" → \"")
-                            .append(officialByFixed.get(t.fixed())).append("\"\n");
-                }
-            }
-            if (!keepOriginal.isEmpty()) {
-                if (!withOfficial.isEmpty()) {
-                    sb.append('\n');
-                }
-                sb.append("以下写法是专有名词，翻译时保留原样，不要译成目标语种：\n");
-                for (SubtitleContext.Term t : keepOriginal) {
-                    sb.append("- \"").append(t.fixed()).append("\"\n");
-                }
-            }
-            sb.append('\n');
+            sb.append("### 术语参考（专有名词，必须严格遵守）\n")
+                    .append(PromptDataBlock.renderLines("terms_reference", renderTermLines(withOfficial, keepOriginal, officialByFixed)))
+                    .append('\n');
         }
 
         // 4. 本批正文与翻译要求。目标语种在 system 提示词里已定型一次，这里再贴一遍：
@@ -511,6 +482,40 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
         return sb.toString();
     }
 
+
+    /**
+     * 术语参考的逐行渲染（清洗侧是另一种口径，见 {@link LlmSubtitleCleanser}）：
+     * 先给「有查证译名、必须照译」的，再空一行给「是专有名词、保留原样」的。
+     *
+     * <p>两条小标题也是拼进同一块数据块的——它们和术语条目一样来自摘要层（进而可能来自用户关键词），
+     * 一起归一才是完整的一幅数据。
+     *
+     * @param withOfficial    查到了译名的术语
+     * @param keepOriginal    没有译名、维持原样的术语
+     * @param officialByFixed fixed 写法 → 查证译名
+     * @return 逐行文本；两组都空时是空列表
+     */
+    private static List<String> renderTermLines(List<SubtitleContext.Term> withOfficial,
+                                                List<SubtitleContext.Term> keepOriginal,
+                                                Map<String, String> officialByFixed) {
+        List<String> lines = new ArrayList<>();
+        if (!withOfficial.isEmpty()) {
+            lines.add("以下术语翻译时必须使用给定的译名，不得使用其他译法：");
+            for (SubtitleContext.Term t : withOfficial) {
+                lines.add("- \"" + t.fixed() + "\" → \"" + officialByFixed.get(t.fixed()) + "\"");
+            }
+        }
+        if (!keepOriginal.isEmpty()) {
+            if (!withOfficial.isEmpty()) {
+                lines.add("");
+            }
+            lines.add("以下写法是专有名词，翻译时保留原样，不要译成目标语种：");
+            for (SubtitleContext.Term t : keepOriginal) {
+                lines.add("- \"" + t.fixed() + "\"");
+            }
+        }
+        return lines;
+    }
 
     /**
      * 把查证产物收成「fixed 写法 → 查证译名」的映射，供术语参考渲染查表。

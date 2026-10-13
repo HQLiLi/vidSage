@@ -3,7 +3,7 @@ package com.vidsage.shared.subtitle;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,9 +11,6 @@ import org.junit.jupiter.api.Test;
 
 /**
  * TermMatcher 的纯单测：直接喂键值对与上下文，不起 Spring 容器。
- *
- * <p>钉的是原 {@code SubtitleCleanser.hitTerms} 的判据——搬迁是有意为之，
- * 判据一字不改，这批用例就是「没搬丢东西」的证据。
  *
  * <p>另有一组用例专门钉<b>两个入口的差别</b>：清洗按 asr、翻译按 fixed，输入文本不同。
  * 两种匹配只在「术语已被清洗替换或故意不换」时才分道扬镳，必须各钉一条，

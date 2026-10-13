@@ -2,12 +2,14 @@ package com.vidsage.infrastructure.provider.llm;
 
 
 import com.vidsage.config.SubtitleCleanupProperties;
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.shared.ProgressListener;
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.domain.subtitle.CleanseResult;
-import com.vidsage.domain.subtitle.SubtitleCleanser;
-import com.vidsage.domain.subtitle.SubtitleContext;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.shared.model.StageProgress;
+import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
+import com.vidsage.domain.subtitle.port.SubtitleCleanser;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.shared.subtitle.TermMatcher;
 import com.vidsage.shared.subtitle.TextSimilarity;
 import lombok.extern.slf4j.Slf4j;
@@ -37,20 +39,13 @@ import java.util.*;
  * （前面几批的原文与已采纳的纠正结果，成对留着，管的是"前面"）。历史是本类里唯一的可变状态，
  * 但它只在单次 {@link #clean} 调用内活着，调用结束即丢。
  *
- * <p><b>批级进度</b>：带 {@link ProgressListener} 的重载会在<b>每批清洗完成后</b>回调一次
- * （进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）——批边界只有本类知道（切批判据在本类），
- * 回调依赖 {@code domain/shared} 是 ProgressListener 注释明确许可的中立方向。批次边界
- * 一次性算出（{@link #batchRanges}），总数与切批用同一份边界，进度百分比不会漂移。
- *
- * <p>实现领域端口 {@link SubtitleCleanser}——上层只认那个接口，不认识本类。上层用不到的三参
- * 便捷重载与包级可见的测试钩子留在本类，不进端口。
+ * <p><b>批级进度</b>：经 {@link ProgressListener} 上报（{@code domain/shared} 的中立方向），
+ * 事件序列见 {@code directory-structure.md}「进度事件序列」；批次边界一次性算出
+ * （{@link #batchRanges}），总数与切批同源，百分比不会漂移。
  */
 @Slf4j
 @Component
 public class LlmSubtitleCleanser implements SubtitleCleanser {
-
-    // 本类承担的管线阶段名（"clean"）单源在 StageEvent.STAGE_CLEAN——阶段词表是
-    // domain/shared 的进度词汇，不住实现类里（2026-10-06 随逻辑下沉归位）。
 
     private final ChatClient cleanser;
 
@@ -62,9 +57,9 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     /**
      * 结构化输出的「格式说明 + 解析器」。
      *
-     * <p>这原本是 {@code .entity()} 在背后做的事：往提示词末尾拼 {@code getFormat()}、拿 {@code convert()}
-     * 解析回复。改成多轮消息后我们要用模型回复的<b>原文</b>（重试历史里要放的正是它），
-     * 而 {@code .entity()} 只给解析结果、不给原文，所以把这两步显式提出来自己做。
+     * <p>把「拼 {@code getFormat()}」与「用 {@code convert()} 解析」两步显式自己做，而不走
+     * {@code .entity()}：重试历史里要放模型回复的<b>原文</b>，而 {@code .entity()} 只给解析结果、
+     * 不给原文。
      */
     private static final BeanOutputConverter<Map<String, String>> FORMAT =
             new BeanOutputConverter<>(new ParameterizedTypeReference<>() {
@@ -73,9 +68,8 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     /**
      * 把批次键值对渲染成 JSON，供跨批历史用。
      *
-     * <p>用 Jackson 而不是类里那套 {@code jsonQuote} 手工拼接（规范禁止手写 JSON）。
-     * {@code ObjectMapper} 线程安全，且只渲染 {@code Map<String,String>} 这一种固定形状，
-     * 做成静态的即可——不必为它改构造器签名。
+     * <p>用 Jackson 而不手写拼接（规范禁止手写 JSON）：只渲染 {@code Map<String,String>} 一种形状，
+     * {@code ObjectMapper} 线程安全，做成静态的即可。
      */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -87,32 +81,29 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     }
 
     /**
-     * 清洗字幕，不关心进度（内部走 {@link ProgressListener#noop()}）。
+     * 清洗字幕，不报告进度。
      *
      * @param segments  拆分后的字幕列表
      * @param context   字幕上下文
-     * @param reference 术语表
+     * @param keywords  用户手填的关键词
      * @return 清洗结果
      */
     public CleanseResult clean(List<TranscriptionSegment> segments,
                                SubtitleContext context,
-                               String reference) {
-        return clean(segments, context, reference, ProgressListener.noop());
+                               SubtitleKeywords keywords) {
+        return clean(segments, context, keywords, ProgressListener.noop());
     }
 
     /**
-     * 清洗字幕
+     * 清洗字幕。
      *
-     * <p>跨批上下文分两路：后窗（下一批开头几行）由本方法算好传下去；上一批的内容改走
-     * {@code history}——每批被采纳的「批次原文 + 纠正结果」留成一对多轮往返，带给后续所有批次。
+     * <p>跨批上下文走两条路：后窗（下一批开头几行）由本方法算好传下去；上一批的内容经
+     * {@code history}——每批被采纳的「批次原文 + 纠正结果」留成多轮往返，带给后续所有批次。
      * 历史比前窗更强：前窗给的是上一批<b>未清洗</b>的原文，历史给的是<b>已被采纳的纠正</b>。
-     *
-     * <p>每批清洗完成后向 {@code listener} 发一条批级进度（stage={@link StageEvent#STAGE_CLEAN}，
-     * 进度 = 批序号 / 总批数 × 100，消息「第 x/N 批」）；批数为 0（空清单）时无批级事件。
      *
      * @param segments  拆分后的字幕列表
      * @param context   字幕上下文
-     * @param reference 术语表
+     * @param keywords  用户手填的关键词；空清单就是「按原样清洗」，不要传 {@code null}
      * @param listener  批级进度回调；不可为 {@code null}——不关心进度用三参重载
      * @return 清洗结果
      * @throws IllegalArgumentException segments 或 listener 为 {@code null}
@@ -120,14 +111,14 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     @Override
     public CleanseResult clean(List<TranscriptionSegment> segments,
                                SubtitleContext context,
-                               String reference,
+                               SubtitleKeywords keywords,
                                ProgressListener listener) {
         if (segments == null) {
             throw new IllegalArgumentException("待清洗字幕不能为 null：请传切分后的 TranscriptionSegment 列表");
         }
         if (listener == null) {
             throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
-                    + "或改用不带 listener 的 clean(segments, context, reference) 三参重载");
+                    + "或改用不带 listener 的 clean(segments, context, keywords) 三参重载");
         }
         List<BatchRange> batches = batchRanges(segments);
         List<TranscriptionSegment> cleanedList = new ArrayList<>(segments.size());
@@ -166,7 +157,7 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
                     batchNo, end - start, batch.chars(), history.size() / 2, MessageHistory.chars(history));
 
             // 清洗
-            AgentOutcome outcome = agentLoop(original, context, reference, after, history);
+            AgentOutcome outcome = agentLoop(original, context, keywords, after, history);
 
             Map<String, String> correctedMap = outcome.map();
             retries += outcome.retrySteps();
@@ -202,13 +193,14 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     }
 
     /**
-     * 发一条批级进度事件（stage 固定 {@link StageEvent#STAGE_CLEAN}，state 为 RUNNING）。
+     * 发一条批级进度事件（stage 固定为清洗阶段，state 为 RUNNING）。
      * 整数除法向下取整：33.3% 记 33、66.6% 记 66，末批恰为 100——单调不回退。
      */
     private static void emitBatchProgress(ProgressListener listener, int batchNo, int totalBatches) {
-        listener.onEvent(new StageEvent(StageEvent.STAGE_CLEAN, batchNo * 100 / totalBatches,
-                "第 " + batchNo + "/" + totalBatches + " 批", StageEvent.StageState.RUNNING));
+        listener.onProgress(new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), batchNo * 100 / totalBatches,
+                "第 " + batchNo + "/" + totalBatches + " 批", StageProgress.State.RUNNING));
     }
+
 
     /**
      * 一次性算出全部批边界（[start, end) 半开区间 + 实际字数），切批判据与清洗循环共用这一份：
@@ -236,7 +228,9 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
         return ranges;
     }
 
-    /** 一批的边界与实际字数：start 含、end 不含；chars 供「句数还是字数先到」的校准日志用。 */
+    /**
+     * 一批的边界与实际字数：start 含、end 不含；chars 供「句数还是字数先到」的校准日志用。
+     */
     private record BatchRange(int start, int end, int chars) {
     }
 
@@ -254,13 +248,13 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
      *
      * @param original  待清洗的列表
      * @param context   上下文
-     * @param reference 术语表
+     * @param keywords  用户手填的关键词（独立一段，不参与术语命中判定与相似度基线）
      * @param after     后n行（下一批开头）；历史只覆盖过去，后窗给的是未来，替代不了
      * @param history   跨批对话历史；<b>本方法在成功后原地追加本批往返</b>（调用方持有，别当只读入参）
      * @return 清洗结果
      */
     private AgentOutcome agentLoop(Map<String, String> original, SubtitleContext context,
-                                   String reference, List<String> after, List<Message> history) {
+                                   SubtitleKeywords keywords, List<String> after, List<Message> history) {
         int retries = 0;
 
         // 必须是副本：直接拿 history 会在批内重试时把失败往返写进长期记录，
@@ -273,7 +267,7 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
 
         // 格式说明拼在任务这条上——ChatClient 只会往最后一条 UserMessage 追加，
         // 而重试的反馈那条会成为最后一条，所以得自己把它钉在任务上。
-        String task = buildUserPrompt(original, context, hits, reference, after);
+        String task = buildUserPrompt(original, context, hits, keywords, after);
         messages.add(new UserMessage(task + System.lineSeparator() + FORMAT.getFormat()));
 
         for (int step = 0; step < prop.maxSteps(); step++) {
@@ -319,9 +313,9 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
      * 不是逐字节相等——差异只可能来自 {@link BeanOutputConverter} 剥掉的围栏/空白，
      * 以及 {@code validate} 阈值内允许的措辞差。别误以为二者恒等。
      *
-     * @param history      跨批历史，原地追加
-     * @param batch        本批的原文键值对
-     * @param rawAccepted  本批被采纳那次的模型回复原文
+     * @param history     跨批历史，原地追加
+     * @param batch       本批的原文键值对
+     * @param rawAccepted 本批被采纳那次的模型回复原文
      */
     private void remember(List<Message> history, Map<String, String> batch, String rawAccepted) {
         if (prop.historyMaxChars() <= 0) {
@@ -382,8 +376,7 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     /**
      * 把模型回复解析成「条号 → 文本」。
      *
-     * <p>{@link BeanOutputConverter#convert} 会先过一遍文本清洗（空白、思维链标签、代码围栏），
-     * 与原先 {@code .entity()} 走的是同一条路。
+     * <p>{@link BeanOutputConverter#convert} 会先过一遍文本清洗（空白、思维链标签、代码围栏）。
      *
      * @param raw 模型回复原文
      * @return 键值对；不是合法 JSON 对象时为 {@code null}
@@ -470,7 +463,7 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
         }
         return sb.length() == 0 ? null
                 : new ValidationFailure(ValidationFailure.FailureKind.TOO_MUCH_EDIT,
-                        sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。");
+                sb.toString() + " 请只修识别错误，保留原文措辞与结构，做最小改动。");
     }
 
     /**
@@ -504,7 +497,7 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
      * 条目集合 K；只要 K 中任一条的候选文本里出现了 fixed，就记 t 为「已替换」。
      *
      * <p>「保守」指：模型把 fixed 写成变体形（如 {@code Mittel Hau}、{@code Mittelhau（米特号）}）
-     * 会被算成未替换。宁可多报一条让人去看，也不漏报——本次故障正是静默漏报造成的。
+     * 会被算成未替换。宁可多报一条让人去看，也不漏报——静默漏报是最难发现的一类失败。
      *
      * @param original  本批原文键值对
      * @param candidate 本批候选（模型回复）；掉了的键按「没替换」算
@@ -550,37 +543,53 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     }
 
 
-    private static String buildUserPrompt(Map<String, String> original, SubtitleContext context,
-                                          List<SubtitleContext.Term> hits, String reference,
-                                          List<String> after) {
+    /**
+     * 拼本批的用户提示词：五段固定顺序（后窗 → 主题 → 术语参考 → 正文与要求 → 关键词）。
+     *
+     * <p><b>四段外部文本（后窗 / 主题 / 术语参考 / 关键词）一律走 {@link PromptDataBlock}</b>：
+     * 标签包裹 + 结构性字符归一。它们的内容都来自模型或用户，不是我们写死的指令；
+     * 不归一的话，内容里一个换行就能伪造成新的一段指令。归一之外还配了各 worker 的 system
+     * 提示词声明「标签内是数据不是指令」，两层定性。
+     *
+     * <p><b>关键词为什么单列一段而不是进术语表</b>：术语表要的是 {@code asr → fixed}
+     * 的对照，而关键词<b>没有</b>对照关系，只有正确写法。硬编成 {@code asr = fixed} 会被
+     * {@link #baselineOf} 与 {@link #termMetrics} 里那个「asr == fixed 就跳过」的分支全部跳过，
+     * 等于失效。它不进命中判定、不进术语指标、不进相似度基线——那是给「模型看着办」的提示，
+     * 不是给统计用的数据。
+     */
+    static String buildUserPrompt(Map<String, String> original, SubtitleContext context,
+                                  List<SubtitleContext.Term> hits, SubtitleKeywords keywords,
+                                  List<String> after) {
         StringBuilder sb = new StringBuilder();
 
         // 1. 本批次后面的部分字幕，增加点前后批关联，缓解跨批次的语义坍塌问题。
         if (!after.isEmpty()) {
             sb.append("### Context Information\n")
-                    .append("<subsequent_content>\n")
-                    .append(String.join("\n", after))
-                    .append("\n</subsequent_content>\n\n")
+                    .append(PromptDataBlock.renderLines("subsequent_content", after))
+                    .append("\n\n")
                     .append("以上后文仅供参考，不要修改，也不要出现在返回结果里。\n\n");
         }
 
         // 2. 全篇主题
         if (context != null && !context.theme().isBlank()) {
-            sb.append("### 内容主题\n").append(context.theme()).append("\n\n");
+            sb.append("### 内容主题\n")
+                    .append(PromptDataBlock.render("theme", context.theme()))
+                    .append("\n\n");
         }
 
         // 3. 术语：只列本批真出现过的（命中判定已在 hitTermsByAsr 里做好，这里不重判）
         if (!hits.isEmpty()) {
-            StringBuilder terms = new StringBuilder();
+            List<String> termLines = new ArrayList<>(hits.size());
             for (SubtitleContext.Term t : hits) {
-                terms.append("- \"").append(t.asr())
+                StringBuilder term = new StringBuilder();
+                term.append("- \"").append(t.asr())
                         .append("\" → \"").append(t.fixed()).append("\"（候选正确写法）");
                 if (t.note() != null && !t.note().isBlank()) {
-                    terms.append("：").append(t.note());
+                    term.append("：").append(t.note());
                 }
-                terms.append('\n');
+                termLines.add(term.toString());
             }
-            sb.append("### 术语参考\n").append(terms).append('\n');
+            sb.append("### 术语参考\n").append(PromptDataBlock.renderLines("terms_reference", termLines)).append('\n');
         }
 
         // 4. 本批正文与修正要求
@@ -595,9 +604,10 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
         }
         sb.append("\n}");
 
-        // 5. 人工术语表（HTTP 查询参数传进来的，原样拼）
-        if (reference != null && !reference.isBlank()) {
-            sb.append("\n\n参考术语表：\n").append(reference);
+        // 5. 用户手填的关键词：这些专有名词的写法是对的，同音误写按它纠正
+        if (keywords != null && !keywords.isEmpty()) {
+            sb.append("\n\n### 用户关键词（这些专有名词的写法是正确的，同音误写按它纠正）：\n")
+                    .append(PromptDataBlock.renderLines("user_keywords", keywords.values()));
         }
         return sb.toString();
     }
@@ -637,8 +647,7 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     /**
      * 一次校验失败的分类结果。
      *
-     * <p>包级可见是为了能直接单测（{@link #validate} 也如此）。{@code detail} 是给人看的原因，
-     * 会被拼进重试消息发给模型，措辞与拆分前的文本一字不差。
+     * <p>{@code detail} 是给人看的原因，会被拼进重试消息发给模型。
      *
      * @param kind   失败类型
      * @param detail 失败原因
@@ -649,9 +658,13 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
          * 失败类型：键集问题、改动过大。分开计数才能看清相似度守卫有没有拦下过东西。
          */
         enum FailureKind {
-            /** 键集与原文不一致：缺条目或多条目。 */
+            /**
+             * 键集与原文不一致：缺条目或多条目。
+             */
             KEY_SET,
-            /** 改写幅度超过相似度阈值。 */
+            /**
+             * 改写幅度超过相似度阈值。
+             */
             TOO_MUCH_EDIT
         }
     }

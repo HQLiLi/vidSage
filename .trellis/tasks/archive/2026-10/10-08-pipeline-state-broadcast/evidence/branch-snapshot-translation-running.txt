@@ -1,0 +1,3 @@
+event:progress
+data:{"taskNo":"<TASKNO>","taskStatus":"SUCCEEDED","stage":{"stage":"translate-subtitles","progress":0,"message":"翻译进行中","state":"RUNNING"},"translationStatus":"RUNNING"}
+

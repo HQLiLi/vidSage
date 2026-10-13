@@ -7,7 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.vidsage.domain.shared.WorkspaceKey;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskNo;
+import com.vidsage.domain.task.model.TaskStatus;
+import com.vidsage.domain.task.model.TranslationStatus;
 import java.time.LocalDateTime;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -16,9 +21,8 @@ import org.junit.jupiter.api.Test;
  * {@link VideoTask} 状态机的纯单元测试：不起容器。
  *
  * <p>覆盖「主状态机合法迁移三条」「非法迁移拒绝」（重点钉住 SUCCEEDED → RUNNING 这类终态再迁移）
- * 「阶段名推进的时机约束」「翻译子状态迁移（2026-10-02 两段式：仅主状态 SUCCEEDED 后流转）」
- * 「newPending / restore 的出生状态」「查询谓词（isEventSettled 终态判定 / ACTIVE_STATUSES active
- * 判据，2026-10-06 单源化）」。
+ * 「阶段名推进的时机约束」「翻译子状态迁移（仅主状态 SUCCEEDED 后流转）」
+ * 「newPending / restore 的出生状态」「查询谓词（isEventTerminal 终态判定 / ACTIVE_STATUSES active 判据）」。
  */
 class VideoTaskTest {
 
@@ -46,13 +50,13 @@ class VideoTaskTest {
     void restoreRebuildsPersistedFieldsVerbatim() {
         LocalDateTime created = LocalDateTime.of(2026, 9, 30, 10, 0);
         VideoTask task = VideoTask.restore(7L, new TaskNo("abc123"), TaskInputType.UPLOAD, "demo.mp4",
-                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.FAILED, "translate", TranslationStatus.RUNNING,
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.FAILED, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), TranslationStatus.RUNNING,
                 "翻译失败", created,
                 created.plusMinutes(5), created.plusSeconds(1), created.plusMinutes(5));
 
         assertEquals(7L, task.getId());
         assertEquals(TaskStatus.FAILED, task.getStatus());
-        assertEquals("translate", task.getCurrentStage());
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), task.getCurrentStage());
         assertEquals(TranslationStatus.RUNNING, task.getTranslationStatus(), "翻译子状态应随行还原");
         assertEquals("翻译失败", task.getErrorMessage());
         assertEquals(created, task.getCreatedAt());
@@ -97,9 +101,9 @@ class VideoTaskTest {
     void updateStageRecordsCurrentStageWhileRunning() {
         VideoTask task = running();
 
-        task.updateStage("extract-audio");
+        task.updateStage(SubtitleStageName.EXTRACT_AUDIO.getStageName());
 
-        assertEquals("extract-audio", task.getCurrentStage());
+        assertEquals(SubtitleStageName.EXTRACT_AUDIO.getStageName(), task.getCurrentStage());
         assertEquals(TaskStatus.RUNNING, task.getStatus());
     }
 
@@ -156,12 +160,12 @@ class VideoTaskTest {
         VideoTask succeeded = running();
         succeeded.succeed();
 
-        assertThrows(IllegalStateException.class, () -> pending.updateStage("clean"));
-        assertThrows(IllegalStateException.class, () -> succeeded.updateStage("clean"));
+        assertThrows(IllegalStateException.class, () -> pending.updateStage(SubtitleStageName.CLEAN_SUBTITLES.getStageName()));
+        assertThrows(IllegalStateException.class, () -> succeeded.updateStage(SubtitleStageName.CLEAN_SUBTITLES.getStageName()));
         assertNull(pending.getCurrentStage(), "被拒绝的阶段推进不应留下脏状态");
     }
 
-    // ---------- 翻译子状态迁移（2026-10-02 两段式） ----------
+    // ---------- 翻译子状态迁移 ----------
 
     @Test
     void translationStartRequiresSucceededMainState() {
@@ -267,25 +271,73 @@ class VideoTaskTest {
                 "被拒绝的失败标记不应覆盖已有错误信息");
     }
 
-    // ---------- 查询谓词（2026-10-06 终态 / active 判据单源化） ----------
+    @Test
+    void regenerateFailureRecordsMessageAndKeepsMainState() {
+        VideoTask task = succeeded();
+
+        task.recordRegenerateFailure("重新生成失败：字幕摘要失败，无法按当前关键词重新生成");
+
+        assertEquals("重新生成失败：字幕摘要失败，无法按当前关键词重新生成", task.getErrorMessage(),
+                "失败原因带前缀落 error_message（AC5）");
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(),
+                "重生成失败不得动主状态——旧字幕一个字没少，任务本身还是成功的");
+        assertNotNull(task.getUpdatedAt());
+    }
 
     @Test
-    void eventSettledOnlyWhenMainTerminalAndTranslationNotRunning() {
+    void rejectsRegenerateFailureWhenMainNotSucceeded() {
+        VideoTask pending = newPending();
+        assertThrows(IllegalStateException.class,
+                () -> pending.recordRegenerateFailure("x"),
+                "主任务非 SUCCEEDED 不该有重生成失败可记（同步段已挡住，这里防漏）");
+    }
+
+    @Test
+    void clearRegenerateFailureRemovesOnlyOwnPrefix() {
+        VideoTask task = succeeded();
+        task.recordRegenerateFailure(VideoTask.REGENERATE_FAILURE_PREFIX + "字幕摘要失败");
+
+        task.clearRegenerateFailure();
+
+        assertNull(task.getErrorMessage(), "上一次重生成的失败原因应随成功一起清掉");
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus());
+    }
+
+    @Test
+    void clearRegenerateFailureKeepsForeignErrorMessages() {
+        VideoTask translationFailed = succeededWithFailedTranslation();
+        String kept = translationFailed.getErrorMessage();
+
+        translationFailed.clearRegenerateFailure();
+
+        assertEquals(kept, translationFailed.getErrorMessage(),
+                "「翻译失败：」是另一台生命周期的记录，不归重生成清除");
+        VideoTask untouched = succeeded();
+        untouched.clearRegenerateFailure();
+        assertNull(untouched.getErrorMessage(), "没有失败记录时清除是无害空操作");
+    }
+
+
+
+    // ---------- 查询谓词 ----------
+
+    @Test
+    void eventTerminalOnlyWhenMainTerminalAndTranslationNotRunning() {
         // 主状态终态且翻译不在 RUNNING 才算收敛：SUCCEEDED / FAILED × {null, SUCCEEDED, FAILED}
-        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, null),
+        assertTrue(VideoTask.isEventTerminal(TaskStatus.SUCCEEDED, null),
                 "主任务成功 + 翻译从未触发 → 已收敛");
-        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.SUCCEEDED),
+        assertTrue(VideoTask.isEventTerminal(TaskStatus.SUCCEEDED, TranslationStatus.SUCCEEDED),
                 "翻译已完成 → 已收敛");
-        assertTrue(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.FAILED),
+        assertTrue(VideoTask.isEventTerminal(TaskStatus.SUCCEEDED, TranslationStatus.FAILED),
                 "翻译已失败 → 已收敛");
-        assertTrue(VideoTask.isEventSettled(TaskStatus.FAILED, null), "主任务失败 → 已收敛");
+        assertTrue(VideoTask.isEventTerminal(TaskStatus.FAILED, null), "主任务失败 → 已收敛");
         // 翻译进行中：事件流还有后续，连接不能收（原 web 两处重复判定的核心分支）
-        assertFalse(VideoTask.isEventSettled(TaskStatus.SUCCEEDED, TranslationStatus.RUNNING),
+        assertFalse(VideoTask.isEventTerminal(TaskStatus.SUCCEEDED, TranslationStatus.RUNNING),
                 "翻译进行中 → 未收敛");
         // 主状态未终态：无论翻译子状态如何都未收敛
-        assertFalse(VideoTask.isEventSettled(TaskStatus.PENDING, null), "排队中 → 未收敛");
-        assertFalse(VideoTask.isEventSettled(TaskStatus.RUNNING, null), "执行中 → 未收敛");
-        assertFalse(VideoTask.isEventSettled(TaskStatus.RUNNING, TranslationStatus.RUNNING),
+        assertFalse(VideoTask.isEventTerminal(TaskStatus.PENDING, null), "排队中 → 未收敛");
+        assertFalse(VideoTask.isEventTerminal(TaskStatus.RUNNING, null), "执行中 → 未收敛");
+        assertFalse(VideoTask.isEventTerminal(TaskStatus.RUNNING, TranslationStatus.RUNNING),
                 "执行中 + 翻译进行中 → 未收敛");
     }
 

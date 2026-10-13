@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.vidsage.application.diagnostics.ToolDiagnosticReport;
-import com.vidsage.application.diagnostics.ToolDiagnostics;
+import com.vidsage.application.diagnostics.port.ToolDiagnostics;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,9 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 /**
  * MediaController 的切片测试：只装配 web 层（含全局 {@link ApiExceptionHandler}），
  * 服务层用 {@link MockitoBean} 替换，不触发真实诊断。
- *
- * <p>原「抽音频」端点（{@code POST /api/media/audio}）已随 MVP-1 异步管线收编删除，
- * 本类只剩工具诊断端点的用例。
  */
 @WebMvcTest(MediaController.class)
 class MediaControllerTest {

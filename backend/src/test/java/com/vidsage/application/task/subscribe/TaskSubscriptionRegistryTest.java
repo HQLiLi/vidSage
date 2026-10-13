@@ -4,9 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.vidsage.application.task.TaskProgressMessage;
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.domain.task.TaskStatus;
+import com.vidsage.application.task.message.TaskProgressMessage;
+import com.vidsage.domain.shared.model.StageProgress;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.task.model.TaskStatus;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -28,8 +29,8 @@ class TaskSubscriptionRegistryTest {
     private final TaskSubscriptionRegistry registry = new TaskSubscriptionRegistry();
 
     private static TaskProgressMessage event(TaskStatus status) {
-        return new TaskProgressMessage("t0", status,
-                new StageEvent("clean", 50, "第 1/2 批", StageEvent.StageState.RUNNING), null);
+        return TaskProgressMessage.of("t0", status,
+                new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 50, "第 1/2 批", StageProgress.State.RUNNING), null);
     }
 
     // ---------- 订阅与广播 ----------

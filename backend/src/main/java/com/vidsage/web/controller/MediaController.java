@@ -1,7 +1,7 @@
 package com.vidsage.web.controller;
 
 import com.vidsage.application.diagnostics.ToolDiagnosticReport;
-import com.vidsage.application.diagnostics.ToolDiagnostics;
+import com.vidsage.application.diagnostics.port.ToolDiagnostics;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
@@ -13,12 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 外部工具诊断 HTTP 入口（只读）：yt-dlp / ffmpeg / ffprobe 的可用性、解析路径与版本。
  *
- * <p>原「临时面」的同步端点（{@code POST /api/media/audio}、ASR / 字幕各端点）已随 MVP-1
- * 异步管线落地收编删除（见本任务 {@code research/acceptance-evidence.md}）——媒体与字幕的
- * 业务入口只有 {@code TaskController} 一处；本控制器只保留长久的诊断端点。
- *
- * <p>本类只做「接收 → 委托 → 返回」，不写业务逻辑；依赖 {@code application/}，不直接依赖
- * {@code infrastructure/} 也不依赖 {@code domain/}——诊断能力经本层定义的出站端口
+ * <p>本类只做「接收 → 委托 → 返回」，不写业务逻辑；诊断能力经本层定义的出站端口
  * {@link ToolDiagnostics} 取得。
  */
 @Slf4j
@@ -29,11 +24,6 @@ public class MediaController {
 
     private final ToolDiagnostics toolDiagnostics;
 
-    /**
-     * 构造函数注入
-     *
-     * @param toolDiagnostics 工具诊断端口（实现在 infrastructure/process/）
-     */
     public MediaController(ToolDiagnostics toolDiagnostics) {
         this.toolDiagnostics = toolDiagnostics;
     }

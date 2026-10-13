@@ -19,9 +19,6 @@ import org.springframework.util.StringUtils;
  * yt-dlp 调用的公共收口：二进制解析、公共参数注入（{@code --ffmpeg-location} / {@code --cookies}）、
  * 超时，全部收敛在这里，<b>调用方只给额外参数</b>。
  *
- * <p>2b 拉平台字幕时复用同一入口（传 {@code --skip-download --write-subs ...}），
- * 不必重复解析二进制与注入公共参数。
- *
  * <p>参数以 {@code List<String>} 逐项交给 {@link ExternalProcessRunner}，不拼字符串、不经 shell；
  * 公共参数排在调用方额外参数之前，调用方把 URL 放在自己参数的最后即可。
  */
@@ -36,8 +33,6 @@ public class YtDlpRunner {
     private final YtDlpProperties ytDlpProperties;
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param runner          外部进程执行器（全项目唯一进程出口）
      * @param tools           工具路径解析（yt-dlp / ffmpeg 路径的唯一入口）
      * @param toolProperties  外部工具配置（取默认超时、判断 ffmpeg 是否已配置）
@@ -79,8 +74,7 @@ public class YtDlpRunner {
     /**
      * 本执行器实际使用的超时秒数，与 {@link #run} 交给执行器的值<b>同源</b>。
      *
-     * <p>供调用方在超时的错误消息里写出真实秒数（design §八 的消息形状是
-     * {@code 外部命令执行超时（300 秒）：yt-dlp；...}）。放在这里而不是让调用方自行解析配置，
+     * <p>供调用方在超时的错误消息里写出真实秒数。放在这里而不是让调用方自行解析配置，
      * 是为了避免「超时值」有两处持有、日后调阈值时两处漂移。
      *
      * @return 默认超时秒数

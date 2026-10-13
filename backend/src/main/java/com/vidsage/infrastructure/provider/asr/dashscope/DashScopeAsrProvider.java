@@ -10,13 +10,13 @@ import com.alibaba.dashscope.utils.OSSUtils;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.gson.JsonObject;
-import com.vidsage.domain.transcription.AudioSource;
-import com.vidsage.domain.transcription.TranscriptionCommand;
-import com.vidsage.domain.transcription.TranscriptionResult;
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.media.AudioSpec;
-import com.vidsage.domain.subtitle.SubtitleRoute;
-import com.vidsage.domain.transcription.ASRProvider;
+import com.vidsage.domain.transcription.model.AudioSource;
+import com.vidsage.domain.transcription.model.TranscriptionCommand;
+import com.vidsage.domain.transcription.model.TranscriptionResult;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.media.model.AudioSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+import com.vidsage.domain.transcription.port.ASRProvider;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,18 +58,11 @@ public class DashScopeAsrProvider implements ASRProvider {
     private final Transcription transcription;
     private final TemporaryFileUploader pathUploader;
 
-    /**
-     * 依赖全部走构造函数注入，保证可测试性（见 quality-guidelines）。
-     * 本地文件上传默认使用 SDK 内置的 {@link OSSUtils}。
-     */
     @Autowired
     public DashScopeAsrProvider(RestClient.Builder restClientBuilder, DashScopeProperties properties) {
         this(restClientBuilder, properties, OSSUtils::upload);
     }
 
-    /**
-     * 包级可见：测试注入假的 {@link TemporaryFileUploader}，单测不依赖网络与真实 key。
-     */
     DashScopeAsrProvider(RestClient.Builder restClientBuilder, DashScopeProperties properties,
             TemporaryFileUploader pathUploader) {
         this.restClient = restClientBuilder.build();
@@ -111,7 +104,7 @@ public class DashScopeAsrProvider implements ASRProvider {
         var taskResults = finished.getResults();
         // 无语音 / 静音音频：DashScope 返回任务失败（code=ASR_RESPONSE_HAVE_NO_WORDS），
         // 而不是空 segments。对用户来说「这段内容没有语音」是合法输入，不是服务故障——
-        // 把它降级成空结果，让设计决策 5（空转写是合法产出）在云端可达。
+        // 把它降级成空结果（空转写是合法产出）。
         // 错误码从 output 的 gson JsonObject 结构化取，不用 toString 字符串匹配。
         if (!TaskStatus.SUCCEEDED.equals(finished.getTaskStatus())
                 && isNoWordsFailure(finished.getOutput())) {
@@ -148,7 +141,7 @@ public class DashScopeAsrProvider implements ASRProvider {
     /**
      * 判定 DashScope 的 output 是否为「没有识别出任何语音」失败。
      *
-     * <p>实测（research/asr-cloud-behavior.md §四）：静音音频返回 {@code FAILED} 且
+     * <p>静音音频返回 {@code FAILED} 且
      * output 里 {@code code=ASR_RESPONSE_HAVE_NO_WORDS}。这是「内容合法但无语音」，不是服务故障，
      * 需要降级为空结果而非抛异常。output 是 gson {@link JsonObject}，用 {@code get("code")}
      * 结构化取值，避免 toString 字符串匹配。
@@ -186,8 +179,6 @@ public class DashScopeAsrProvider implements ASRProvider {
     /**
      * 把统一的音频来源解析为 DashScope filetrans 接口可接受的音频地址：
      * URL 原样返回；本地文件先上传到百炼临时存储，换成返回的 oss:// 地址。
-     *
-     * <p>包级可见：单元测试可直接调用，无需走网络提交。
      *
      * @throws IllegalArgumentException 来源为 null、URL/路径为空或本地文件不存在、不可读
      * @throws IllegalStateException 上传到临时存储失败
@@ -288,8 +279,7 @@ public class DashScopeAsrProvider implements ASRProvider {
     /**
      * 将 DashScope 结果 JSON 映射为统一转写契约。
      *
-     * <p>包级 static：单元测试无需 Spring 容器即可直接调用（见 quality-guidelines）。
-     * 空集合一律用 {@code List.of()}，不返回 {@code null}。
+     * <p>空集合一律用 {@code List.of()}，不返回 {@code null}。
      */
     static TranscriptionResult toResult(TranscriptionFile file) {
         if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) {
@@ -336,8 +326,7 @@ public class DashScopeAsrProvider implements ASRProvider {
 
     /**
      * 本地文件上传策略：与 {@link OSSUtils#upload} 的方法签名对齐
-     * （model, filePath, apiKey -> oss:// 地址），独立成函数式接口以便
-     * 单元测试注入假实现，不发起真实网络请求。
+     * （model, filePath, apiKey -> oss:// 地址）。
      */
     @FunctionalInterface
     interface TemporaryFileUploader {

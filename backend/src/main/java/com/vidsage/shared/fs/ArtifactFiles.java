@@ -13,12 +13,9 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>全静态、无状态，构造器私有，不要 new 它。
  *
- * <p><b>它不再是「零依赖字节助手」</b>：为 JSON 断点读写（{@link #writeJsonAtomically} /
- * {@link #readJsonOrNull}）它现在认识 Jackson。这是有意的——全项目「需要落盘的地方」都归口在这里
- * （媒体 / 音频走 {@link #moveAtomically}、字幕走 {@link #writeAtomically}），只差 JSON 这层；
- * 不归口的话「序列化成 JSON 再原子写」那三行会在每个 service 里各抄一遍。
- * 规范允许这个依赖：{@code directory-structure.md} 把 Jackson 与 JDK、slf4j 并列在 {@code shared/}（原 utils/）的允许清单里
- * ——不过加这里的条件仍是「把 Spring 容器整个拿掉还能编译」，Jackson 满足。
+ * <p><b>本类不只是字节助手</b>：JSON 检查点的读写（{@link #writeJsonAtomically} /
+ * {@link #readJsonOrNull}）也归这里，故认识 Jackson——全项目「需要落盘的地方」都归口本类
+ * （媒体 / 音频走 {@link #moveAtomically}、字幕走 {@link #writeAtomically}）。
  *
  * <p><b>两套字节原子落盘是有意保留的，别合并</b>：
  * <ul>
@@ -29,7 +26,6 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Slf4j
 public final class ArtifactFiles {
-
 
     private ArtifactFiles() {
     }
@@ -119,12 +115,10 @@ public final class ArtifactFiles {
      * 读一份 JSON 检查点；读不出来就返回 {@code null}，不抛异常。
      *
      * <p><b>语义边界：只服务「断点形状的读」</b>——文件不存在、为空、解析失败，一律当「没有检查点」
-     * 返回 {@code null}，让调用方照未完成重跑。这与 {@code SubtitlePreparationStage} / {@code SubtitleCleanupStage}
-     * 现有断点判据同一条语义。
+     * 返回 {@code null}，让调用方照未完成重跑。
      *
-     * <p><b>不要拿它读「必须能解析」的文件</b>：像 {@code SubtitleCleanupStage.readRaw} 那样
-     * 原始字幕坏了就该报错的场景，得留着自己的 try-catch 抛 {@link IllegalStateException}——
-     * 那是另一种语义，不该被这个方法统一掉。
+     * <p><b>不要拿它读「必须能解析」的文件</b>：坏了就该报错的那类场景（如清洗前的原始字幕），
+     * 调用方要留着自己的 try-catch 抛 {@link IllegalStateException}——那是另一种语义，不该被本方法统一掉。
      *
      * @param path   文件路径
      * @param mapper Jackson 反序列化器

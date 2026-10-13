@@ -1,8 +1,8 @@
 package com.vidsage.infrastructure.persistence.entity;
 
-import com.vidsage.domain.task.TaskInputType;
-import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskStatus;
+import com.vidsage.domain.task.model.TranslationStatus;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -14,12 +14,6 @@ import lombok.Setter;
  * {@code task} 表的行结构（建表语句见 resources/schema.sql）。仅 persistence/ 内部可见，
  * 对上由 {@code MybatisVideoTaskRepository} 转换为领域对象 {@code VideoTask}，转换点只此一处
  * （directory-structure.md「持久化三层」）。
- *
- * <p>普通类 + Lombok {@code @Getter/@Setter}（主 PRD 对实体类的既定形态，不用 {@code @Data}——
- * 可变实体不需要 equals/hashCode/toString 语义）。枚举列按枚举名映射：{@link TaskInputType} /
- * {@link TaskStatus} 的常量名与数据库 ENUM 值逐字相同。
- *
- * <p>时间戳由领域对象在状态迁移时产生，经 Repository 写入，本类不做 fill 策略。
  */
 @Getter
 @Setter
@@ -36,7 +30,10 @@ public class VideoTaskEntity {
     /** 输入类型：URL 提交 / 文件上传。 */
     private TaskInputType inputType;
 
-    /** URL 原文或上传文件原始名（日志不落原值）。 */
+    /**
+     * 来源：URL 原文或上传文件原始名。<b>约束：本字段值不得直接写入日志</b>——含用户原始文件名，
+     * 属敏感信息。
+     */
     private String sourceUri;
 
     /** 工作区短哈希（索引 idx_task_workspace_key，提交查重用）。 */
@@ -48,11 +45,11 @@ public class VideoTaskEntity {
     /** 任务状态（状态机权威存储）。 */
     private TaskStatus status;
 
-    /** 最近阶段名（与 StageEvent.stage 同词表）。 */
+    /** 最近阶段名（与 StageProgress.stage 同词表）。 */
     private String currentStage;
 
     /**
-     * 翻译子状态（2026-10-02 两段式）：主任务 SUCCEEDED 后按需触发的第二生命周期；
+     * 翻译子状态：主任务 SUCCEEDED 后按需触发的第二生命周期；
      * 数据库 NULL = 从未触发，映射为 {@code null}。枚举名与 {@code task.translation_status}
      * 的 ENUM 值逐字相同。
      */

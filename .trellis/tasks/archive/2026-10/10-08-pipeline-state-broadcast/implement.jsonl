@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "本任务的正典：二级包怎么分（桶名与根留什么）、构件说明三档（TaskProgressNotifier 落机制/协作件档）、契约类的位置（TaskProgressMessage 迁 message/ 的判据）、命名约定（-Notifier 登记）。批次 0 要先改这张表里的桶表与根口径"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "构造函数注入与可测试性口径；新构件 TaskProgressNotifier 与被改的两个调用点都要满足；注释「写与删」口径决定哪些 Javadoc 该随迁、哪些该删"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "行为保真清单里有 8 条日志要逐字保留（两条 debug 阶段事件、四条终态、两条落库失败兜底；其中「任务翻译失败」按 cause 分 warn/error 两级）；核对级别选择与脱敏红线（阶段事件日志不得带工作区路径）"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "「同一判据只有一份」——判断哪些是三处重复该收口、哪些是既有差异（翻译进度刻意不落 current_stage）该显式保留"}

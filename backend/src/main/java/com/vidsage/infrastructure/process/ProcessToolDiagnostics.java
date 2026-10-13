@@ -1,7 +1,7 @@
 package com.vidsage.infrastructure.process;
 
 import com.vidsage.application.diagnostics.ToolDiagnosticReport;
-import com.vidsage.application.diagnostics.ToolDiagnostics;
+import com.vidsage.application.diagnostics.port.ToolDiagnostics;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -34,7 +34,7 @@ import org.springframework.util.StringUtils;
  * <p>实现 application 层定义的出站端口 {@link ToolDiagnostics}——这是全项目唯一一处
  * infrastructure → application 的依赖，窄口只开在「实现端口」这一件事上。
  * {@code requireFfmpeg} / {@code requireFfprobe} / {@code requireYtDlp} 三个「要路径」的方法
- * <b>不在端口上</b>，只给同层的 {@code FfmpegAudioExtractor} / {@code YtDlpRunner} 用。
+ * <b>不在端口上</b>，只给同层实现用。
  */
 @Slf4j
 @Component
@@ -54,9 +54,6 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
     private final ExternalProcessRunner runner;
     private final ExternalToolProperties properties;
 
-    /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     */
     public ProcessToolDiagnostics(ExternalProcessRunner runner, ExternalToolProperties properties) {
         this.runner = runner;
         this.properties = properties;
@@ -113,8 +110,7 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
      * 解析 ffmpeg 可执行文件路径；未找到时抛异常，消息含「缺什么 + 怎么补」。
      *
      * <p>供抽音频实现使用：ffmpeg 路径是「一处配置、两处使用」（Java 抽音频 +
-     * yt-dlp {@code --ffmpeg-location}），解析规则与提示语的唯一入口留在本类，
-     * 避免调用方各写一份。</p>
+     * yt-dlp {@code --ffmpeg-location}）。</p>
      *
      * @return ffmpeg 可执行文件的绝对路径
      * @throws IllegalStateException 未配置且不在 PATH 上；消息说明如何补齐
@@ -128,9 +124,7 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
     /**
      * 解析 ffprobe 可执行文件路径；未找到时抛异常，消息含「缺什么 + 怎么补」。
      *
-     * <p>供本地输入路线读取媒体时长使用。与 {@link #requireFfmpeg()} 共用同一条
-     * 「配置优先，否则扫 PATH」规则与同一份提示文案（{@link #requireResolved}），
-     * 不另写第二份。
+     * <p>供本地输入路线读取媒体时长使用。
      *
      * @return ffprobe 可执行文件的绝对路径
      * @throws IllegalStateException 未配置且不在 PATH 上；消息说明如何补齐
@@ -142,7 +136,7 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
     /**
      * 解析 yt-dlp 可执行文件路径；未找到时抛异常，消息含「缺什么 + 怎么补」。
      *
-     * <p>供 yt-dlp 下载实现使用——二进制解析收敛在它里面，调用方只给额外参数。
+     * <p>供 yt-dlp 下载实现使用。
      *
      * @return yt-dlp 可执行文件的绝对路径
      * @throws IllegalStateException 未配置且不在 PATH 上；消息说明如何补齐
@@ -198,8 +192,6 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
     /**
      * yt-dlp 的 {@code --version} 输出即一行版本号（形如 "2026.08.19"）。
      *
-     * <p>包级 static：测试可直接喂真实输出字符串，无需起进程（见 quality-guidelines）。
-     *
      * @param output 命令的标准输出
      * @return 解析出的版本；无有效行时返回 {@code null}
      */
@@ -210,8 +202,6 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
     /**
      * ffmpeg / ffprobe 的 {@code -version} 横幅首行形如
      * "ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright ..."。
-     *
-     * <p>包级 static：测试可直接喂真实输出字符串。
      *
      * @param output 命令的标准输出
      * @return 解析出的版本；无法匹配时返回 {@code null}
@@ -279,8 +269,6 @@ public class ProcessToolDiagnostics implements ToolDiagnostics {
     }
 
     /**
-     * 包级 static 且 PATH 与平台可注入：测试可喂受控 PATH，不受运行机器影响。
-     *
      * @param binaryName 二进制名（不带扩展名），如 "ffmpeg"
      * @param pathValue  PATH 环境变量的值；空白视为无 PATH
      * @param windows    是否按 Windows 规则同时匹配 {@code <name>.exe}

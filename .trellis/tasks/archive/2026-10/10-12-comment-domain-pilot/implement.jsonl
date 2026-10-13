@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "粒度标准正典草稿——内容分流表、按层级的写法、验证策略、风险处置；本子任务全程按它执行"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "需求、范围与跨子任务验收标准（AC1–AC7，含「只改注释」与「不动 @Schema 落位」两条硬约束）"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/implement.md", "reason": "父执行计划：标准动作 A→E、例外登记表、待订正清单、正典文档骨架"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "现有注释要求章节（§三「写与删是两件事」）与「守卫型校验要为目标改动设基线」——本任务要改写前者、保留后者的判据"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端规范索引，确认改写 quality-guidelines 注释章节后需同步的引用点"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "既有约定「不提前造异常体系」的原出处，且其 175 行已记录 TaskConflictException 的决策——类注释里那段可据此确认删了零损失"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端注释要求章节，与后端那份同批改写为指向正典的指针"}

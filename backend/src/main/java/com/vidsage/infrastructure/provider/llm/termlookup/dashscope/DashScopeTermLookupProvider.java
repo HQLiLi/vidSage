@@ -2,13 +2,13 @@ package com.vidsage.infrastructure.provider.llm.termlookup.dashscope;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.vidsage.domain.subtitle.TermLookupCommand;
-import com.vidsage.domain.subtitle.TermLookupResult;
+import com.vidsage.domain.subtitle.model.term.TermLookupCommand;
+import com.vidsage.domain.subtitle.model.term.TermLookupResult;
 
 import java.net.URI;
 import java.util.List;
 
-import com.vidsage.domain.subtitle.TermLookupProvider;
+import com.vidsage.domain.subtitle.port.TermLookupProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -28,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
  * 自拼 JSON（Jackson 序列化 record），发出去什么就是什么。也<b>因此不能走 dashscope-sdk-java</b>——
  * 它的 Jackson 与 Spring AI 同坐标冲突，pom 里已有禁用实测记录。
  *
- * <p><b>接地口径（09-29 任务定）</b>：搜索在供应商侧执行，本类拿不到原始检索摘要做逐字比对，
+ * <p><b>接地口径</b>：搜索在供应商侧执行，本类拿不到原始检索摘要做逐字比对，
  * 只能做下限约束——模型报了译名，就必须同时给出「来源 URL + 来源页引文」，缺任一即按查不到弃权。
  * 「宁可不列，不可编造」与摘要层提示词同一基调：错一个译名会被下游当成依据，比漏一条危害大。
  *
@@ -60,9 +60,6 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
     private final DashScopeTermLookupProperties properties;
     private final ObjectMapper objectMapper;
 
-    /**
-     * 依赖全部走构造函数注入，保证可测试性（见 quality-guidelines）。
-     */
     @Autowired
     public DashScopeTermLookupProvider(RestClient.Builder restClientBuilder,
                                        DashScopeTermLookupProperties properties,
@@ -111,8 +108,6 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
     /**
      * 发一次查证请求，返回响应原文。
      *
-     * <p>包级可见是测试缝：单测覆写它返回固样响应，不真发 HTTP（同 DashScopeAsrProvider 的做法）。
-     *
      * @param requestJson 请求体 JSON
      * @return 响应体原文；HTTP 层失败时直接抛 RestClientException（运行时异常，上层降级）
      */
@@ -146,8 +141,6 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
     /**
      * 解析 DashScope 响应，取出首条回复的 content 并按查证 JSON 解析。
      *
-     * <p>包级可见：单测直接喂固样响应。
-     *
      * @throws IllegalStateException 响应没有 choices / 没有正文 / 正文不是合法的查证 JSON
      */
     LookupAnswer parseResponse(String responseJson) {
@@ -174,8 +167,6 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
      * <p>模型偶发把 JSON 包进 markdown 代码围栏，截取首个 <code>{</code> 到最后一个 <code>}</code>
      * 之间的部分再解析；截不出来或解析不了都算「回复不合法」——按查证失败抛 ISE（该词保持未查证，
      * 下次补跑），而不是当成「查不到」：编一个格式坏掉的回复与「确证没有」是两回事。
-     *
-     * <p>包级可见：单测直接喂正文。
      */
     LookupAnswer parseContent(String content) {
         int start = content.indexOf('{');
@@ -195,8 +186,6 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
      *
      * <p>level 只决定「官方还是通用」的标注：声明 none 或译名空白 → 弃权；level 缺失/无法识别
      * 但证据齐全 → 按<b>通用</b>处理（保守降档，不冒充官方——数据有用，弃了可惜）。
-     *
-     * <p>包级可见：单测直接断言证据规则的各分支。
      */
     TermLookupResult validateEvidence(LookupAnswer answer) {
         String name = answer == null || answer.officialName() == null ? "" : answer.officialName().trim();
@@ -228,13 +217,10 @@ public class DashScopeTermLookupProvider implements TermLookupProvider {
 
     /**
      * 请求体。字段名是 DashScope 扩展参数，@JsonProperty 显式落成 snake_case。
-     */
-    /**
-     * 请求体。字段名是 DashScope 扩展参数，@JsonProperty 显式落成 snake_case。
      *
      * <p>{@code enableThinking} 固定 false：查证是「从检索结果做确定性抽取」，不是推理题——
-     * 实测（2026-09-29，qwen3.7-flash）思考模式让单条 1.5s 涨到 20~45s，15 条术语把同步
-     * 翻译接口拖到必超时，且思维链按输出计费；关掉后结论质量无损。
+     * 思考模式让单条 1.5s 涨到 20~45s，15 条术语把同步翻译接口拖到必超时，且思维链按输出计费；
+     * 关掉后结论质量无损。
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record ChatRequest(String model, List<ChatMessage> messages,

@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 /**
- * 应用路由。当前为单文件，超过约 5 条路由再按域拆分到 routes/ 下的独立文件。
- * 页面组件一律动态导入：每个 views/ 子包独立成 chunk，访问到才加载。
+ * 应用路由。页面组件一律动态导入：每个 views/ 子包独立成 chunk，访问到才加载。
+ * 路由超过约 5 条时按域拆到 routes/ 下的独立文件。
  */
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),

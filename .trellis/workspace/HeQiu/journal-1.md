@@ -745,3 +745,430 @@ grill-me 三轮定案后落地前端基建：安装 gsap ^3.15 与 axios ^1.20�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 27: 包结构整理归档 + 架构「形状」设计讨论
+<!-- trellis-session: v=2 fp=965d1f8e09698d21 -->
+
+**Date**: 2026-10-07
+**Task**: 包结构整理归档 + 架构「形状」设计讨论
+**Branch**: `dev`
+
+### Summary
+
+执行 10-06-package-structure 收尾（提交 / 合并 dev / 推送远端 / 归档），收尾前完成一轮架构「形状」设计讨论。收尾：138 个改动分三个提交（代码 / spec / 任务工件）——domain 与 application 各上下文包按角色轴拆桶（port / policy / model），67 个类改名移动，测试包镜像跟随；唯一非纯移动的改动是 R7 下沉（VideoTaskService 两个包级私有 static → domain/task/policy/TaskStageEvent，判据逐字搬）。验证用 mvn clean test（必须 clean：动了 67 个文件，target/classes 会留陈旧 class）→ 45 类 / 465 用例 / 0 失败 / 1 跳过。审查期抓到两处规范与代码不符：① TaskProgressMessage 的 @Schema 被用户自行删除——理由是该注解是死的（SSE 端点返回 SseEmitter，本类型只作 TaskSseHub.send 入参流转，进不了 /v3/api-docs），已同步改 directory-structure.md 判据 2 清单与该行；② TranscriptionResult 同属「@Schema 是死的」但仍在代码里，属未决口径，本轮未动。设计讨论（用户主导，结论已定、任务尚未建）：用户自陈「只有 DDD 的形，内在还是乱——读得懂但加新功能不知道从哪下手」。诊断结论：核心概念只有具体实例、没有统一表示——阶段（六个阶段 = 六个类 + 三份名字常量 + 三层进度权重区间）、产出物（命名 / 检查点 / 可见性分散在 SubtitleArtifactNames / CheckpointPolicy / TaskArtifactScan 三处）、输入身份（提交时按 URL 串或内容 sha256 算，LocalPath 在阶段里按「路径 + 大小 + mtime」重算，代码造了 MediaInput.InWorkspace 变体绕行——该类型自己的注释写「只承载位置」却被自己破掉）、生命周期（主状态机 + 翻译子状态机各硬编码一台）。用户要的是「类似公式的架构」：变更类型 → 落点清单，可机械代入。四条形状决策：(1) 阶段成为类型——要；(2) 产出物成为类型——要；(3) 输入身份收敛成一套、身份作为输入自身属性、消除 normalize() 三路 switch——要；(4) 生命周期统一——不做（只有一个样本，分不清「生命周期是任务的」还是「产物自己的」两种候选形状，造错抽象比没有抽象更糟）。另查明 SubtitleCleanser.clean(...) 的 reference 参数恒传空串——为「术语表喂清洗」预留但从未接上的死参数（术语查证后来挪去翻译侧）。CQRS 是讨论中的岔路并已排除：Fowler 明确警示谨慎使用，本项目读写负载无失衡，两条触发条件与嗅觉测试均不满足。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `35c7a83` | refactor(backend): 包结构整理——平铺包按角色拆分子包 |
+| `3e13c54` | docs(spec): 二级包按角色分桶的判据改写与路径引用对账 |
+| `866e647` | chore(task): 记录 10-06-package-structure 规划工件 |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 建形状重构任务：把四条决策写成 PRD 验收标准 + 形状设计，变更类型 → 落点清单作为产出；执行者用户本人，非 sub-agent
+
+
+## Session 28: 命名判据重立 + 管线与阶段构件改名（*Stage → *Coordinator）
+<!-- trellis-session: v=2 fp=ceea7e765170947d -->
+
+**Date**: 2026-10-07
+**Task**: 命名判据重立 + 管线与阶段构件改名（*Stage → *Coordinator）
+**Branch**: `feature/shape-refactor`
+
+### Summary
+
+从一次长命名讨论收口成一个纯改名任务并落地。判据不是先立规则再改代码，是从数据里 grep 出来的：*er/*or 留给做事的人（domain 端口已占满 SubtitleCleanser/SubtitleTranslator/MediaAcquirer），*Coordinator 给认领进度阶段的那一步，管线所有者按产出命名。VideoTaskPipeline → SubtitlePipeline（Video 是错的：音频是一等输入走同一条管线），三个 *Stage → *Coordinator。验证 mvn clean test → 45 类 / 469 用例 / 0 失败 / 0 错误 / 1 跳过，与基线一字不差。顺带：补回 Bcp47Language 丢掉的调用点约束、关闭 SubtitleArtifactSpec 那笔账、把与实际不符的 spec 命名判据作废并重立。任务 10-07-pipeline-stage-rename 已归档并 --no-ff 合回 feature/shape-refactor。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `399126f` | docs(task): 10-07 批次 2 定案——只做阶段名单源，权重移出 |
+| `1af5f25` | docs(backend): 补回 resolveTargetLanguage 的调用点约束 |
+| `e144df5` | docs(spec): 管线构件后缀判据暂停——与实际不符 |
+| `f899d4b` | chore(task): 10-07-pipeline-stage-rename 规划工件 |
+| `27c8b65` | chore(task): 记录 10-07-pipeline-stage-rename 的分支元数据 |
+| `5fe9742` | docs(task): 10-07 会话移交刷新 |
+| `5c09fe8` | chore(task): 10-07-pipeline-stage-rename 置为 in_progress |
+| `fcf0750` | refactor(backend): 管线与阶段构件改名——管线按产出命名，阶段构件按角色命名 |
+| `dc2aced` | docs(spec,task): 管线构件命名判据重立 + 任务工件 |
+| `ef571a5` | merge: 管线与阶段构件改名（10-07-pipeline-stage-rename） |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 10-07-shape-refactor 批次 2（阶段名单源）仍未开工——注意改名已使该批次的逐行清单失效，需重扫。注释偏多的问题用户要求后面统一处理。
+
+
+## Session 29: 形状重构收尾：批次 2/3 完成验收、合并推送并归档
+<!-- trellis-session: v=2 fp=30274c9e241699e7 -->
+
+**Date**: 2026-10-08
+**Task**: 形状重构收尾：批次 2/3 完成验收、合并推送并归档
+**Branch**: `dev`
+
+### Summary
+
+批次 2：六阶段名收进 SubtitleStageName 枚举并改「动词-对象」值，注释/文案复述清零，失败文案去阶段名；SSE 事件流 before/after 逐条零差异（除四条改名映射）。批次 3：MediaInput.getContentKey 多态 + MediaFileInfo 快照 + FileStateReader 端口（infrastructure/fs 新开桶），WorkspaceService 去 switch/normalize，双参 workspaceFor 保留（提交时刻无 MediaInput 的鸡生蛋洞）；四路线工作区目录名 before/after 逐字一致 + 断点复用佐证。AC1–AC7 对账打勾（三句过严表述按删除线+日期修正），design §五落点清单改终稿，spec 加 fs 分层行。473 用例全绿。合并 dev（4e5862a）并推送，任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1fb308c` | refactor(backend): 批次 3 身份归属——MediaInput 自算身份，stat 采样经端口 |
+| `f7bdcfb` | docs(spec,task): 批次 3 工件对账 + spec 加 infrastructure/fs 分层行 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 30: 进度权重扁平化执行与验收（AC1-AC9 全绿）
+<!-- trellis-session: v=2 fp=3b75e1c41f235f74 -->
+
+**Date**: 2026-10-08
+**Task**: 进度权重扁平化执行与验收（AC1-AC9 全绿）
+**Branch**: `dev`
+
+### Summary
+
+执行 10-08-progress-weight-flattening 步骤 0-8：SubtitleStageName 加 weight/inMainPipeline、区间按声明顺序累加；换算收敛到 clean 批级一处（ProgressMapper 保留唯一用途）；写字幕开始 70→66（R8 唯一有意变更）；三个 *Stage 改名落地。分工：用户写 main、AI 写测试并代改了 listener 接线三处。476 测试全绿；AC7 双实例（dff027b 对照 18081 vs 分支 18080）逐格比对 14 格恰差第 7 格，证据在任务 evidence/。已按批准合并 dev 并推送（merge 7cdcb2c）、删特性分支。按用户指示仅记 journal，任务未归档（task.py archive 跳过，留待后议）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f7a7f96` | refactor(backend): 进度权重扁平化——阶段份额单源 / 换算只剩 clean 一处 / 三个 *Stage 改名（10-08-progress-weight-flattening） |
+| `d36b2f8` | docs(spec,task): 命名判据收口 + 归档任务落点订正 + 权重扁平化工件与 AC7 证据（10-08） |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 31: 执行模型拆分：TaskConcurrencyGate 端口 + 行为逐格对照零差异
+<!-- trellis-session: v=2 fp=25ba26a25565600d -->
+
+**Date**: 2026-10-08
+**Task**: 执行模型拆分：TaskConcurrencyGate 端口 + 行为逐格对照零差异
+**Branch**: `dev`
+
+### Summary
+
+把 SubtitlePipeline 的 executor/semaphore/排队语义拆成 application 端口 TaskConcurrencyGate 与 infrastructure/concurrency 实现；两条排队中断语义不合并、翻译成本日志「含排队时间」口径原样保留。全量 482 用例绿（1 skip 为既存），闸门命门用例做过变异验证（错放许可 0.011s 即红）；真实链路 SSE 14 格与 dev 基线逐字节零差异，R3 差异栏由两格补齐为四格。规范侧：infrastructure 范围按「有没有状态」划线、六处失实订正（含 application.yml 注释）、注释「写与删」口径写进 quality-guidelines。收尾：合并回 dev 0d388d4、删功能分支、归档任务，记录仅 journal。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `95a8886` | docs(spec): 分层判据按「有没有状态」划线 + infrastructure/concurrency 落位（10-08-pipeline-executor-split） |
+| `ef39a14` | refactor(pipeline): 执行模型拆出端口 TaskConcurrencyGate + 信号量实现（10-08-pipeline-executor-split） |
+| `efdbf81` | test(pipeline,gate): 排队中断两条分支 + 闸门两条命门 + 校验文案逐字（10-08-pipeline-executor-split） |
+| `4ba9b09` | docs(spec,infra): 失实订正六处（配额/虚拟线程归属）+ 注释「写与删」口径（10-08-pipeline-executor-split） |
+| `133dcdc` | chore(task): 10-08-pipeline-executor-split 工件与 AC4 对照证据入库 |
+| `38ea58e` | docs(workspace): 执行模型拆分移交文档重写为现状 |
+| `0d388d4` | merge: SubtitlePipeline 执行模型拆分——端口 TaskConcurrencyGate + 信号量实现 / 行为逐格不变（10-08-pipeline-executor-split） |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 32: WorkspaceService 端口倒置：代码审查、拼写订正、测试重分与收尾归档
+<!-- trellis-session: v=2 fp=52c88b7fe0dc764b -->
+
+**Date**: 2026-10-10
+**Task**: WorkspaceService 端口倒置：代码审查、拼写订正、测试重分与收尾归档
+**Branch**: `dev`
+
+### Summary
+
+审查项目所有者写的批次 1-3 主源码（拼写 WorkSpace→Workspace、ensureWorkspaceDirectory 等按用户动词开头口径定名）；批次 4 测试重分 WorkspaceServiceTest 9 例拆 4+5、6 夹具换构造，482 绿与基线持平；批次 5 spec 三档化与 evidence 落盘；合并 dev 推送删分支，任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `18938a4` | refactor(media): WorkspaceService 端口倒置——工作区定位与创建移出应用层 |
+| `4f3c43e` | chore(task): 10-09-workspace-port-inversion 任务卡与证据入库 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 33: 10-08 广播收口全链路收尾：批 0 判据到合并归档
+<!-- trellis-session: v=2 fp=89a014b68de4e10c -->
+
+**Date**: 2026-10-11
+**Task**: 10-08 广播收口全链路收尾：批 0 判据到合并归档
+**Branch**: `dev`
+
+### Summary
+
+读交接后 task.py start 并开 feature 分支。批 0 spec 判据 5 处（根包构成收窄+命名登记）；步骤 0 基线 482 全绿+SSE 参照侧 14 格与归档基线零差异、场景 B 三快照；批 3 主源码审查保真 10/10（方法名以代码为准同步工件）；批 4 派发 488 全绿（+6 新用例）+check 三读面 PASS 断言红线干净；批 5 spec §七 #5-9、AC2/AC3 grep 证据（豁免 17 处全列）、AC5 双侧逐字节对照（含翻译增量补抓）；AC1-AC7 全 PASS。两笔提交合并 dev 推送（1fbf095）、任务归档（41a8c8f）。过程事故：5a 子代理 402（文件已写完主线验收）、三次 SSE 抓取竞态（均修正）、target 并发竞态（清后重跑）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `901449e` | chore(task): 10-08-pipeline-state-broadcast 任务卡与证据入库 |
+| `53f9377` | refactor(task): SubtitlePipeline 状态迁移×广播收口——新增 TaskProgressNotifier、消息迁 message/ 桶 |
+| `1fbf095` | Merge branch 'feature/pipeline-state-broadcast' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 34: 10-11 SSE 面收口全链路收尾：批 0 判据到合并归档
+<!-- trellis-session: v=2 fp=6ead9e4a9dcf8867 -->
+
+**Date**: 2026-10-11
+**Task**: 10-11 SSE 面收口全链路收尾：批 0 判据到合并归档
+**Branch**: `dev`
+
+### Summary
+
+读交接后切 feature 分支 + task.py start。批 0 spec 判据 4 处（web/sse 职责补订阅配对、isEventTerminal 登记、-Manager 第二例、terminal 派生字段说明）；步骤 0 基线 488 全绿 + 参照侧 SSE 14 格与 10-08 归档基线逐格零差异、快照落档；批 1 后端所有者写（open() 把 register+subscribe 配对收成单一入口、remove() 空桶回收、TaskProgressMessage 增 terminal 派生字段、TaskSseHub 更名 TaskSseConnectionManager）；批 2 前端派发实现（两处重复终态判据删除改读字段、断连致命/瞬时分流 + 重连提示条）；批 3 测试 497 全绿（+9 用例，另补三处清单外构造点改走 of()）；批 4 AC4/AC5/AC6/AC7 证据（AC7 修后重取：14 格逐格相同、唯一差异是新 terminal 字段、快照逐字节一致）。两轮 trellis-check 三+二读面 + 一轮窄复检，共修 6 处缺陷（remove 原子性与 open catch 过宽经二次迭代才关死）。AC1-AC5/AC7 PASS，AC6 部分（diagnoseFatal 的 loadError 无渲染出口，登记不改）。写失败不退订另立 10-11-sse-connection-pairing。提交 edcbe81、合并 dev b1ffa1d 推送（推送需走本机 7897 代理，git 未配）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `edcbe81` | refactor(task): SSE 面收口——订阅配对内聚、终态判据出 terminal 字段、断连可见 |
+| `b1ffa1d` | Merge branch 'feature/sse-surface-consolidation' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 35: 10-11 进度载荷命名收口：StageEvent → StageProgress 改名、独立核查、合并归档
+<!-- trellis-session: v=2 fp=f158a2dbe0546b4b -->
+
+**Date**: 2026-10-11
+**Task**: 10-11 进度载荷命名收口：StageEvent → StageProgress 改名、独立核查、合并归档
+**Branch**: `dev`
+
+### Summary
+
+执行 10-11-stage-progress-rename：把管线进度载荷归队到本仓 Progress 词族，零行为变更、对 SSE 契约零影响（类型名不进 JSON，payload 键是 stage）。三组改名——StageEvent → StageProgress（含文件改名 domain/shared/model/）、嵌套枚举 StageEvent.StageState → StageProgress.State、回调 ProgressListener.onEvent → onProgress；另按所有者裁定把主代码里指向该载荷的局部变量/参数 event 改成 stageProgress（对齐仓库既有的 VideoTask videoTask 惯例），测试内变量名刻意不动。范围 32 文件；HEAD↔改动后逐模式计数一一对应（StageEvent 156→0、StageState 90→0、onEvent 25→0，新名同数），TaskStageEvent 政策类按裁定暂留（16 处自引用未变）、TaskProgressMessage event 两个参数按判据未动。验证：mvn clean test 498 用例 / 0 失败 / 0 错误 / 1 跳过（基线经核定，journal 旧记的 497 是收尾中途数），前端 npm run type-check 零错误；另设一条门 G5——把新旧两版都归一化掉那三组词后 diff，仅 5 个手工改过的文件有残差，其余 27 个文件的差异恰好只有替换本身，证明只有改名没有夹带。执行期抓到并修正两处：(1) 我漏做 StageProgress.java 的过渡态 Javadoc 订正，被 G5 跑出来；(2) 我写的 Javadoc 声称「transcription、subtitle、task 各自的阶段都上报它」失实——transcription 上下文对 ProgressListener 引用为 0、Transcriber 不接 listener，转写阶段进度实由字幕侧 SubtitlePreparationCoordinator 发出，已改为 media 与 subtitle 两条线；并经所有者裁定把同源失实的 spec directory-structure.md:67「task / transcription / subtitle 三处共用」一并订正为「media / subtitle / task」。trellis-check 独立复核 6 项中 1–4、6 PASS，第 5 项由上述修正闭环；它未自行改码、只报问题并说明不擅改的理由，判断准确。收尾：4 个提交（代码 / spec / 任务工件 / .gitignore 清理），--no-ff 合回 dev 并推送、本地与远端 feature 分支均删。随任务删掉重构期对照 worktree backend-before-reconstruction（detached HEAD e6313b4 在 dev 上可达、无独有内容丢失）及其 .gitignore 条目。已知小瑕疵：StageEvent.java → StageProgress.java 因 Javadoc 扩写使相似度降至约 45%、卡在 git 默认 50% 门槛下，提交里记成 delete+create 而非 rename（40% 阈值下可识别）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b994d31` | refactor(domain): 进度载荷命名收口——StageEvent → StageProgress |
+| `062b11f` | docs(spec): 目录结构规范的进度词汇同步为 StageProgress |
+| `d8b7ca7` | docs(task): 补齐 stage-progress-rename 的执行清单与核查上下文 |
+| `dba6091` | chore: 移除 backend-before-reconstruction 忽略条目 |
+| `5d453fe` | Merge branch 'feature/stage-progress-rename' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 36: 10-11 关键词纠错与字幕重生成：六批实现到合并归档
+<!-- trellis-session: v=2 fp=9ca534277bfb11b3 -->
+
+**Date**: 2026-10-12
+**Task**: 10-11 关键词纠错与字幕重生成：六批实现到合并归档
+**Branch**: `dev`
+
+### Summary
+
+执行 10-11-subtitle-keyword-regenerate（父任务 10-11-subtitle-keywords-multilang 的子任务 A）。从 dev 切 feature/subtitle-keyword-regenerate，task.py start 后按 implement.md 六批推进：批 1 DB（subtitle_keyword 表、SubtitleKeywords 值对象含归一化/去重保序/上限校验/指纹、仓储端口与三件套）；批 2 产物指纹（SubtitleTrack 加 keywordsFingerprint、CheckpointPolicy.isCurrent）；批 3 清洗链路（端口签名改 SubtitleKeywords、PromptDataBlock 四段数据块、三处 system 补声明、SubtitleCleanupCoordinator 指纹断点与 regenerate 先成功后删 translate/terms）；批 4 会话地基（TaskSessionRegistry、TaskStageEvent.from 收在途阶段名、terminal 双条件派生）；批 5 HTTP 面（两新端点、提交路径带关键词、service 同步段四条错误映射、finally 退登记）。两处计划外改动：SubtitleArtifactSpec.compileTemplate 路由交替缺括号组致 matches 恒 false（artifacts 清单恒空），经所有者拍板一并修并加往返测试；TaskSseConnectionManagerTest 与 TaskProgressMessageTest 的终态事件夹具按「stage 状态位跟主状态走」的生产形状改（旧夹具 SUCCEEDED+RUNNING-stage 在旧规则下碰巧成立）。trellis-check 独立审查六维度 + AC 对照，修 8 类问题（409 文案分场景加 TaskConflictException message 构造器、spec 登记 6 处、keywords→findKeywords 动词化、补 5 个钉子用例含 regenerateSubtitles 的 finally 退登记、Javadoc 失实等），报 2 项待决——所有者裁定：成功后按前缀清失败原因（VideoTask.REGENERATE_FAILURE_PREFIX 单源 + clearRegenerateFailure，只认前缀不误伤翻译/主管线记录）；翻译侧摘要缓存不看指纹的偏差记入子任务 B 的 prd。另发现并修复存量 swagger 故障：openai-java-core 传递的非 jakarta swagger-annotations:2.2.31 与 springdoc 的 jakarta 版同名同包冲突，classpath 装载到缺 $dynamicRef() 的那份，/v3/api-docs 500；pom 加 exclusion 后实测恢复 200、两个新端点与 DTO schema 均入文档、swagger-ui 200。收尾：6 笔提交（功能 / 测试 / 建表语句 / pom 修复 / spec / 任务工件）+ merge，--no-ff 合回 dev，归档并删除本地 feature 分支。测试 570 用例 / 0 失败 / 0 错误 / 1 跳过（基线 498 → 净增 72，AC13 满足；1 跳过是存量 ModelProbeTest）。批 6.1 运行期验收（AC1–AC11 端到端）所有者在实例上自行验证后选择跳过，未由本会话执行；dev 领先 origin 11 笔尚未推送。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `198244c` | feat(subtitle): 关键词纠错与字幕重生成 |
+| `7fca0c0` | test(subtitle): 关键词与重生成的单测 |
+| `63b36fb` | feat(subtitle): 新增 subtitle_keyword 建表语句 |
+| `ad85780` | fix(deps): 排除 openai SDK 传递的非 jakarta swagger-annotations |
+| `87794e3` | chore(spec): 登记关键词任务引入的桶、表与终态派生改判 |
+| `cb00a25` | chore(task): 关键词任务 planning 工件与回归卡登记 |
+| `2de2ae5` | Merge branch 'feature/subtitle-keyword-regenerate' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 37: 注释收口：domain 层试点 + 注释写法正典定稿
+<!-- trellis-session: v=2 fp=fc84889cb00aca14 -->
+
+**Date**: 2026-10-12
+**Task**: 注释收口：domain 层试点 + 注释写法正典定稿
+**Branch**: `dev`
+
+### Summary
+
+domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释净减 193 行）：删变更史与归档指针、类注释按「只回答四件事」重写、修 4 处失实、删 3 行失效 import。新建 .trellis/spec/guides/comment-guidelines.md 作注释规则唯一正典（十三条禁令 + 内容分流表 + 正例反例 + 防复发钩子 + 元规则「标准只住一处」），两份 quality-guidelines 改指针。审查窗口里用户逐轮校准，禁令从 5 条长到 13 条；父 design.md 的过期标准副本已删、改指正典，5 个子任务 prd 同步改指正典，模式清单收敛到正典 §六 一处。tests=570 全绿、AC1=0。另开 10-12-failure-prefix-and-guard 承接跨层代码项。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6965134` | chore(task): 注释收口任务树 planning 工件登记 |
+| `6b45f24` | docs(comment): 新增注释写法正典（十三条禁令），两份 quality-guidelines 改指针 |
+| `d4a0dda` | docs(domain): 注释收口 —— 删变更史与决策记录、修正粒度错位 |
+| `d210de5` | Merge branch 'feature/comment-domain-pilot' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 38: 注释收口 application 层：清变更史、粒度归位、订正腐坏
+<!-- trellis-session: v=2 fp=7dc2d11007cbdd5c -->
+
+**Date**: 2026-10-12
+**Task**: 注释收口 application 层：清变更史、粒度归位、订正腐坏
+**Branch**: `dev`
+
+### Summary
+
+按注释写法正典（十三条禁令）收口 application 层 25 个文件：变更史与决策引用清零并改指其单源、类注释只留四件事、进度事件序列上移 spec 新增小节、两处失实（subtitle/package-info 的 Stage 后缀、AudioPreparationCoordinator 的 MVP-1 过渡态预言）订正。非注释行改动 0，mvn test 570/0/0 绿；独立质检两条硬不变量均成立。门 G2 用户裁定保留 spec 小节，随后提交、合并回 dev、删除 feature 分支并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c29156b` | docs(application): 注释收口 —— 清变更史与决策引用、订正腐坏 |
+| `dd2798a` | chore(task): 回填 application 层执行结果，修父计划的失效指针 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 39: 注释收口 infrastructure 层：清变更史、粒度归位、订正腐坏
+<!-- trellis-session: v=2 fp=2f3f41323bd6352b -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口 infrastructure 层：清变更史、粒度归位、订正腐坏
+**Branch**: `dev`
+
+### Summary
+
+按注释写法正典收口 infrastructure 层 31 个文件中的 27 个（26 改 + 新增 provider/llm/package-info）：15 处变更史与归档指针清零、改指单源；约 17 处「包级可见 / 包级 static：供测试…」按禁令 3/7 删；批级进度事件序列上移 spec（directory-structure.md 补「清单为空时不发批级事件」一格）；订正五类腐坏（persistence/package-info 漏列 subtitle_keyword 三件套、LlmSubtitleCleanser 两处未闭合括号残句、DashScopeTermLookupProvider 叠着两个 Javadoc 块、YtDlpRunner 与 YtDlpMediaAcquirer 两处失效预言、fs 两个类复述类名）。集外扩入 5 个文件（全层块复核捞出）。非注释行改动 0，mvn test 570/0/0 绿。门 G3 用户审查通过，并手删了一批他认为属废话的段（按用户要求不逐条登记、不还原）。随后提交、合并回 dev、删除 feature 分支与远端分支并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d4cf2f9` | docs(infrastructure): 注释收口 —— 清变更史与决策引用、订正腐坏 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 40: 注释收口 web/shared/config 层：清变更史、删「解释既成安排」的废话，并把判据回写正典
+<!-- trellis-session: v=2 fp=4f5b7092905c3c08 -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口 web/shared/config 层：清变更史、删「解释既成安排」的废话，并把判据回写正典
+**Branch**: `dev`
+
+### Summary
+
+先给 10-12-comment-web-shared-config 补文档：prd 订正三处（删失实的 CheckpointPolicy 半句、api/→web/controller/、状态行）、implement.md 新建（三条筛选线实测：23 文件 / 83 块 / 并集 14 文件；阶段 0 裁定不新建 web 与 config 的 package-info）、两份 jsonl 由空填实（13 / 9 条）。同时把 infra 层留的 6 条标准补充请用户逐条裁定，5 条回写正典（禁令 3 补「给测试用/可直测」族；§二 新增「两条边界」——构件内部步骤序列直接删、事故叙事一律删但缺口未修的例外；§二 分流表加「命令/参数清单」；§五 保留行并入 docs/**）。随后收口三包 20 个文件（23 个里的 20 个，非注释行 0）：变更史与归档指针清零（含正典常量条点名的那处「SSE 契约」）、类注释改职责边界、删跨类类比（禁令 1）与测试用途说明与流水账、订正四处新腐坏（TaskResponse.from 残句、TaskArtifactResponse 未闭合括号、SubtitleSegmentSplitter 的 BREAK_CHARS 失实残句——整句删、原意不可复原已登记待裁、ChatClientConfig 的 /*** 与空标签）。登记一处代码问题不改：ChatClientConfig:18 方法名 ContentSummarizer 首字母大写。独立质检（trellis-check）六条 AC 全 PASS、未改文件，但指出 implement.md 白名单与实际 diff 不符（ApiExceptionHandler:18 的指针随变更史整段删），已订正。审查回合用户手删「解释既成安排」一族（落位依据、可见性辩护、反事实推演、机制推论、与别处重复的约束），我按同一判据追加 6 处并回查悬空引用与注释块内裸空行。该判据经用户裁定回写正典 §一（「读者读完会不会改变行为」+ 五种形态 + 删完回查两件事）并在禁令 6 加指引线。收尾：4 笔提交 + --no-ff 合回 dev、推送、本地 feature 分支删除、任务归档（52cf428）。遗留：domain / application / infrastructure 三层未按新尺子回扫；父任务还剩 backend-test 与 frontend 两个子任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `65bf3ca` | docs(comment): 注释正典补六条裁定 |
+| `30409f7` | chore(task): 注释收口 web/shared/config 层 planning 工件与开工 |
+| `caaf2d2` | docs(comment): 正典补「读者读完会不会改变行为」这把尺子 |
+| `69019cb` | docs(web,shared,config): 注释收口 —— 清变更史与决策引用、删「解释既成安排」的废话 |
+| `05f34e4` | chore(task): 回填 web/shared/config 层收口结果 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 41: 注释收口 backend test 层（子任务 5）+ 任务树对齐正典当前版本
+<!-- trellis-session: v=2 fp=3af87381769e71d6 -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口 backend test 层（子任务 5）+ 任务树对齐正典当前版本
+**Branch**: `dev`
+
+### Summary
+
+先把注释任务树的文档按正典当前版本（§一 那把尺子、§二 两条边界、逐层沉淀）对齐并合入 dev；再执行子任务 5：收口 backend/src/test/java 56 个文件的注释，26 个文件改动（工作集 21 + 人读补扫新增 5）、非注释行 0、≥16 行块 1→0、mvn test 570/0/1/0。分支已合并回 dev 并删除。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8afb33a` | chore(task): 注释任务树对齐正典当前版本（尺子/两条边界/逐层沉淀） |
+| `b309a06` | docs(backend-test): 注释收口 —— 清变更史与决策引用、删「解释既成安排」的段 |
+| `f7f4fc8` | chore(task): 回填 backend test 层收口结果 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 42: 注释收口 frontend 层（子任务 6，注释任务树最后一个）
+<!-- trellis-session: v=2 fp=30c89883a3bce3f5 -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口 frontend 层（子任务 6，注释任务树最后一个）
+**Branch**: `dev`
+
+### Summary
+
+执行注释收口任务树的子任务 6：收口 frontend/src 的注释，19 个文件改动（+47 −70）、非注释行 0、210 个 JSDoc 块不变、≥16 行块 2 → 0、注释行 595 → 573（24.4% → 23.7%）、npm run type-check 与双 linter（oxlint + ESLint，带 --fix 但未改动任何文件）全绿——前端无单测基线，这两条就是本层「行为不变」的替身。开工前的实测把 prd 预估顶掉三处：prd 说「变更史 5 处 / 25 文件 / 2413 行」，实测 27 文件 / 2440 行 / 210 块，且归档指针共有三族共 25 处——① 正典 §六 机械线只报出 4 处；② design §N 章节号 14 处 / 9 文件（机械线模式只列 design.md，拦不住这个写法）；③ 任务卡需求号 R# / D# / AC# 8 处 / 4 文件（经核实出自归档的 .trellis/tasks/archive/2026-10/10-03-vidsage-fe-v0/prd.md 与 design.md）。即机械线报 4、人眼捞 22。处置：design §N 删括注保正文（正文多是真边界，如「本入口只管日历时间」），需求号整处删，另加 4 处日期与 3 处自然语言变体（「按原型验证…重写」「（原型验证的绑定口径）」「（原工作区产物面板修复先例）」）。按正典 §一 尺子与禁令 2 / 10 另收口：「解释既成安排」段（落位依据、可见性辩护）删，现状快照改职责边界（enums/task.ts、routes/index.ts），同一处写两遍的合一（useTranscriptPlayer 的类型标注句），构件内部步骤序列整条删（stores/task.ts 的数据流箭头链，按 §二 两条边界第 1 条）。request.ts 门面块里 axios 条件类型的整段推导在 type-safety.md:95 已有完整出处，代码里压成一句 why + 指针。prd 点名「不动」的 lib/gsap.ts 一字未动，并复核「当前无插件使用场景」仍真（全仓只有两个 view 从 @/lib/gsap 导入，无 registerPlugin 调用）。5 个人读复核后判不动：App.vue、BrandLogo.vue、HeroWave.vue、AudioWaveform.vue、views/not-found/index.vue。§4 标准补充四条：Ⓐ design §N 与需求号这类「任务卡内部编号」在正典 §五 表里没名字、§六 模式清单也拦不住，建议补一行（待裁）；Ⓑ 两个 .vue 里几乎同文的 SCSS 说明——禁令 5 / 10 都只管文件内，跨文件没口径，本层做了不对称处置（两份都删「来自原型」的出处句，只留 workspace 侧「与上传页的进度条同一视觉」这条跨组件不变量），待裁；Ⓒ 类型标注策略说明正典已覆盖，无需补；Ⓓ 新增一条：「需要 put / delete 时按同款签名在此追加」这类扩展点指引算不算禁令 6 的辩护句——本层判留（两处），理由与辩护句不同：读者本来就会去做那件事，它防的是另建实例、把单文件撑爆。§3 待订正空表，三处疑似失实（SubtitleArtifactFile 类型、后端 TaskSseConnectionManager、gsap 无插件）都查证为属实，记进表里备查。独立质检（trellis-check）已派发但截至提交尚未返回。收尾：本层是注释任务树 6 个子任务的最后一个，分支已 --no-ff 合回 dev、本地 feature 分支已删；dev 领先 origin/dev 10 笔未推。父任务 10-12-comment-consolidation 仍欠收尾三件（全量 AC1 三面复核 + 装钩子验 AC7 + domain/application/infrastructure 三层按 §一 尺子回归扫描），写在父 implement.md §5。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8c5a5d0` | chore(task): 注释收口 frontend 层工件与开工 |
+| `9a5bc0d` | docs(frontend): 注释收口 —— 清变更史与归档指针、删「解释既成安排」的段 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 43: 注释收口：三层回归扫描（domain / application / infrastructure）
+<!-- trellis-session: v=2 fp=c6af44b077c86f44 -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口：三层回归扫描（domain / application / infrastructure）
+**Branch**: `dev`
+
+### Summary
+
+按正典 §一 那把尺子回扫三层：人读 301 个 ≥6 行块，31 文件 / 32 处删改（落位依据、反事实推演、机制推论、重复约束）；修掉 1 处注释块裸空行；AC1 三面复核归零（test 层一处「逐字节一致」判为误报并改写）；装 pre-commit 注释卫生闸（AC7）并实测拦截。父任务 10-12-comment-consolidation 随之归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `96cd921` | docs(backend): 注释回归扫描 —— 按正典 §一 尺子回扫 domain/application/infrastructure |
+| `0f0a173` | Merge branch 'feature/comment-regression-scan' into dev |
+
+### Status
+
+[OK] **Completed**

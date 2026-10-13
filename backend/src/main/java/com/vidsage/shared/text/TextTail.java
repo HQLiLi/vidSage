@@ -13,7 +13,7 @@ public final class TextTail {
     }
 
     /**
-     * 取文本尾部若干行：全文可能很长（含输入流转储），尾部通常已含失败原因。
+     * 取文本尾部若干行。
      *
      * <p>判空用 {@code StringUtils.hasText}：它是纯静态工具、不牵扯 Spring 容器，且与库内
      * 其他判空写法保持一致（error-handling 规定字符串判空一律用它）。

@@ -5,11 +5,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 /**
  * 409 冲突响应体：错误说明 + 既有任务响应。
  *
- * <p>是既有 {@code { "error": message }} 形状的<b>有意扩展</b>：冲突的可操作出路是
- * 「改用既有任务」，光有文字说明不够，把视图一并返回，调用方拿 {@code existingTask.taskNo}
- * 即可直接查询 / 订阅进度，不必再发一次查询。载荷由 {@code ApiExceptionHandler} 从
- * application 异常携带的读模型（{@code TaskSnapshot}）经 {@link TaskResponse#from} 映射。
- *
  * @param error        中文错误说明
  * @param existingTask 已存在的进行中任务响应（PENDING / RUNNING）
  */

@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "质检判据全在这里：§六 脚本与模式清单（AC1 变更史归零）、§一 尺子与「删完回查两件事」（删对了没）、§二 两条边界（事故叙事例外）、§三 禁令 1/6（本层高频病灶）、§五 两类指针表"}
+{"file": ".trellis/tasks/10-12-comment-backend-test/prd.md", "reason": "逐条对本层 AC：test 目录模式命中为 0、抽查 5 类注释都在说为什么、被删的钉子逐条确认没丢信息、mvn test 用例数不少于收口前"}
+{"file": ".trellis/tasks/10-12-comment-backend-test/implement.md", "reason": "质检对象：§1 逐文件登记是否与实际 diff 对得上、§2 例外登记是否写了砍不动的理由、§3 是否逐条已订正、§4 是否只剩空表、§5 自检是否留实测值"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "跨子任务 AC 的判据（AC1 机器可判 / AC2 只答四件事 / AC4 腐坏逐处订正并留清单 / AC5 行为不变且基线实测），以及「只改注释」的硬约束"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "验证策略表与「只改注释」的复核口径（git diff -w 通读确认无手滑改代码）；§6 风险表里「误删承载知识的 why」「把腐坏的注释当成正确依据」是质检重点"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」：质检不得因某处没注释判违规、也不得要求补写；只判该留的有没有被删（尤其 :136 双目标用例、:188 测试方法名描述行为）"}

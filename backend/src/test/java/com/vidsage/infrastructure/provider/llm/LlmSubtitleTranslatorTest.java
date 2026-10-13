@@ -7,10 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.config.SubtitleTranslateProperties;
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.subtitle.SubtitleContext;
-import com.vidsage.domain.subtitle.TranslateResult;
-import com.vidsage.domain.subtitle.VerifiedTerm;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.model.translation.TranslateResult;
+import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -29,7 +29,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 /**
  * {@link LlmSubtitleTranslator} 的纯单元测试：<b>不起 Spring 容器</b>，也不打网络。
  *
- * <p>手法对照 {@code SubtitleCleanserTest}：装一个只回剧本台词的 {@code ChatModel}，
+ * <p>手法是「真 {@code ChatClient} + 桩 {@code ChatModel}」：装一个只回剧本台词的 {@code ChatModel}，
  * 把 Spring AI 真正发出去的 {@link Prompt} 抓下来断言。
  *
  * <p>重点钉两件事：多轮重试的消息形态（失败往返只留在批内、不进跨批历史），

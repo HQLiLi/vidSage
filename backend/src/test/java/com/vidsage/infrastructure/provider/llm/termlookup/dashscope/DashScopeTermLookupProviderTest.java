@@ -8,8 +8,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.domain.subtitle.TermLookupCommand;
-import com.vidsage.domain.subtitle.TermLookupResult;
+import com.vidsage.domain.subtitle.model.term.TermLookupCommand;
+import com.vidsage.domain.subtitle.model.term.TermLookupResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;

@@ -1,0 +1,19 @@
+=== 1. WorkspaceService 全仓命中（预期：只剩历史注 / 判据来历注）===
+backend/src/main/java/com/vidsage/domain/shared/model/WorkspaceKey.java:16: * <p><b>公式</b>的两个静态工厂在本类（原 {@code WorkspaceService.shortHash} 与
+backend/src/main/java/com/vidsage/domain/shared/model/WorkspaceKey.java:43:     * 12 位已足够避免单机任务目录碰撞。原 {@code WorkspaceService.shortHash} 吸收于此。
+backend/src/test/java/com/vidsage/application/media/WorkspaceKeyGeneratorTest.java:26: * <p>由 {@code WorkspaceServiceTest} 拆分而来（2026-10-09 端口倒置）：本类留<b>身份路线</b>断言
+backend/src/test/java/com/vidsage/domain/shared/model/SourceUriTest.java:12: * 内容寻址规则断言迁自 WorkspaceServiceTest（断言值不变）——目录名由「身份 → key → 目录名」
+backend/src/test/java/com/vidsage/domain/shared/model/WorkspaceDirTest.java:11: * （非法字符 / Windows 保留名 / 结尾点空格 / 长度上限）。迁自 WorkspaceServiceTest（断言值不变）。
+backend/src/test/java/com/vidsage/domain/shared/model/WorkspaceKeyTest.java:13: * 两条路线（哈希身份串 / 已算好摘要）的产物一致。shortHash 断言迁自 WorkspaceServiceTest
+backend/src/test/java/com/vidsage/infrastructure/fs/NioWorkspaceDirectoryManagerTest.java:19: * <p>由 {@code WorkspaceServiceTest} 拆分而来（2026-10-09 端口倒置）：本类只留<b>目录定位与创建</b>
+.trellis/spec/backend/directory-structure.md:104:> 判据的来历（2026-10-06 命名对齐）：旧口径下这两档都叫 `XxxService`，但全项目**只有 `VideoTaskService` 有 web 调用面**，其余每一个的调用者都恰好只有一个——没有一个是独立用例（当时的横切例外 `WorkspaceService` 已于 2026-10-09 端口倒置任务拆除，能力拆进 `WorkspaceDirectoryManager` 与 `WorkspaceKeyGenerator`）。名字在撒谎，故按「有没有 web 调用面」重划，并让 stereotype 跟着判据走。
+
+=== 2. application 零 infrastructure import（预期零命中）===
+(零命中)
+
+=== 3. NioWorkspaceDirectoryManager 的 application import（预期：仅 implements 一行）===
+3:import com.vidsage.application.media.port.WorkspaceDirectoryManager;
+
+=== 4. WorkspaceServiceTest 拆分核对（4+5=9，零丢失）===
+backend/src/test/java/com/vidsage/infrastructure/fs/NioWorkspaceDirectoryManagerTest.java:4
+backend/src/test/java/com/vidsage/application/media/WorkspaceKeyGeneratorTest.java:5

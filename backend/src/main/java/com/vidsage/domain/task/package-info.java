@@ -1,11 +1,14 @@
 /**
- * 任务上下文：任务生命周期与任务词汇的家——{@code VideoTask}（主状态机 + 翻译子状态机的载体，
- * 兼承载终态谓词 {@code isEventSettled} 与 active 判据 {@code ACTIVE_STATUSES} 两处查询谓词，
- * 供 web 收口与 repository 查重引用）、状态枚举 {@code TaskStatus} / {@code TaskInputType} /
- * {@code TranslationStatus}、任务号值对象 {@code TaskNo}、产物可见性政策
- * {@code TaskArtifactScan}（白名单：{@code *.srt} 与 {@code segments-*.json} 对外可见，
- * 2026-10-06 业务逻辑下沉 Phase C 落地）；端口接口 {@code VideoTaskRepository}
- * （2026-10-06 端口倒置：原为 infrastructure 的具体类，现改为定义在此、由
- * {@code infrastructure/persistence/repository/MybatisVideoTaskRepository} 实现）。
+ * 任务上下文：任务生命周期与任务词汇的家。
+ *
+ * <p>根只留主状态机 {@code VideoTask}——它承载合法迁移规则，也带两处查询谓词
+ * {@code isEventTerminal}（终态判定，web 收口引用）与 {@code ACTIVE_STATUSES}（active 判据，
+ * repository 查重引用）。
+ *
+ * <p>{@code model/} 装数据词汇——状态枚举 {@code TaskStatus} / {@code TaskInputType} /
+ * {@code TranslationStatus} 与任务号值对象 {@code TaskNo}；{@code policy/} 装无状态政策
+ * {@code TaskStageEvent}（任务状态 → 阶段事件的渲染）；{@code port/} 装端口接口
+ * {@code VideoTaskRepository}，由 {@code infrastructure/persistence/repository/} 的
+ * {@code MybatisVideoTaskRepository} 实现。
  */
 package com.vidsage.domain.task;

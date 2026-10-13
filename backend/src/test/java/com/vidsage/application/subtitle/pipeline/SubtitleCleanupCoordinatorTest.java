@@ -1,0 +1,458 @@
+package com.vidsage.application.subtitle.pipeline;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.vidsage.application.media.WorkspaceKeyGenerator;
+import com.vidsage.application.media.port.WorkspaceDirectoryManager;
+import com.vidsage.config.SubtitleCleanupProperties;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.shared.model.StageProgress;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
+import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
+import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
+import com.vidsage.domain.transcription.port.ASRProvider;
+import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
+import com.vidsage.domain.subtitle.port.SubtitleCleanser;
+import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.CleanupMode;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * SubtitleCleanupCoordinator 的纯单元测试：<b>不起 Spring 容器</b>。
+ *
+ * <p>只测<b>编排</b>：定位产物 → 断点复用 → 切分 → 交给 {@link SubtitleCleanser} → 写 -clean 产物。
+ * 摘要器与 cleanser 都是 mock；清洗算法本身（分批、守卫、重试、保留原文）不在这里测。
+ */
+class SubtitleCleanupCoordinatorTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final SubtitleCleanupProperties PROPS =
+            new SubtitleCleanupProperties(8000, 600, 20, 3, 0.7, 0.3, 20000, false);
+
+    @TempDir(cleanup = CleanupMode.NEVER)
+    Path workDir;
+
+    private final WorkspaceKeyGenerator workspaceKeyGenerator = mock(WorkspaceKeyGenerator.class);
+    private final WorkspaceDirectoryManager workspaceDirectoryManager = mock(WorkspaceDirectoryManager.class);
+    private final ASRProvider asrProvider = mock(ASRProvider.class);
+    private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
+    private final SubtitleCleanser subtitleCleanser = mock(SubtitleCleanser.class);
+
+    /** cleanser 被调了几次——「断点复用后不再跑」这类断言靠它。 */
+    private final AtomicInteger cleanserCalls = new AtomicInteger();
+
+    /** cleanser 的桩：原样返回入参（零修正、零重试），只记调用次数。 */
+    private void stubCleanserEcho() {
+        doAnswer(invocation -> {
+            cleanserCalls.incrementAndGet();
+            List<TranscriptionSegment> in = invocation.getArgument(0);
+            return new CleanseResult(in, 0, 0, 0, 0);
+        }).when(subtitleCleanser).clean(any(), any(), any(), any());
+    }
+
+    private SubtitleCleanupCoordinator service() {
+        when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
+        when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
+        when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
+        return new SubtitleCleanupCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, asrProvider, JSON, PROPS,
+                contextSummarizer, subtitleCleanser);
+    }
+
+    private void writeRawTrack() throws Exception {
+        SubtitleTrack raw = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of(
+                new TranscriptionSegment(0, 5000, "我防关这边露出"),
+                new TranscriptionSegment(5000, 10000, "今天天气不错")), null);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), raw);
+    }
+
+    /**
+     * 预置一份带指定关键词指纹的 {@code -clean} 检查点——断点复用与摘要缓存判据都以它为前提。
+     *
+     * @param fingerprint 写进产物的那枚指纹；传 {@code null} 模拟存量产物（没有这个字段）
+     */
+    private void writeCleanTrack(String fingerprint) throws Exception {
+        SubtitleTrack clean = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of(
+                new TranscriptionSegment(0, 5000, "我防关这边露出"),
+                new TranscriptionSegment(5000, 10000, "今天天气不错")), fingerprint);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), clean);
+    }
+
+    @BeforeEach
+    void resetStubs() {
+        cleanserCalls.set(0);
+        stubCleanserEcho();
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(SubtitleContext.empty()));
+        when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
+        when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
+        when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
+    }
+
+    @Test
+    void cleanWritesCleanArtifactsAndDelegatesOnce() throws Exception {
+        writeRawTrack();
+        SubtitleCleanupCoordinator s = service();
+
+        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+
+        // 两条 -clean 产物都在且非空
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        assertTrue(Files.isRegularFile(cleanSeg) && Files.size(cleanSeg) > 0, "应产出 -clean.json");
+        assertTrue(Files.isRegularFile(cleanSrt) && Files.size(cleanSrt) > 0, "应产出 -clean.srt");
+        assertEquals(2, cleaned.segmentCount());
+        // 整份清单一次交给 cleanser——内部分几批是它自己的事，service 不该管
+        assertEquals(1, cleanserCalls.get(), "整份清单应只交给 cleanser 一次");
+    }
+
+    @Test
+    void cleanReusesCheckpointSkipsCleanser() throws Exception {
+        writeRawTrack();
+        SubtitleCleanupCoordinator s = service();
+        s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+
+        // 二跑：-clean.json 已在，应断点复用，不再走切分与清洗
+        CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+
+        assertEquals(1, cleanserCalls.get(), "断点复用后不应再调 cleanser");
+        assertEquals(2, second.segmentCount());
+    }
+
+    @Test
+    void emptyTranscriptionWritesNonEmptyCheckpointDespiteZeroByteSrt() throws Exception {
+        // 空转写是合法产出（纯音乐 / 无语音）：raw segments=[]
+        SubtitleTrack empty = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of(), null);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), empty);
+        SubtitleCleanupCoordinator s = service();
+
+        CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        assertEquals(0, first.segmentCount());
+        assertEquals(0, first.srtSizeBytes());
+        // 关键：SRT 是 0 字节，但检查点 JSON 必须非空——否则下次判「未完成」会反复重跑（死循环）
+        assertTrue(Files.size(cleanSeg) > 0, "空转写的 -clean.json 也必须非空，才能当检查点");
+        assertEquals(0L, Files.size(cleanSrt), "空转写产出 0 字节 SRT");
+
+        // 二跑：断点命中直接返回，不重跑（空转写不死循环）
+        CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+        assertEquals(0, second.segmentCount());
+        assertEquals(1, cleanserCalls.get(), "空转写二跑应走断点复用，不再调 cleanser");
+    }
+
+    @Test
+    void cleanMissingRawThrows() {
+        SubtitleCleanupCoordinator s = service();
+        assertThrows(IllegalStateException.class, () -> s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of())));
+    }
+
+    @Test
+    void cleanNullInputThrows() {
+        SubtitleCleanupCoordinator s = service();
+        assertThrows(IllegalArgumentException.class, () -> s.clean(null, new SubtitleKeywords(List.of())));
+    }
+
+    @Test
+    void cleanRejectsNullListener() {
+        SubtitleCleanupCoordinator s = service();
+        assertThrows(IllegalArgumentException.class,
+                () -> s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()), null));
+    }
+
+    // ------------------------------------------------------------------
+    // 进度事件（管线通过 listener 拿阶段边界与批级进度）
+    // ------------------------------------------------------------------
+
+    @Test
+    void cleanWithListenerEmitsBeginBatchAndEndEvents() throws Exception {
+        writeRawTrack();
+        // 真实批级事件来自 SubtitleCleanser（自报 0..100）；本层验「批级换算进 clean 区间 + 首尾事件齐全」
+        doAnswer(invocation -> {
+            ProgressListener listener = invocation.getArgument(3);
+            listener.onProgress(new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 50, "第 1/1 批",
+                    StageProgress.State.RUNNING));
+            List<TranscriptionSegment> in = invocation.getArgument(0);
+            return new CleanseResult(in, 0, 0, 0, 0);
+        }).when(subtitleCleanser).clean(any(), any(), any(), any());
+        List<StageProgress> events = new ArrayList<>();
+
+        service().clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()), events::add);
+
+        assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
+        assertEquals(70, events.get(0).progress(), "开始 = clean 区间起点");
+        assertEquals(StageProgress.State.RUNNING, events.get(0).state());
+        assertEquals("第 1/1 批", events.get(1).message(), "批级消息原样透传");
+        assertEquals(85, events.get(1).progress(), "批级自报 50 应换算进 [70,100)：70 + 50*30/100 = 85");
+        assertEquals(100, events.get(2).progress(), "完成 = clean 区间终点");
+        assertEquals(StageProgress.State.SUCCEEDED, events.get(2).state());
+    }
+
+    @Test
+    void cleanCheckpointHitEmitsSingleSkippedEvent() throws Exception {
+        writeRawTrack();
+        SubtitleCleanupCoordinator s = service();
+        s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+
+        List<StageProgress> events = new ArrayList<>();
+        s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()), events::add);
+
+        assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
+        assertEquals(StageProgress.State.SKIPPED, events.get(0).state());
+        assertEquals(100, events.get(0).progress());
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
+    }
+
+    @Test
+    void cleanMissingRawStillEmitsBeginEventBeforeFailing() {
+        // 失败也要先留下「阶段已开始」的痕迹：失败消息才能带上所在阶段（管线的复合监听先落库）
+        List<StageProgress> events = new ArrayList<>();
+
+        assertThrows(IllegalStateException.class,
+                () -> service().clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()), events::add));
+
+        assertEquals(1, events.size(), () -> "失败前应已发「开始清洗」：" + events);
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
+        assertEquals(StageProgress.State.RUNNING, events.get(0).state());
+    }
+
+    // ------------------------------------------------------------------
+    // 上下文缓存（design §3.2 / 决策 5）
+    // ------------------------------------------------------------------
+
+    private Path contextFile() {
+        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(SubtitleRoute.ASR_CLOUD, null));
+    }
+
+    /** 清洗检查点（-clean 的 segments JSON）。 */
+    private Path cleanFile() {
+        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+    }
+
+    /** 原始转写检查点——重跑的输入，任何路径都不许删它。 */
+    private Path rawFile() {
+        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null));
+    }
+
+    private Path translateSegFile() {
+        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(SubtitleRoute.ASR_CLOUD, "en"));
+    }
+
+    private Path translateSrtFile() {
+        return workDir.resolve(SubtitleArtifactSpec.SRT_TRANSLATED.fileName(SubtitleRoute.ASR_CLOUD, "en"));
+    }
+
+    private Path termsFile() {
+        return workDir.resolve(SubtitleArtifactSpec.TERMS.fileName(SubtitleRoute.ASR_CLOUD, "en"));
+    }
+
+    @Test
+    void summarizeSuccessWritesContextFile() throws Exception {
+        writeRawTrack();
+        // 用一份有辨识度的上下文当「成功结果」，好钉住落盘的就是它、不是空壳
+        when(contextSummarizer.summarize(any(), any()))
+                .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
+        SubtitleCleanupCoordinator s = service();
+
+        s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+
+        assertTrue(Files.isRegularFile(contextFile()) && Files.size(contextFile()) > 0,
+                "摘要成功应把上下文落盘");
+        SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
+        assertEquals("de", persisted.sourceLanguage(), "落盘的该是成功那份上下文");
+        assertEquals("中世纪剑术", persisted.theme());
+        verify(contextSummarizer).summarize(any(), any());
+    }
+
+    @Test
+    void contextCacheHitSkipsSummarize() throws Exception {
+        writeRawTrack();
+        // 摘要缓存可用的前提是「旧 -clean 就是当前这份关键词生成的」——只有重生成这条路会走到它
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
+        writeCleanTrack(keywords.computeFingerprint());
+        JSON.writeValue(contextFile().toFile(),
+                new SubtitleContext("中世纪剑术", "de", List.of()));
+        SubtitleCleanupCoordinator s = service();
+
+        s.regenerate(new MediaInput.RemoteUrl("https://x"), keywords, ProgressListener.noop());
+
+        verify(contextSummarizer, never()).summarize(any(), any());
+        assertEquals(1, cleanserCalls.get(), "指纹没变时不必重新摘要，但仍要重跑清洗");
+    }
+
+    @Test
+    void fingerprintMismatchForcesResummarize() throws Exception {
+        writeRawTrack();
+        // 旧 -clean 是另一份关键词生成的：上下文可能也是那份下产的 → 必须重新摘要
+        writeCleanTrack("0000deadbeef");
+        JSON.writeValue(contextFile().toFile(),
+                new SubtitleContext("中世纪剑术", "de", List.of()));
+        SubtitleCleanupCoordinator s = service();
+
+        s.regenerate(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of("影视飓风")),
+                ProgressListener.noop());
+
+        verify(contextSummarizer).summarize(any(), any());
+    }
+
+    @Test
+    void cleanSkipsCheckpointOnlyWhenFingerprintMatches() throws Exception {
+        writeRawTrack();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of("影视飓风"));
+        writeCleanTrack(keywords.computeFingerprint());
+        SubtitleCleanupCoordinator s = service();
+
+        s.clean(new MediaInput.RemoteUrl("https://x"), keywords);
+
+        assertEquals(0, cleanserCalls.get(), "指纹一致就该复用现成产物，一次 LLM 都不发");
+    }
+
+    @Test
+    void cleanRerunsWhenFingerprintDiffers() throws Exception {
+        writeRawTrack();
+        writeCleanTrack("0000deadbeef");
+        SubtitleCleanupCoordinator s = service();
+
+        s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of("影视飓风")));
+
+        assertEquals(1, cleanserCalls.get(), "关键词变了，旧字幕对不上，必须重跑");
+    }
+
+    @Test
+    void regenerateRerunsEvenWhenFingerprintUnchanged() throws Exception {
+        writeRawTrack();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
+        writeCleanTrack(keywords.computeFingerprint());
+        SubtitleCleanupCoordinator s = service();
+
+        s.regenerate(new MediaInput.RemoteUrl("https://x"), keywords, ProgressListener.noop());
+
+        assertEquals(1, cleanserCalls.get(), "用户点了重新生成就是要一份新的，即便关键词没变");
+    }
+
+    @Test
+    void regenerateWritesFingerprintIntoCleanArtifact() throws Exception {
+        writeRawTrack();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of("影视飓风"));
+        SubtitleCleanupCoordinator s = service();
+
+        s.regenerate(new MediaInput.RemoteUrl("https://x"), keywords, ProgressListener.noop());
+
+        SubtitleTrack written = JSON.readValue(
+                workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(),
+                SubtitleTrack.class);
+        assertEquals(keywords.computeFingerprint(), written.keywordsFingerprint(),
+                "产物里必须记着生成它的指纹，否则下次没法判该不该重跑");
+    }
+
+    @Test
+    void regenerateFailsWithoutTouchingAnythingWhenSummaryDegrades() throws Exception {
+        writeRawTrack();
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
+        SubtitleCleanupCoordinator s = service();
+
+        assertThrows(IllegalStateException.class,
+                () -> s.regenerate(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()),
+                        ProgressListener.noop()));
+
+        assertEquals(0, cleanserCalls.get(), "摘不出上下文就不该硬着头皮清洗");
+        assertFalse(Files.exists(cleanFile()), "整体失败时不该留下半成品");
+    }
+
+    @Test
+    void regenerateFailureKeepsOldCleanAndTranslatedArtifacts() throws Exception {
+        // AC5 的失败形态之一（摘要失败）：旧字幕与旧译文必须一个都不少——
+        // 用户从「能用」掉到「什么都没有」正是「先删再跑」被否掉的原因
+        writeRawTrack();
+        writeCleanTrack("0000deadbeef");
+        Files.writeString(translateSegFile(), "{}");
+        Files.writeString(translateSrtFile(), "1\n");
+        Files.writeString(termsFile(), "{}");
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
+        SubtitleCleanupCoordinator s = service();
+
+        assertThrows(IllegalStateException.class,
+                () -> s.regenerate(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()),
+                        ProgressListener.noop()));
+
+        assertTrue(Files.exists(cleanFile()), "旧 -clean 一个字节都不能少");
+        assertTrue(Files.exists(translateSegFile()) && Files.exists(translateSrtFile()),
+                "失败路径不许删译文——删了用户就同时失去字幕和译文");
+        assertTrue(Files.exists(termsFile()), "terms 同样是成功之后才删的东西");
+        assertTrue(Files.exists(rawFile()), "原始转写是重跑的输入，任何路径都不许删");
+    }
+
+    @Test
+    void regenerateDeletesTranslatedAndTermsArtifactsAfterSuccess() throws Exception {
+        writeRawTrack();
+        Files.writeString(translateSegFile(), "{}");
+        Files.writeString(translateSrtFile(), "1\n");
+        Files.writeString(termsFile(), "{}");
+        Files.writeString(contextFile(), "{}");   // 不该被删
+        SubtitleCleanupCoordinator s = service();
+
+        s.regenerate(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()), ProgressListener.noop());
+
+        assertFalse(Files.exists(translateSegFile()), "译文对不上新字幕了，该删");
+        assertFalse(Files.exists(translateSrtFile()));
+        assertFalse(Files.exists(termsFile()), "terms 是拿旧术语表查的，也该删");
+        assertTrue(Files.exists(cleanFile()), "新 -clean 得留下");
+        assertTrue(Files.exists(rawFile()), "原始转写是重跑的输入，谁都不许删");
+    }
+
+    @Test
+    void summarizeDegradeDoesNotWriteContextFile() throws Exception {
+        writeRawTrack();
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
+        SubtitleCleanupCoordinator s = service();
+
+        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+
+        assertFalse(Files.exists(contextFile()),
+                "降级成空上下文绝不能落盘，否则下次会命中这份空缓存");
+        assertEquals(2, cleaned.segmentCount(), "摘要失败不该拦住清洗");
+        assertEquals(1, cleanserCalls.get(), "清洗照常进行");
+    }
+
+    @Test
+    void keywordsStillReachCleanserWhenSummaryDegrades() throws Exception {
+        // AC7 通道②：摘要降级成空上下文时（连关键词也没进摘要器），关键词必须仍原样传给清洗器——
+        // 这条独立通道就是为「摘要失败时用户填的词一个字都不生效且毫无提示」而设的
+        writeRawTrack();
+        when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of("影视飓风"));
+        SubtitleCleanupCoordinator s = service();
+
+        s.clean(new MediaInput.RemoteUrl("https://x"), keywords, ProgressListener.noop());
+
+        ArgumentCaptor<SubtitleKeywords> captor = ArgumentCaptor.forClass(SubtitleKeywords.class);
+        verify(subtitleCleanser).clean(any(), any(), captor.capture(), any());
+        assertEquals(keywords, captor.getValue(), "摘要降级不影响清洗器收到的关键词");
+    }
+}

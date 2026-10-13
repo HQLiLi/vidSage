@@ -37,7 +37,7 @@ spring:
 
 vidsage:
   task:
-    # 同时执行的异步管线任务上限；超出者保持 PENDING 排队（VideoTaskPipeline 的 Semaphore 限流）
+    # 同时执行的异步管线任务上限；超出者保持 PENDING 排队（SemaphoreTaskConcurrencyGate 的 Semaphore 限流）
     max-concurrent: 2
   asr:
     # ASR提供者：本地或云端

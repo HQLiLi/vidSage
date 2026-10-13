@@ -10,12 +10,13 @@ import static org.mockito.Mockito.when;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.vidsage.domain.shared.WorkspaceKey;
-import com.vidsage.domain.task.TaskNo;
+import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
-import com.vidsage.domain.task.TaskInputType;
-import com.vidsage.domain.task.TaskStatus;
-import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskStatus;
+import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.infrastructure.persistence.entity.VideoTaskEntity;
 import com.vidsage.infrastructure.persistence.mapper.VideoTaskMapper;
 import java.util.Collection;
@@ -26,8 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * {@link MybatisVideoTaskRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>
- * （真库连通由 {@code VidSageApplicationTests} 上下文冒烟在 local profile 下验证）。
+ * {@link MybatisVideoTaskRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>。
  *
  * <p>覆盖「实体 ↔ 领域对象双向转换的逐字段对齐」「insert 回填自增 id」「查重查询的过滤条件」。
  * LambdaQueryWrapper 解析列名依赖 TableInfo 缓存，纯单测需先手工初始化。
@@ -83,7 +83,7 @@ class MybatisVideoTaskRepositoryTest {
         entity.setWorkspaceKey("a1b2c3d4e5f6");
         entity.setWorkspaceDir("dir-a1b2c3d4e5f6");
         entity.setStatus(TaskStatus.RUNNING);
-        entity.setCurrentStage("transcribe");
+        entity.setCurrentStage(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName());
         entity.setTranslationStatus(TranslationStatus.SUCCEEDED);
         entity.setErrorMessage(null);
         when(mapper.selectOne(any())).thenReturn(entity);
@@ -99,7 +99,7 @@ class MybatisVideoTaskRepositoryTest {
         assertEquals("a1b2c3d4e5f6", task.getWorkspaceKey().value());
         assertEquals("dir-a1b2c3d4e5f6", task.getWorkspaceDir());
         assertEquals(TaskStatus.RUNNING, task.getStatus());
-        assertEquals("transcribe", task.getCurrentStage());
+        assertEquals(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), task.getCurrentStage());
         assertEquals(TranslationStatus.SUCCEEDED, task.getTranslationStatus(),
                 "翻译子状态应随行双向转换（NULL=从未触发 → null）");
         // 重建出的领域对象可直接继续走状态机（RUNNING → FAILED）
@@ -140,7 +140,7 @@ class MybatisVideoTaskRepositoryTest {
     @Test
     void updateWritesMutatedDomainStateBackToEntity() {
         VideoTask task = VideoTask.restore(9L, new TaskNo("abc123"), TaskInputType.URL, "https://example.com/v",
-                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.RUNNING, "clean", null, null,
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.RUNNING, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null, null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), null);
         task.fail("翻译失败：请检查 DEEPSEEK_API_KEY");
@@ -159,7 +159,7 @@ class MybatisVideoTaskRepositoryTest {
     @Test
     void updateCarriesTranslationStatusTransition() {
         VideoTask task = VideoTask.restore(11L, new TaskNo("def456"), TaskInputType.URL, "https://example.com/v",
-                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, "clean", null, null,
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null, null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now());
         task.translationStart();

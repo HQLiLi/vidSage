@@ -1,7 +1,13 @@
 /**
- * 媒体应用层：媒体获取与音频准备的管线阶段，外加工作区服务——{@code MediaAcquisitionStage}
- * （按输入类型分派 {@code MediaAcquirer}）、{@code AudioPreparationStage}
- * （acquire → extract-audio 两阶段编排）、{@code WorkspaceService}
- * （按输入内容寻址的工作区目录，被多处方共用的横切服务）。
+ * 媒体应用层：根留 {@code WorkspaceKeyGenerator}（媒体输入 → 内容寻址 key 的生成器，
+ * {@code @Component} 机制/协作件），其余构件按角色进子包。
+ *
+ * <p>子包 {@code port/} 装两个技术端口：{@code FileStateReader}（文件 stat 读数）与
+ * {@code WorkspaceDirectoryManager}（工作区目录的定位与创建）。实现都在
+ * {@code infrastructure/fs/}，本层只认接口。
+ *
+ * <p>子包 {@code pipeline/} 装本上下文的管线阶段：{@code MediaAcquirerDispatcher}
+ * （按输入类型分派 {@code MediaAcquirer}）与 {@code AudioPreparationCoordinator}
+ * （获取媒体 → 抽取音频两阶段编排）。两者都是管线构件，各自只被上级管线按顺序调用一次。
  */
 package com.vidsage.application.media;

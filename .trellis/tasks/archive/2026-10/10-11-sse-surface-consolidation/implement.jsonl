@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "本任务的正典：web/sse 的职责列（:56，批次 0 要补「订阅配对」）、业务逻辑下沉清单里的 isEventTerminal（:68）、后缀登记表（:273，-Manager 补第二例 TaskSseConnectionManager）、契约类位置表里 TaskProgressMessage 那行（:304，补 terminal 为派生字段且不带 @Schema）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "构造函数注入与可测试性口径（TaskSseConnectionManager 新增 TaskSubscriptionRegistry 依赖、hasBucket 测试探针）；注释「写与删」口径决定 remove() 那句失实 Javadoc 该改成什么，以及 open() 里两条历史缺陷防御注释该保留哪些字"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "卫语句先于一切状态变更——open() 开头的 requireTaskNo、controller 里 400（taskNo 空白）与 404（预检）的先后顺序都要照这条；TaskNotFoundException 的抛出点必须在任何 emitter 登记之前"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "SSE 面日志的级别与脱敏红线：taskNo 可记、URL 原文不可记；心跳失败/断连摘除走 debug、注册表回调失败走 warn——本次这些语句只搬位置不改级别"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "SSE 边界约定：EventSource 走 composables/ 不进 src/api/，全路径 /api/... 双拼是刻意的（:11、:16、:57）；批次 5 要在此新增「SSE 订阅错误处理」一条"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "store 暴露状态与 watch 的写法：reconnecting/fatal 两个 ref 怎么从 composable 透出到 store、diagnoseFatal 怎么写才不违反 store 的分层口径"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型镜像与 no-as 口径：types/task.ts 加 terminal: boolean 的写法、enum 与纯类型的边界；request.ts 门面那处受控断言的先例"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "composable 的副作用清理口径（:99，EventSource 的 onScopeDispose 在 composable 内部处理，不留给调用方）——本次加 onerror/onopen 后不得破坏这条"}
+{"file": ".trellis/tasks/10-11-sse-surface-consolidation/design.md", "reason": "本任务的示例代码形状：TaskProgressMessage 的紧凑构造器 + of() 工厂、open() 的 7 步顺序、remove() 的两参删除、前端错误状态机的阈值与三分支确诊。批次 1/2 照它写"}
+{"file": ".trellis/tasks/archive/2026-10/10-08-pipeline-state-broadcast/design.md", "reason": "「行为逐格不变」的对照口径与 §五保真清单的写法——本轮 AC7 的对照方法（同机同轮抓参照侧、剥 CRLF 再比）沿用它的做法"}
+{"file": ".trellis/tasks/archive/2026-10/09-24-vidsage-mvp1-submit/research/acceptance-evidence.md", "reason": "「事件插曲：SSE 重复推送」是 open() 里 onCompletion 退订与重读快照这两条防御的原始事故记录，照搬顺序时以它为准，别凭印象简化"}

@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "本任务的正典：分层归属判据（application 允许出现什么）、依赖规则与窄口白名单、端口归属判据、二级包怎么分、命名约定（实现类=接口名+技术前缀、infrastructure→@Component）。批次 0 要先改这张表里的 fs 行与依赖表"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "构造函数注入与可测试性口径，新增的三个构件（端口/实现/resolver）都要满足"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "「同一判据只有一份」——判断 stat 该不该留在原地、身份规则该不该重复写在 4 个调用点"}

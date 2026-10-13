@@ -12,7 +12,7 @@
 已落地：`ASRProvider`
 规划中（见主 PRD 与 `docs/prd/local-model-deployment.md`）：`EmbeddingProvider`
 
-> **`LLMProvider` 不建（2026-09-28 定）**：LLM 的供应商缝已由 Spring AI 的 `ChatClient` / `ChatModel` 承担——换 starter / base-url 即换来源，Java 零改动；且本地 Ollama 与云端 DeepSeek 都是 OpenAI 兼容协议，同一套集成覆盖两个来源。再抽接口是抽象套抽象，两个实现都是对 ChatClient 的零价值包装。**翻案条件**：本地来源不走 OpenAI 兼容协议（如 FunASR 式自研协议微服务），或需要逐请求的多源路由 / 兜底降级——出现任一再抽缝。`infrastructure/provider/llm/` 的三个 LLM worker 于 **2026-10-06 补抽了领域端口**（`LlmSubtitleCleanser` / `LlmSubtitleTranslator` / `LlmSubtitleContextSummarizer` 各实现 `domain/subtitle/` 的同名端口），包私有的 `MessageHistory` 仍不抽。**这与本节决策不冲突**：本节反对的是「给 `ChatClient` 再套一层供应商抽象」，补抽的是**上层可见性缝**（application 不再直接依赖 infrastructure 具体类）——判据见 [quality-guidelines.md](./quality-guidelines.md)「不预先抽接口」一节。
+> **`LLMProvider` 不建（2026-09-28 定）**：LLM 的供应商缝已由 Spring AI 的 `ChatClient` / `ChatModel` 承担——换 starter / base-url 即换来源，Java 零改动；且本地 Ollama 与云端 DeepSeek 都是 OpenAI 兼容协议，同一套集成覆盖两个来源。再抽接口是抽象套抽象，两个实现都是对 ChatClient 的零价值包装。**翻案条件**：本地来源不走 OpenAI 兼容协议（如 FunASR 式自研协议微服务），或需要逐请求的多源路由 / 兜底降级——出现任一再抽缝。`infrastructure/provider/llm/` 的三个 LLM worker 于 **2026-10-06 补抽了领域端口**（`LlmSubtitleCleanser` / `LlmSubtitleTranslator` / `LlmSubtitleContextSummarizer` 各实现 `domain/subtitle/port/` 的同名端口），包私有的 `MessageHistory` 仍不抽。**这与本节决策不冲突**：本节反对的是「给 `ChatClient` 再套一层供应商抽象」，补抽的是**上层可见性缝**（application 不再直接依赖 infrastructure 具体类）——判据见 [quality-guidelines.md](./quality-guidelines.md)「不预先抽接口」一节。
 
 ---
 
@@ -22,12 +22,12 @@
 
 | 部件 | 职责 | 参照文件 |
 |---|---|---|
-| 接口 | 定义对外契约，不含任何实现细节或框架注解；**位于领域层 `domain/<上下文>/`**（端口属于六边形内部） | `domain/transcription/ASRProvider.java` |
+| 接口 | 定义对外契约，不含任何实现细节或框架注解；**位于领域层 `domain/<上下文>/port/`**（端口属于六边形内部） | `domain/transcription/port/ASRProvider.java` |
 | 实现类 | 一个来源一个类（适配器，位于 `infrastructure/provider/<环节>/<来源短名>/`），用 `@Component` + `@ConditionalOnProperty` 装配 | `infrastructure/provider/asr/dashscope/DashScopeAsrProvider.java` |
 | 配置属性 | 该实现专用的配置，`record` + `@DefaultValue`，与实现类同包 | `infrastructure/provider/asr/dashscope/DashScopeProperties.java` |
-| 契约 | 入参 `Command` / 出参 `Result`，全部 `record`，与端口接口同一上下文 | `domain/transcription/Transcription*` |
+| 契约 | 入参 `Command` / 出参 `Result`，全部 `record`，与端口接口同一上下文 | `domain/transcription/model/Transcription*` |
 
-已落地的端口接口及其位置：`ASRProvider` → `domain/transcription/`，`MediaAcquirer` / `AudioExtractor` → `domain/media/`，`TermLookupProvider` / `SubtitleCleanser` / `SubtitleTranslator` / `SubtitleContextSummarizer` → `domain/subtitle/`，`VideoTaskRepository` → `domain/task/`；**`ToolDiagnostics` → `application/diagnostics/`**（业务无关的运维能力，端口归 application——见 [directory-structure.md](./directory-structure.md) 的[端口归属判据](./directory-structure.md#端口归属判据)）。（2026-10-05 DDD 四层化前，接口与实现同居顶层 `provider/`；端口上移进领域层、适配器移入 `infrastructure/provider/` 即本次落地的结构变更。2026-10-06 端口倒置补齐了其余四类被上层直接引用的具体类。）
+已落地的端口接口及其位置：`ASRProvider` → `domain/transcription/port/`，`MediaAcquirer` / `AudioExtractor` → `domain/media/port/`，`TermLookupProvider` / `SubtitleCleanser` / `SubtitleTranslator` / `SubtitleContextSummarizer` → `domain/subtitle/port/`，`VideoTaskRepository` → `domain/task/port/`；**`ToolDiagnostics` → `application/diagnostics/port/`**（业务无关的运维能力，端口归 application——见 [directory-structure.md](./directory-structure.md) 的[端口归属判据](./directory-structure.md#端口归属判据)）。（2026-10-05 DDD 四层化前，接口与实现同居顶层 `provider/`；端口上移进领域层、适配器移入 `infrastructure/provider/` 即本次落地的结构变更。2026-10-06 端口倒置补齐了其余四类被上层直接引用的具体类。）
 
 ### 1. 接口保持纯净
 
@@ -78,7 +78,7 @@ public interface MediaAcquirer {
 
 反例：一个进程既要能下载 URL、又要能读本地文件，两条路线**在同一次运行里都要在**——用 `@ConditionalOnProperty` 二选一会让另一条路线直接不可用。
 
-参照：`domain/media/MediaAcquirer.java`（端口接口）与它的两个实现（`infrastructure/provider/download/ytdlp/YtDlpMediaAcquirer` / `infrastructure/provider/download/local/LocalFileMediaAcquirer`）
+参照：`domain/media/port/MediaAcquirer.java`（端口接口）与它的两个实现（`infrastructure/provider/download/ytdlp/YtDlpMediaAcquirer` / `infrastructure/provider/download/local/LocalFileMediaAcquirer`）
 
 #### 想要一份"写死的清单"：`@Bean List<T>` 能否生效，取决于容器里有没有 `T` 的 bean
 
@@ -150,7 +150,7 @@ public sealed interface AudioSource {
 ```
 
 - 不支持的子类型：抛 `IllegalArgumentException`，错误信息说明该实现的输入要求与替代做法（如「先上传生成外链」）
-- 参照：`domain/transcription/AudioSource.java`、`infrastructure/provider/asr/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` 卫语句
+- 参照：`domain/transcription/model/AudioSource.java`、`infrastructure/provider/asr/dashscope/DashScopeAsrProvider.java` 的 `transcribe()` 卫语句
 
 ## 第三方 SDK 只在实现类内出现
 
@@ -230,7 +230,7 @@ vidsage:
 
 ## 新增一个实现的检查清单
 
-> 位置约定：端口接口在 `domain/<上下文>/`，实现类与 Properties 在 `infrastructure/provider/<环节>/<来源短名>/`。
+> 位置约定：端口接口在 `domain/<上下文>/port/`，实现类与 Properties 在 `infrastructure/provider/<环节>/<来源短名>/`。
 
 1. `implements <X>Provider`，只实现接口方法
 2. 加 `@Component` + `@ConditionalOnProperty(name = "vidsage.<环节>.provider", havingValue = "<短名>")`

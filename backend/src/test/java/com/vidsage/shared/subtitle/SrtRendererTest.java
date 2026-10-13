@@ -2,8 +2,8 @@ package com.vidsage.shared.subtitle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.vidsage.domain.transcription.TranscriptionSegment;
-import com.vidsage.domain.subtitle.TranslatedSegment;
+import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import com.vidsage.domain.subtitle.model.translation.TranslatedSegment;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -106,7 +106,7 @@ class SrtRendererTest {
 
     @Test
     void treatsNullTextAsEmptyAndCollapsesEqualNullAndEmptyLines() {
-        // null 与空串按同一行处理（同 toSrt 对 null 文本的处理），相等时也只渲染一行
+        // null 与空串按同一行处理，且两者相等时只渲染一行
         var result = SrtRenderer.toBilingualSrt(List.of(
                 new TranslatedSegment(0, 1000, null, null)));
 

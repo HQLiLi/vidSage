@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "核查基准：收口后的注释是否符合内容分流表与按层级写法；§5 给出各条 AC 的验证手段"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "AC1–AC7 的判定口径；特别核「只改注释」（diff 里不应有非注释行）与「上移确实落地」两条容易漏的"}
+{"file": ".trellis/tasks/10-12-comment-domain-pilot/prd.md", "reason": "本层工作集（22 文件，A/B/C 三组）与本层 AC；C 组期望「基本不动」是反向判据"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」的口径——缺注释不等于违规、不要引硬线要求补写；收口时最易犯的反向错误"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对被删的决策记录是否真在 spec 里有对等表述（TaskConflictException 一例在 175 行）"}

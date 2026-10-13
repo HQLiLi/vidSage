@@ -1,0 +1,128 @@
+# 注释收口 · 执行计划
+
+> **给执行者（AI）的执行脚本**，不是给用户的清单——用户 2026-10-12 明确本任务由 AI 全量扫 main。
+> 粒度标准见 `design.md`，验收标准见 `prd.md`。
+
+## 0. 子任务顺序与门
+
+```
+子任务 1  domain 试点（含正典定稿 + 两份 quality-guidelines 改写）  ✅ 已归档
+   └─ 门 G1：用户审查 domain 的 diff 与正典草稿，确认标准      ✅ 2026-10-12 通过
+子任务 2  application                                              ✅ 已归档
+子任务 3  infrastructure                                           ✅ 已归档
+子任务 4  web / shared / config                                    ✅ 已归档
+子任务 5  backend test                                             ← 下一个开工
+子任务 6  frontend
+   └─ 子任务 6 收尾时装钩子（AC7）、跑全量验收、再做 §5 的三层回归扫描
+```
+
+**门 G1 已通过（2026-10-12）**。此后标准只作**增补**：各层执行中遇到新情形，写进该层 `implement.md` §4
+「标准补充」，用户裁定后回写正典——正典**逐层沉淀**，不是一次冻结。
+
+**每个子任务自己的门**：改完 → 停下 → 报「改了哪些文件 / 例外登记 / 待订正清单」→ 等用户点头 →
+才 `task.py finish` 并进下一个。不自行提交（分支工作流硬规则）。
+
+## 1. 每个子任务的标准动作
+
+**Step A · 定调查面（不写代码）**
+
+```bash
+cd f:/personal_project/vidSage/backend/src/main/java
+# 1) 长尾块：>15 行的 Javadoc（粗筛信号，统计脚本见本文件 §5）
+# 2) 变更史 / 归档指针：**模式清单只住正典 §六**，照抄那一段即可，此处不复制
+# 3) 层级错位（2026-10-12 domain 试点补入）：实现快照 / 跨类类比 / 实现层细节混进契约
+grep -rnE '同构|同一个道理|的处理|一致）|无字段无方法|不开放 setter|compact constructor|由 Spring 注进来|@ConditionalOnProperty|给测试用|可直测|便于注入假实现|无需 Spring 容器|当前是|目前分' --include=*.java .
+# 4) 「解释既成安排」的辩解段（2026-10-13 web 层审查补入，正典 §一 那把尺子的典型词）
+grep -rnE '判据 ?[0-9]|directory-structure|所以是 public|因此是 public|不归口的话|各抄一遍|只差|同款|同样地|不另设' --include=*.java .
+```
+
+**四批的并集就是要动的文件。** 第 3、4 批是两次试点审查时补的：头两批是**机械特征**，
+筛不出「一个 6 行的注释既无变更史、也不超 15 行，却满篇是实现快照、跨类类比或自我辩护」这类问题——
+domain 试点因此从 26 个文件扩到 32 个。**后续每层都必须跑第 3、4 批**，
+并按 `guides/comment-guidelines.md` §三的**十三条禁令**逐文件过一遍（grep 只捞典型词，捞不全——
+第 4 批拦的是自然语言，尤其漏；正典 §六「已知缺口」写明这类变体靠人眼）。
+
+中位数那批（既无变更史、不超 15 行、也不命中第 3、4 批）不碰。
+
+**Step B · 先过尺子，再过分流表**（正典 §一 → §二）
+
+对每段**已有的**散文先问「读者读完，接下来要做的事会不会改变」（§一 那把尺子）：不会 → 删（解释既成安排）；
+会 → 留。剩下的再按 §二 分流：四问分类 → 该上移的上移 → 该删的删 → 该留的压缩。
+**上移优先于删除**：能搬去 `package-info` / spec / `design.md` 的，先搬再删本地副本。
+
+**Step C · 订正腐坏**
+
+断句残句、与代码矛盾的表述：改注释不改代码，逐条登记。
+
+**Step D · 自检**
+
+```bash
+# 只改注释？（应只有注释行）
+cd f:/personal_project/vidSage && git diff -w --stat
+# 变更史归零？（本层）—— 模式清单只住正典 §六，照抄那一段
+grep -rnE "<正典 §六 的模式清单>" <本层目录>            # 期望命中 0
+# 长尾收敛？（粗筛：>15 行的块逐个复核「是否只回答那四件事」）
+<块行数统计脚本>
+# 删完回查两件事（正典 §一 末尾）：① 悬空引用（「只有一份」「只差 X 这层」）
+#                                ② 注释块内的裸空行（连 * 都没有的空行）
+```
+
+**Step E · 报审查**：输出三段——① 改动文件清单 ② 例外登记（>15 行的块及理由）③ 待订正清单。
+
+## 2. 例外登记表（滚动填）
+
+> 超过 15 行的 Javadoc 块在这里逐条登记。空表 = 没有例外。
+
+| 层 | 文件 | 块位置 | 行数 | 理由 |
+|---|---|---|---|---|
+| domain | `subtitle/package-info.java` | :1 | 19 | **package-info 豁免**（AC2 明文）。承载 subtitle 包的桶结构 + 构件清单 + 依赖方向；19 行已是从 22 行压过的，再砍就要删构件名。 |
+| domain | `package-info.java`（domain 根） | :1 | 16 | **package-info 豁免**。本块**无任何变更史**，收口时一字未动——它出现在这里只是因为 AC2 的机械线扫到了块类型。**这条记录本身是校准数据**：说明 15 行线单独用会把干净文档也标红。 |
+| domain | `shared/model/SourceUri.java` | :1 | 16 | **用户 2026-10-12 校准轮亲手定的文本**。类注释按新判据回答四件事（是什么 / 不变量 / 与其他类型的关系 / 边界），每件各一段，加 `@param` 恰好 16 行。**压到 15 行就得牺牲其中一件** —— AC2 的 15 行线对「4 件事 + record 参数」的类型定得过紧，建议后续各层按「块是否只回答那四件事」判，而不是数行数。 |
+| （待填） | | | | |
+
+## 3. 待订正清单（滚动填）
+
+> 发现的断句残句 / 失实表述。已发现的种子：
+
+| # | 位置 | 现象 | 处置 |
+|---|---|---|---|
+| 1 | `backend/src/main/java/com/vidsage/web/dto/TaskResponse.java:45-47` | Javadoc 断句残句：「字段一一对应，产物清单逐元素映射为」后无下文 | ✅ 已完成（web 子任务，2026-10-13）——补成「…逐元素映射。」 |
+| 2 | `web/dto/*` 等 13 文件 50 字段 | `@param` 与 `@Schema(description=…)` 文案重复 | **本任务不动**（父 `prd.md`「不做」），只在两者不一致时订正 |
+
+## 4. 正典文档骨架（子任务 1 产出，**已完成**）
+
+正典已落地：`.trellis/spec/guides/comment-guidelines.md`（十三条禁令版）。
+原先列在本节的六点骨架清单**已删**——正典一旦产出，它就是第二份结构描述，留着必然漂移（正典 §七）。
+后续各层只读正典，不再回看本节。
+
+## 5. 收尾（子任务 6 之后）
+
+```bash
+cd f:/personal_project/vidSage/backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn -q test
+grep -h -o 'tests="[0-9]*" errors="[0-9]*" skipped="[0-9]*" failures="[0-9]*"' target/surefire-reports/*.xml
+```
+
+- 基线**实测**，不引用历史数字（历史 570 已被后续任务刷新）
+- 全量 AC1 两遍：`backend/src/{main,test}/java`、`frontend/src`
+- AC7：装钩子 → 故意写日期 → 验拦截 → 撤掉那行假数据
+- **三层回归扫描（用户 2026-10-13 定，父 `prd.md` Notes 同款）**：domain / application / infrastructure 已归档，
+  但归档时正典还没有 §一 那把尺子——按同一把尺子回扫这三层，同款「解释既成安排」段可能还在。
+  判据与自检同上面各层（只改注释 / 正典 §六 模式 0 / 删完回查悬空引用与裸空行 / `mvn test` 基线实测）。
+  **不新增子任务**，作为本任务最后一道收尾。
+
+**三层回归扫描 · 执行记录（2026-10-13，分支 `feature/comment-regression-scan`，合入 dev）**
+
+- 扫描面：`backend/src/main/java/com/vidsage/{domain,application,infrastructure}`（122 文件）；判据 = 正典 §一 那把尺子。
+- 机械线：§六 模式 **0** 命中；第 3/4 批 grep 命中 19 行，其中 16 行是假阳性（`@ConditionalOnProperty` 注解、
+  `directory-structure.md` 章节名指针——后者按 §五 保留），真候选 3 处。
+- 人读：≥6 行的块 **301** 个（domain 102 / application 87 / infrastructure 112）逐个过尺子，捞出候选 24 处。
+- 落地：**31 文件 / 32 处**删改（`30 insertions(+), 75 deletions(-)`），另修掉 application 层漏下的
+  1 处注释块裸空行（`AudioPreparationCoordinator`）。
+- 例外登记：三层现存 >15 行块 **18** 个（domain 2 / application 5 / infrastructure 11），逐个复核后**全部保留**——
+  均为 package-info 豁免、契约四件事、或断点复用与静默失败类守卫；`domain/package-info` 因本次删段降至 13 行，退出该线。
+- 待订正：**0** 处。
+- 验证：只改注释（非注释行改动 0）；注释块内裸空行 0；§六 模式三层全 0；`mvn test` **570/0/1/0**（实测）。
+- AC1 全量三面复核：`backend/src/main/java` 0、`frontend/src` 0、`backend/src/test/java` **1** → 该处
+  （`VideoTaskServiceTest:159` 的「逐字节一致」）判为**误报**（讲的是文件内容与流相同，不是变更史），
+  已改写措辞使三面归零。
+- AC7：`.git/hooks/pre-commit` 按正典 §六 全文安装，实测拦下故意写入的日期，随后撤掉假数据。

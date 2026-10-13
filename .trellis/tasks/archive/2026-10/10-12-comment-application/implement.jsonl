@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "注释写法正典（唯一正文 · 十三条禁令）—— §二 分流表定「移到哪」、§三 十三条定「留什么」、§五 定 spec 指针与归档指针的分别、§六 是唯一模式清单；本层全程按它执行"}
+{"file": ".trellis/tasks/10-12-comment-application/prd.md", "reason": "本层需求：34 文件、已知层内重点（编排类的管线形状与进度事件序列）、范围与四条本层 AC"}
+{"file": ".trellis/tasks/10-12-comment-application/implement.md", "reason": "本层执行计划：六阶段顺序、工作集三条线、继承自 domain 试点的六条教训、逐文件登记表、例外登记与待订正清单"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "父需求、边界与跨子任务 AC1–AC7，含「只改注释」「不动 @Schema 落位」「不做无差别重写」「不铺 prototype/asr-service/tools」四条硬约束"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "四处目的地的移动代价、正典落位理由、验证策略与风险处置（尤其「误删承载知识的 why」的处置顺序）"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/implement.md", "reason": "父执行计划 Step A→E：三条筛选线并集、逐文件过分流表、订正腐坏、自检、报审查的格式"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "application 层构件落位与包级地图的权威表述（§构件说明已有管线构件一节）——既是「上移」的候选目的地，也是判断代码里哪段包级描述已属复述的依据"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "TaskConflictException 的决策记录在本文件 175 行有全文——本层删代码里那份的零损失依据；同时确认「不提前造异常体系」的既有约定"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」的口径（缺注释不等于违规、不要引硬线要求补写）——收口时最易犯的反向错误"}

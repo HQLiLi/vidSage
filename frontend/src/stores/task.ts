@@ -16,17 +16,12 @@ import type { TranscriptCue } from '@/types/transcript'
 
 /**
  * 工作区加载失败态：404（任务不存在）与其他错误分列，工作区壳据此渲染不同引导卡。
- * 与 store 同文件（type-safety.md：store 相关类型随 store）；仅 store 内部使用不导出，
- * 视图侧经 loadError 的推断类型取得形状。
  */
 type TaskLoadError = { kind: 'not-found' } | { kind: 'error'; message: string }
 
 /**
  * 工作区任务 store：工作区页（壳 / header / 媒体面板 / 字幕稿）共用的唯一任务状态源。
  *
- * 数据流（design §1.1）：load() 拉一次 GET 快照（终态直接建 cues）→ subscribe() 开 SSE
- * → progress 事件驱动进度态 → 终态（主状态终态且翻译非 RUNNING）静默重拉快照
- * （errorMessage / artifacts / finishedAt 只在 GET 里有）→ 主状态 SUCCEEDED 时拉产物建 cues。
  * 约定：加载中 = taskView 与 loadError 均为 null，壳页据此渲染 loading 态。
  */
 export const useTaskStore = defineStore('task', () => {
@@ -67,6 +62,9 @@ export const useTaskStore = defineStore('task', () => {
   const hasTranslation = computed(() =>
     (taskView.value?.artifacts ?? []).some((a) => a.name.includes('-translate-')),
   )
+
+  /** SSE 是否正在重连（连续失败达阈值）——工作区页据此显示不遮挡进度的重连提示。 */
+  const reconnecting = computed(() => events.reconnecting.value)
 
   /**
    * 加载任务快照（GET /tasks/{taskNo}）：先重置既有状态；快照已是 SUCCEEDED 时
@@ -112,7 +110,7 @@ export const useTaskStore = defineStore('task', () => {
   /**
    * 触发按需翻译（POST /translate，202）：翻译进度由 SSE 事件流的 translationStatus
    * 推送，完成后 watchProgress 自动重建双语 cues。主任务终态时原 SSE 连接已被收口
-   * （useTaskEvents 终态即 close，后端 TaskSseHub 同步断开），故 202 更新本地视图后
+   * （useTaskEvents 终态即 close，后端 TaskSseConnectionManager 同步断开），故 202 更新本地视图后
    * 必须重开订阅：翻译进行中则事件续推；翻译已跑完则新连接的建立快照即
    * SUCCEEDED+翻译终态，经 latest watch 走 refreshAfterTerminal 重建双语 cues。
    * 请求失败（主任务未成功 400 / 任务不存在 404）原样抛出，由调用方内联展示。
@@ -122,7 +120,7 @@ export const useTaskStore = defineStore('task', () => {
     if (!taskNo) return
     // 用 202 返回的视图即刻更新本地：translationStatus=RUNNING 立即反映到按钮态
     taskView.value = await translateTask(taskNo)
-    // 重开 SSE（路径与工作区 onMounted 的 loadThenSubscribe 相同）：无订阅则翻译事件无入口
+    // 重开 SSE：无订阅则翻译事件无入口
     subscribe()
   }
 
@@ -169,16 +167,41 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  // 终态判定与 useTaskEvents 同口径：主状态终态且翻译非 RUNNING 才有收口动作
+  /**
+   * 致命断连确诊：EventSource 判定这条流已死（非 200 / content-type 不符）时 onerror
+   * 拿不到状态码，故重拉一次快照分类——404 走任务不存在卡，其余走通用错误卡；快照成功
+   * 说明任务还在（只是 SSE 端点坏了），也要给一句明确提示，否则页面看着正常却永不更新。
+   * taskView 为空（还没加载成功）时无任务可确诊，直接返回。
+   */
+  async function diagnoseFatal(): Promise<void> {
+    const taskNo = taskView.value?.taskNo
+    if (!taskNo) return
+    try {
+      await getTask(taskNo)
+      // 快照可达但流已死：SSE 端点故障，给用户明确去向
+      loadError.value = { kind: 'error', message: '进度连接已断开，请刷新页面重试' }
+    } catch (error) {
+      const err = error instanceof ApiError ? error : null
+      loadError.value =
+        err?.status === 404
+          ? { kind: 'not-found' }
+          : { kind: 'error', message: err?.message ?? '进度连接已断开，请刷新页面重试' }
+    }
+  }
+
+  // 终态判据由后端算好经 message.terminal 送出，本处不再自己拼状态组合
   watch(events.latest, (message) => {
     if (!message) return
     // 串台防御：只处理当前任务的事件
     if (message.taskNo !== taskView.value?.taskNo) return
     progress.value = message
-    const terminal =
-      message.taskStatus === TASK_STATUS.SUCCEEDED || message.taskStatus === TASK_STATUS.FAILED
-    if (!terminal || message.translationStatus === TRANSLATION_STATUS.RUNNING) return
+    if (!message.terminal) return
     void refreshAfterTerminal()
+  })
+
+  // 流已死（浏览器不再重连）：重拉一次快照确诊，转进现有错误态通道
+  watch(events.fatal, (isFatal) => {
+    if (isFatal) void diagnoseFatal()
   })
 
   return {
@@ -193,6 +216,7 @@ export const useTaskStore = defineStore('task', () => {
     isFailed,
     isTranslating,
     hasTranslation,
+    reconnecting,
     // actions
     load,
     subscribe,

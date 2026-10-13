@@ -2,11 +2,13 @@ package com.vidsage.web.controller;
 
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,18 +21,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.vidsage.domain.shared.StageEvent;
-import com.vidsage.application.task.TaskProgressMessage;
+import com.vidsage.domain.shared.model.StageProgress;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.application.task.message.TaskProgressMessage;
+import com.vidsage.application.task.query.KeywordsSnapshot;
 import com.vidsage.application.task.query.TaskArtifactFile;
-import com.vidsage.domain.task.TaskInputType;
-import com.vidsage.domain.task.TaskStatus;
+import com.vidsage.domain.task.model.TaskInputType;
+import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.application.task.query.TaskSnapshot;
-import com.vidsage.domain.task.TranslationStatus;
+import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.VideoTaskService;
 import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
-import com.vidsage.web.sse.TaskSseHub;
+import com.vidsage.web.sse.TaskSseConnectionManager;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,7 +62,7 @@ import org.junit.jupiter.api.io.TempDir;
  * 「SSE 订阅（快照首推 / 增量 / 终态收口 / 窗口竞态重读 / 未知任务）」「产物下载（含穿越 400）」。</p>
  */
 @WebMvcTest(TaskController.class)
-@Import({TaskSseHub.class, TaskSubscriptionRegistry.class})
+@Import({TaskSseConnectionManager.class, TaskSubscriptionRegistry.class})
 class TaskControllerTest {
 
     private static final String TASK_NO = "3f2a9c1e7b5d4a6089abcdef01234567";
@@ -68,8 +73,9 @@ class TaskControllerTest {
     @MockitoBean
     private VideoTaskService taskService;
 
+    /** 真装配的注册表：模拟管线推进要走广播这条真实入口，不能再直接写 emitter。 */
     @Autowired
-    private TaskSseHub sseHub;
+    private TaskSubscriptionRegistry taskSubscriptionRegistry;
 
     @TempDir
     Path tempDir;
@@ -78,7 +84,7 @@ class TaskControllerTest {
 
     @Test
     void submitUrlReturnsAcceptedWithTaskResponse() throws Exception {
-        when(taskService.submitUrl("https://example.com/watch/1"))
+        when(taskService.submitUrl("https://example.com/watch/1", null))
                 .thenReturn(pendingView(TaskInputType.URL, "https://example.com/watch/1"));
 
         mockMvc.perform(post("/api/tasks")
@@ -104,16 +110,16 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.error").value("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                         + "上传本地文件请走 POST /api/tasks/upload"));
 
-        verify(taskService, never()).submitUrl(anyString());
+        verify(taskService, never()).submitUrl(anyString(), isNull());
     }
 
     @Test
     void submitUrlConflictReturns409WithExistingTask() throws Exception {
         TaskSnapshot existing = new TaskSnapshot("aaaabbbbccccddddeeeeffff00001111", TaskInputType.UPLOAD,
-                "demo.mp4", TaskStatus.RUNNING, null, "transcribe", null,
+                "demo.mp4", TaskStatus.RUNNING, null, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), null,
                 LocalDateTime.of(2026, 9, 30, 10, 0), LocalDateTime.of(2026, 9, 30, 10, 0, 1), null,
                 List.of());
-        when(taskService.submitUrl(anyString())).thenThrow(new TaskConflictException(existing));
+        when(taskService.submitUrl(anyString(), isNull())).thenThrow(new TaskConflictException(existing));
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -130,7 +136,7 @@ class TaskControllerTest {
 
     @Test
     void submitUploadReturnsAcceptedWithTaskResponse() throws Exception {
-        when(taskService.submitUpload(any(), any()))
+        when(taskService.submitUpload(any(), any(), isNull()))
                 .thenReturn(pendingView(TaskInputType.UPLOAD, "视频.mp4"));
         MockMultipartFile file = new MockMultipartFile("file", "视频.mp4", "video/mp4",
                 "fake-bytes".getBytes(StandardCharsets.UTF_8));
@@ -150,7 +156,7 @@ class TaskControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("上传文件不能为空：请选择本地视频 / 音频文件后再提交"));
 
-        verify(taskService, never()).submitUpload(any(), any());
+        verify(taskService, never()).submitUpload(any(), any(), isNull());
     }
 
     // ---------- 查询 ----------
@@ -179,8 +185,8 @@ class TaskControllerTest {
 
     @Test
     void subscribeEventsPushesSnapshotFirstThenIncrementalBroadcasts() throws Exception {
-        when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
-                new StageEvent("transcribe", 60, "开始转写", StageEvent.StageState.RUNNING), null));
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageProgress.State.RUNNING), null));
 
         // 连接建立：连接保持挂起（asyncStarted），快照已随响应写出（emitter 初始化时冲刷缓冲）
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -192,9 +198,9 @@ class TaskControllerTest {
         assertTrue(snapshotBody.contains("event:progress"), () -> "应先推快照：" + snapshotBody);
         assertTrue(snapshotBody.contains("\"taskStatus\":\"RUNNING\""), () -> snapshotBody);
 
-        // 模拟管线推进：经真实 hub 写进同一批 emitter（注册表订阅的就是「写 emitter」这个动作）
-        sseHub.send(TASK_NO, new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
-                new StageEvent("transcribe", 95, "转写完成", StageEvent.StageState.SUCCEEDED), null));
+        // 模拟管线推进：走注册表广播（生产里的真实路径），事件经该连接自己那个订阅者写进 emitter
+        taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageProgress.State.SUCCEEDED), null));
         String body = result.getResponse().getContentAsString();
         assertTrue(body.contains("\"progress\":60"), () -> "快照的进度应先到：" + body);
         assertTrue(body.contains("\"progress\":95"), () -> "增量事件应随后到达：" + body);
@@ -202,13 +208,39 @@ class TaskControllerTest {
     }
 
     @Test
-    void subscribeEventsToTerminalTaskCompletesConnectionAfterSnapshot() throws Exception {
-        when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.FAILED,
-                new StageEvent("transcribe", 0, "任务在 transcribe 阶段失败：quota exceeded",
-                        StageEvent.StageState.FAILED), null));
+    void twoConnectionsEachReceiveExactlyOneCopyOfEachEvent() throws Exception {
+        // 投递必须 1:1：每条连接在注册表里各有一个订阅者，若每个订阅者都对「该任务的全部连接」
+        // 发送，k 条连接就会把同一条事件写 k 份给每条连接（k² 次写入）。页面开两个标签页时看着
+        // 正常（前端按最新一条覆盖），但流量与副作用语义已经错了——这个倍数只能在这里数出来。
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageProgress.State.RUNNING), null));
 
-        // 终态快照推完即收口（hub 对终态事件 complete emitter），连接不等 30 分钟超时；
-        // 响应里应已带终态事件。连接收口的行为细节由 TaskSseHubTest 钉住。
+        MvcResult first = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        MvcResult second = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 95, "转写完成", StageProgress.State.SUCCEEDED), null));
+
+        for (MvcResult each : List.of(first, second)) {
+            String body = each.getResponse().getContentAsString();
+            assertEquals(1, countOf(body, "\"progress\":95"), () -> "每条连接应恰收一份增量事件：" + body);
+            assertEquals(1, countOf(body, "\"progress\":60"),
+                    () -> "后一条连接建立时推的快照只该落它自己，不得串到别的连接：" + body);
+        }
+    }
+
+    @Test
+    void subscribeEventsToTerminalTaskCompletesConnectionAfterSnapshot() throws Exception {
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.FAILED,
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
+                        StageProgress.State.FAILED), null));
+
+        // 终态快照推完即收口（连接管理器对终态事件 complete emitter），连接不等 30 分钟超时；
+        // 响应里应已带终态事件。连接收口的行为细节由 TaskSseConnectionManagerTest 钉住。
         mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
@@ -223,11 +255,11 @@ class TaskControllerTest {
         // 挂上订阅后重读 FAILED。若实现只推第一次的快照，客户端拿到陈旧 RUNNING、
         // 且这条订阅既等不到终态事件也永远不会退订（注册表泄漏）。
         when(taskService.snapshot(TASK_NO))
-                .thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.RUNNING,
-                        new StageEvent("transcribe", 60, "开始转写", StageEvent.StageState.RUNNING), null))
-                .thenReturn(new TaskProgressMessage(TASK_NO, TaskStatus.FAILED,
-                        new StageEvent("transcribe", 0, "任务在 transcribe 阶段失败：quota exceeded",
-                                StageEvent.StageState.FAILED), null));
+                .thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.RUNNING,
+                        new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 60, "开始转写", StageProgress.State.RUNNING), null))
+                .thenReturn(TaskProgressMessage.of(TASK_NO, TaskStatus.FAILED,
+                        new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), 0, "任务执行失败：quota exceeded",
+                                StageProgress.State.FAILED), null));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
                 .andExpect(request().asyncStarted())
@@ -250,7 +282,7 @@ class TaskControllerTest {
         verify(taskService).snapshot("ghost");
     }
 
-    // ---------- 按需触发翻译（2026-10-02 两段式） ----------
+    // ---------- 按需触发翻译 ----------
 
     @Test
     void translateReturnsAcceptedWithRefreshedTaskResponse() throws Exception {
@@ -294,15 +326,117 @@ class TaskControllerTest {
         verify(taskService, never()).translate(anyString());
     }
 
-    // ---------- SSE 订阅：翻译期间（2026-10-02 两段式） ----------
+    // ---------- 重新生成字幕（关键词） ----------
+
+    @Test
+    void regenerateReturnsAcceptedAndPassesKeywordsThrough() throws Exception {
+        when(taskService.regenerate(TASK_NO, List.of("影视飓风")))
+                .thenReturn(succeededView(null));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"keywords":["影视飓风"]}"""))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.taskNo").value(TASK_NO))
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"));
+
+        verify(taskService).regenerate(TASK_NO, List.of("影视飓风"));
+    }
+
+    @Test
+    void regenerateMapsMissingTaskToNotFound() throws Exception {
+        when(taskService.regenerate("ghost", null)).thenThrow(new TaskNotFoundException("ghost"));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", "ghost")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void regenerateMapsNotReadyTaskToBadRequest() throws Exception {
+        when(taskService.regenerate(TASK_NO, null)).thenThrow(new IllegalArgumentException(
+                "字幕尚未就绪：任务状态为 RUNNING，重新生成只能在任务成功（SUCCEEDED）后触发"));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("字幕尚未就绪")));
+    }
+
+    @Test
+    void regenerateOverLimitMapsToBadRequest() throws Exception {
+        // 超限（>50 条 / 单条 >50 字）在 service 构造 SubtitleKeywords 时就抛 → 400；
+        // 这里钉的是映射不被吞，超限的判据本身在 SubtitleKeywordsTest
+        when(taskService.regenerate(TASK_NO, List.of("词"))).thenThrow(new IllegalArgumentException(
+                "关键词条数不能超过 50 条：本次收到 51 条；请删掉不用的，或分几次提交"));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"keywords":["词"]}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("50 条")));
+    }
+
+    @Test
+    void regenerateConflictReturns409() throws Exception {
+        // 同一工作区已有重新生成会话在跑：复用既有 TaskConflictException → 409 + 既有任务视图
+        when(taskService.regenerate(TASK_NO, null)).thenThrow(
+                new TaskConflictException(succeededView(null)));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.existingTask.taskNo").value(TASK_NO));
+    }
+
+    @Test
+    void regenerateRejectsBlankTaskNoBeforeTouchingService() throws Exception {
+        mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", " ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verify(taskService, never()).regenerate(anyString(), any());
+    }
+
+    // ---------- 关键词查询 ----------
+
+    @Test
+    void keywordsReturnsListAndFingerprint() throws Exception {
+        when(taskService.findKeywords(TASK_NO))
+                .thenReturn(new KeywordsSnapshot(
+                        List.of("影视飓风", "Tim"), "a1b2c3d4e5f60708"));
+
+        mockMvc.perform(get("/api/tasks/{taskNo}/keywords", TASK_NO))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keywords[0]").value("影视飓风"))
+                .andExpect(jsonPath("$.keywords[1]").value("Tim"))
+                .andExpect(jsonPath("$.fingerprint").value("a1b2c3d4e5f60708"));
+    }
+
+    @Test
+    void keywordsMapsMissingTaskToNotFound() throws Exception {
+        when(taskService.findKeywords("ghost")).thenThrow(new TaskNotFoundException("ghost"));
+
+        mockMvc.perform(get("/api/tasks/{taskNo}/keywords", "ghost"))
+                .andExpect(status().isNotFound());
+    }
+
+
+    // ---------- SSE 订阅：翻译期间 ----------
 
     @Test
     void subscribeEventsDuringTranslationKeepsConnectionOpenForTranslateEvents() throws Exception {
         // 主任务已 SUCCEEDED、翻译进行中：快照虽是「主状态终态」，但翻译事件还要继续推，
         // 连接不得按主状态终态收口（终态判定 = 主状态终态且翻译非 RUNNING）
-        when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO,
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO,
                 TaskStatus.SUCCEEDED,
-                new StageEvent("translate", 0, "翻译进行中", StageEvent.StageState.RUNNING),
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 0, "翻译进行中", StageProgress.State.RUNNING),
                 TranslationStatus.RUNNING));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -311,9 +445,9 @@ class TaskControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
                 .andReturn();
 
-        // 模拟管线推进：翻译进度事件经真实 hub 写进同一批 emitter（若连接被提前收口，此事件无人可写）
-        sseHub.send(TASK_NO, new TaskProgressMessage(TASK_NO, TaskStatus.SUCCEEDED,
-                new StageEvent("translate", 55, "第 2/3 批", StageEvent.StageState.RUNNING),
+        // 模拟管线推进：翻译进度事件经注册表广播写进 emitter（若连接被提前收口，此事件无人可写）
+        taskSubscriptionRegistry.broadcast(TASK_NO, TaskProgressMessage.of(TASK_NO, TaskStatus.SUCCEEDED,
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 55, "第 2/3 批", StageProgress.State.RUNNING),
                 TranslationStatus.RUNNING));
 
         String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
@@ -325,9 +459,9 @@ class TaskControllerTest {
     @Test
     void subscribeEventsToTranslatedTaskCompletesAfterTranslationTerminalSnapshot() throws Exception {
         // 主任务 SUCCEEDED + 翻译 SUCCEEDED：真正再无后续事件，快照推完即收口
-        when(taskService.snapshot(TASK_NO)).thenReturn(new TaskProgressMessage(TASK_NO,
+        when(taskService.snapshot(TASK_NO)).thenReturn(TaskProgressMessage.of(TASK_NO,
                 TaskStatus.SUCCEEDED,
-                new StageEvent("translate", 100, "翻译完成", StageEvent.StageState.SUCCEEDED),
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 100, "翻译完成", StageProgress.State.SUCCEEDED),
                 TranslationStatus.SUCCEEDED));
 
         MvcResult result = mockMvc.perform(get("/api/tasks/{taskNo}/events", TASK_NO))
@@ -389,6 +523,15 @@ class TaskControllerTest {
         verify(taskService, never()).openArtifact(anyString(), anyString());
     }
 
+    /** needle 在 haystack 里出现的次数——用来数「一条连接收到了几份」。 */
+    private static int countOf(String haystack, String needle) {
+        int count = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) {
+            count++;
+        }
+        return count;
+    }
+
     // ---------- 工厂 ----------
 
     private static TaskSnapshot pendingView(TaskInputType inputType, String sourceUri) {
@@ -400,7 +543,7 @@ class TaskControllerTest {
     /** 主任务已成功的视图（自动管线跑完；翻译子状态由用例给定）。 */
     private static TaskSnapshot succeededView(TranslationStatus translationStatus) {
         return new TaskSnapshot(TASK_NO, TaskInputType.URL, "https://example.com/watch/1",
-                TaskStatus.SUCCEEDED, translationStatus, "clean", null,
+                TaskStatus.SUCCEEDED, translationStatus, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null,
                 LocalDateTime.of(2026, 10, 2, 10, 0), LocalDateTime.of(2026, 10, 2, 10, 0, 1),
                 LocalDateTime.of(2026, 10, 2, 10, 5), List.of());
     }

@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "本任务的正典：分层归属判据（每层允许/禁止出现什么，决定每个类的角色）、二级包怎么分（阈值句 :162 要改写）、依赖规则（不许新增跨层 import）、契约类的位置（决定 @Schema 与移动后类型仍留在原层）、测试包结构（镜像要求）、持久化三层（entity/mapper/repository 不动）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "重构不许引入反模式；公共类型与公共方法的 Javadoc 是硬规范，移动文件后 {@link} 交叉引用与 package-info 描述必须仍指向真实类型"}
+{"file": ".trellis/spec/backend/index.md", "reason": "backend spec 索引入口：确认还有哪些规范文件引用了受影响的包路径，避免漏掉对账对象"}

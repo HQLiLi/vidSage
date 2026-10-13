@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS task
     workspace_key      CHAR(12)      NOT NULL COMMENT '工作区短哈希：URL/本地路径取 normalize 串摘要，上传取内容 sha256 前 12 位；提交查重用',
     workspace_dir      VARCHAR(512)  NOT NULL COMMENT '工作区目录相对路径（相对 vidsage.workspace.root）',
     status             ENUM ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED') NOT NULL COMMENT '任务状态（状态机权威存储：PENDING→RUNNING→SUCCEEDED/FAILED）',
-    current_stage      VARCHAR(64)   NULL COMMENT '最近阶段名（与 StageEvent.stage 同词表：acquire/extract-audio/transcribe/write-subtitles/clean/translate）',
+    current_stage      VARCHAR(64)   NULL COMMENT '最近阶段名',
     translation_status ENUM ('RUNNING', 'SUCCEEDED', 'FAILED') NULL COMMENT '翻译子状态（2026-10-02 两段式：翻译不随主管线自动执行，主任务 SUCCEEDED 后按需触发）：NULL=从未触发，与主状态 status 相互独立',
     error_message      VARCHAR(2048) NULL COMMENT '终态错误信息（中文，面向用户；主任务失败或翻译子状态失败——后者带「翻译失败：」前缀）',
     created_at         DATETIME      NOT NULL COMMENT '创建时间',
@@ -31,3 +31,30 @@ CREATE TABLE IF NOT EXISTS task
     INDEX idx_task_workspace_key (workspace_key)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='视频任务';
+
+-- 字幕关键词（用户手填，供 LLM 纠音误）。任务 10-11-subtitle-keyword-regenerate 引入。
+--
+-- 为什么挂 workspace_key 而不是 task_no：关键词是字幕产物的生成输入，该跟产物同粒度。
+-- 同一 URL 重新提交会新插一行 task（查重只拦 PENDING / RUNNING，workspace_key 无唯一约束），
+-- 挂 task_no 会让新任务名下一片空白，而目录里躺着的是用旧关键词生成的那份字幕。
+-- 本表只挂字符串、不设 DB 外键约束——同源约束由应用层保证（detail 只走任务/媒体两条写入路线）。
+--
+-- 为什么一个工作区一行、整份清单挤在一列：本项目的唯一查询是「按工作区取整份清单」，
+-- 从没有「按词反查哪些工作区用了它」；单列还白送两件事——用户填写顺序天然保序
+-- （行存储得再加一列 position 才能还原，InnoDB 不保证按插入序返回），
+-- 覆盖全量是一条 upsert 而不是 DELETE + 批量 INSERT。
+--
+-- 列长够用：50 条 × 51 字 + 49 个分隔符 ≈ 2550 字符，故不需要额外的「总字数」约束，
+-- 长度判据在领域值对象 SubtitleKeywords 里（单条 ≤ 50、条数 ≤ 50）。
+-- 分隔符用 U+0001 而不是逗号 / 竖线：后者会跟真术语（Dr. Smith, Jr.）冲突；
+-- 它是 ISO 控制字符，SubtitleKeywords 的归一化已经把它换成空格，到不了落库这一层。
+CREATE TABLE IF NOT EXISTS subtitle_keyword
+(
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '内部自增行 id，不对外',
+    workspace_key CHAR(12)     NOT NULL COMMENT '工作区短哈希（与 task 表同源）；关键词挂工作区不挂任务',
+    keywords      VARCHAR(4096) NOT NULL COMMENT '关键词原文，以 U+0001 连接，顺序即用户填写顺序（已归一化：去首尾空白、结构性字符转空格、去重）；空列表存空串',
+    created_at    DATETIME     NOT NULL COMMENT '首次写入时间（覆盖写不刷新）',
+    CONSTRAINT pk_subtitle_keyword PRIMARY KEY (id),
+    UNIQUE INDEX uk_subtitle_keyword_workspace_key (workspace_key)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='字幕关键词（用户手填，供 LLM 纠音误）';

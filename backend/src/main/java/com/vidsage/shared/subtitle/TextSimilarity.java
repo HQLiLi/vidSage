@@ -6,14 +6,10 @@ package com.vidsage.shared.subtitle;
  * <p>语义对齐 Python 的 {@code difflib.SequenceMatcher.ratio()}：取两端的最长公共子序列长度
  * {@code M}，返回 {@code 2 * M / (lenA + lenB)}。纠错阶段拿它判断「LLM 改得太多还是太少」——
  * 太高说明几乎没纠，太低说明 LLM 顺手重写了，都要拦。
- *
- * <p><b>public</b>：唯一消费者是字幕纠错器 {@code SubtitleCleanser}，跨包使用，收不进包私有；
- * 谁将来真要用，也别为「可能用到」提前造 util 桶（见 directory-structure.md）。
  */
 public final class TextSimilarity {
 
     private TextSimilarity() {
-        // 纯静态工具，不实例化
     }
 
     /**
