@@ -1102,3 +1102,27 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 41: 注释收口 backend test 层（子任务 5）+ 任务树对齐正典当前版本
+<!-- trellis-session: v=2 fp=3af87381769e71d6 -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口 backend test 层（子任务 5）+ 任务树对齐正典当前版本
+**Branch**: `dev`
+
+### Summary
+
+先把注释任务树的文档按正典当前版本（§一 那把尺子、§二 两条边界、逐层沉淀）对齐并合入 dev；再执行子任务 5：收口 backend/src/test/java 56 个文件的注释，26 个文件改动（工作集 21 + 人读补扫新增 5）、非注释行 0、≥16 行块 1→0、mvn test 570/0/1/0。分支已合并回 dev 并删除。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8afb33a` | chore(task): 注释任务树对齐正典当前版本（尺子/两条边界/逐层沉淀） |
+| `b309a06` | docs(backend-test): 注释收口 —— 清变更史与决策引用、删「解释既成安排」的段 |
+| `f7f4fc8` | chore(task): 回填 backend test 层收口结果 |
+
+### Status
+
+[OK] **Completed**
