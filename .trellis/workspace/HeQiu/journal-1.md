@@ -1149,3 +1149,26 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 43: 注释收口：三层回归扫描（domain / application / infrastructure）
+<!-- trellis-session: v=2 fp=c6af44b077c86f44 -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口：三层回归扫描（domain / application / infrastructure）
+**Branch**: `dev`
+
+### Summary
+
+按正典 §一 那把尺子回扫三层：人读 301 个 ≥6 行块，31 文件 / 32 处删改（落位依据、反事实推演、机制推论、重复约束）；修掉 1 处注释块裸空行；AC1 三面复核归零（test 层一处「逐字节一致」判为误报并改写）；装 pre-commit 注释卫生闸（AC7）并实测拦截。父任务 10-12-comment-consolidation 随之归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `96cd921` | docs(backend): 注释回归扫描 —— 按正典 §一 尺子回扫 domain/application/infrastructure |
+| `0f0a173` | Merge branch 'feature/comment-regression-scan' into dev |
+
+### Status
+
+[OK] **Completed**
