@@ -1126,3 +1126,26 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 42: 注释收口 frontend 层（子任务 6，注释任务树最后一个）
+<!-- trellis-session: v=2 fp=30c89883a3bce3f5 -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口 frontend 层（子任务 6，注释任务树最后一个）
+**Branch**: `dev`
+
+### Summary
+
+执行注释收口任务树的子任务 6：收口 frontend/src 的注释，19 个文件改动（+47 −70）、非注释行 0、210 个 JSDoc 块不变、≥16 行块 2 → 0、注释行 595 → 573（24.4% → 23.7%）、npm run type-check 与双 linter（oxlint + ESLint，带 --fix 但未改动任何文件）全绿——前端无单测基线，这两条就是本层「行为不变」的替身。开工前的实测把 prd 预估顶掉三处：prd 说「变更史 5 处 / 25 文件 / 2413 行」，实测 27 文件 / 2440 行 / 210 块，且归档指针共有三族共 25 处——① 正典 §六 机械线只报出 4 处；② design §N 章节号 14 处 / 9 文件（机械线模式只列 design.md，拦不住这个写法）；③ 任务卡需求号 R# / D# / AC# 8 处 / 4 文件（经核实出自归档的 .trellis/tasks/archive/2026-10/10-03-vidsage-fe-v0/prd.md 与 design.md）。即机械线报 4、人眼捞 22。处置：design §N 删括注保正文（正文多是真边界，如「本入口只管日历时间」），需求号整处删，另加 4 处日期与 3 处自然语言变体（「按原型验证…重写」「（原型验证的绑定口径）」「（原工作区产物面板修复先例）」）。按正典 §一 尺子与禁令 2 / 10 另收口：「解释既成安排」段（落位依据、可见性辩护）删，现状快照改职责边界（enums/task.ts、routes/index.ts），同一处写两遍的合一（useTranscriptPlayer 的类型标注句），构件内部步骤序列整条删（stores/task.ts 的数据流箭头链，按 §二 两条边界第 1 条）。request.ts 门面块里 axios 条件类型的整段推导在 type-safety.md:95 已有完整出处，代码里压成一句 why + 指针。prd 点名「不动」的 lib/gsap.ts 一字未动，并复核「当前无插件使用场景」仍真（全仓只有两个 view 从 @/lib/gsap 导入，无 registerPlugin 调用）。5 个人读复核后判不动：App.vue、BrandLogo.vue、HeroWave.vue、AudioWaveform.vue、views/not-found/index.vue。§4 标准补充四条：Ⓐ design §N 与需求号这类「任务卡内部编号」在正典 §五 表里没名字、§六 模式清单也拦不住，建议补一行（待裁）；Ⓑ 两个 .vue 里几乎同文的 SCSS 说明——禁令 5 / 10 都只管文件内，跨文件没口径，本层做了不对称处置（两份都删「来自原型」的出处句，只留 workspace 侧「与上传页的进度条同一视觉」这条跨组件不变量），待裁；Ⓒ 类型标注策略说明正典已覆盖，无需补；Ⓓ 新增一条：「需要 put / delete 时按同款签名在此追加」这类扩展点指引算不算禁令 6 的辩护句——本层判留（两处），理由与辩护句不同：读者本来就会去做那件事，它防的是另建实例、把单文件撑爆。§3 待订正空表，三处疑似失实（SubtitleArtifactFile 类型、后端 TaskSseConnectionManager、gsap 无插件）都查证为属实，记进表里备查。独立质检（trellis-check）已派发但截至提交尚未返回。收尾：本层是注释任务树 6 个子任务的最后一个，分支已 --no-ff 合回 dev、本地 feature 分支已删；dev 领先 origin/dev 10 笔未推。父任务 10-12-comment-consolidation 仍欠收尾三件（全量 AC1 三面复核 + 装钩子验 AC7 + domain/application/infrastructure 三层按 §一 尺子回归扫描），写在父 implement.md §5。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8c5a5d0` | chore(task): 注释收口 frontend 层工件与开工 |
+| `9a5bc0d` | docs(frontend): 注释收口 —— 清变更史与归档指针、删「解释既成安排」的段 |
+
+### Status
+
+[OK] **Completed**

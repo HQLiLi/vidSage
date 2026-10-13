@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 41
+- **Total Sessions**: 42
 - **Last Active**: 2026-10-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1128 | Active |
+| `journal-1.md` | ~1151 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 42 | 2026-10-13 | 注释收口 frontend 层（子任务 6，注释任务树最后一个） | `8c5a5d0`, `9a5bc0d` | `dev` |
 | 41 | 2026-10-13 | 注释收口 backend test 层（子任务 5）+ 任务树对齐正典当前版本 | `8afb33a`, `b309a06`, `f7f4fc8` | `dev` |
 | 40 | 2026-10-13 | 注释收口 web/shared/config 层：清变更史、删「解释既成安排」的废话，并把判据回写正典 | `65bf3ca`, `30409f7`, `caaf2d2`, `69019cb`, `05f34e4` | `dev` |
 | 39 | 2026-10-13 | 注释收口 infrastructure 层：清变更史、粒度归位、订正腐坏 | `d4cf2f9` | `dev` |
