@@ -11,12 +11,12 @@
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | 0 | 工作集实测：四条筛选线 + 块统计（§0.1） | ✅ |
-| 1 | **类注释迁移史族**（8 文件）：`Bcp47LanguageTest` / `CheckpointPolicyTest` / `TermVerificationTest` / `WorkspaceKeyGeneratorTest` / `NioWorkspaceDirectoryManagerTest` / `AudioPreparationCoordinatorTest` / `SubtitleArtifactSpecTest` / `MessageHistoryTest` | ⬜ |
-| 2 | **阶段分隔行括注**（6 文件 11 处）：`（2026-10-02 两段式…）` 一族 | ⬜ |
-| 3 | **事故 / 故障叙事**：`LlmSubtitleCleanserTest:302`、`SubtitleArtifactSpecTest:115`、`TaskSseConnectionManagerTest:191`、`SubtitlePipelineTest:518` | ⬜ |
-| 4 | **`design.md` 指针**：`TaskProgressNotifierTest:37`、`WorkspaceKeyGeneratorTest:50`；归档指针随各行处理 | ⬜ |
-| 5 | 其余命中：`MediaControllerTest:23`、`SubtitleCleanupCoordinatorTest:192`、`SubtitleTranslationCoordinatorTest:399`、`TermMatcherTest:14`、`SrtRendererTest:109`、`TaskProgressMessageTest:15`、`TaskControllerTest` 四处、`SubtitlePipelineTest:352` | ⬜ |
-| 6 | **全层块全量复核**：`≥6 行` 的 35 块逐块读（其中 **14 块落在工作集外**，见 §0.1 末） | ⬜ |
+| 1 | **类注释迁移史族**（8 文件）：`Bcp47LanguageTest` / `CheckpointPolicyTest` / `TermVerificationTest` / `WorkspaceKeyGeneratorTest` / `NioWorkspaceDirectoryManagerTest` / `AudioPreparationCoordinatorTest` / `SubtitleArtifactSpecTest` / `MessageHistoryTest` | ✅ |
+| 2 | **阶段分隔行括注**（6 文件 11 处）：`（2026-10-02 两段式…）` 一族 | ✅ |
+| 3 | **事故 / 故障叙事**：`LlmSubtitleCleanserTest:302`、`SubtitleArtifactSpecTest:115`、`TaskSseConnectionManagerTest:191`、`SubtitlePipelineTest:518` | ✅ |
+| 4 | **`design.md` 指针**：`TaskProgressNotifierTest:37`、`WorkspaceKeyGeneratorTest:50`；归档指针随各行处理 | ✅ |
+| 5 | 其余命中：`MediaControllerTest:23`、`SubtitleCleanupCoordinatorTest:192`、`SubtitleTranslationCoordinatorTest:399`、`TermMatcherTest:14`、`SrtRendererTest:109`、`TaskProgressMessageTest:15`、`TaskControllerTest` 四处、`SubtitlePipelineTest:352` | ✅ |
+| 6 | **全层块全量复核**：`≥6 行` 的 35 块逐块读（其中 **14 块落在工作集外**）——**捞到 5 个文件** | ✅ |
 | 7 | 自检（§5）+ 报审查（§6） | ⬜ |
 
 ## 0.1 工作集（2026-10-13 实测）
@@ -119,25 +119,55 @@ web/sse/TaskSseConnectionManagerTest
 
 | # | 文件 | 命中线 | 处置 | 上移去向 |
 |---|---|---|---|---|
-| （待填） | | | | |
+| 1 | `application/media/pipeline/AudioPreparationCoordinatorTest.java` | ① | 删「已随命名规则迁往 `domain/media/AudioArtifactTest`（2026-10-06…）」整段，留接缝陈述 | — |
+| 2 | `application/media/WorkspaceKeyGeneratorTest.java` | ① | 类注释删「由 `WorkspaceServiceTest` 拆分而来（2026-10-09 端口倒置）…断言值与拆分前逐字一致」；`workDir` 的 Javadoc 删 `design.md` 指针、留「两行不能并一行」 | — |
+| 3 | `application/subtitle/pipeline/SubtitleCleanupCoordinatorTest.java` | ② | 句末「，MVP-1」删；类注释「清洗算法…它的覆盖在 `SubtitleCleanserTest`」改为不点测试位置的边界陈述 | — |
+| 4 | `application/subtitle/pipeline/SubtitleTranslationCoordinatorTest.java` | ① | 类注释删「已随逻辑下沉（2026-10-06 Phase B）迁到 …」整段与「它的覆盖在 `SubtitleTranslatorTest`」指针；分隔行删日期括注 | — |
+| 5 | `application/task/message/TaskProgressMessageTest.java` | ① | 删「（2026-10-12 起）」与「（真值表由 `VideoTaskTest` 钉住）」；两截判据与紧凑构造器那条留 | — |
+| 6 | `application/task/notify/TaskProgressNotifierTest.java` | ① | 删「`design.md` 保真清单」与「（第 5 / 6 / 8 条）」，三件事留 | — |
+| 7 | `application/task/pipeline/SubtitlePipelineTest.java` | ① | 类注释删「2026-10-02 两段式：」前缀；「按需翻译」分隔行删括注；「（拍板 2026-10-12）」删 | — |
+| 8 | `application/task/VideoTaskServiceTest.java` | ① | 三处分隔行删日期括注；`:159`「逐字节一致」判为**误报**不动 | — |
+| 9 | `domain/media/model/AudioSpecTest.java` | 人读补扫 | 类注释删「本测试类是两个用例的归宿：原 `FfmpegAudioExtractorTest`…」变更史，留构造期不变量与异常类型判据 | — |
+| 10 | `domain/subtitle/model/common/SubtitleArtifactSpecTest.java` | ① | 类注释删「原 `SubtitleArtifactNamesTest` 的对等重写（2026-10-07 产出物登记表）」；`:115` 事故叙事改写为不变量 + 失败模式 | — |
+| 11 | `domain/subtitle/policy/Bcp47LanguageTest.java` | ① | 类注释删迁移史，改「语种归一化与源语种推断」 | — |
+| 12 | `domain/subtitle/policy/CheckpointPolicyTest.java` | ① | 类注释删迁移史（含三个测试类的行号指涉），SRT 边界改自洽、去悬空 | — |
+| 13 | `domain/subtitle/policy/TermVerificationTest.java` | ① | 类注释删迁移史；`:68`「判定顺序即旧守卫顺序…与迁移前一致」整行删（方法名已述） | — |
+| 14 | `domain/task/VideoTaskTest.java` | ① | 类注释覆盖清单**剥日期**（清单本身保留）；两处分隔行删日期括注 | — |
+| 15 | `infrastructure/fs/NioWorkspaceDirectoryManagerTest.java` | ① | 类注释删拆分史；分隔行删「（MVP-1 上传路线）」 | — |
+| 16 | `infrastructure/persistence/repository/MybatisSubtitleKeywordRepositoryTest.java` | 人读补扫 | 删「（真库连通由 `VidSageApplicationTests` …验证）」指针 | — |
+| 17 | `infrastructure/persistence/repository/MybatisVideoTaskRepositoryTest.java` | 人读补扫 | 同上 | — |
+| 18 | `infrastructure/provider/llm/LlmSubtitleCleanserTest.java` | ② | `:302` 删「——正是本次故障的守卫反杀点」，阈值算术留 | — |
+| 19 | `infrastructure/provider/llm/LlmSubtitleContextSummarizerTest.java` | 人读补扫 | 「同 `SubtitleCleanserTest` 的手法」改为自洽表述 | — |
+| 20 | `infrastructure/provider/llm/LlmSubtitleTranslatorTest.java` | 人读补扫 | 「手法对照 `SubtitleCleanserTest`」改为自洽表述 | — |
+| 21 | `infrastructure/provider/llm/MessageHistoryTest.java` | ② | 类注释删「这些用例原先是 `SubtitleCleanserTest` 里…」迁移史 | — |
+| 22 | `shared/subtitle/SrtRendererTest.java` | ③ | `:109` 删跨类类比「（同 `toSrt` 对 null 文本的处理）」，改自洽 | — |
+| 23 | `shared/subtitle/TermMatcherTest.java` | ② | 类注释删「钉的是原 `SubtitleCleanser.hitTerms` 的判据——搬迁…」；「两个入口必须各钉一条」保留 | — |
+| 24 | `web/controller/MediaControllerTest.java` | ② | 删「原『抽音频』端点已随 MVP-1 异步管线收编删除」整段 | — |
+| 25 | `web/controller/TaskControllerTest.java` | ① | 三处分隔行删日期括注 | — |
+| 26 | `web/sse/TaskSseConnectionManagerTest.java` | ①② | 类注释删日期括注、`<ul>` 覆盖清单、「注册表行为由 `TaskSubscriptionRegistryTest` 钉住」索引；分隔行删日期；`:191` 事故叙事改写为现状 | — |
+
+**改动面**：**26 个 .java 改**（工作集 21 + 人读补扫新增 5：`AudioSpecTest`、两个 MyBatis 仓储测试、
+`LlmSubtitleTranslatorTest`、`LlmSubtitleContextSummarizerTest`），收口后 `+45 −97`；**非注释行 0**。
+**人读补扫确实捞到了工作集外的东西**——5 个文件，全是 `≥6 行` 块的人读发现（机械线一条没命中）。
 
 ## 2. 例外登记表（滚动填）
 
-> `≥16 行` 的块在这里逐条登记。收口前全层只有 1 块（`TaskSseConnectionManagerTest:30`，16 行），
-> 压到线下就整表为空；压不动就写明「为什么砍不动」。
+> `≥16 行` 的块在这里逐条登记。**本层空表**——收口前全层只有 1 块（`TaskSseConnectionManagerTest:30`，16 行），
+> 改写后 `≥16` 行块归零（140 块的分布：`1–5 ×109`、`6–11 ×30`、`12–15 ×1`、`≥16 ×0`），无需豁免。
 
 | 文件 | 块位置 | 行数 | 理由 |
 |---|---|---|---|
-| （待填） | | | |
+| （空） | | | |
 
 ## 3. 待订正清单（滚动填）
 
 > 断句残句 / 失实表述。**本层种子为空**——父计划 §3 #1（`TaskResponse` 残句）已由 web 层订正，
-> #2（`@param` × `@Schema`）属 `web/dto/`，本层不适用。执行中发现的补进来。
+> #2（`@param` × `@Schema`）属 `web/dto/`，本层不适用。
+> 执行中未发现断句残句或与代码矛盾的表述。
 
 | # | 位置 | 现象 | 处置 |
 |---|---|---|---|
-| | | | |
+| 1 | `WorkspaceKeyGeneratorTest:32`、`NioWorkspaceDirectoryManagerTest:25`、`ProcessToolDiagnosticsTest`（类注释段） | `@TempDir(cleanup = CleanupMode.NEVER)` 的约定性注释带**归档指针**（「沿用 `implement.md` 记录的环境性清理规避」）与**事故频次叙事**（「本仓库已两次独立复现」）——按正典 §五 /  §二 两条边界第 2 条都该处理 | **未动**（父 `prd.md` 明文「不动那条约定性注释」）。**请裁定**：剥掉指针与频次句、只留负面约束，还是整条保持原样？ |
 
 ## 4. 标准补充（本层对正典的反馈）
 
@@ -146,23 +176,37 @@ web/sse/TaskSseConnectionManagerTest
 
 | # | 遇到的情形 | 正典怎么说 | 实际怎么定 | 建议回写正典？ |
 |---|---|---|---|---|
-| | | | | |
+| ① | **测试类的「覆盖清单」**（`<p>覆盖「…」「…」。」）算不算禁令 7 的索引？ | 禁令 7 删「它有哪些方法」；禁令 10 说类注释要答「边界在哪」 | **分层办**：内嵌日期的（`VideoTaskTest`）**剥日期保清单**；纯清单的（`TaskControllerTest`、`VideoTaskServiceTest`、`TaskSubscriptionRegistryTest` 等）**一字未动**；只对 `TaskSseConnectionManagerTest` 的 `<ul>` 整块改写（它同时带日期与指针） | **建议补一句**：「测试类的覆盖清单属职责边界，剥掉日期与指针即可，不按禁令 7 整块删」 |
+| ② | 指向**另一个测试**的指针：「它的覆盖在 `XTest`」「真库连通由 `YTest` 验证」「手法对照 `XTest`」 | 禁令 7 把「测试在哪里」列为删（属禁令 3 的实现层细节） | 一律删或改为自洽表述（本层 5 处） | 正典已覆盖，**无需补** |
+| ③ | **进度区间口径**（`prepare 0..70 / clean 70..100`）写在测试类注释里 | §二 分流表把「进度事件序列 / 区间」划归 spec | `directory-structure.md:133` 只有 cleanser 内部 `0..100`，**没有 prepare/clean 的区间**——上移会凭空造 spec 内容，故**保留**在 `SubtitlePipelineTest` 类注释里 | **待定**：若确认要把 prepare/clean 区间收进 `directory-structure.md` 的进度表，下一层顺手做；否则保留 |
+| ④ | `@TempDir(cleanup=NEVER)` 的约定性注释含归档指针与事故频次叙事 | §五 归档指针删；§二 两条边界第 2 条事故叙事删 | 因父 `prd.md` 明文「不动」→ **原样保留**，登记进 §3 待你裁定 | 视 §3 #1 的裁定结果 |
 
-## 5. 自检（执行后填实测值）
+**本层新发现（执行中填）**：见上表 ①②③。
+
+## 5. 自检（实测值 2026-10-13）
 
 ```bash
 cd f:/personal_project/vidSage && git diff -w --stat
-#   → 期望：只有注释行变化；非注释行 0
+#   → 26 files changed, +45 −97；**非注释行 0**
+#     （逐行核过 +/- 行：全部是注释行，或删段留下的行合并）
 grep -rnE "<照抄正典 §六 的模式清单>" backend/src/test/java
-#   → 期望命中 0
+#   → 只 1 处：application/task/VideoTaskServiceTest.java:159 「逐字节一致」
+#     ——「文件内容与上传流逐字节一致」是断言语义，不是「迁移前逐字节一致」那类变更史。
+#     按正典 §六「已知误报不为此收窄模式，靠 review 排除」→ 判为误报，不改。
 grep -rnE '原为|原先|此前|曾经|已废弃|本阶段|将来|本次故障|MVP-1|不再|逐字节一致' backend/src/test/java
-#   → 逐条判：现状语义或防误改的 why 留；变更史删（三条误报见 §0.1）
-<块行数统计脚本>
-#   → 140 块的分布复算；≥16 行块复核「是否只回答那四件事」
-# 删完回查两件事（正典 §一 末尾）：① 悬空引用  ② 注释块内的裸空行
+#   → 「MVP-1」「原先是」「本次故障」「拍板 2026-10-12」全部清掉；「将来」剩 TermMatcherTest:20
+#     一处，判为**留**（防「把两个入口合并成一个」的真误改，属禁令 6 判据）。
+#     「逐字节一致」= 上面那处误报。
+# 块统计：140 块不变；1–5 行 105→109、6–11 行 32→30、12–15 行 2→1、≥16 行 1→0
+# 删完回查两件事：① 悬空引用——已修 2 处（CheckpointPolicyTest 的 SRT 句、
+#   TaskProgressMessageTest 的「真值表由 VideoTaskTest 钉住」随被删句一起走）；
+#   ② 注释块内裸空行——脚本扫过，0 处
 cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn -q test
-#   → 全绿，用例数不少于收口前（本层只改注释，不应影响用例）
+#   → tests=570 errors=0 skipped=1 failures=0（与 web 层收口后基线一致，用例数未减）
 ```
+
+**行为不变**：570 / 0 / 1 / 0。注释改动不参与编译，这条的价值在于排除「手滑改了代码」——
+已另行逐行核过 diff，非注释行 0。
 
 ## 6. 门 G5 · 报审查
 
