@@ -98,10 +98,7 @@ class AudioPreparationCoordinatorTest {
         verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.M4A_AAC_48K_MONO);
     }
 
-    // namesAudioFileWithFullSpecFingerprint 与 differentSpecsMapToDifferentAudioPaths 已随命名规则
-    // 迁往 domain/media/AudioArtifactTest（2026-10-06 音频指纹命名下沉 AudioArtifact.fileName，
-    // 断言值逐字随迁不变）；usesM4aFileNameForM4aSpec 留在此处——它钉的是「服务按指纹命名解析
-    // 抽取目标」这条服务↔命名规则的接缝（verify extract 调用路径），仍由本测试守护。
+    // 这条用例钉的是「服务按指纹命名解析抽取目标」的服务↔命名规则接缝（verify extract 调用路径）。
 
     // ---------- 断点复用 ----------
 

@@ -31,17 +31,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * {@link TaskSseConnectionManager} 的纯单元测试：不起 Spring 容器。
  *
  * <p>Spring 7 的 {@code ResponseBodyEmitter.Handler} 是包私有类型，单测无法从外部挂记录用
- * Handler，事件写出的字节形态由 {@code TaskControllerTest} 的切片测试（真 MockMvc + 真
- * manager/registry 接线）覆盖；本文件专测本类自身可从公开 / 包内 API 观察的行为：
- *
- * <ul>
- *   <li>连接生命周期——登记 / 摘除、终态收口（含翻译子状态的判定，2026-10-02 两段式）、空桶回收；</li>
- *   <li>{@code open()} 的接线顺序——登记连接 → 挂订阅 → 推快照 → 终态收口，以及对「订阅时任务
- *       已终态」这条窗口竞态的退订防御、读快照失败时的回滚。</li>
- * </ul>
- *
- * <p>推送走的是真实链路：把该连接自己那个消费者（{@code open()} 挂到注册表上的）捞出来直接喂事件——
- * 注册表本身的行为由 {@code TaskSubscriptionRegistryTest} 钉住，这里不重复。
+ * Handler，事件写出的字节形态由 {@code TaskControllerTest} 的切片测试覆盖；本文件只测本类自身
+ * 可从公开 / 包内 API 观察的行为。推送走真实链路——把该连接自己那个消费者（{@code open()} 挂到
+ * 注册表上的）捞出来直接喂事件。
  */
 class TaskSseConnectionManagerTest {
 
@@ -144,7 +136,7 @@ class TaskSseConnectionManagerTest {
         assertEquals(0, manager.emitterCount(TASK_NO));
     }
 
-    // ---------- 终态收口：翻译子状态判定（2026-10-02 两段式） ----------
+    // ---------- 终态收口：翻译子状态判定 ----------
 
     @Test
     void translationProgressEventKeepsEmitterDespiteTerminalMainStatus() {
@@ -188,8 +180,8 @@ class TaskSseConnectionManagerTest {
 
     @Test
     void openClosesSubscriptionWhenSnapshotIsAlreadyTerminal() {
-        // 窗口竞态的历史缺陷路径（MVP-1 真实抓到过）：任务恰在「读快照 → 挂订阅」之间到达终态，
-        // 注册表此后不会为该 taskNo 调用 complete，订阅必须由 open 自己收掉，否则永久泄漏
+        // 任务恰在「读快照 → 挂订阅」之间到达终态时，注册表此后不会为该 taskNo 调用 complete，
+        // 订阅必须由 open 自己收掉，否则永久泄漏
         manager.open(TASK_NO, () -> event(TaskStatus.FAILED));
 
         assertTrue(unsubscribed.get(), "订阅时任务已终态 → 必须主动退订防泄漏");

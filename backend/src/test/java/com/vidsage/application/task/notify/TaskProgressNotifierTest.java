@@ -34,8 +34,7 @@ import org.mockito.Mockito;
  * {@link TaskProgressNotifier} 的单元测试：仓储用 Mockito mock、注册表用真实实例
  * （订阅是否被清直接落在真注册表上验证），不起 Spring 容器。
  *
- * <p>钉住 design.md 保真清单的三处：落库先于广播（第 5 条）、终态广播抛异常也必须清订阅
- * （第 6 条）、翻译进度不落库（第 8 条）。
+ * <p>钉住三件事：落库先于广播、终态广播抛异常也必须清订阅、翻译进度不落库。
  */
 class TaskProgressNotifierTest {
 

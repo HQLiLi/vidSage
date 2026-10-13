@@ -282,7 +282,7 @@ class TaskControllerTest {
         verify(taskService).snapshot("ghost");
     }
 
-    // ---------- 按需触发翻译（2026-10-02 两段式） ----------
+    // ---------- 按需触发翻译 ----------
 
     @Test
     void translateReturnsAcceptedWithRefreshedTaskResponse() throws Exception {
@@ -326,7 +326,7 @@ class TaskControllerTest {
         verify(taskService, never()).translate(anyString());
     }
 
-    // ---------- 重新生成字幕（关键词，2026-10-12） ----------
+    // ---------- 重新生成字幕（关键词） ----------
 
     @Test
     void regenerateReturnsAcceptedAndPassesKeywordsThrough() throws Exception {
@@ -428,7 +428,7 @@ class TaskControllerTest {
     }
 
 
-    // ---------- SSE 订阅：翻译期间（2026-10-02 两段式） ----------
+    // ---------- SSE 订阅：翻译期间 ----------
 
     @Test
     void subscribeEventsDuringTranslationKeepsConnectionOpenForTranslateEvents() throws Exception {

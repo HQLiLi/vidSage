@@ -299,7 +299,7 @@ class LlmSubtitleCleanserTest {
     @Test
     void 跨书写系统的术语替换不被判改太狠() {
         // 原文 15 字走 normal 阈值 0.7：直接比原文相似度 0.667 < 0.7 会被拦，
-        // 靠「术语替换基线」把相似度拉回 1.0 才通过——正是本次故障的守卫反杀点
+        // 靠「术语替换基线」把相似度拉回 1.0 才通过
         ScriptedChatModel model = new ScriptedChatModel(
                 "{\"1\": \"Mittelhau是其中记载最少的一种斩击\"}");
         SubtitleContext ctx = contextWith(

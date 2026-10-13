@@ -9,9 +9,7 @@ import org.junit.jupiter.api.Test;
 /**
  * {@link AudioSpec} 的构造期不变量：违反契约的取值<b>无法构造出实例</b>。
  *
- * <p><b>本测试类是两个用例的归宿</b>：原 {@code FfmpegAudioExtractorTest.rejectsInvalidSpecFields}
- * 与 {@code rejectsZeroBitrateForLossyContainer}。校验从抽取实现搬进紧凑构造器后，非法值在
- * <b>构造那一刻</b>就抛，测不到 extractor 了，故整类改测构造器本身——覆盖面相同，归属更准。
+ * <p>非法值在<b>构造那一刻</b>就抛，测不到 extractor，故整类只测构造器本身。
  *
  * <p>异常类型是 {@link IllegalStateException} 而非 {@code IllegalArgumentException}，这是刻意的：
  * 走到构造器才发现的非法值意味着服务端自己算错了（调用方给的非法值应在 HTTP 边界被卫语句拦下，

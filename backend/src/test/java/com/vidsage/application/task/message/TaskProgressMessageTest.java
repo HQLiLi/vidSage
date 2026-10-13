@@ -12,8 +12,7 @@ import org.junit.jupiter.api.Test;
 /**
  * {@link TaskProgressMessage} 的纯单元测试：钉住终态判据的**出处**，不是判据本身。
  *
- * <p>判据有两截（2026-10-12 起）：主状态与翻译子状态的收敛判定在
- * {@code VideoTask.isEventTerminal}（真值表由 {@code VideoTaskTest} 钉住），
+ * <p>判据有两截：主状态与翻译子状态的收敛判定在 {@code VideoTask.isEventTerminal}，
  * 「有没有在途后置会话」隐式编在 stage 的状态位里（RUNNING 态 = 在跑）。
  * 给什么状态都由本类的紧凑构造器重算，构造方传进来的实参一律被覆盖——
  * 这是「即便用错也不会错」的形状，前端据此不再自己拼状态组合。

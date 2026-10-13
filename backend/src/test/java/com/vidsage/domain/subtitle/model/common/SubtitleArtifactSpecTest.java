@@ -12,9 +12,6 @@ import org.junit.jupiter.api.Test;
  *
  * <p><b>这些断言是「文件名没变」的验收证据</b>：工作目录按媒体内容寻址，名字改一个字符，
  * 存量产物就会从「已完成」打回「未完成」。不要为了让断言好看而改这里的期望值。
- *
- * <p>原 {@code SubtitleArtifactNamesTest} 的对等重写（2026-10-07 产出物登记表）：文件名规则从
- * 「八个静态方法」收进枚举，故断言全部改经 {@code SubtitleArtifactSpec.fileName(...)} 走。
  */
 class SubtitleArtifactSpecTest {
 
@@ -112,9 +109,9 @@ class SubtitleArtifactSpecTest {
 
     @Test
     void artifactNamesRoundTripThroughMatches() {
-        // 2026-10-12 踩过：compileTemplate 没给路由交替加括号组，| 把整条正则拆成四选一，
-        // matches 对任何完整产物名恒 false——artifacts 清单恒空、重新生成删不掉译文产物。
-        // 这条钉住「fileName 产出来的名字必须能被自己的 matches 认出来」这个往返不变量。
+        // 钉住「fileName 产出的名字必须能被自己的 matches 认出来」这个往返不变量——
+        // 规则里少一组括号（如路由交替没套括号组），matches 就会对任何产物名恒 false，
+        // artifacts 清单恒空、重新生成删不掉译文产物。
         for (SubtitleRoute route : SubtitleRoute.values()) {
             for (SubtitleArtifactSpec spec : SubtitleArtifactSpec.values()) {
                 String name = spec.fileName(route, spec == SubtitleArtifactSpec.CONTEXT ? null : "en");

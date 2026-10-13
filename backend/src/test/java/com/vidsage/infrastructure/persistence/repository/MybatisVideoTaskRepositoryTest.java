@@ -27,8 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * {@link MybatisVideoTaskRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>
- * （真库连通由 {@code VidSageApplicationTests} 上下文冒烟在 local profile 下验证）。
+ * {@link MybatisVideoTaskRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>。
  *
  * <p>覆盖「实体 ↔ 领域对象双向转换的逐字段对齐」「insert 回填自增 id」「查重查询的过滤条件」。
  * LambdaQueryWrapper 解析列名依赖 TableInfo 缓存，纯单测需先手工初始化。

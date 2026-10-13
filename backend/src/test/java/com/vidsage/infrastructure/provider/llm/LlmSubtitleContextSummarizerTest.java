@@ -18,8 +18,8 @@ import org.springframework.ai.chat.prompt.Prompt;
 /**
  * {@link LlmSubtitleContextSummarizer} 的纯单元测试：<b>不起 Spring 容器</b>，也不打网络。
  *
- * <p>同 {@code SubtitleCleanserTest} 的手法：真 {@code ChatClient} + 桩 {@code ChatModel}。
- * 重点钉的是<b>成功与降级要分得开</b>——摘要只是增益，失败（请求炸、回复不是 JSON）要返回空
+ * <p>手法是「真 {@code ChatClient} + 桩 {@code ChatModel}」。重点钉的是<b>成功与降级要分得开</b>——
+ * 摘要只是增益，失败（请求炸、回复不是 JSON）要返回空
  * {@link Optional}，让调用方知道别把这次结果落盘（空缓存一落盘，摘要就永久丢了）。
  */
 class LlmSubtitleContextSummarizerTest {
