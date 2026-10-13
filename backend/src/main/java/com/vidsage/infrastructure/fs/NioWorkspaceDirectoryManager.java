@@ -11,8 +11,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/***
- * 工作区目录管理器 的实现类
+/**
+ * 工作区目录的本机实现：把 label + key 拼出的目录名解析到配置的根目录下，并确保它存在。
  */
 @Slf4j
 @Component
@@ -38,9 +38,7 @@ public class NioWorkspaceDirectoryManager implements WorkspaceDirectoryManager {
     }
 
     /**
-     * 获取工作区根目录绝对路径
-     *
-     * @return 根目录绝对路径
+     * 工作区根目录绝对路径。
      */
     @Override
     public Path getWorkspaceRoot() {
@@ -55,11 +53,6 @@ public class NioWorkspaceDirectoryManager implements WorkspaceDirectoryManager {
         return Path.of(properties.root() == null ? WorkspaceDir.FALLBACK_NAME : properties.root());
     }
 
-    /**
-     * 确保目录存在并返回其绝对路径
-     * 不存在则创建目录
-     * 已存在时是幂等空操作
-     */
     private Path ensureCreated(Path dir) {
         Path absolute = dir.toAbsolutePath();
         try {

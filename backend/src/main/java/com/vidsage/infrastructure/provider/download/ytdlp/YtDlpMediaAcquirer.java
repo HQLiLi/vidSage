@@ -24,8 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 远程 URL 路线的输入获取：用 yt-dlp 把站点页面下载成工作目录里的媒体文件 + info json 元数据。
  *
- * <p><b>不自动更新 yt-dlp</b>；下载配方与「产物定位」都按实测结论固定（研究笔记
- * external-process-integration.md §8.6）：
+ * <p><b>不自动更新 yt-dlp</b>；下载配方与「产物定位」都按实测结论固定：
  * <ul>
  *   <li>输出模板固定为 {@code source.%(ext)s} —— 派生出 {@code source.<ext>} 与 {@code source.info.json}，
  *       合并用的中间分片由 yt-dlp 自行删除；</li>
@@ -38,14 +37,13 @@ import tools.jackson.databind.ObjectMapper;
  *       不算失败但必须可见。</li>
  * </ul>
  *
- * <p>两个下载器同时驻留容器（由输入子类型决定用哪个，不由配置决定），故<b>不加</b>
- * {@code @ConditionalOnProperty}（见 design §三 决策 2）。
+ * <p>两个下载器同时驻留容器，由输入子类型决定用哪个。
  */
 @Slf4j
 @Component
 public class YtDlpMediaAcquirer implements MediaAcquirer {
 
-    /** 固定输出模板：派生 {@code source.<ext>} 与 {@code source.info.json}（实测，研究 §8.6-3/4）。 */
+    /** 固定输出模板：派生 {@code source.<ext>} 与 {@code source.info.json}（实测）。 */
     static final String OUTPUT_TEMPLATE = "source.%(ext)s";
 
     /** info json 的固定文件名，由输出模板派生而来（实测）。 */
@@ -61,20 +59,20 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
     private static final Set<String> NON_PRODUCT_SUFFIXES = Set.of(".info.json", ".part", ".ytdl");
 
     /**
-     * bot 检测拦截的稳定子串（实测原文含 {@code Sign in to confirm you're not a bot}，研究 §8.1）。
+     * bot 检测拦截的稳定子串（实测原文含 {@code Sign in to confirm you're not a bot}）。
      * <b>实测过的文案才做保守匹配</b>，其余一律回退「未知失败 + stderr 尾部」。
      */
     private static final String BOT_DETECTION_MARKER = "not a bot";
 
-    /** 非法 URL 的稳定子串（实测原文形如 {@code '[x]' is not a valid URL}，研究 §三）。 */
+    /** 非法 URL 的稳定子串（实测原文形如 {@code '[x]' is not a valid URL}）。 */
     private static final String INVALID_URL_MARKER = "is not a valid URL";
 
     /**
      * 「部分格式不可用」提示的稳定子串（实测原文
      * {@code [BiliBili] Format(s) 1080P 高码率 are missing; you have to become a premium member ...}）。
      *
-     * <p><b>实现期实测修正</b>：该提示由 yt-dlp 写在 <b>stdout</b> 的 {@code [站点]} 行上、<b>没有
-     * {@code WARNING:} 前缀</b>（与 implement.md 的假设不同），因此只扫 stderr 的 WARNING 行会漏掉它。
+     * <p>该提示由 yt-dlp 写在 <b>stdout</b> 的 {@code [站点]} 行上、<b>没有
+     * {@code WARNING:} 前缀</b>，因此只扫 stderr 的 WARNING 行会漏掉它。
      * 它是 exit 0 的「画质降级」通知，不是失败，但「怎么画质降了」必须可查，故额外按该实测子串匹配。
      */
     private static final String FORMATS_MISSING_MARKER = "are missing; you have to become a";
@@ -83,8 +81,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
     private final ObjectMapper objectMapper;
 
     /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
      * @param ytDlp        yt-dlp 调用收口（二进制解析、公共参数注入、超时都在它里面）
      * @param objectMapper Spring 提供的 JSON 映射器（解析 info json）
      */
@@ -162,8 +158,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
 
     /**
      * info json 的元数据是否足以构造 {@link AcquiredMedia}（标题非空、时长为有限非负数）。
-     *
-     * <p>包级 static：可直测。
      */
     static boolean hasUsableMetadata(YtDlpInfoJson info) {
         return info != null
@@ -178,8 +172,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
      *
      * <p>与 {@link #locateMedia} 的区别是<b>不抛异常</b>——扫码结果不是恰好一个（0 个或多个）时
      * 返回空，让调用方走「重新下载」；真正的产品定位失败由 {@link #acquire} 抛错。
-     *
-     * <p>包级 static：可直测。
      *
      * @param workDir 下载工作目录
      * @param ext     info json 里的最终扩展名；空白时跳过推导直接扫描
@@ -230,7 +222,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
 
         List<String> args = List.of(
                 "--no-playlist",
-                // 阶段内进度不在范围内，且进度行会让 stdout 膨胀；将来做 SSE 进度时改用 --progress-template
+                // yt-dlp 的进度行会让 stdout 膨胀，下载进度也不经这里上报
                 "--no-progress",
                 "--write-info-json",
                 "-o", OUTPUT_TEMPLATE,
@@ -269,8 +261,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
     /**
      * 解析 info json 为类内嵌套 record。
      *
-     * <p>包级可见：单元测试可直接喂一个真实的 info json 文件，不必构造完整流程（见 quality-guidelines）。
-     *
      * @param infoJson info json 文件路径
      * @return 解析结果
      * @throws IllegalStateException 读取或反序列化失败
@@ -286,8 +276,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
 
     /**
      * 定位下载产物：先按固定模板推导 {@code source.<ext>}，不存在则在目录里扫描兜底。
-     *
-     * <p>包级 static：单元测试可直接断言「推导优先」与「扫描兜底」，无需真实下载。
      *
      * @param workDir 下载工作目录
      * @param ext     info json 里的最终扩展名（如 mp4）；空白时跳过推导直接扫描
@@ -311,8 +299,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
 
     /**
      * 扫描目录里匹配 {@code source.*} 且不属于 info json / 未完成标记的普通文件。
-     *
-     * <p>包级 static：可直测。
      */
     static List<Path> scanProducts(Path workDir) {
         try (Stream<Path> stream = Files.list(workDir)) {
@@ -329,8 +315,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
     /**
      * 标题为必填契约字段：info json 没有 title 时不能静默给空串。
      *
-     * <p>包级 static：可直测。
-     *
      * @throws IllegalStateException title 缺失或为空白
      */
     static String requireTitle(YtDlpInfoJson info) {
@@ -342,8 +326,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
 
     /**
      * 时长（秒，浮点）→ 毫秒（四舍五入取整）。时长为必填契约字段。
-     *
-     * <p>包级 static：可直测。
      *
      * @throws IllegalStateException duration 缺失或非法
      */
@@ -357,7 +339,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
     /**
      * 生成失败消息：命中实测文案给专门指引，否则「未知失败 + stderr 尾部」。
      *
-     * <p>包级 static：可直测。文案匹配<b>保守</b>——只匹配两条实测过的子串，命不中不影响正常路径。
+     * <p>文案匹配<b>保守</b>——只匹配两条实测过的子串，命不中不影响正常路径。
      */
     static String failureMessage(int exitCode, String stderr) {
         String tail = TextTail.tailLines(stderr, STDERR_TAIL_LINES);
@@ -378,8 +360,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
     /**
      * 提取 stderr 里的 {@code WARNING:} 行。
      *
-     * <p>包级 static：可直测。yt-dlp 把 warning 写 stderr；这些是 exit 0 也可能出现的告警，
-     * 不算失败但必须可见。
+     * <p>yt-dlp 把 warning 写 stderr；这些是 exit 0 也可能出现的告警，不算失败但必须可见。
      */
     static List<String> warningLines(String stderr) {
         if (stderr == null || stderr.isBlank()) {
@@ -391,7 +372,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
     /**
      * 提取 stdout 里的「部分格式不可用」提示行。
      *
-     * <p>包级 static：可直测。实测该提示写在 stdout、无 {@code WARNING:} 前缀（见
+     * <p>该提示写在 stdout、无 {@code WARNING:} 前缀（见
      * {@link #FORMATS_MISSING_MARKER}），只扫 stderr 会漏掉它。
      */
     static List<String> formatAvailabilityNotices(String stdout) {

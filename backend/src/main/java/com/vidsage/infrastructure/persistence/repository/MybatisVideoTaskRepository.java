@@ -13,20 +13,12 @@ import org.springframework.stereotype.Repository;
 /**
  * {@code task} 表的 MyBatis-Plus 实现：包装 {@link VideoTaskMapper}，做「实体 ↔ 领域对象」
  * 的双向转换（转换点全项目只此一处）。
- *
- * <p>实现的是领域端口 {@link VideoTaskRepository}——上层（application）只认那个接口，
- * 不认识本类。本类只做存取与转换，不写业务规则；Wrapper 等 MP 类型不出本包。
  */
 @Repository
 public class MybatisVideoTaskRepository implements VideoTaskRepository {
 
     private final VideoTaskMapper mapper;
 
-    /**
-     * 构造函数注入，保证可测试性（见 quality-guidelines）。
-     *
-     * @param mapper task 表数据访问接口（MP BaseMapper）
-     */
     public MybatisVideoTaskRepository(VideoTaskMapper mapper) {
         this.mapper = mapper;
     }
@@ -58,7 +50,7 @@ public class MybatisVideoTaskRepository implements VideoTaskRepository {
 
     /**
      * 查同工作区且<b>仍在进行中</b>的任务：提交查重用——命中即说明同一输入已有任务在排队或执行，
-     * 重复提交应被 409 拒绝（design.md 数据流节）。「什么算 active」是业务谓词，单源在
+     * 重复提交应被 409 拒绝。「什么算 active」是业务谓词，单源在
      * {@link VideoTask#ACTIVE_STATUSES}（PENDING / RUNNING），本方法只把它落成 SQL 的 status IN 条件。
      *
      * @param workspaceKey 工作区短哈希（值对象；查询条件取其 {@code value} 落到 DB 列）
@@ -81,9 +73,6 @@ public class MybatisVideoTaskRepository implements VideoTaskRepository {
         mapper.updateById(toEntity(task));
     }
 
-    /**
-     * 实体 → 领域对象：taskNo / workspaceKey 两列在此包装成值对象（String → 值对象的转换点只此一处）。
-     */
     private static VideoTask toDomain(VideoTaskEntity entity) {
         return VideoTask.restore(entity.getId(), new TaskNo(entity.getTaskNo()), entity.getInputType(),
                 entity.getSourceUri(), new WorkspaceKey(entity.getWorkspaceKey()), entity.getWorkspaceDir(),
@@ -92,9 +81,6 @@ public class MybatisVideoTaskRepository implements VideoTaskRepository {
                 entity.getCreatedAt(), entity.getUpdatedAt(), entity.getStartedAt(), entity.getFinishedAt());
     }
 
-    /**
-     * 领域对象 → 实体：值对象在此取回 {@code value} 落到 DB 列（值对象 → String 的转换点只此一处）。
-     */
     private static VideoTaskEntity toEntity(VideoTask task) {
         VideoTaskEntity entity = new VideoTaskEntity();
         entity.setId(task.getId());

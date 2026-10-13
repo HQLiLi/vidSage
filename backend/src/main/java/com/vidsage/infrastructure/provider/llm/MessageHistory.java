@@ -11,10 +11,7 @@ import org.springframework.ai.chat.messages.Message;
  * 条数为偶数。只按条裁会造出「孤立的 assistant」，模型看见一个没有对应问题的回答。
  *
  * <p>这条不变量很微妙，两份实现必然分叉，故抽到一处共用（同一判据只有一份，见 directory-structure.md
- * 的同名规则）。它是一条已定型的纯函数判定，不是 design 决策 8 要推迟的「切批判据与校验循环」那套
- * 骨架——那些骨架里两个 worker 接的东西并不一样，抽了会返工。
- *
- * <p>包级可见：只有 {@code infrastructure/provider/llm/} 下的两个 worker 用它。
+ * 的同名规则）。
  */
 final class MessageHistory {
 

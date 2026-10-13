@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "注释写法正典（唯一正文 · 十三条禁令）—— §二 分流表定「移到哪」、§三 十三条定「留什么」（尤其禁令 3「留给测试用」与禁令 7「谁在用它」= 本层约 15 处「包级 static：可直测」的判据）、§五 定 spec 指针与归档指针的分别、§六 是唯一模式清单"}
+{"file": ".trellis/tasks/10-12-comment-infrastructure/prd.md", "reason": "本层需求：31 文件 / 1672 行注释、已知层内重点（LLM worker、外部工具适配器、三个 provider 包子包归属）、范围与五条本层 AC"}
+{"file": ".trellis/tasks/10-12-comment-infrastructure/implement.md", "reason": "本层执行计划：六阶段顺序、工作集实测、继承的七条教训、已知重点判断（提示词理由已有归宿 / 2b 是管线编号不是 spec §2b）、逐文件登记表、例外登记与待订正清单"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "父需求、边界与跨子任务 AC1–AC7，含「只改注释」「不动 @Schema 落位」「不做无差别重写」等硬约束"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "四处目的地的移动代价、正典落位理由、验证策略与风险处置（尤其「误删承载知识的 why」的处置顺序与「查不到出处就登记不代写」）"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/implement.md", "reason": "父执行计划 Step A→E：三条筛选线并集、逐文件过分流表、订正腐坏、自检、报审查的格式"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "infrastructure 层的核心 spec：provider 四件套、实现类按配置装配、外部响应映射、配置属性用 record——既是「上移」的候选目的地，也是判断哪段适配器注释已属复述的依据（注意其 §2b 小节与本层要订正的「管线阶段 2b」是假朋友）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "包级地图与构件落位的权威表述——判断代码里哪段包级描述该搬去 package-info、哪段已属复述的依据"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」的口径（缺注释不等于违规、不要引硬线要求补写），以及被多处注释以「（见 quality-guidelines）」引用的原文——收口时最易犯的反向错误"}
+{"file": ".trellis/tasks/archive/2026-10/10-11-subtitle-keyword-regenerate/design.md", "reason": "决策 5（注入防护走「数据块 + 声明」，被否：输入侧黑名单）与决策 7（数据块助手放 llm 包私有）的全文——本层从 PromptDataBlock / MessageHistory 删掉本地副本的零损失依据"}
+{"file": ".trellis/tasks/archive/2026-10/10-12-comment-application/implement.md", "reason": "上一层的成稿：§2 例外登记的写法、§4 标准补充的四条（其中两条待用户裁定的口径本层沿用）、§3 #8 登记的外溢（2b 两处）"}

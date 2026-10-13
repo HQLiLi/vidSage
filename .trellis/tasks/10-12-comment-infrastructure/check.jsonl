@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "质检的判据全在这里：§六 的脚本与模式清单（AC1 变更史归零）、§三 禁令 10 的四件事判据（AC2 长尾收敛）、§五 的两类指针表（spec 指针保留 / 归档指针删）、§七 元规则（本层新写的 package-info 与 implement.md 不得复制正典正文）"}
+{"file": ".trellis/tasks/10-12-comment-infrastructure/prd.md", "reason": "逐条对本层五条 AC：变更史归零、块只答四件事、提示词说明已上移可查、外部工具坑注释未被误删（抽查 ExternalProcessRunner / YtDlpMediaAcquirer，每个留下的行内注释要能说出删了踩什么坑）、mvn clean test 全绿"}
+{"file": ".trellis/tasks/10-12-comment-infrastructure/implement.md", "reason": "质检对象：§1 逐文件登记表是否与实际 diff 对得上、§2 例外登记是否每条写了「砍不动的理由」、§3 待订正清单是否逐条已订正、§4 标准补充是否为空表或已写"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "跨子任务 AC 的判据（AC1 机器可判 / AC2 人工判的「只答四件事」/ AC4 腐坏逐处订正并留清单 / AC5 行为不变且基线实测），以及「可发现性：每层抽 3 个类回查 design.md 有对应表述」的抽查口径"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "验证策略表与「只改注释」的复核口径（git diff -w 通读）；§6 风险表里「误删承载知识的 why」与「把腐坏注释当正确依据」两条是质检重点"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "质检外部工具适配器与 provider 实现类时，判断被删的注释是否其实承载了 provider 契约（实现方中立、外部响应映射、配置属性 record）而必须留"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」：质检不得因「某处没注释」判违规，也不得要求补写；只判该留的有没有被删、该删的有没有留下"}

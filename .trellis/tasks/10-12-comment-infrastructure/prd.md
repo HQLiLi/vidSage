@@ -3,7 +3,7 @@
 > **状态：planning，未开工。** 父任务 `10-12-comment-consolidation` 的**子任务 3**。
 > **粒度标准在 `.trellis/spec/guides/comment-guidelines.md`（正典 · 十三条禁令），不在这里也不在父 `design.md`**
 > ——父 `design.md` 曾复制过一份标准，2026-10-12 已删（复制必然漂移）。需求与跨子任务验收见父 `prd.md`。
-> **本层的 `implement.md` 在门 G1 通过、标准冻结之后才写**，按**正典当前版本**执行。
+> **门 G1 已通过（2026-10-12）**；本层 `implement.md` 已按**正典当前版本**写成，任务状态 in_progress。
 
 ## Goal
 
