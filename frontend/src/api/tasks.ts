@@ -30,7 +30,6 @@ export async function submitUpload(
   form.append('file', file)
   return request.post<TaskView>('/tasks/upload', form, {
     timeout: 0,
-    // 上传进度，通过axios的钩子触发回调
     onUploadProgress: (event) => {
       if (!onUploadProgress || !event.total) return
       // 钳制到 0–100：浮点换算的防御性收边
@@ -48,7 +47,7 @@ export async function getTask(taskNo: string): Promise<TaskView> {
 }
 
 /**
- * 经产物端点取 JSON（同源相对路径走 axios；下载链接才用原生 <a> 直连，design §3.2）。
+ * 经产物端点取 JSON（同源相对路径走 axios；下载链接才用原生 <a> 直连）。
  * 泛型 T 由调用方按产物类型标注（信封结构见 @/types/task 的 SubtitleArtifactFile 等）。
  */
 export async function fetchArtifactJson<T>(taskNo: string, name: string): Promise<T> {

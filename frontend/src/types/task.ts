@@ -1,8 +1,7 @@
 /**
  * 任务域后端契约类型，与 Java record / 枚举逐字段镜像（字段名保持一致，便于对照排查）。
  *
- * 自原 src/api/types.ts 迁出（该文件已删除，2026-10-03 两级类型策略）：
- * src/types/ 只收**跨模块共享**类型，模块私有类型留模块内。
+ * `src/types/` 只收**跨模块共享**类型，模块私有类型留模块内。
  *
  * 后端无 `{code, data}` 包装：响应体即裸 DTO，语义全在 HTTP 状态码。
  * 时间字段为 ISO-8601 字符串（Spring Boot 对 LocalDateTime 的默认序列化）；
@@ -10,8 +9,7 @@
  *
  * 本文件保持**纯类型**（构建期整体擦除）：有比较消费的枚举，运行时值对象在
  * `@/enums/task`（enums/ 承载值），这里经 `import type` + `typeof` 派生联合。
- * 仅被同文件引用的从属类型（TaskStatus / State / StageProgress / SubtitleRoute）
- * 是契约主类型的组成部分：留在本文件但不导出（export 只给跨模块消费的类型）。
+ * 从属类型留在本文件但不导出——`export` 只给跨模块消费的类型。
  */
 import type { TASK_STATUS, TRANSLATION_STATUS } from '@/enums/task'
 

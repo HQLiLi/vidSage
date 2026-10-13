@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 上传页（路由 `/`）：本地文件 / 链接双模式提交转写任务。提交成功即跳工作区，
-// 阶段进度不在本页消费（design §3.5：上传页只管提交与上传百分比进度）。
+// 阶段进度不在本页消费。
 import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -315,7 +315,7 @@ onUnmounted(() => ctx?.revert())
 /*
  * 上传进度条填充（轨道底色与圆角由元素自身的 bg-mist / rounded-full 承担）：
  * 原生 progress 元素 + :value 绑定真实百分比，归零 appearance 后分别给
- * WebKit 与 Firefox 的填充伪元素上 primary 色，复用原型的进度条视觉。
+ * WebKit 与 Firefox 的填充伪元素上 primary 色。
  */
 .upload-progress {
   &::-webkit-progress-bar {

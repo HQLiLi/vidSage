@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 工作区字幕稿（页面私有组件）：搜索（原文 + 译文）、双行双语渲染、当前句高亮、
-// 点击行 seek、自动滚动跟随（用户滚动后暂停 3 秒，design §3.6 / R4 / R5）。
+// 点击行 seek、自动滚动跟随（用户滚动后暂停 3 秒）。
 import { computed, ref, useTemplateRef, watch } from 'vue'
 
 import { formatTime } from '@/utils/format'
@@ -16,7 +16,7 @@ const props = defineProps<{
 
 const { activeIndex, seek } = props.player
 
-/** 搜索词：同时匹配原文与译文（R5）。 */
+/** 搜索词：同时匹配原文与译文。 */
 const query = ref('')
 
 /** 过滤后的字幕：大小写不敏感的包含匹配，命中原文或译文任一即保留。 */
@@ -149,7 +149,7 @@ function seekToCue(cue: TranscriptCue): void {
           :class="cue === activeCue ? 'font-medium text-foreground' : 'text-muted'"
         >{{ formatTime(cue.startMs / 1000) }}</span>
         <span class="min-w-0 flex-1">
-          <!-- 双行双语（D1）：原文在上、译文在下（稍强调）；未翻译条目保持单行 -->
+          <!-- 双行双语：原文在上、译文在下（稍强调）；未翻译条目保持单行 -->
           <span
             class="block text-[15px] leading-relaxed"
             :class="cue === activeCue ? 'font-medium text-foreground' : 'text-ink'"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 工作区页（路由 /workspace/:taskNo）：GET 快照 + SSE 驱动的五态状态机壳
-// （loading / 进度卡 / 失败卡 / 任务不存在卡 / 就绪双栏，design §3.4）。
-// 就绪态经 useTranscriptPlayer 把媒体面板与字幕稿联动；入场动效见 design §4 #2。
+// （loading / 进度卡 / 失败卡 / 任务不存在卡 / 就绪双栏）。
+// 就绪态经 useTranscriptPlayer 把媒体面板与字幕稿联动。
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -45,7 +45,7 @@ const stageMessage = computed(() => progress.value?.stage?.message ?? '任务排
 /** 进度卡百分比：阶段事件内的 0–100 进度；无事件时为 0。 */
 const stagePercent = computed(() => progress.value?.stage?.progress ?? 0)
 
-/** 进度卡「已提交 hh:mm」：提交时刻的当日时分（dayjs，design §2.1 的日历时间口径）。 */
+/** 进度卡「已提交 hh:mm」：提交时刻的当日时分（日历时间口径，走 @/lib/day）。 */
 const submittedAtText = computed(() => {
   const view = taskView.value
   return view ? dayjs(view.createdAt).format('HH:mm') : '--'
@@ -96,7 +96,7 @@ async function loadThenSubscribe(): Promise<void> {
   subscribe()
 }
 
-// —— 入场动效（design §4 #2，硬规则同上传页）——
+// —— 入场动效（硬规则同上传页）——
 
 const rootRef = useTemplateRef<HTMLElement>('root')
 let entranceCtx: gsap.Context | undefined
@@ -145,7 +145,7 @@ onUnmounted(() => {
 <template>
   <div ref="root" class="flex h-screen min-h-0 flex-col bg-background">
     <!-- 重连提示条：SSE 断线重连中。shrink-0 让它在 flex 列里推开下方内容而非遮挡
-         （AC5 要求不遮挡进度）；就绪态与非就绪态共用这一条，故放根级、置于两分支之前 -->
+         进度；就绪态与非就绪态共用这一条，故放根级、置于两分支之前 -->
     <p
       v-if="reconnecting"
       role="status"
@@ -154,7 +154,7 @@ onUnmounted(() => {
       连接中断，正在重连…
     </p>
 
-    <!-- 就绪态：工作区顶栏 + 左媒体右字幕双栏（布局对齐原型，design §3.4） -->
+    <!-- 就绪态：工作区顶栏 + 左媒体右字幕双栏 -->
     <template v-if="isSucceeded && taskView">
       <WorkspaceHeader :task-no="taskNo" data-animate="header" />
       <!-- overflow-clip：入场 y 位移让窗格瞬时下探出视口，h-screen 应用壳上会多出一条
@@ -182,7 +182,7 @@ onUnmounted(() => {
     <template v-else>
       <AppHeader />
       <main class="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-4 py-10 sm:px-6">
-        <!-- 进度卡：SSE 阶段事件驱动，dayjs 显示提交时刻与已运行时长（AC7） -->
+        <!-- 进度卡：SSE 阶段事件驱动，dayjs 显示提交时刻与已运行时长 -->
         <div v-if="isRunning" class="rounded-2xl border border-border bg-background p-5">
           <div class="flex items-center justify-between gap-3 text-sm">
             <span class="min-w-0 truncate font-medium">{{ stageMessage }}</span>
@@ -199,7 +199,7 @@ onUnmounted(() => {
           </p>
         </div>
 
-        <!-- 失败卡：后端 errorMessage + 提交/失败时刻 + 重新上传（AC6 / AC7） -->
+        <!-- 失败卡：后端 errorMessage + 提交/失败时刻 + 重新上传 -->
         <div
           v-else-if="isFailed"
           class="rounded-2xl border border-border bg-background p-5"

@@ -3,7 +3,7 @@ import type { MaybeRefOrGetter } from 'vue'
 import type { TranscriptCue } from '@/types/transcript'
 
 /**
- * 字幕联动播放器（按原型验证的联动机制重写）：媒体元素（video/audio）是唯一时间源，
+ * 字幕联动播放器：媒体元素（video/audio）是唯一时间源，
  * rAF 循环让 currentTime 的更新频率高于 timeupdate 事件，波形进度才平滑。
  *
  * 时间口径：本 composable 一律用**秒**（媒体元素原生单位）；TranscriptCue 的
@@ -12,8 +12,6 @@ import type { TranscriptCue } from '@/types/transcript'
  *
  * @param cues 字幕数组，支持 ref / getter / 普通数组——字幕由 store 异步产出后注入，
  *             ref 形态保证 activeIndex 随字幕到达而更新
- *
- * 返回类型不就地标注：由文件尾的 `TranscriptPlayer` 别名（ReturnType）承载，避免循环引用。
  */
 export function useTranscriptPlayer(cues: MaybeRefOrGetter<readonly TranscriptCue[]>) {
   const currentTime = ref(0)
@@ -118,5 +116,5 @@ export function useTranscriptPlayer(cues: MaybeRefOrGetter<readonly TranscriptCu
   return { currentTime, duration, playing, attach, detach, seek, toggle, activeIndex }
 }
 
-/** useTranscriptPlayer 的返回类型：媒体面板 / 字幕稿以它引用播放器（派生类型跟随源模块）。 */
+/** useTranscriptPlayer 的返回类型：媒体面板 / 字幕稿以它引用播放器（不就地标注，避免自引用）。 */
 export type TranscriptPlayer = ReturnType<typeof useTranscriptPlayer>

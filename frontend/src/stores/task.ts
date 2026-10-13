@@ -16,17 +16,12 @@ import type { TranscriptCue } from '@/types/transcript'
 
 /**
  * 工作区加载失败态：404（任务不存在）与其他错误分列，工作区壳据此渲染不同引导卡。
- * 与 store 同文件（type-safety.md：store 相关类型随 store）；仅 store 内部使用不导出，
- * 视图侧经 loadError 的推断类型取得形状。
  */
 type TaskLoadError = { kind: 'not-found' } | { kind: 'error'; message: string }
 
 /**
  * 工作区任务 store：工作区页（壳 / header / 媒体面板 / 字幕稿）共用的唯一任务状态源。
  *
- * 数据流（design §1.1）：load() 拉一次 GET 快照（终态直接建 cues）→ subscribe() 开 SSE
- * → progress 事件驱动进度态 → 终态（主状态终态且翻译非 RUNNING）静默重拉快照
- * （errorMessage / artifacts / finishedAt 只在 GET 里有）→ 主状态 SUCCEEDED 时拉产物建 cues。
  * 约定：加载中 = taskView 与 loadError 均为 null，壳页据此渲染 loading 态。
  */
 export const useTaskStore = defineStore('task', () => {
@@ -125,7 +120,7 @@ export const useTaskStore = defineStore('task', () => {
     if (!taskNo) return
     // 用 202 返回的视图即刻更新本地：translationStatus=RUNNING 立即反映到按钮态
     taskView.value = await translateTask(taskNo)
-    // 重开 SSE（路径与工作区 onMounted 的 loadThenSubscribe 相同）：无订阅则翻译事件无入口
+    // 重开 SSE：无订阅则翻译事件无入口
     subscribe()
   }
 
