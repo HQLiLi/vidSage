@@ -1,0 +1,13 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "注释写法正典（唯一正文 · 十三条禁令）—— §二 分流表定「移到哪」、§三 十三条定「留什么」（本层主用：禁令 1 跨类类比 = SrtRenderer:56、禁令 2 快照改边界 = ArtifactFiles:16、禁令 3/7 删「给测试用」= TaskSseConnectionManager:160、§三「常量注释」条点名了本层的 30s 心跳那处）、§五 定 spec 指针保留与归档指针删除的分别、§六 是唯一模式清单"}
+{"file": ".trellis/tasks/10-12-comment-web-shared-config/prd.md", "reason": "本层需求：web(10)/shared(8)/config(5) 三包 23 文件、层内重点（web/dto 的 @param×@Schema 面、TaskResponse 残句、ApiExceptionHandler 的负向契约、config 的校准依据与坑、TermMatcher 单源）、范围与六条本层 AC"}
+{"file": ".trellis/tasks/10-12-comment-web-shared-config/implement.md", "reason": "本层执行计划：七阶段顺序、三条筛选线实测（并集 14 文件 / 83 块）、继承的八条教训、逐文件预判与 spec 指针白名单、例外登记与待订正清单的种子、继承的 §4 五条待裁定"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "父需求、边界与跨子任务 AC1–AC7，含「只改注释」「不动 @Schema 落位」「不做无差别重写」等硬约束"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "四处目的地的移动代价、验证策略与风险处置（尤其「误删承载知识的 why」的处置顺序、可发现性缓解、以及「模式清单只住正典 §六、其他文件引用不复制」的元规则）"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/implement.md", "reason": "父执行计划 Step A→E：三条筛选线并集、逐文件过分流表、订正腐坏、自检、报审查的格式（§3 待订正清单的 #1 就是本层的 TaskResponse 残句）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "web 层错误映射的单源：:62「项目当前不定义自定义异常类…不要提前造」与 :157-175「REST 层错误映射」（含 409 两个场景、IAE→400 / ISE→500 / TaskNotFound→404 / TaskConflict→409）—— ApiExceptionHandler 类注释里删本地副本的零损失依据；:64「字符串判空」是 shared/text/TextTail 指针的去处"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "包级地图与构件落位的权威表述，也是本层三类判断的依据：:114 的 web/ 与 config/ 职责、:355「契约类的位置」判据 2（web/dto 的 @Schema 集中与静态工厂 from 的判据）、:399 的「同一判据只有一份」（TermMatcher 落到 shared/ 的理由）。阶段 0 若裁定新建 web/package-info，这里就是模板"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」的口径（缺注释不等于违规、不要引硬线要求补写），以及 :150 点名 TermMatcher#hitTermsByAsr 为「命中判定只有一处实现」的那句——shared/subtitle/TermMatcher 的判据描述因此必须留"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "「四、脱敏红线」是 TaskController:32 里该保留的那半句指针的去处；判 sourceUri 一类字段注释属契约还是横切策略时用它"}
+{"file": ".trellis/tasks/archive/2026-09/09-25-vidsage-mvp2b-subtitles/design.md", "reason": "§决策 7「SRT 自己写，不引字幕库」的全文（:173 起，含 15 行实现的算账）—— SrtRenderer:35 删「（design 决策 7：自己写，不引库）」的零损失依据"}
+{"file": ".trellis/tasks/archive/2026-10/09-24-vidsage-mvp1-submit/design.md", "reason": ":98「## SSE 契约」小节全文—— TaskSseConnectionManager:25/:46 删「（design.md「SSE 契约」）」出处指针后的可发现性依据（AC3 上移落地抽查）"}
+{"file": ".trellis/tasks/archive/2026-10/10-12-comment-infrastructure/implement.md", "reason": "上一层的成稿：§2 例外登记与「用户手改后不登记不还原」的写法、§4 五条标准补充（本层 §4 继承）、§0.2 教训、§5 自检的报告格式"}
