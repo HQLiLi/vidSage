@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>它是一把锁，不是状态</b>：跑会话的虚拟线程与登记它的表同生共死，
  * 不落库、不跨重启、不进 SSE 快照的持久化部分，只在组装快照时被查一次。
- * 不上 Redis——搬进分布式锁反而要多补 TTL / 启动清理去擦自己造的谎。
  *
  * <p><b>两条纪律</b>：
  * <ol>

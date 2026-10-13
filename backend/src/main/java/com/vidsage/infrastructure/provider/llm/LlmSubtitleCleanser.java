@@ -68,9 +68,8 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
     /**
      * 把批次键值对渲染成 JSON，供跨批历史用。
      *
-     * <p>用 Jackson 而不是类里那套 {@code jsonQuote} 手工拼接（规范禁止手写 JSON）。
-     * {@code ObjectMapper} 线程安全，且只渲染 {@code Map<String,String>} 这一种固定形状，
-     * 做成静态的即可——不必为它改构造器签名。
+     * <p>用 Jackson 而不手写拼接（规范禁止手写 JSON）：只渲染 {@code Map<String,String>} 一种形状，
+     * {@code ObjectMapper} 线程安全，做成静态的即可。
      */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 

@@ -9,9 +9,6 @@ import org.springframework.ai.chat.messages.Message;
  * <p>字幕清洗与翻译两个 worker 都要维护一份「前几批的原文 + 已采纳的回复」历史，裁剪规矩也一样：
  * 以一对往返（user + assistant）为单位从最老的开始丢，保证历史永远 user 开头、assistant 结尾、
  * 条数为偶数。只按条裁会造出「孤立的 assistant」，模型看见一个没有对应问题的回答。
- *
- * <p>这条不变量很微妙，两份实现必然分叉，故抽到一处共用（同一判据只有一份，见 directory-structure.md
- * 的同名规则）。
  */
 final class MessageHistory {
 

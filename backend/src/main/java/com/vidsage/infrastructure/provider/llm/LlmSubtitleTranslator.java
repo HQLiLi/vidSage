@@ -38,10 +38,6 @@ import tools.jackson.databind.ObjectMapper;
  * 意义。没过就带着原因重试，最多 maxSteps 轮；全败整批回退原文（宁可没译，不可乱译），并把回退的
  * 段数计进 {@link TranslateResult#untranslatedCount()}。
  *
- * <p>与 {@link LlmSubtitleCleanser} <b>刻意各自独立</b>，不抽公共骨架：待抽的正是「切批判据」与
- * 「校验循环」，而这两套判据的形态还不稳定，抽了会返工。唯一共用的是一条已定型的
- * 纯函数判定——跨批历史的按对裁剪（{@link MessageHistory}）。
- *
  * <p>跨批上下文走两条路：<b>后窗</b>（下一批开头几行）和<b>对话历史</b>（前面几批的原文与已采纳的
  * 译文，成对留着）。历史在翻译里的作用比清洗更强：它是「术语与称谓全片一致」的主要载体——后续批次
  * 能看见前面把某个称呼译成了什么。历史是本类里唯一的可变状态，但它只在单次 {@link #translate} 调用内

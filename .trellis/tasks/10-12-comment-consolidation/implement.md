@@ -109,3 +109,20 @@ grep -h -o 'tests="[0-9]*" errors="[0-9]*" skipped="[0-9]*" failures="[0-9]*"' t
   但归档时正典还没有 §一 那把尺子——按同一把尺子回扫这三层，同款「解释既成安排」段可能还在。
   判据与自检同上面各层（只改注释 / 正典 §六 模式 0 / 删完回查悬空引用与裸空行 / `mvn test` 基线实测）。
   **不新增子任务**，作为本任务最后一道收尾。
+
+**三层回归扫描 · 执行记录（2026-10-13，分支 `feature/comment-regression-scan`，合入 dev）**
+
+- 扫描面：`backend/src/main/java/com/vidsage/{domain,application,infrastructure}`（122 文件）；判据 = 正典 §一 那把尺子。
+- 机械线：§六 模式 **0** 命中；第 3/4 批 grep 命中 19 行，其中 16 行是假阳性（`@ConditionalOnProperty` 注解、
+  `directory-structure.md` 章节名指针——后者按 §五 保留），真候选 3 处。
+- 人读：≥6 行的块 **301** 个（domain 102 / application 87 / infrastructure 112）逐个过尺子，捞出候选 24 处。
+- 落地：**31 文件 / 32 处**删改（`30 insertions(+), 75 deletions(-)`），另修掉 application 层漏下的
+  1 处注释块裸空行（`AudioPreparationCoordinator`）。
+- 例外登记：三层现存 >15 行块 **18** 个（domain 2 / application 5 / infrastructure 11），逐个复核后**全部保留**——
+  均为 package-info 豁免、契约四件事、或断点复用与静默失败类守卫；`domain/package-info` 因本次删段降至 13 行，退出该线。
+- 待订正：**0** 处。
+- 验证：只改注释（非注释行改动 0）；注释块内裸空行 0；§六 模式三层全 0；`mvn test` **570/0/1/0**（实测）。
+- AC1 全量三面复核：`backend/src/main/java` 0、`frontend/src` 0、`backend/src/test/java` **1** → 该处
+  （`VideoTaskServiceTest:159` 的「逐字节一致」）判为**误报**（讲的是文件内容与流相同，不是变更史），
+  已改写措辞使三面归零。
+- AC7：`.git/hooks/pre-commit` 按正典 §六 全文安装，实测拦下故意写入的日期，随后撤掉假数据。

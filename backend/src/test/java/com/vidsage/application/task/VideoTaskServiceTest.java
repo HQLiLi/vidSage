@@ -156,7 +156,7 @@ class VideoTaskServiceTest {
         Path source = dir.resolve("source.mp4");
         assertTrue(Files.isDirectory(dir), () -> "应按 sanitize(原名)-<内容 key> 建工作区：" + dir);
         assertTrue(Files.isRegularFile(source), "归位后应有 source.mp4");
-        // 边写边算：文件内容与上传流逐字节一致
+        // 边写边算：文件内容与上传流完全相同
         assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(media)),
                 HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(source))));
 

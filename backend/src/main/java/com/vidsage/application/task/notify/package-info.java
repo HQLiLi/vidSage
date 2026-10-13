@@ -7,6 +7,6 @@
  *
  * <p><b>包内禁止出现 HTTP 类型</b>（{@code SseEmitter} 等只活在 web/sse/），也不装业务编排
  * （阶段顺序归管线，状态机的终态迁移 {@code succeed} / {@code fail} 等归调用点——本包只管到落库为止，
- * 不驱动状态机）；判据是「写得出它不许装什么」：把 Spring 容器拿掉它照样成立。
+ * 不驱动状态机）。
  */
 package com.vidsage.application.task.notify;

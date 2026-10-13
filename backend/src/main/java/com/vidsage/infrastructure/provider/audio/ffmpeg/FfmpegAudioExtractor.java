@@ -35,7 +35,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class FfmpegAudioExtractor implements AudioExtractor {
 
-    /** 失败消息里附带的 stderr 行数上限（与执行器日志一致）。 */
+    /** 失败消息里附带的 stderr 行数上限。 */
     private static final int STDERR_TAIL_LINES = 20;
 
     /** 临时产物后缀：先写它，成功后原子改名成最终产物。 */

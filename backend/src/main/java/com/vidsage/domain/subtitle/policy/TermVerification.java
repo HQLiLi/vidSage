@@ -158,7 +158,7 @@ public final class TermVerification {
 
     /**
      * 来源页只记 host：搜索给的来源是公开网页，没有签名参数，但完整 URL 拼进 note 会把
-     * 查证说明撑得很长，host 足够人工回查（logging-guidelines 脱敏精神的同款取舍）。
+     * 查证说明撑得很长，host 足够人工回查。
      */
     private static String describeSource(String sourceUrl) {
         if (!StringUtils.hasText(sourceUrl)) {

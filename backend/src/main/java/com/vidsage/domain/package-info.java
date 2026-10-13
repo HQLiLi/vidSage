@@ -10,8 +10,5 @@
  * {@code ASRProvider} / {@code TermLookupProvider} / {@code SubtitleCleanser} /
  * {@code SubtitleTranslator} / {@code SubtitleContextSummarizer} / {@code VideoTaskRepository}）
  * ——六边形原则：端口在六边形内部，适配器在外。
- *
- * <p><b>业务无关的端口不归本层</b>（如 {@code ToolDiagnostics} 定义在 {@code application/diagnostics/port/}）
- * ——端口归谁定义看契约的语义职责，判据见 directory-structure.md「端口归属判据」。
  */
 package com.vidsage.domain;

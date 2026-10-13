@@ -10,10 +10,6 @@ import com.vidsage.application.task.query.TaskSnapshot;
  *
  * <p>为什么携带既有任务快照：冲突的可操作出路是「改用既有任务、去订阅它的进度」，
  * 光有文字说明不够，把快照一并返回，调用方无需再发一次查询。
- *
- * <p>两个并发提交同输入都通过查重的窗口（先查后插的竞态）刻意接受：窗口毫秒级，
- * 且断点复用让「重跑」很便宜，为此上数据库唯一索引反而把「任务完成后重新提交」
- * 这条合法路径也堵死了。
  */
 public class TaskConflictException extends RuntimeException {
 
