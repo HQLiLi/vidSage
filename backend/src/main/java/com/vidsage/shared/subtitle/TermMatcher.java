@@ -17,18 +17,10 @@ import java.util.Map;
  * （命中过的术语已多被替换成 fixed）。用一个入口硬套会同时踩两个坑：清洗后的文本里 asr 已被换掉，
  * 按 asr 匹配会漏掉本该保留原文的专有名词；而清洗故意没换的术语在文本里仍是 asr，按 asr 匹配又会
  * 把 fixed 写进参考，与正文自相矛盾。所以两个入口各自标明匹配哪个字段，判据本体共用一份。
- *
- * <p><b>为什么单独抽成一个类</b>：清洗侧的术语参考渲染、校验基线、替换指标三处共用同一份判定，
- * 翻译是第四个使用者。同一判据必须只有一份——分几处各判一遍，将来改判据时只会改到一半，
- * 而「改到一半」的症状是静默的（渲染出来的术语与基线/指标对不上，没人报错）。
- *
- * <p>全静态、无状态，构造器私有，不要 new 它。定位与 {@link TextSimilarity} 类似：
- * 都是被 {@code infrastructure/provider/llm/} 下的 worker 共用的纯算法助手，跨包使用所以是 {@code public}。
  */
 public final class TermMatcher {
 
     private TermMatcher() {
-        // 纯静态工具，不实例化
     }
 
     /**
@@ -65,7 +57,7 @@ public final class TermMatcher {
     }
 
     /**
-     * 命中判定的本体，只有一份：拼起整批正文 → 转小写 → 逐条看是否包含选定字段的小写原文。
+     * 命中判定的本体。
      *
      * @param original 本批原文
      * @param context  字幕上下文

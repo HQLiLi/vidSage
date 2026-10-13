@@ -22,14 +22,11 @@ import java.util.List;
 import java.io.InputStream;
 
 /**
- * 任务提交、状态查询、按需翻译、进度订阅与产物下载 HTTP 入口（MVP-1 异步管线的唯一前端依赖）。
+ * 任务提交、状态查询、按需翻译、进度订阅与产物下载 HTTP 入口。
  *
  * <p>本类只做「接收 → 卫语句 → 委托 → 返回」，不写业务逻辑；提交即返回 202 与任务视图，
- * <b>不等管线跑完</b>——长视频不再顶客户端超时。自动管线跑到清洗 / 原文字幕为止（2026-10-02
- * 两段式裁定），翻译由用户对 SUCCEEDED 任务显式触发（{@code POST /{taskNo}/translate}）。
- *
- * <p>日志只记「请求形态」：URL 原文与上传文件原始名指向用户资源，一律不落日志
- * （design.md 任务表 source_uri 注、logging-guidelines 脱敏红线）。
+ * <b>不等管线跑完</b>——长视频不会顶客户端超时。自动管线跑到清洗 / 原文字幕为止，
+ * 翻译由用户对 SUCCEEDED 任务显式触发（{@code POST /{taskNo}/translate}）。
  */
 @Slf4j
 @Tag(name = "任务", description = "任务提交（URL / 文件上传）、状态查询、按需翻译、进度订阅（SSE）与"
@@ -42,13 +39,6 @@ public class TaskController {
 
     private final TaskSseConnectionManager sseConnectionManager;
 
-
-    /**
-     * 构造函数注入。
-     *
-     * @param taskService          提交与查询的唯一服务层入口
-     * @param sseConnectionManager SSE 连接管理（emitter 持有 / 心跳 / 清理，仅本层可见 HTTP 细节）
-     */
     public TaskController(VideoTaskService taskService, TaskSseConnectionManager sseConnectionManager
     ) {
         this.taskService = taskService;
@@ -56,8 +46,8 @@ public class TaskController {
     }
 
     /**
-     * 提交 URL 任务：异步执行 下载 → 抽音频 → 转写 → 清洗，到原文字幕就绪为止（2026-10-02
-     * 两段式）；翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
+     * 提交 URL 任务：异步执行 下载 → 抽音频 → 转写 → 清洗，到原文字幕就绪为止；
+     * 翻译由任务 SUCCEEDED 后按 {@link #translate} 显式触发。
      * <p>
      * 支持的站点——本项目验证过 B 站视频页与 YouTube；未验证站点不提前拦截，
      * 交给 yt-dlp 提取，失败即任务 FAILED + SSE 推 FAILED 事件
@@ -159,7 +149,7 @@ public class TaskController {
     }
 
     /**
-     * 按需触发字幕翻译（2026-10-02 两段式）：提交后的自动管线只跑到清洗 / 原文字幕为止，
+     * 按需触发字幕翻译：提交后的自动管线只跑到清洗 / 原文字幕为止，
      * 用户点「翻译」才触发——不看翻译的人不花 LLM 钱。幂等语义见服务层：
      * 已有翻译产物则幂等收敛（不发 LLM），翻译进行中重复触发返回当前视图不重入。
      *

@@ -6,17 +6,17 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 任务响应：任务提交与查询端点的对外 HTTP 契约
+ * 任务响应：任务提交与查询端点的对外 HTTP 契约。
  *
- *
- * SSE 快照形状是 {@code application/task/message/TaskProgressMessage}，两者按用途分开。
+ * <p>SSE 快照形状是 {@code application/task/message/TaskProgressMessage}，两者按用途分开。
  *
  * @param taskNo            对外任务号（32 位短 UUID；数据库自增 id 不外泄）
  * @param inputType         输入类型：{@code URL}（链接提交）/ {@code UPLOAD}（本站文件上传）
- * @param sourceUri         来源：URL 原文或上传文件原始名（仅随响应返回给提交方，日志不落原值）
+ * @param sourceUri         来源：URL 原文或上传文件原始名。<b>约束：本字段值不得直接写入日志</b>
+ *                          ——含用户原始文件名，属敏感信息
  * @param status            任务状态：{@code PENDING} / {@code RUNNING} / {@code SUCCEEDED} / {@code FAILED}
  * @param translationStatus 翻译子状态：{@code RUNNING} / {@code SUCCEEDED} / {@code FAILED}；
- *                          {@code null} = 从未触发（2026-10-02 两段式：翻译按需触发）
+ *                          {@code null} = 从未触发（翻译按需触发）
  * @param currentStage      最近阶段名（与 StageProgress.stage 同词表）；尚未产生阶段事件时为 {@code null}
  * @param errorMessage      终态错误信息（中文，面向用户；主任务失败或翻译子状态失败）；无错误时为 {@code null}
  * @param createdAt         创建时间
@@ -43,7 +43,7 @@ public record TaskResponse(
         @Schema(description = "产物清单（*.srt 与 segments-*.json）；尚无产物时为空表") List<TaskArtifactResponse> artifacts) {
 
     /**
-     * 应用层读模型 → 对外响应的纯映射（无业务逻辑）：字段一一对应，产物清单逐元素映射为
+     * 应用层读模型 → 对外响应的纯映射（无业务逻辑）：字段一一对应，产物清单逐元素映射。
      */
     public static TaskResponse from(TaskSnapshot snapshot) {
         return new TaskResponse(snapshot.taskNo(), snapshot.inputType().name(), snapshot.sourceUri(),

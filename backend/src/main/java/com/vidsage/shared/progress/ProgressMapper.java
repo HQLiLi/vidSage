@@ -5,20 +5,13 @@ import com.vidsage.domain.shared.model.StageProgress;
 
 /**
  * 进度区间线性映射：把某段服务自报的 {@code 0..100} 进度压缩进管线分配给它的子区间
- * {@code [from, to]}。纯函数（无状态、无 I/O、无 Spring 类型），符合 utils 的准入判据。
- *
- * <p>从 {@code SubtitlePreparationCoordinator} 的私有 {@code remap} 上提（2026-09-30，MVP-1）：MVP-1 的异步管线
- * 是第二个使用者（对 clean 做区间映射；2026-10-02 两段式后翻译事件自成 0..100 段、不再经过映射），
- * 符合「同一判据只有一份」的搬迁判据——搬的是纯函数，不是流程骨架。
+ * {@code [from, to]}。
  *
  * <p>映射公式保证<b>单调不倒退</b>：上游事件按序到达时，映射后的进度不会回退
  * （上游各阶段边界在 0/50/100 等整数点拼接，线性映射后边界重合）。
  */
 public final class ProgressMapper {
 
-    /**
-     * 私有构造：纯静态工具类，不实例化。
-     */
     private ProgressMapper() {
     }
 

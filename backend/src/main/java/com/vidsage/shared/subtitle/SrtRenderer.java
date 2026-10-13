@@ -19,8 +19,8 @@ public final class SrtRenderer {
      * 毫秒 → SRT 时间戳 {@code HH:MM:SS,mmm}（逗号分隔毫秒，SRT 规范形式）。
      *
      * <p>超过一天的毫秒数会自然进位进「小时」位（{@code 90000000 → 25:00:00,000}），符合 SRT
-     * 对长时长的处理。负值钳到 {@code 00:00:00,000}（异常段落防御，见 research/asr-cloud-behavior.md
-     * §三；DashScope 正常返回不产生，但钳掉比传出负时间戳稳）。
+     * 对长时长的处理。负值钳到 {@code 00:00:00,000}（异常段落防御；DashScope 正常返回不产生，
+     * 但钳掉比传出负时间戳稳）。
      */
     public static String formatTimestamp(long millis) {
         long safe = Math.max(millis, 0L);
@@ -32,7 +32,7 @@ public final class SrtRenderer {
     }
 
     /**
-     * 渲染整份 SRT（design 决策 7：自己写，不引库）。序号从 1 起，块间空一行，{@code \n} 换行。
+     * 渲染整份 SRT。序号从 1 起，块间空一行，{@code \n} 换行。
      * 句数为 0 时返回空字符串（产出 0 字节文件）。
      */
     public static String toSrt(List<TranscriptionSegment> segments) {
@@ -52,9 +52,8 @@ public final class SrtRenderer {
      * {@link #toSrt(List)}。句数为 0 时返回空字符串。
      *
      * <p><b>译文与原文相同时该条只渲染一行</b>（不把同一句话写两遍）：跳过的产物（源语种等于目标
-     * 语种）因此不会出现两行一模一样的字幕，「跳过」在 SRT 里自然可读，不需要额外标记。判据是
-     * 两侧都按空串处理后再比（同 {@code toSrt} 对 {@code null} 文本的处理），故 {@code null} 与空串
-     * 视为同一行。
+     * 语种）因此不会出现两行一模一样的字幕。判据是两侧都按空串处理后再比，故 {@code null} 与
+     * 空串视为同一行。
      */
     public static String toBilingualSrt(List<TranslatedSegment> segments) {
         StringBuilder sb = new StringBuilder();
