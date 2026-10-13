@@ -1172,3 +1172,26 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 44: 失败前缀常量化 + 后置生命周期守卫改名
+<!-- trellis-session: v=2 fp=ef81061f7e3c485b -->
+
+**Date**: 2026-10-13
+**Task**: 失败前缀常量化 + 后置生命周期守卫改名
+**Branch**: `dev`
+
+### Summary
+
+把 SubtitlePipeline 里两处硬编码失败前缀（「任务执行失败：」「翻译失败：」）提成 VideoTask 常量并接到真正的生产者，三个前缀与既有 REGENERATE_FAILURE_PREFIX 聚成一簇；私有守卫 requireMainSucceededForTranslation 改名为 requireMainSucceededForPostLifecycle（语义已泛化到重新生成）。纯行为等价：前缀字符串值逐字不变，5 条半角冒号日志格式串未动，测试文件一行未改，mvn clean test 570/0/0/1 与基线逐数相同。计划阶段做了事实核查，订正了 prd 里过期的行号（314/335→302/323）与断言计数，并把「旧名全仓零命中」收窄为 backend/src（归档文档里的史实引用不该动）。mvn javadoc:javadoc 仍有 1 条存量 error（SubtitleContextSummarizer.java:26 的 {@link CheckpointPolicy} 缺 import，与本次无关），新增的 6 处 {@link} 零诊断。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `04d2f5c` | chore(task): 失败前缀常量化 + 后置生命周期守卫改名 —— 计划产物 |
+| `d177a60` | refactor(task): 失败前缀常量化并接到生产者，后置生命周期守卫改名 |
+
+### Status
+
+[OK] **Completed**
