@@ -22,10 +22,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * WorkspaceKeyGenerator 的纯单元测试：<b>不起 Spring 容器</b>。
- *
- * <p>由 {@code WorkspaceServiceTest} 拆分而来（2026-10-09 端口倒置）：本类留<b>身份路线</b>断言
- * （null 卫语句、本地文件 stat 进身份、占位事实、目录名标签与组合稳定性）；建目录与根解析断言
- * 随端口走 {@code NioWorkspaceDirectoryManagerTest}。断言值与拆分前逐字一致。
  */
 class WorkspaceKeyGeneratorTest {
 
@@ -47,7 +43,7 @@ class WorkspaceKeyGeneratorTest {
         return new NioWorkspaceDirectoryManager(new WorkspaceProperties(root().toString()));
     }
 
-    /** 调用点的两行组合：先取 key 再落目录（design.md §一 的语义陷阱注记——两行不能并一行）。 */
+    /** 语义陷阱：先取 key 再落目录，两行不能并一行。 */
     private Path workDir(MediaInput input) {
         WorkspaceKey key = generator().parseMediaToWorkspaceKey(input);
         return manager().ensureWorkspaceDirectory(input.dirLabel(), key);

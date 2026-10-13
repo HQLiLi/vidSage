@@ -18,8 +18,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * TermVerification 的纯单元测试：术语查证政策断言随逻辑自 {@code SubtitleTranslationCoordinatorTest}
- * 迁入，断言值不变（2026-10-06 Phase B，触发三条件与结论记账下沉为本类公开 API）。
+ * TermVerification 的纯单元测试。
  *
  * <p>触发判定走 {@link TermVerification#decide}（纯事实入参），执行与记账走
  * {@link TermVerification#verify}（provider 为桩，不联网）；落盘本身留在应用层，这里只断
@@ -66,7 +65,6 @@ class TermVerificationTest {
 
     @Test
     void sameLanguageShortCircuitsBeforeArtifactCheck() {
-        // 判定顺序即旧守卫顺序：同语种优先于「产物已存在」，短路语义与迁移前一致
         assertEquals(Decision.SKIP_SAME_LANGUAGE, TermVerification.decide(true, true, true, true));
     }
 

@@ -15,10 +15,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * NioWorkspaceDirectoryManager 的纯单元测试：<b>不起 Spring 容器</b>。
- *
- * <p>由 {@code WorkspaceServiceTest} 拆分而来（2026-10-09 端口倒置）：本类只留<b>目录定位与创建</b>
- * 断言（懒创建、显式 key 入口、标签回退、根纯解析）；身份路线断言随生成器走
- * {@code WorkspaceKeyGeneratorTest}。断言值与拆分前逐字一致。
  */
 class NioWorkspaceDirectoryManagerTest {
 
@@ -45,7 +41,7 @@ class NioWorkspaceDirectoryManagerTest {
         // 目录在调用前不存在：本断言通过「先算路径再判存在」间接保证——根在调用前必然不存在
     }
 
-    // ---------- 显式 key 入口（MVP-1 上传路线） ----------
+    // ---------- 显式 key 入口 ----------
 
     @Test
     void explicitKeyEntryCreatesDirectoryWithSanitizedLabelAndGivenKey() {

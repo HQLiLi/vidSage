@@ -312,7 +312,7 @@ class VideoTaskServiceTest {
         assertThrows(TaskNotFoundException.class, () -> service().snapshot("ghost"));
     }
 
-    // ---------- SSE 快照：翻译子状态覆盖（2026-10-02 两段式） ----------
+    // ---------- SSE 快照：翻译子状态覆盖 ----------
 
     @Test
     void snapshotForSucceededTaskWithRunningTranslationCarriesTranslateStage() {
@@ -372,7 +372,7 @@ class VideoTaskServiceTest {
         assertEquals(100, event.stage().progress());
     }
 
-    // ---------- 按需触发翻译（2026-10-02 两段式） ----------
+    // ---------- 按需触发翻译 ----------
 
     @Test
     void translateDelegatesToPipelineAndReturnsRefreshedView() {
@@ -515,7 +515,7 @@ class VideoTaskServiceTest {
     /**
      * 主任务已成功、翻译子状态随给定值构造的任务（errorMessage 由调用方给，模拟翻译失败落库的形状）。
      */
-    // ---------- 重新生成字幕（后置会话同步段，2026-10-12） ----------
+    // ---------- 重新生成字幕（后置会话同步段） ----------
 
     @Test
     void regenerateWithKeywordsReplacesStoreAndDelegates() {

@@ -11,9 +11,6 @@ import org.springframework.ai.chat.messages.UserMessage;
 
 /**
  * {@link MessageHistory} 的纯单元测试：<b>不起 Spring 容器</b>。
- *
- * <p>这些用例原先是 {@code SubtitleCleanserTest} 里对清洗器同名方法的直测，
- * 方法提到本助手类后随之一并迁过来（判据共用一份，测试也共用一份）。
  */
 class MessageHistoryTest {
 

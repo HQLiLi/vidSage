@@ -56,12 +56,7 @@ import tools.jackson.databind.ObjectMapper;
  * 失败分流、产物落盘）→ 交给 {@link SubtitleTranslator} → 写 -translate 产物。摘要器、翻译器与
  * 查证 provider 都是 mock/桩。
  *
- * <p>语种政策与查证政策的<b>纯函数断言</b>已随逻辑下沉（2026-10-06 Phase B）迁到
- * {@code domain/subtitle/} 的 Bcp47LanguageTest / TermVerificationTest / CheckpointPolicyTest；
- * 本类保留的是「服务确实按政策接线」的编排用例（断点、跳过、查证触发与落盘的端到端路径）。
- *
- * <p><b>翻译算法本身（分批、校验、重试、回退原文）不在这里测</b>——它的覆盖在
- * {@code SubtitleTranslatorTest}：真 ChatClient + 桩 ChatModel。
+ * <p><b>翻译算法本身（分批、校验、重试、回退原文）不在这里测</b>。
  */
 class SubtitleTranslationCoordinatorTest {
 
@@ -274,7 +269,7 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     // ------------------------------------------------------------------
-    // 翻译检查点判定（2026-10-02 两段式：管线触发翻译前的幂等判据）
+    // 翻译检查点判定（管线触发翻译前的幂等判据）
     // ------------------------------------------------------------------
 
     @Test
@@ -396,7 +391,7 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     // ------------------------------------------------------------------
-    // 进度事件（管线通过 listener 拿阶段边界与批级进度，MVP-1）
+    // 进度事件（管线通过 listener 拿阶段边界与批级进度）
     // ------------------------------------------------------------------
 
     @Test

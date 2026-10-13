@@ -21,8 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 /**
- * {@link MybatisSubtitleKeywordRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>
- * （真库连通由 {@code VidSageApplicationTests} 上下文冒烟在 local profile 下验证）。
+ * {@link MybatisSubtitleKeywordRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>。
  *
  * <p>覆盖「整份清单 ↔ 一列字符串」的成对转换：分隔符连接、顺序保真、null 与空串都读回空清单、
  * 覆盖写是整份替换而不是追加。

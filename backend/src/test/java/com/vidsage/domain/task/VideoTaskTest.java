@@ -21,9 +21,8 @@ import org.junit.jupiter.api.Test;
  * {@link VideoTask} 状态机的纯单元测试：不起容器。
  *
  * <p>覆盖「主状态机合法迁移三条」「非法迁移拒绝」（重点钉住 SUCCEEDED → RUNNING 这类终态再迁移）
- * 「阶段名推进的时机约束」「翻译子状态迁移（2026-10-02 两段式：仅主状态 SUCCEEDED 后流转）」
- * 「newPending / restore 的出生状态」「查询谓词（isEventTerminal 终态判定 / ACTIVE_STATUSES active
- * 判据，2026-10-06 单源化）」。
+ * 「阶段名推进的时机约束」「翻译子状态迁移（仅主状态 SUCCEEDED 后流转）」
+ * 「newPending / restore 的出生状态」「查询谓词（isEventTerminal 终态判定 / ACTIVE_STATUSES active 判据）」。
  */
 class VideoTaskTest {
 
@@ -166,7 +165,7 @@ class VideoTaskTest {
         assertNull(pending.getCurrentStage(), "被拒绝的阶段推进不应留下脏状态");
     }
 
-    // ---------- 翻译子状态迁移（2026-10-02 两段式） ----------
+    // ---------- 翻译子状态迁移 ----------
 
     @Test
     void translationStartRequiresSucceededMainState() {
@@ -320,7 +319,7 @@ class VideoTaskTest {
 
 
 
-    // ---------- 查询谓词（2026-10-06 终态 / active 判据单源化） ----------
+    // ---------- 查询谓词 ----------
 
     @Test
     void eventTerminalOnlyWhenMainTerminalAndTranslationNotRunning() {

@@ -106,7 +106,7 @@ class SrtRendererTest {
 
     @Test
     void treatsNullTextAsEmptyAndCollapsesEqualNullAndEmptyLines() {
-        // null 与空串按同一行处理（同 toSrt 对 null 文本的处理），相等时也只渲染一行
+        // null 与空串按同一行处理，且两者相等时只渲染一行
         var result = SrtRenderer.toBilingualSrt(List.of(
                 new TranslatedSegment(0, 1000, null, null)));
 

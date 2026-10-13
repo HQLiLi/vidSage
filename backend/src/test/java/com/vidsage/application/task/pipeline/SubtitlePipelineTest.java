@@ -64,7 +64,7 @@ import org.mockito.Mockito;
  * {@code translateTask(taskNo)}（同步段）+ Mockito timeout 等异步段；并发用例走 {@code execute()}
  * 用 Mockito 的 timeout / after 验证信号量限流。
  *
- * <p>2026-10-02 两段式：自动管线到清洗为止（prepare 0..70 / clean 70..100），翻译拆出为
+ * <p>自动管线到清洗为止（prepare 0..70 / clean 70..100），翻译拆出为
  * {@code translateTask} 按需触发（幂等 / 不重入 / 终态收口各有钉子）。
  */
 class SubtitlePipelineTest {
@@ -349,7 +349,7 @@ class SubtitlePipelineTest {
         verify(repository, never()).update(any());
     }
 
-    // ---------- 按需翻译（2026-10-02 两段式，translateTask） ----------
+    // ---------- 按需翻译 ----------
 
     @Test
     void translateTaskRejectsWhenMainTaskNotSucceeded() {
@@ -515,7 +515,7 @@ class SubtitlePipelineTest {
         registry.subscribe(task.getTaskNo().value(), received::add);
         assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
                 SubtitleStageName.CLEAN_SUBTITLES.getStageName()), "模拟 service 同步段已抢到登记");
-        // 上一次重生成失败留下的原因：这次成功后必须被清掉，否则成功的任务视图挂着失败文案（拍板 2026-10-12）
+        // 上一次重生成失败留下的原因：这次成功后必须被清掉，否则成功的任务视图挂着失败文案
         task.recordRegenerateFailure(VideoTask.REGENERATE_FAILURE_PREFIX + "上一次的失败原因");
 
         service(inlineGate()).regenerateSubtitles(task, new SubtitleKeywords(List.of("影视飓风")));

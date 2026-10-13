@@ -47,10 +47,7 @@ import tools.jackson.databind.ObjectMapper;
  * SubtitleCleanupCoordinator 的纯单元测试：<b>不起 Spring 容器</b>。
  *
  * <p>只测<b>编排</b>：定位产物 → 断点复用 → 切分 → 交给 {@link SubtitleCleanser} → 写 -clean 产物。
- * 摘要器与 cleanser 都是 mock。
- *
- * <p><b>清洗算法本身（分批、守卫、重试、保留原文）不在这里测</b>——它的覆盖在
- * {@code SubtitleCleanserTest}：真 ChatClient + 桩 ChatModel，桩从 ChatModel 层进去。
+ * 摘要器与 cleanser 都是 mock；清洗算法本身（分批、守卫、重试、保留原文）不在这里测。
  */
 class SubtitleCleanupCoordinatorTest {
 
@@ -189,7 +186,7 @@ class SubtitleCleanupCoordinatorTest {
     }
 
     // ------------------------------------------------------------------
-    // 进度事件（管线通过 listener 拿阶段边界与批级进度，MVP-1）
+    // 进度事件（管线通过 listener 拿阶段边界与批级进度）
     // ------------------------------------------------------------------
 
     @Test
