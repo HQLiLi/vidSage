@@ -21,6 +21,7 @@ public enum TranslationStatus {
     /** 翻译完成；含幂等收敛——触发时发现翻译产物已在（检查点非空），未发 LLM 直接收敛为此状态。 */
     SUCCEEDED,
 
-    /** 翻译失败；原因复用 task.error_message（带「翻译失败：」前缀），主状态保持 SUCCEEDED。 */
+    /** 翻译失败；原因复用 task.error_message（带
+     *  {@link com.vidsage.domain.task.VideoTask#TRANSLATION_FAILURE_PREFIX}），主状态保持 SUCCEEDED。 */
     FAILED
 }

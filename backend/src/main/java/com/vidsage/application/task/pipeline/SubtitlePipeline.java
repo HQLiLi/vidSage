@@ -299,7 +299,7 @@ public class SubtitlePipeline {
     private void failTask(VideoTask task, Exception cause) {
         String reason = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
         // 文案不带阶段名：事件与快照的 stage 字段已经给了，中文句子里再嵌一遍标识符没有必要
-        String message = "任务执行失败：" + reason;
+        String message = VideoTask.TASK_FAILURE_PREFIX + reason;
         try {
             task.fail(message);
             taskProgressNotifier.completeTask(task);
@@ -312,15 +312,16 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 翻译失败 → 翻译子状态 FAILED（主状态保持 SUCCEEDED）：错误信息带「翻译失败：」前缀落
-     * error_message，广播翻译终态事件并清空订阅者（失败可重新触发，收口后重连拿失败快照）。
+     * 翻译失败 → 翻译子状态 FAILED（主状态保持 SUCCEEDED）：错误信息带
+     * {@link VideoTask#TRANSLATION_FAILURE_PREFIX} 落 error_message，广播翻译终态事件并清空订阅者
+     * （失败可重新触发，收口后重连拿失败快照）。
      * 落库再失败只记 ERROR：虚拟线程无人接异常，吞掉等于静默。
      *
      * @param reason 失败原因（不含前缀）；{@code cause} 为 {@code null} 时按 WARN 记（无调用栈的主动标记，
      *               如排队被打断），否则按 ERROR 带栈记录
      */
     private void failTranslation(VideoTask task, String reason, Exception cause) {
-        String message = "翻译失败：" + reason;
+        String message = VideoTask.TRANSLATION_FAILURE_PREFIX + reason;
         try {
             task.translationFail(message);
             taskProgressNotifier.completeTranslation(task);
