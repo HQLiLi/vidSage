@@ -28,7 +28,7 @@ export function pickTranslatedArtifact(artifacts: TaskArtifact[]): TaskArtifact 
  * 按下标合并原文与译文段落 → 字幕稿渲染模型。防御性取 min(两边长度)：后端契约保证
  * 逐条下标配对、时间戳一致，长度不等属后端缺陷，不扩散到渲染层。
  * 译文为 null / 与原文相同（无需翻译）的条目视为未翻译，保持单行。
- * id 用「下标-时间戳」复合值：下标是后端配对键（字幕顺序永不变化），时间戳保证可读唯一。
+ * id 用「下标-时间戳」复合值：下标是后端配对键，时间戳保证可读唯一。
  */
 export function buildCues(
   source: TranscriptionSegment[],

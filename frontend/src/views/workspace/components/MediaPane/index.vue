@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// 工作区媒体面板（页面私有组件）：视频黑场舞台 / 音频封面卡片双形态（design §3.3）。
+// 工作区媒体面板（页面私有组件）：视频黑场舞台 / 音频封面卡片双形态。
 // 形态判定：UPLOAD 且 sourceUri 扩展名命中音频白名单 → 音频卡；其余（含全部 URL 任务）→ 视频。
-// 播放源统一是产物端点的 source.mp4（D2）；联动经 shell 注入的 useTranscriptPlayer 单例。
+// 播放源统一是产物端点的 source.mp4；联动经 shell 注入的 useTranscriptPlayer 单例。
 import { computed, useTemplateRef, watch } from 'vue'
 
 import { formatTime } from '@/utils/format'
@@ -23,7 +23,7 @@ const props = defineProps<{
 // player 实例整个页面生命周期内稳定，ref / 方法一次性解构不丢失响应性
 const { currentTime, duration, playing, seek, toggle } = props.player
 
-/** 音频扩展名白名单（design §3.3），统一小写比较。 */
+/** 音频扩展名白名单，统一小写比较。 */
 const AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'wav', 'aac', 'flac', 'ogg', 'opus'])
 
 /** 是否按音频卡片渲染：UPLOAD 且 sourceUri 扩展名命中白名单；其余一律视频。 */
@@ -34,13 +34,13 @@ const isAudio = computed(() => {
   return AUDIO_EXTENSIONS.has(props.sourceUri.slice(dotIndex + 1).toLowerCase())
 })
 
-/** 媒体地址：产物端点的 source.mp4（上传与 URL 任务落盘同名，design §3.3）。 */
+/** 媒体地址：产物端点的 source.mp4（上传与 URL 任务落盘同名）。 */
 const mediaSrc = computed(() => `/api/tasks/${props.taskNo}/artifacts/source.mp4`)
 
 /** 媒体元素模板引用：双形态 v-if 只存在其一，换绑（切换 / 卸载）时由 watch 同步播放器。 */
 const mediaEl = useTemplateRef<HTMLMediaElement>('mediaEl')
 
-// 元素换绑时先 detach 旧元素再 attach 新元素，避免监听残留（原型验证的绑定口径）
+// 元素换绑时先 detach 旧元素再 attach 新元素，避免监听残留
 watch(mediaEl, (el, old) => {
   if (old) props.player.detach()
   if (el) props.player.attach(el)

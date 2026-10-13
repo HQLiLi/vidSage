@@ -3,7 +3,7 @@
 // 页面差异内容经默认插槽追加在 Logo 右侧（上传页与工作区非就绪态为空壳，
 // 工作区就绪态放返回 / 任务标题 / 翻译入口 / 产物面板）。
 // relative z-20：GSAP transform 残留会在 main 一侧创建包含块 + stacking context，
-// 页内绝对定位下拉面板要盖过 main 必须靠顶栏自身的层叠序（原工作区产物面板修复先例）。
+// 页内绝对定位下拉面板要盖过 main 必须靠顶栏自身的层叠序。
 import BrandLogo from '@/components/BrandLogo.vue'
 </script>
 

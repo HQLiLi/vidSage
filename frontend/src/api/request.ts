@@ -16,8 +16,7 @@ import type { TaskConflictResponse, TaskView } from '@/types/task'
  *   调用点 catch 后按字段分支，不再自行拆 axios 错误对象。
  * - SSE（EventSource）与 `<a download>` 产物链接不走 axios、吃不到 baseURL，
  *   仍写全路径 `/api/...`——这是刻意保留的双拼法而非遗漏（约定见 api.md）。
- * - 导入方式：`import { request } from '@/api/request'`；instance 不导出（保持单入口），
- *   拦截器等扩展点在本文件 instance 上追加，不要另建实例。
+ * - instance 不导出（保持单入口）：拦截器等扩展点在本文件 instance 上追加，不要另建实例。
  */
 const instance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
@@ -39,12 +38,10 @@ instance.interceptors.response.use(
  * `Promise<TaskView>`，且不可能再写出「单泛型 + 运行时 `.data` 为 undefined」的错误
  * 用法。需要 put / delete 等其余方法时按同款签名在此追加。
  *
- * 末尾的 `as Promise<T>` 是全仓唯一的受控断言（2026-10-03 定调）：axios ^1.19 把方法
- * 返回值声明为条件类型 `AxiosResponseResult<T, R, D, P>`（R 为默认哨兵时返回
- * AxiosResponse<T>，否则 R），第二个泛型位传入泛型 T 时条件悬置不解析，与泛型调用点
- * （如 store 内 fetchArtifactJson<T>）的 Promise<T> 标注冲突；而运行时成功拦截器已
- * 统一解包 data，AxiosResponse 包装并不存在，故在门面这一处把返回类型掰直。
- * 断言只允许出现在本文件门面边界，调用点仍零 as（type-safety.md 已增补此例外）。
+ * 末尾的 `as Promise<T>` 是全仓唯一的受控断言：axios ^1.19 的方法返回值是条件类型
+ * `AxiosResponseResult`，第二个泛型位传泛型 T 时条件悬置不解析，与调用点的 `Promise<T>`
+ * 标注冲突，故在门面这一处把返回类型掰直。**断言只许出现在本文件门面边界，调用点仍零 as**
+ * （推导见 type-safety.md 的「唯一例外」）。
  */
 export const request = {
   get: <T>(url: string, config?: AxiosRequestConfig): Promise<T> =>
