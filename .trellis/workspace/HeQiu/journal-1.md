@@ -1054,3 +1054,25 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 39: 注释收口 infrastructure 层：清变更史、粒度归位、订正腐坏
+<!-- trellis-session: v=2 fp=2f3f41323bd6352b -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口 infrastructure 层：清变更史、粒度归位、订正腐坏
+**Branch**: `dev`
+
+### Summary
+
+按注释写法正典收口 infrastructure 层 31 个文件中的 27 个（26 改 + 新增 provider/llm/package-info）：15 处变更史与归档指针清零、改指单源；约 17 处「包级可见 / 包级 static：供测试…」按禁令 3/7 删；批级进度事件序列上移 spec（directory-structure.md 补「清单为空时不发批级事件」一格）；订正五类腐坏（persistence/package-info 漏列 subtitle_keyword 三件套、LlmSubtitleCleanser 两处未闭合括号残句、DashScopeTermLookupProvider 叠着两个 Javadoc 块、YtDlpRunner 与 YtDlpMediaAcquirer 两处失效预言、fs 两个类复述类名）。集外扩入 5 个文件（全层块复核捞出）。非注释行改动 0，mvn test 570/0/0 绿。门 G3 用户审查通过，并手删了一批他认为属废话的段（按用户要求不逐条登记、不还原）。随后提交、合并回 dev、删除 feature 分支与远端分支并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d4cf2f9` | docs(infrastructure): 注释收口 —— 清变更史与决策引用、订正腐坏 |
+
+### Status
+
+[OK] **Completed**

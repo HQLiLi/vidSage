@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 38
-- **Last Active**: 2026-10-12
+- **Total Sessions**: 39
+- **Last Active**: 2026-10-13
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1056 | Active |
+| `journal-1.md` | ~1078 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 39 | 2026-10-13 | 注释收口 infrastructure 层：清变更史、粒度归位、订正腐坏 | `d4cf2f9` | `dev` |
 | 38 | 2026-10-12 | 注释收口 application 层：清变更史、粒度归位、订正腐坏 | `c29156b`, `dd2798a` | `dev` |
 | 37 | 2026-10-12 | 注释收口：domain 层试点 + 注释写法正典定稿 | `6965134`, `6b45f24`, `d4a0dda`, `d210de5` | `dev` |
 | 36 | 2026-10-12 | 10-11 关键词纠错与字幕重生成：六批实现到合并归档 | `198244c`, `7fca0c0`, `63b36fb`, `ad85780`, `87794e3`, `cb00a25`, `2de2ae5` | `dev` |
