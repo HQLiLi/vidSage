@@ -80,7 +80,8 @@ public class VideoTask {
 
     /**
      * 终态错误信息（中文，面向用户）。主任务失败、翻译子状态失败、重新生成失败
-     * 共用本字段，各自带前缀区分——同一任务同一时刻只有一种「最近失败」。
+     * 共用本字段，各自带前缀区分（{@link #TASK_FAILURE_PREFIX} / {@link #TRANSLATION_FAILURE_PREFIX} /
+     * {@link #REGENERATE_FAILURE_PREFIX}）——同一任务同一时刻只有一种「最近失败」。
      */
     private String errorMessage;
 
@@ -185,7 +186,8 @@ public class VideoTask {
     /**
      * RUNNING → FAILED：任一阶段失败，落错误信息与 finishedAt。
      *
-     * @param errorMessage 终态错误信息（中文，面向用户；由调用方组装「缺什么、怎么补」）
+     * @param errorMessage 终态错误信息（中文，面向用户；由调用方带 {@link #TASK_FAILURE_PREFIX}
+     *                     组装「缺什么、怎么补」）
      * @throws IllegalStateException 任务不处于 RUNNING
      */
     public void fail(String errorMessage) {
@@ -216,7 +218,7 @@ public class VideoTask {
      * @throws IllegalStateException 主任务不在 SUCCEEDED，或翻译已在进行中
      */
     public void translationStart() {
-        requireMainSucceededForTranslation("启动翻译");
+        requireMainSucceededForPostLifecycle("启动翻译");
         if (translationStatus == TranslationStatus.RUNNING) {
             throw new IllegalStateException("非法状态迁移：翻译已在进行中（RUNNING），不得重复触发");
         }
@@ -231,7 +233,7 @@ public class VideoTask {
      * @throws IllegalStateException 主任务不在 SUCCEEDED，或翻译已处于 SUCCEEDED（无需再收敛）
      */
     public void translationSucceed() {
-        requireMainSucceededForTranslation("收敛翻译为 SUCCEEDED");
+        requireMainSucceededForPostLifecycle("收敛翻译为 SUCCEEDED");
         if (translationStatus == TranslationStatus.SUCCEEDED) {
             throw new IllegalStateException("非法状态迁移：翻译已处于 SUCCEEDED，不得重复收敛");
         }
@@ -241,14 +243,15 @@ public class VideoTask {
 
     /**
      * 翻译子状态迁移到 FAILED：只有进行中的翻译可以失败。错误信息复用 {@code errorMessage}
-     * （由调用方带「翻译失败：」前缀组装），主状态保持 SUCCEEDED 不变——主状态机的终态错误与
-     * 翻译子状态的失败原因共用一列，同一任务同一时刻只有一种「最近终态失败」。
+     * （由调用方带 {@link #TRANSLATION_FAILURE_PREFIX} 组装），主状态保持 SUCCEEDED 不变——
+     * 主状态机的终态错误与翻译子状态的失败原因共用一列，同一任务同一时刻只有一种「最近终态失败」。
      *
-     * @param errorMessage 翻译失败原因（中文，面向用户；由调用方组装「缺什么、怎么补」）
+     * @param errorMessage 翻译失败原因（中文，面向用户；由调用方带 {@link #TRANSLATION_FAILURE_PREFIX}
+     *                     组装「缺什么、怎么补」）
      * @throws IllegalStateException 主任务不在 SUCCEEDED，或翻译不处于 RUNNING
      */
     public void translationFail(String errorMessage) {
-        requireMainSucceededForTranslation("翻译标记失败");
+        requireMainSucceededForPostLifecycle("翻译标记失败");
         if (translationStatus != TranslationStatus.RUNNING) {
             throw new IllegalStateException("非法状态迁移：翻译失败要求当前翻译状态为 RUNNING，当前为 "
                     + translationStatus);
@@ -268,10 +271,19 @@ public class VideoTask {
      * @throws IllegalStateException 主任务不在 SUCCEEDED（后置会话的前置条件被破）
      */
     public void recordRegenerateFailure(String errorMessage) {
-        requireMainSucceededForTranslation("记录重新生成失败");
+        requireMainSucceededForPostLifecycle("记录重新生成失败");
         this.errorMessage = errorMessage;
         this.updatedAt = LocalDateTime.now();
     }
+
+    /** 主管线失败的前缀：{@link #fail} 落的文案都以它开头，由 SubtitlePipeline 组装。 */
+    public static final String TASK_FAILURE_PREFIX = "任务执行失败：";
+
+    /**
+     * 翻译失败的前缀：{@link #translationFail} 落的文案都以它开头，由 SubtitlePipeline 组装。
+     * {@link #clearRegenerateFailure} 不认领它——翻译是另一台生命周期，不是重新生成。
+     */
+    public static final String TRANSLATION_FAILURE_PREFIX = "翻译失败：";
 
     /**
      * 重新生成失败原因的前缀：{@link #recordRegenerateFailure} 落的文案都以它开头，
@@ -282,7 +294,7 @@ public class VideoTask {
 
     /**
      * 重新生成成功后清掉上一次的失败原因：<b>只认领自己那个前缀</b>——
-     * 主管线失败（终态后重生成根本不会跑）与翻译失败（「翻译失败：」前缀，另一台生命周期）
+     * 主管线失败（终态后重生成根本不会跑）与翻译失败（{@link #TRANSLATION_FAILURE_PREFIX}，另一台生命周期）
      * 的错误信息一概不动。
      */
     public void clearRegenerateFailure() {
@@ -317,7 +329,7 @@ public class VideoTask {
      * 后置生命周期流转的公共前置守卫：翻译、重新生成等第二生命周期动作只在主任务成功
      * （SUCCEEDED）后允许，其他主状态下一律拒绝。
      */
-    private void requireMainSucceededForTranslation(String action) {
+    private void requireMainSucceededForPostLifecycle(String action) {
         if (status != TaskStatus.SUCCEEDED) {
             throw new IllegalStateException("非法状态迁移：" + action + "只能在主任务成功（SUCCEEDED）后进行，"
                     + "当前主状态为 " + status);

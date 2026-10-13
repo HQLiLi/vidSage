@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对两个新常量都有 Javadoc（全大写常量一律留注释）；核对注释首行大白话、不写成正式抽象腔，且不与 errorMessage 字段注释重复同一件事。另核对没有夹带任何本次范围外的风格改名"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核对新名 requireMainSucceededForPostLifecycle 动词开头合规、且未误伤同族私有守卫 requireStatus；核对三处 Javadoc 跨类引用（SubtitlePipeline→VideoTask、TranslationStatus→VideoTask）没有引入新的 import 或反向运行时依赖"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "反向核验：SubtitlePipeline 的 5 条半角冒号日志格式串逐字未变、级别未变；这是本任务「朴素全文替换误伤日志」风险的唯一兜底，必须当作独立门跑，不能只看全角字面量是否归零"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对三个前缀的字符串值与改动前逐字符相同（含全角冒号 U+FF1A），落库 error_message 与终态事件消息因此逐字等价；核对 4 个守卫调用的 action 实参未变，异常 message 文本不变"}
