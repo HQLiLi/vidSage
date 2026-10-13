@@ -30,13 +30,20 @@
 > `1–5 ×193`、`6–11 ×13`、`12–15 ×4`、**`≥16 ×0`**。
 
 > **与 `prd.md` 的差异**：prd 记的是「25 文件 / 2,413 行 / 598 行注释 / 24.8%」。实测 27 文件
-> （`main.ts` 无注释、`assets/*` 非 ts/vue 已排除），行数与占比差在 1% 内——**以本表实测值为准**，
+> （`main.ts` 无注释、非 ts/vue 的 `assets/*` 不计入块统计），行数与占比差在 1% 内——**以本表实测值为准**，
 > 不改 prd（占比本就是体量代理，验收不看它）。
 
 **长尾不空转**：与前一层（test 层仅 1 块超 15 行）不同，本层 `≥6 行` 的块占 19 个，
 `≥16 行` 有 2 个——**「长」与「变」两条线在本层都成立**，两条都要走。
 
-### 六条筛选线（并集 **19 文件**）
+### 七条筛选线（并集 **20 文件**）
+
+> **第 ⑦ 条是审查期补入的（2026-10-13，独立质检发现）**：本层原把 `assets/*` 以「非 ts/vue」
+> 整目录排除——而父 `prd.md` AC1 的扫描面**字面**写的是 `frontend/src` 全目录。
+> 用户裁定**算违例**，已补清 `assets/tailwind.css` 的 1 处日期 + 1 处变更史散文
+> （另开分支 `feature/comment-frontend-assets-clean`，见 §1）。
+> 注：正典 §六 的钩子脚本**扫不到 `.css`**（`grep -E '\.(java|ts|vue|js)$'`），
+> 所以机器闸本来就看不见这一处，是**人读**补上的。
 
 | 线 | 命中 | 说明 |
 |---|---|---|
@@ -46,10 +53,12 @@
 | ④ 层级错位（父 Step A 第 3 批） | 3 处 | `types/task.ts:114`「逐条一致」**是误报**（语义非叙事）；`:131`「同构」待裁 |
 | ⑤ 解释既成安排（父 Step A 第 4 批，尺子形态） | 命中 12 处，**多数是误报** | 「唯一入口 / 唯一时间源 / 唯一依据」一族多是**真负面约束**（删了会有人把动画绕过统一入口） |
 | ⑥ 变更史自然语言变体（人读） | 3 处 | 「按原型验证的联动机制**重写**」「（原型验证的绑定口径）」「（原工作区产物面板修复先例）」 |
+| ⑦ **`.css` 面**（**审查期补入**，见上注） | 2 处 / 1 文件 | `assets/tailwind.css` 的「定稿：2026-10-02」与「（按原型验证的方案重写，非搬运）」 |
 
-**工作集 19 文件**：
+**工作集 20 文件**：
 
 ```
+assets/tailwind.css                           （⑦ · 审查期补入）
 api/request.ts                                （①⑤ + 长尾 16/12）
 api/tasks.ts                                  （② + 长尾 12）
 lib/day.ts                                    （② + 长尾 11）
@@ -157,7 +166,9 @@ views/workspace/components/WorkspaceHeader.vue        （③）
 
 ## 1. 逐文件登记表（收口后）
 
-**改动面**：**19 个文件改**（工作集 20 减去 prd 点名「不动」的 `lib/gsap.ts`）、`+47 −70`、**非注释行 0**。
+**改动面**：**20 个文件改**——19 个 `.ts` / `.vue`（工作集 19 − prd 点名「不动」的 `lib/gsap.ts`
++ 人读补上的 `routes/index.ts`）为 `+47 −70`；另加**审查期补入**的 `assets/tailwind.css`
+（两行文本订正，行数不变，分支 `feature/comment-frontend-assets-clean`）。**非注释行 0**。
 另 5 个人读复核后**未动**：`App.vue`（「两态不抽共享外框」是约束）、`BrandLogo.vue:3`（「深绿不进 logo」是约束）、
 `HeroWave.vue`、`AudioWaveform.vue`（「与上传页/工作区波形同一视觉语言」防的是改一处忘另一处）、`views/not-found/index.vue`。
 
@@ -183,6 +194,7 @@ views/workspace/components/WorkspaceHeader.vue        （③）
 | 18 | `views/workspace/components/MediaPane/index.vue` | ②③⑥ | 删 `design §3.3 ×3`、`（D2）`、「（原型验证的绑定口径）」；detach→attach 防监听残留那条 why 留 | — |
 | 19 | `views/workspace/components/TranscriptPane.vue` | ②③ | 删 `design §3.6 / R4 / R5`、`（R5）`、`（D1）` | — |
 | 20 | `views/workspace/components/WorkspaceHeader.vue` | ③ | 删 `（R6）` ×2；`state-management.md` 与 `component-guidelines` 两处 **spec 指针留** | — |
+| 21 | `assets/tailwind.css` | ⑦（**审查期补入**） | 删 `:4`「（按原型验证的方案重写，非搬运）」与 `:22`「定稿：2026-10-02，」；「深绿仅作氛围素材，不进 UI 强调」「组件只允许引用 token」两条约束留 | — |
 
 > **两处按正典保留、没顺手删的**：`api/request.ts` 的「（约定见 api.md）」与
 > `lib/gsap.ts` 的「（详见 `.trellis/spec/frontend/animation.md`）」——spec 随仓库走，是 §五 明文的一等指针。
@@ -204,7 +216,7 @@ views/workspace/components/WorkspaceHeader.vue        （③）
 
 | # | 位置 | 疑似 | 查证结果 |
 |---|---|---|---|
-| 1 | `api/tasks.ts:52` | 指针「信封结构见 `@/types/task` 的 `SubtitleArtifactFile`」 | 类型确实存在（`types/task.ts:134`）→ **非失实** |
+| 1 | `api/tasks.ts:52` | 指针「信封结构见 `@/types/task` 的 `SubtitleArtifactFile`」 | 类型确实存在（`types/task.ts:132`，收口后行号；收口前为 `:134`）→ **非失实** |
 | 2 | `stores/task.ts` | 「主任务终态时…后端 `TaskSseConnectionManager` 同步断开」 | `backend/src/main/java/com/vidsage/web/sse/TaskSseConnectionManager.java` 存在 → **非失实** |
 | 3 | `lib/gsap.ts:9` | 「当前无插件使用场景，故暂无注册调用」 | 全仓 `grep registerPlugin` 只命中该注释本身 → **非失实** |
 
@@ -231,21 +243,29 @@ views/workspace/components/WorkspaceHeader.vue        （③）
 
 ## 5. 自检（实测值 2026-10-13）
 
+> **订正（2026-10-13，独立质检后）**：本节最初抄的三条 grep **漏写了 `--include` 过滤**——
+> 实跑的是 `--include=*.ts --include=*.vue`，文档里的命令按**字面**跑会命中 `assets/tailwind.css`
+> 的 2 处（§0.1 第 ⑦ 条），复现不出记录里的「0」。已补全命令，并另记一次**全目录无过滤**的扫描。
+> 教训：自检命令要写成**实际跑的那一条**，否则下一个人复现不出来。
+
 ```bash
 cd f:/personal_project/vidSage && git diff -w -- frontend/src
-#   → **19 files changed, +47 −70**；**非注释行 0**（逐行核过 +/- 行：全是 //、*、<!-- --> 行）
+#   → 19 files changed, +47 −70（另 assets/tailwind.css 两行文本订正，行数不变）
+#   → **非注释行 0**（逐行核过 +/- 行：全是 //、*、<!-- --> 行）
 
 # ① 变更史 / 归档指针归零（模式清单只住正典 §六，照抄那一段）
-grep -rnE '20[0-9]{2}-[0-9]{2}-[0-9]{2}|[0-9]{2}-[0-9]{2}-[a-z][a-z-]{4,}|设计决策|design 决策|design\.md|research/|oss-references|迁移前|字节一致|旧守卫' frontend/src
+grep -rnE '<§六 模式清单>' --include=*.ts --include=*.vue frontend/src
 #   → **0**（收口前 4 处）
+#   不带过滤扫 frontend/src 全目录（父 prd AC1 的字面扫描面）：
+#   收口前 1 处（assets/tailwind.css:22）→ 补清后 **0**
 
 # ② 归档指针第二、三族（本层新查法——机械线拦不住，但判据在正典 §二/§五）
-grep -rnE 'design §|（R[0-9]|（D[0-9]|（AC[0-9]|R[0-9] /' frontend/src
+grep -rnE 'design §|（R[0-9]|（D[0-9]|（AC[0-9]|R[0-9] /' --include=*.ts --include=*.vue frontend/src
 #   → **0**（收口前 22 处）
 
 # ③ 变更史自然语言变体
-grep -rnE '原型|先例|原为|原先|此前|重写|迁出|已删除' frontend/src
-#   → **0**（收口前 3 处）
+grep -rnE '原型|先例|原为|原先|此前|重写|迁出|已删除' --include=*.ts --include=*.vue frontend/src
+#   → **0**（收口前 3 处）；不带过滤时收口前 1 处（assets/tailwind.css:4）→ 补清后 **0**
 
 # 块统计（脚本见 §0.1）：210 块不变；1–5 191→**193**、6–11 13→13、12–15 4→4、**≥16 2→0**
 # 删完回查两件事（正典 §一 末尾）：① 悬空引用——0（留下的两处 *.md 指针是 §五 明文保留项）；
@@ -272,3 +292,8 @@ cd frontend && npm run type-check && npm run lint
 本层是最后一个注释子任务。本层归档后，父任务还需：全量 AC1 三面复核（`backend/src/{main,test}/java`
 与 `frontend/src`）→ 装钩子验 AC7 → **三层回归扫描**（domain / application / infrastructure 按正典 §一
 那把尺子回扫，**不新增子任务**）。执行步骤见父 `implement.md` §5。
+
+> **AC7（装 pre-commit 钩子）的归属已裁定（2026-10-13，独立质检提出后由用户定）：归父任务收尾。**
+> 本层 `prd.md` 的 AC 列表把它写成「全部完成后装钩子并验 AC7（父 `prd.md`）」，字面像是本层的活；
+> 两处打架，裁定以本节为准——**本层归档时 `.git/hooks/` 里只有 `*.sample`，钩子确实没装**，
+> 这一条是父任务收尾的欠账，不是本层的漏做。
