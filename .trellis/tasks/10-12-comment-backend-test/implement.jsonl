@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "注释写法正典（唯一正文 · 十三条禁令）——本层主用：§一 那把尺子（五种「解释既成安排」形态 + 删完回查两件事，测试层高发）、§二 分流表（「什么时候改的」与「命令/参数清单」两行）+「两条边界」第 2 条（事故叙事一律删，唯一例外是缺口至今没修）、§三 禁令 1 跨类类比（SrtRendererTest:109）、禁令 6 不为没发生的事辩护（TermMatcherTest 的「将来」判留）、§五 两类指针（spec 留 / 归档删）、§六 唯一模式清单"}
+{"file": ".trellis/tasks/10-12-comment-backend-test/prd.md", "reason": "本层需求：定位是「核查三类毛病」（变更史残留 / 注释复述测试名 / 解释既成安排的辩解段）；层内重点四个大文件；范围限定（不改测试方法名、不动 @TempDir(cleanup=NEVER) 约定性注释）；四条本层 AC"}
+{"file": ".trellis/tasks/10-12-comment-backend-test/implement.md", "reason": "本层执行计划：七阶段顺序、四条筛选线实测（并集 21 文件、140 块、1 块超 15 行、35 个 >=6 行块必读且 14 块在工作集外）、三条误报要跳过、逐条预判（分隔行留结构删括注 / 迁移史族整段删但保接缝陈述 / SSE 窗口竞态改写为已知局限 / ModelProbeTest 与 ProcessHelperMain 的用法说明判留）"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "父需求、边界与跨子任务 AC1–AC7，含「只改注释」「不动 @Schema 落位」「不做无差别重写」等硬约束"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "四处目的地的移动代价、验证策略与风险处置（误删承载知识的 why、把腐坏注释当正确依据、可发现性缓解），以及「模式清单只住正典 §六、其他文件引用不复制」"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/implement.md", "reason": "父执行计划 Step A→E：四条筛选线并集、先过尺子再过分流表、订正腐坏、自检（含删完回查两件事）、报审查三段格式"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」口径（缺注释不等于违规、不得引硬线要求补写）；:188「测试方法名描述行为」是本层「注释复述测试名」那条的出处；:136「必须有一条钉住双目标的用例」是本层要保的钉子"}
+{"file": ".trellis/tasks/archive/2026-10/10-12-comment-web-shared-config/implement.md", "reason": "上一层的成稿：§2/§3 的表怎么填、「用户手改后不登记不还原」的写法、§4 六条裁定与「本层新发现」表头（本层 §4 继承）、§5 自检与 §6 报审查五段式"}
