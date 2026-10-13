@@ -1076,3 +1076,29 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 40: 注释收口 web/shared/config 层：清变更史、删「解释既成安排」的废话，并把判据回写正典
+<!-- trellis-session: v=2 fp=4f5b7092905c3c08 -->
+
+**Date**: 2026-10-13
+**Task**: 注释收口 web/shared/config 层：清变更史、删「解释既成安排」的废话，并把判据回写正典
+**Branch**: `dev`
+
+### Summary
+
+先给 10-12-comment-web-shared-config 补文档：prd 订正三处（删失实的 CheckpointPolicy 半句、api/→web/controller/、状态行）、implement.md 新建（三条筛选线实测：23 文件 / 83 块 / 并集 14 文件；阶段 0 裁定不新建 web 与 config 的 package-info）、两份 jsonl 由空填实（13 / 9 条）。同时把 infra 层留的 6 条标准补充请用户逐条裁定，5 条回写正典（禁令 3 补「给测试用/可直测」族；§二 新增「两条边界」——构件内部步骤序列直接删、事故叙事一律删但缺口未修的例外；§二 分流表加「命令/参数清单」；§五 保留行并入 docs/**）。随后收口三包 20 个文件（23 个里的 20 个，非注释行 0）：变更史与归档指针清零（含正典常量条点名的那处「SSE 契约」）、类注释改职责边界、删跨类类比（禁令 1）与测试用途说明与流水账、订正四处新腐坏（TaskResponse.from 残句、TaskArtifactResponse 未闭合括号、SubtitleSegmentSplitter 的 BREAK_CHARS 失实残句——整句删、原意不可复原已登记待裁、ChatClientConfig 的 /*** 与空标签）。登记一处代码问题不改：ChatClientConfig:18 方法名 ContentSummarizer 首字母大写。独立质检（trellis-check）六条 AC 全 PASS、未改文件，但指出 implement.md 白名单与实际 diff 不符（ApiExceptionHandler:18 的指针随变更史整段删），已订正。审查回合用户手删「解释既成安排」一族（落位依据、可见性辩护、反事实推演、机制推论、与别处重复的约束），我按同一判据追加 6 处并回查悬空引用与注释块内裸空行。该判据经用户裁定回写正典 §一（「读者读完会不会改变行为」+ 五种形态 + 删完回查两件事）并在禁令 6 加指引线。收尾：4 笔提交 + --no-ff 合回 dev、推送、本地 feature 分支删除、任务归档（52cf428）。遗留：domain / application / infrastructure 三层未按新尺子回扫；父任务还剩 backend-test 与 frontend 两个子任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `65bf3ca` | docs(comment): 注释正典补六条裁定 |
+| `30409f7` | chore(task): 注释收口 web/shared/config 层 planning 工件与开工 |
+| `caaf2d2` | docs(comment): 正典补「读者读完会不会改变行为」这把尺子 |
+| `69019cb` | docs(web,shared,config): 注释收口 —— 清变更史与决策引用、删「解释既成安排」的废话 |
+| `05f34e4` | chore(task): 回填 web/shared/config 层收口结果 |
+
+### Status
+
+[OK] **Completed**
