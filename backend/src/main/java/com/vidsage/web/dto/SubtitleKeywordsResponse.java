@@ -23,11 +23,9 @@ public record SubtitleKeywordsResponse(
                 example = "a1b2c3d4e5f60708") String fingerprint) {
 
     /**
-     * 应用层读模型 → 对外响应（与 {@code TaskResponse.from(TaskSnapshot)} 同一分工：
-     * 对外契约注解集中在 web/dto，application 只给零注解的读模型）。
+     * 应用层读模型 → 对外响应：对外契约注解集中在 web/dto，application 只给零注解的读模型。
      *
      * @param snapshot 应用层读模型
-     * @return 对外响应
      */
     public static SubtitleKeywordsResponse from(KeywordsSnapshot snapshot) {
         return new SubtitleKeywordsResponse(snapshot.values(), snapshot.fingerprint());

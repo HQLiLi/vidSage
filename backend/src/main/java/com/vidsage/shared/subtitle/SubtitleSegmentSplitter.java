@@ -11,15 +11,14 @@ import java.util.List;
  * 空格断开（中文顿号、逗号、句末标点），找不到就按字符硬切。时间按各子段的字符数比例映射回
  * 原区间，保证时长守恒（最后一段收口到原 end，避免累积舍入漂移）。
  *
- * <p>设计取舍：不做静音检测、不追求语义边界，只求「把 15 秒的长句打散成可读短句」。这正好对上
- * 翻译前需要「清洗后短句」的需求；真要语义级分句，等确定性格栅在真数据上暴露不足再上 LLM 方案。
+ * <p>设计取舍：不做静音检测、不追求语义边界，只求「把 15 秒的长句打散成可读短句」——翻译前
+ * 需要的正是清洗后的短句。
  */
 public final class SubtitleSegmentSplitter {
 
     /**
      * 断点字符：中文的顿号/逗号/句末感叹问号/分号冒号，加上英文逗句分号冒号感叹问号。
-     * 空格天然是单词边界，也进集合。句号「。」不在这里单列会在截断时产生「读着奇怪但时间准」的
-     * 子段，而它和「。」同属断点家族，这里一并收进（下标命中即在该字符后切开）。
+     * 空格天然是单词边界，也进集合。下标命中即在该字符后切开。
      */
     private static final String BREAK_CHARS = "，。！？；：、.。!?;:";
 
@@ -65,14 +64,6 @@ public final class SubtitleSegmentSplitter {
     /**
      * 把单条超长段按预算切成多段。
      *
-     * <ul>
-     *   <li>字符窗口 = {@code round(maxSegmentMs * text.length / durationMs)}，即预算毫秒对应的
-     *       大致字符数（假设语速均匀）。</li>
-     *   <li>窗口内从后往前找断点字符，找到就在其后切开（让断点尽量落在标点后）；找不到就硬切到
-     *       窗口末。</li>
-     *   <li>时间按子段字符数比例映射回原区间。</li>
-     * </ul>
-     *
      * @param seg        原段
      * @param text       原段文本（已清洗掉空）
      * @param durationMs 原段时长
@@ -112,7 +103,6 @@ public final class SubtitleSegmentSplitter {
                 pieces.add(text.substring(start));
                 break;
             }
-            // 窗口 [start, end) 内从后往前找断点字符，找到就在其后切开
             int cut = findBreakBefore(text, start, end);
             if (cut > start) {
                 pieces.add(text.substring(start, cut));

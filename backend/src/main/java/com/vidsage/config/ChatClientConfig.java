@@ -7,12 +7,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ChatClientConfig {
 
-
     /**
-     * 视频总结器
-     *
-     * @param builder
-     * @return
+     * 视频总结器。
      */
     @Bean
     public ChatClient ContentSummarizer(ChatClient.Builder builder) {
@@ -57,10 +53,8 @@ public class ChatClientConfig {
                 .build();
     }
 
-    /***
-     * 字幕清洗的 ChatClient
-     * @param builder ChatClient.Builder
-     * @return ChatClient
+    /**
+     * 字幕清洗用的 ChatClient。
      */
     @Bean
     public ChatClient subtitleCleanupChatClient(ChatClient.Builder builder) {
@@ -96,14 +90,9 @@ public class ChatClientConfig {
     }
 
     /**
-     * 字幕翻译的 ChatClient。
+     * 字幕翻译用的 ChatClient。
      *
-     * <p>目标语种<b>烧进 system 提示词</b>：它由配置驱动、进程内固定，正是 system 提示词该装的东西；
-     * 且 design §3.1 已定「不引短码 → 自然语言名的映射表」，这里直接把短码交给模型。
-     *
-     * @param builder             ChatClient.Builder
-     * @param translateProperties 翻译配置（只用到目标语种短码）
-     * @return ChatClient
+     * <p>目标语种<b>烧进 system 提示词</b>：它由配置驱动、进程内固定，正是 system 提示词该装的东西。
      */
     @Bean
     public ChatClient subtitleTranslateChatClient(ChatClient.Builder builder,

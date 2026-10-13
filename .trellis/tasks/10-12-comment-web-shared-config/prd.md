@@ -3,7 +3,8 @@
 > **状态：planning，未开工。** 父任务 `10-12-comment-consolidation` 的**子任务 4**。
 > **粒度标准在 `.trellis/spec/guides/comment-guidelines.md`（正典 · 十三条禁令），不在这里也不在父 `design.md`**
 > ——父 `design.md` 曾复制过一份标准，2026-10-12 已删（复制必然漂移）。需求与跨子任务验收见父 `prd.md`。
-> **门 G1 已通过（2026-10-12，domain 试点与 application 两层均已收口归档）**；本层开工时按**正典当前版本**写 `implement.md`。
+> **门 G1 已通过（2026-10-12）**，前三层（domain / application / infrastructure）均已收口归档；
+> **本层 `implement.md` 已按正典当前版本写成（2026-10-13）**，任务仍 planning，等开工批准。
 
 ## Goal
 
@@ -17,7 +18,7 @@
   按父 `prd.md`「不做」：**不主动删任一侧**，只在两份文案已经不一致或腐坏时订正。
 - **已确认的腐坏**：`web/dto/TaskResponse.java:45-47` 的 `from(...)` Javadoc 是断句残句——本层必订正。
 - `web/dto/TaskResponse.java:19` 有变更史「（2026-10-02 两段式…）」。
-- `api/` `ApiExceptionHandler`（104 行 / 55 注释）把异常 → HTTP 状态的映射理由写得很细：
+- `web/controller/ApiExceptionHandler`（104 行 / 55 注释）把异常 → HTTP 状态的映射理由写得很细：
   那属**负向契约**（哪类异常映射哪个码），多半是该留的，但「为什么不提前造异常体系」属决策，移 `design.md`。
 - `config/` 的四个 `@ConfigurationProperties`：`@param` 里的**校准依据**（为什么是这个量级）移 `design.md`，
   但「缺席时绑定成 0 = 静默关闭，yml 里必须显式写」这类**坑**要留。
@@ -38,5 +39,5 @@
       内容砍不动的进例外登记并写明理由。
 - [ ] `TaskResponse.from` 的残句已订正（补全或整句删除），并登记在待订正清单。
 - [ ] `@Schema` / `@param` 重复面**未被扩大**，且发现的不一致已订正。
-- [ ] spec 点名引用的单源（`TermMatcher#hitTermsByAsr`、`CheckpointPolicy` 的调用方）判据描述仍在。
+- [ ] spec 点名引用的单源（`TermMatcher#hitTermsByAsr`，见 `backend/quality-guidelines.md:150`）判据描述仍在。
 - [ ] `mvn clean test` 全绿。

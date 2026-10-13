@@ -21,10 +21,9 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * SSE 连接管理：持有 {@code taskNo → List<SseEmitter>}，负责写事件、终态收口、断连 / 超时清理与
- * 心跳（design.md「SSE 契约」）。本类是 {@code SseEmitter} 等 HTTP 类型<b>唯一</b>允许出现的包——
- * 订阅机制本体在 {@code application/task/} 的中立注册表里（原顶层包 subscribe/），管线只认识注册表不认识 emitter。
- *
+ * SSE 连接管理：持有 {@code taskNo → List<SseEmitter>}，负责写事件、终态收口、断连 / 超时清理与心跳。
+ * 本类是 {@code SseEmitter} 等 HTTP 类型<b>唯一</b>允许出现的包——订阅机制本体在 {@code application/task/}
+ * 的中立注册表里，管线只认识注册表不认识 emitter。
  *
  * <p><b>清理</b>：客户端断连（onError / onCompletion）与空闲超时（onTimeout）都从表中摘除 emitter；
  * 单个 emitter 写失败只摘除它自己，不影响同任务的其他订阅者。
@@ -43,7 +42,7 @@ public class TaskSseConnectionManager {
     static final String EVENT_NAME = "progress";
 
     /**
-     * 心跳间隔（秒）：30s 是防代理空闲断连的常规值（design.md「SSE 契约」）。
+     * 心跳间隔（秒）：30s 是防代理空闲断连的常规值。
      */
     private static final int HEARTBEAT_INTERVAL_SECONDS = 30;
 
@@ -65,13 +64,10 @@ public class TaskSseConnectionManager {
 
     private final TaskSubscriptionRegistry subscriptionRegistry;
 
-
     public TaskSseConnectionManager(TaskSubscriptionRegistry subscriptionRegistry) {
         this.subscriptionRegistry = subscriptionRegistry;
-        // 创建一个定时任务，用虚拟线程执行
         this.heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(
                 Thread.ofVirtual().name("vidsage-sse-heartbeat-", 0).factory());
-        // 每 30s 执行一次 心跳（beat） 方法
         this.heartbeatExecutor.scheduleWithFixedDelay(
                 this::beat, HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
@@ -127,13 +123,6 @@ public class TaskSseConnectionManager {
         return emitter;
     }
 
-    /**
-     * 向指定SSE连接发送信息。
-     *
-     * @param taskNo 任务号
-     * @param target SSE连接
-     * @param event  任务进度信息
-     */
     private void sendTo(String taskNo, SseEmitter target, TaskProgressMessage event) {
         try {
             target.send(SseEmitter.event().name(EVENT_NAME).data(event, MediaType.APPLICATION_JSON));
@@ -148,24 +137,17 @@ public class TaskSseConnectionManager {
         }
     }
 
-    /**
-     * 该任务当前的在线连接数。供测试与排查用，业务代码不要依赖它做判断。
-     */
     int emitterCount(String taskNo) {
         List<SseEmitter> list = emitters.get(taskNo);
         return list == null ? 0 : list.size();
     }
 
-    /**
-     * 该 taskNo 是否还挂着桶。给测试用——{@link #emitterCount} 对「桶已删」与「桶空着」返回同一个
-     * 结果，测不出空桶有没有被回收，业务代码不要依赖它做判断。
-     */
     boolean hasBucket(String taskNo) {
         return emitters.containsKey(taskNo);
     }
 
     /**
-     * 心跳：向全部在线连接推一条注释行。注释行不产生 progress 事件，客户端无感，只保活连接。
+     * 心跳：推的注释行不产生 progress 事件，客户端无感——只为保活连接。
      */
     private void beat() {
         for (var entry : emitters.entrySet()) {

@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "质检的判据全在这里：§六 的脚本与模式清单（AC1 变更史归零）、§三 禁令 10 的四件事判据（AC2 长尾收敛）、禁令 1/2/3/7（本层三类高频病灶的判据）、§五 的两类指针表（spec 指针保留 / 归档指针删）、§七 元规则（本层新写的 implement.md 与被新建的 package-info 均不得复制正典正文）"}
+{"file": ".trellis/tasks/10-12-comment-web-shared-config/prd.md", "reason": "逐条对本层六条 AC：三包命中数为 0、块只答四件事（>15 行逐个复核并登记例外）、TaskResponse 残句已订正、@param×@Schema 面未被扩大且不一致已订正、spec 点名单源（TermMatcher#hitTermsByAsr）判据仍在、mvn clean test 全绿"}
+{"file": ".trellis/tasks/10-12-comment-web-shared-config/implement.md", "reason": "质检对象：§1 逐文件登记表是否与实际 diff 对得上（23 条一条不漏）、§2 例外登记每条是否写了「砍不动的理由」、§3 待订正清单是否逐条已订正、§4 是否只剩空表或已写、§5 自检是否留下实测值"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/prd.md", "reason": "跨子任务 AC 的判据（AC1 机器可判 / AC2 人工判「只答四件事」/ AC4 腐坏逐处订正并留清单 / AC5 行为不变且基线实测），以及 AC3 的抽查口径：每层抽 3 个类，被移出的设计理由要能在 package-info / spec / 归档 design.md 里查到"}
+{"file": ".trellis/tasks/10-12-comment-consolidation/design.md", "reason": "验证策略表与「只改注释」的复核口径（git diff -w 通读确认无「手滑改了代码」）；§6 风险表里「误删承载知识的 why」「把腐坏的注释当成正确依据」两条是质检重点"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "判 ApiExceptionHandler 删对没删错：异常 → HTTP 的映射（负向契约）必须留，而「为什么不提前造异常体系」的决策叙述在本文件 :62/:175 有全文，代码里删掉不损失知识"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "判两件事：① 本层 spec 指针（契约类的位置判据 2、web/ 与 config/ 职责、同一判据只有一份）有没有被误删；② 若阶段 0 裁定新建 web/package-info，其内容只能是「从代码里搬来的包级地图」，不得在此扩写新规则（正典 §三 package-info 条）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "「写与删是两件事」：质检不得因「某处没注释」判违规、也不得要求补写；只判该留的有没有被删（尤其 :150 点名的 TermMatcher#hitTermsByAsr 单源）"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "判 TaskController:32 那半句 logging-guidelines 指针是否保留，以及 sourceUri 一类字段的横切脱敏约束有没有被误当字段语义删掉"}
