@@ -130,14 +130,17 @@ public class TaskController {
     /**
      * 按需触发字幕翻译：提交后的自动管线只跑到清洗 / 原文字幕为止，
      * 用户点「翻译」才触发——不看翻译的人不花 LLM 钱。幂等语义见服务层：
-     * 已有翻译产物则幂等收敛（不发 LLM），翻译进行中重复触发返回当前视图不重入。
+     * 已有该语种的翻译产物则幂等收敛（不发 LLM）。
      *
-     * @param taskNo 提交响应返回的任务号
-     * @return 触发后的任务视图（translationStatus 反映翻译子状态；正常触发为 RUNNING）
-     * @throws IllegalArgumentException                                     taskNo 为空（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
+     * @param taskNo  提交响应返回的任务号
+     * @param request 源语种与目标语种（两个都过白名单，白名单外 400）
+     * @return 触发后的任务视图（主状态与产物清单；翻译进度走 SSE，不落库）
+     * @throws IllegalArgumentException                                     taskNo 为空（400）、语种不在白名单（400）或字幕尚未就绪（400，主任务未 SUCCEEDED）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
+     * @throws com.vidsage.application.task.exception.TaskConflictException 同工作区已有后置会话在跑（409）
      */
-    @Operation(summary = "触发字幕翻译（按需）", description = "主任务成功（SUCCEEDED）后可触发；202 返回触发后的任务视图。幂等：已有翻译产物" + "不重复调用 LLM，翻译进行中重复触发返回当前视图；主任务未成功返回 400（字幕尚未就绪）")
+    @Operation(summary = "触发字幕翻译（按需）", description = "主任务成功（SUCCEEDED）后可触发；body 带源语种与目标语种（都过白名单，白名单外 400）；202 返回触发后的任务视图。"
+            + "幂等：该语种的翻译产物已在则不重复调用 LLM；同工作区已有后置会话（翻译 / 重新生成）在跑返回 409；主任务未成功返回 400（字幕尚未就绪）")
     @PostMapping("/{taskNo}/translate")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public TaskResponse translate(@PathVariable String taskNo,
@@ -146,7 +149,7 @@ public class TaskController {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
         log.info("触发字幕翻译: taskNo={}", taskNo);
-        return TaskResponse.from(taskService.translate(taskNo,request.sourceLanguage(),request.targetLanguage()));
+        return TaskResponse.from(taskService.translate(taskNo, request.sourceLanguage(), request.targetLanguage()));
     }
 
     /**

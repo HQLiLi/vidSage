@@ -3,7 +3,6 @@ package com.vidsage.application.task.message;
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
 
 /**
  * 任务进度消息：SSE 事件与连接快照的载荷。
@@ -21,7 +20,7 @@ public record TaskProgressMessage(
         boolean terminal
 ) {
     /**
-     * terminal 派生：主状态与翻译子状态都收敛了（{@link VideoTask#isEventTerminal}），
+     * terminal 派生：主状态已终态（{@link VideoTask#isEventTerminal}），
      * <b>且没有在途后置会话</b>（阶段事件不是 RUNNING 态）。
      *
      * <p>为什么不需要新字段（隐式派生）：后置会话在跑时，快照的 stage 必定是

@@ -10,12 +10,11 @@ import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.application.task.session.TaskSessionRegistry;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
-import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskNo;
-import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -128,8 +127,7 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 后置会话的进度回调：只广播不落 {@code current_stage}（主状态已终态，
-     * {@code updateStage} 的 RUNNING 守卫也会拒；精确进度由事件携带，快照由登记表还原）。
+     * 后置会话的进度回调
      */
     private ProgressListener regenerationProgressListener(VideoTask task) {
         return stageProgress -> {
@@ -141,39 +139,24 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 按需触发翻译：主任务 SUCCEEDED 后由用户显式触发——不看翻译的人不花 LLM 钱。
+     * 翻译
+     * 媒体转字幕 主任务完成后可调用
      *
-     * <p>判定按序：任务不存在 → {@link TaskNotFoundException}（404）；主状态非 SUCCEEDED →
-     * {@link IllegalArgumentException}（400「字幕尚未就绪」——错在调用方触发太早，按
-     * error-handling.md「错在调用方 → IAE → 400」走既有映射，不为一次映射新建异常类型）；
-     * 翻译进行中 → 直接返回、不重入；翻译检查点已在 → <b>幂等收敛</b>为 SUCCEEDED，绝不发 LLM。
-     *
-     * <p>同步段只做判定与状态落库，LLM 翻译在虚拟线程异步执行，事件自成 {@code 0..100} 段广播。
-     *
-     * @param taskNo         对外任务号
+     * @param task           任务
      * @param sourceLanguage 源语种
      * @param targetLanguage 翻译目标语种
      * @throws TaskNotFoundException    任务不存在
      * @throws IllegalArgumentException 主任务尚未成功（字幕尚未就绪）
      */
-    public void translateTask(TaskNo taskNo, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage) {
-        VideoTask task = repository.findByTaskNo(taskNo)
-                .orElseThrow(() -> new TaskNotFoundException(taskNo.value()));
-        if (task.getStatus() != TaskStatus.SUCCEEDED) {
-            throw new IllegalArgumentException("字幕尚未就绪：任务状态为 " + task.getStatus()
-                    + "，翻译只能在任务成功（SUCCEEDED）后触发；请先等主管线完成（可查 "
-                    + "GET /api/tasks/" + taskNo.value() + " 或订阅其 SSE 事件）再试");
-        }
-
-
+    public void translateTask(VideoTask task, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage) {
         MediaInput input = toMediaInput(task);
         // 翻译开始起始时间，用于计算翻译耗时（含排队）
         long startTimeMs = System.currentTimeMillis();
         concurrencyGate.submit(() -> runTranslationPipeline(task, input, sourceLanguage, targetLanguage, startTimeMs),
                 () -> {
                     log.warn("翻译等待执行配额时被中断: taskNo={}", task.getTaskNo().value());
-                    // 翻译已置 RUNNING 才排队，被打断不能吞状态：标记失败（可重新触发），广播终态收口
-                    failTranslation(task, "翻译在等待执行配额时被中断：请重新触发翻译", null);
+                    taskSessionRegistry.finish(task.getWorkspaceKey());
+                    taskProgressNotifier.failTranslation(task, "翻译在等待执行配额时被中断：请重新触发翻译");
                 });
     }
 
@@ -224,7 +207,9 @@ public class SubtitlePipeline {
             taskProgressNotifier.completeTranslation(task);
             log.info("任务翻译完成: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - startTimeMs);
         } catch (Exception e) {
-            failTranslation(task, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), e);
+            taskProgressNotifier.failTranslation(task, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        } finally {
+            taskSessionRegistry.finish(task.getWorkspaceKey());
         }
     }
 
@@ -255,10 +240,7 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 翻译进度回调（广播专用）：翻译阶段事件自成 0..100 段直通广播，<b>刻意不落 current_stage</b>——
-     * current_stage 是主管线阶段词表的落点（updateStage 的 RUNNING 守卫也不允许主状态终态后推进）；
-     * 重连快照的翻译子状态由 DB 的 translation_status 粗粒度还原（{@link TaskStageEvent#from}），
-     * 精确进度由本回调的实时事件携带。
+     * 翻译进度回调
      */
     private ProgressListener translationProgressListener(VideoTask task) {
         return stageProgress -> {
@@ -290,30 +272,6 @@ public class SubtitlePipeline {
         }
     }
 
-    /**
-     * 翻译失败 → 翻译子状态 FAILED（主状态保持 SUCCEEDED）：错误信息带
-     * {@link VideoTask#TRANSLATION_FAILURE_PREFIX} 落 error_message，广播翻译终态事件并清空订阅者
-     * （失败可重新触发，收口后重连拿失败快照）。
-     * 落库再失败只记 ERROR：虚拟线程无人接异常，吞掉等于静默。
-     *
-     * @param reason 失败原因（不含前缀）；{@code cause} 为 {@code null} 时按 WARN 记（无调用栈的主动标记，
-     *               如排队被打断），否则按 ERROR 带栈记录
-     */
-    private void failTranslation(VideoTask task, String reason, Exception cause) {
-        String message = VideoTask.TRANSLATION_FAILURE_PREFIX + reason;
-        try {
-            taskProgressNotifier.completeTranslation(task);
-            if (cause == null) {
-                log.warn("任务翻译失败: taskNo={}, message={}", task.getTaskNo().value(), message);
-            } else {
-                log.error("任务翻译失败: taskNo={}, status={}, message={}",
-                        task.getTaskNo().value(), task.getStatus(), message, cause);
-            }
-        } catch (RuntimeException e) {
-            log.error("翻译失败状态落库失败，任务可能停留在翻译 RUNNING: taskNo={}, reason={}",
-                    task.getTaskNo().value(), e.getMessage(), e);
-        }
-    }
 
     /**
      * 从持久化字段还原管线的媒体输入：变体选择与落点规则单源在 {@link MediaInput#ofTaskInput}，

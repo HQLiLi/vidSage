@@ -2,14 +2,13 @@
 -- 走 Spring SQL init（spring.sql.init.mode: always，见 application-local.yml 注释块），
 -- 不引 Flyway：单表用不上迁移框架。可安全重复执行。
 --
--- ⚠️ 存量迁移说明（2026-10-02 两段式改造）：
---   CREATE TABLE IF NOT EXISTS 不会为已存在的旧表加列，MySQL 8 也没有 ADD COLUMN IF NOT EXISTS。
---   本版新增 translation_status 列——已有旧库必须二选一：
---   1. DROP TABLE task;                （推荐：本地 / 测试数据，重启后由本脚本重建）
---   2. ALTER TABLE task ADD COLUMN translation_status ENUM('RUNNING','SUCCEEDED','FAILED') NULL
---      COMMENT '翻译子状态（主任务 SUCCEEDED 后按需触发）：NULL=从未触发' AFTER current_stage;
---   旧表不迁移的后果：MyBatis-Plus 按列名映射，写入 translation_status 时报 Unknown column，
---   触发翻译即 500。
+-- ⚠️ 存量迁移说明（2026-10-14 翻译子状态下线）：
+--   本版删掉 translation_status 列（2026-10-02 两段式改造时加的）。CREATE TABLE IF NOT EXISTS
+--   不会改已存在的旧表，MySQL 8 也没有 DROP COLUMN IF EXISTS，所以旧库必须手工删一次：
+--   1. DROP TABLE task;                        （推荐：本地 / 测试数据，重启后由本脚本重建）
+--   2. ALTER TABLE task DROP COLUMN translation_status;
+--   旧表不迁移的后果：列留着不会被读写（应用侧已无任何引用），但会误导后来读表的人，
+--   以为翻译还有 DB 子状态。翻译在不在跑改由内存登记表回答（TaskSessionRegistry）。
 CREATE TABLE IF NOT EXISTS task
 (
     id                 BIGINT        NOT NULL AUTO_INCREMENT COMMENT '内部自增行 id，不对外（对外只暴露 task_no）',
@@ -20,8 +19,7 @@ CREATE TABLE IF NOT EXISTS task
     workspace_dir      VARCHAR(512)  NOT NULL COMMENT '工作区目录相对路径（相对 vidsage.workspace.root）',
     status             ENUM ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED') NOT NULL COMMENT '任务状态（状态机权威存储：PENDING→RUNNING→SUCCEEDED/FAILED）',
     current_stage      VARCHAR(64)   NULL COMMENT '最近阶段名',
-    translation_status ENUM ('RUNNING', 'SUCCEEDED', 'FAILED') NULL COMMENT '翻译子状态（2026-10-02 两段式：翻译不随主管线自动执行，主任务 SUCCEEDED 后按需触发）：NULL=从未触发，与主状态 status 相互独立',
-    error_message      VARCHAR(2048) NULL COMMENT '终态错误信息（中文，面向用户；主任务失败或翻译子状态失败——后者带「翻译失败：」前缀）',
+    error_message      VARCHAR(2048) NULL COMMENT '错误信息（中文，面向用户）：主管线失败 / 重新生成失败 / 翻译失败共用本列，各自带前缀（「任务执行失败：」「重新生成失败：」「翻译失败：」）区分来源',
     created_at         DATETIME      NOT NULL COMMENT '创建时间',
     updated_at         DATETIME      NOT NULL COMMENT '最近变更时间',
     started_at         DATETIME      NULL COMMENT '开始执行时间',

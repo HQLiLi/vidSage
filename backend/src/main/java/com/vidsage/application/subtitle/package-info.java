@@ -1,5 +1,6 @@
 /**
- * 字幕应用层：本上下文根包不留任何类，只有这份包说明——三个构件全是管线阶段，都住在 {@code pipeline/}。
+ * 字幕应用层：根包留服务门面 {@code SubtitleLanguageService}（语种清单供给，有 web 调用面），
+ * 三条管线构件都住在 {@code pipeline/}，读模型住在 {@code query/}。
  *
  * <p>{@code pipeline/} 装字幕产物的三段编排：{@code SubtitlePreparationCoordinator}（转写并产出原始字幕）、
  * {@code SubtitleCleanupCoordinator}（切分 + LLM 清洗，两段式第一段）、

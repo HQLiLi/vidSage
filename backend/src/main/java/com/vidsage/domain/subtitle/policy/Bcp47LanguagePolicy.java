@@ -1,17 +1,14 @@
 package com.vidsage.domain.subtitle.policy;
 
-import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.translation.TranslatedSegment;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Locale;
 
-import org.springframework.util.StringUtils;
-
 /**
  * BCP-47 语种政策（纯函数领域服务）：翻译的「跳不跳、按什么语种跳、跳了产出什么」三件事的单源。
- *
  */
 public final class Bcp47LanguagePolicy {
 
@@ -37,20 +34,6 @@ public final class Bcp47LanguagePolicy {
         return configuredTarget.trim().toLowerCase(Locale.ROOT);
     }
 
-    /**
-     * 判定跳过时采用的源语种：摘要推断的优先（主路径），为空回退 ASR 给的 language（兜底），
-     * 两者皆空则返回空串（调用方据此<b>不跳过</b>）。
-     *
-     * @param context       字幕上下文（可能为空上下文对象）
-     * @param trackLanguage ASR 识别出的语种，可能为 {@code null} 或空白
-     * @return 源语种；两者皆空时为空串
-     */
-    public static String resolveSourceLanguage(SubtitleContext context, String trackLanguage) {
-        if (context != null && StringUtils.hasText(context.sourceLanguage())) {
-            return context.sourceLanguage().trim();
-        }
-        return StringUtils.hasText(trackLanguage) ? trackLanguage.trim() : "";
-    }
 
     /**
      * 跳过翻译时的逐条产物：译文照抄原文，时间戳原样带过。

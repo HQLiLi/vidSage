@@ -2,7 +2,6 @@ package com.vidsage.application.task.query;
 
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
 import java.time.LocalDateTime;
 import java.util.List;
 

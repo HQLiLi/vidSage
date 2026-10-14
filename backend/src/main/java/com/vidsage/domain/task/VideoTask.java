@@ -4,7 +4,6 @@ import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
@@ -243,6 +242,30 @@ public class VideoTask {
     }
 
     /**
+     * 记一次翻译失败：主状态保持 SUCCEEDED——字幕和已有的译文一个字没少，这次没译成不是任务失败，
+     * 所以不能走 {@link #fail}（SUCCEEDED 是终态，不许再迁移）。只刷新 errorMessage 与 updatedAt。
+     *
+     * @param errorMessage 失败原因（中文，面向用户；调用方带 {@link #TRANSLATION_FAILURE_PREFIX} 组装）
+     * @throws IllegalStateException 主任务不在 SUCCEEDED（后置会话的前置条件被破）
+     */
+    public void recordTranslationFailure(String errorMessage) {
+        requireMainSucceededForPostLifecycle("记录翻译失败");
+        this.errorMessage = errorMessage;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 翻译成功后清掉上一次的失败原因：只认领自己那个前缀——主管线失败与重新生成失败
+     * （另一台生命周期）的错误信息一概不动。
+     */
+    public void clearTranslationFailure() {
+        if (errorMessage != null && errorMessage.startsWith(TRANSLATION_FAILURE_PREFIX)) {
+            errorMessage = null;
+            updatedAt = LocalDateTime.now();
+        }
+    }
+
+    /**
      * 「进行中」状态集合（PENDING / RUNNING）：提交查重的 active 判据单源——同一输入已有任务在
      * 排队或执行即视为冲突，终态任务不算 active（重新提交同一输入是断点复用的正常路径）。
      * {@code VideoTaskRepository.findActiveByWorkspaceKey} 的 SQL 过滤据此构造：业务谓词不写在
@@ -251,8 +274,9 @@ public class VideoTask {
     public static final Set<TaskStatus> ACTIVE_STATUSES = Set.of(TaskStatus.PENDING, TaskStatus.RUNNING);
 
     /**
-     * 任务是否已经结束：主状态是终态（SUCCEEDED / FAILED），且翻译没在进行中。
-     * 用于事件分发——返回 {@code true} 表示该任务不会再产生后续状态事件。
+     * 任务是否已经结束：主状态是终态（SUCCEEDED / FAILED）。
+     * 用于事件分发——返回 {@code true} 表示该任务不会再产生后续状态事件
+     * （在途的后置会话另由登记表回答，见 {@code TaskSessionRegistry}）。
      *
      * @param mainStatus 任务主状态
      * @return 任务是否结束

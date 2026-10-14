@@ -32,7 +32,7 @@ import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 
 import java.io.ByteArrayInputStream;
@@ -57,6 +57,10 @@ import org.mockito.ArgumentCaptor;
  * <p>覆盖「URL 路线落库与启动管线」「上传路线流式落盘按内容寻址」「查重 409 与孤儿文件清理」「查询」。
  */
 class VideoTaskServiceTest {
+
+    private static final String SOURCE_LANG = "zh-Hans";
+
+    private static final String TARGET_LANG = "zh-Hant";
 
     @TempDir(cleanup = CleanupMode.NEVER)
     Path tempDir;
@@ -312,52 +316,28 @@ class VideoTaskServiceTest {
         assertThrows(TaskNotFoundException.class, () -> service().snapshot("ghost"));
     }
 
-    // ---------- SSE 快照：翻译子状态覆盖 ----------
+    // ---------- SSE 快照：在途后置会话 ----------
 
     @Test
-    void snapshotForSucceededTaskWithRunningTranslationCarriesTranslateStage() {
-        VideoTask task = succeededWithTranslation(TranslationStatus.RUNNING, null);
+    void snapshotRendersInFlightTranslateSessionAsRunning() {
+        // 翻译子状态列已下线：「翻译在跑」这件事只有登记表回答得了（AC9 的机制）
+        VideoTask task = succeededTask();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.TRANSLATE_SUBTITLES.getStageName()));
 
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
-        assertEquals(TaskStatus.SUCCEEDED, event.taskStatus(), "主状态不被翻译子状态改写");
-        assertEquals(TranslationStatus.RUNNING, event.translationStatus(),
-                "快照携带翻译子状态（订阅端终态判定据此保持连接）");
+        assertEquals(TaskStatus.SUCCEEDED, event.taskStatus(), "主状态不被在途会话改写");
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), event.stage().stage());
-        assertEquals(0, event.stage().progress(), "翻译进行中取粗粒度 0，精确进度由增量事件携带");
+        assertEquals(0, event.stage().progress(), "在途会话取粗粒度 0，精确进度由增量事件携带");
         assertEquals(StageProgress.State.RUNNING, event.stage().state());
+        assertFalse(event.terminal(), "在途会话 → 未收敛：重连的人不会一连上就被收口");
     }
 
     @Test
-    void snapshotForSucceededTaskWithSucceededTranslationCarriesCompletedTranslateStage() {
-        VideoTask task = succeededWithTranslation(TranslationStatus.SUCCEEDED, null);
-        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-
-        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
-
-        assertEquals(TranslationStatus.SUCCEEDED, event.translationStatus());
-        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), event.stage().stage());
-        assertEquals(100, event.stage().progress());
-        assertEquals(StageProgress.State.SUCCEEDED, event.stage().state());
-    }
-
-    @Test
-    void snapshotForSucceededTaskWithFailedTranslationCarriesErrorMessage() {
-        VideoTask task = succeededWithTranslation(TranslationStatus.FAILED, "翻译失败：LLM 返回掉行");
-        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-
-        TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
-
-        assertEquals(TranslationStatus.FAILED, event.translationStatus());
-        assertEquals(StageProgress.State.FAILED, event.stage().state());
-        assertEquals("翻译失败：LLM 返回掉行", event.stage().message(),
-                "翻译失败快照的消息携带失败原因（重连后仍可见，不只活在实时事件里）");
-    }
-
-    @Test
-    void snapshotWithoutTranslationKeepsMainPipelineStageEvent() {
-        // 主任务成功且翻译从未触发：快照仍是主管线形状（阶段取 current_stage 的粗粒度完成位）
+    void snapshotWithoutInFlightSessionKeepsMainPipelineStageEvent() {
+        // 没有在途会话：快照是主管线形状（阶段取 current_stage 的粗粒度完成位）
         VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
                 new WorkspaceKey("a1b2c3d4e5f6"), "dir");
         task.start();
@@ -367,42 +347,85 @@ class VideoTaskServiceTest {
 
         TaskProgressMessage event = service().snapshot(task.getTaskNo().value());
 
-        assertNull(event.translationStatus(), "从未触发翻译 → 翻译子状态为 null");
-        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), event.stage().stage(), "不受翻译分支影响");
+        assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), event.stage().stage());
         assertEquals(100, event.stage().progress());
+        assertTrue(event.terminal(), "无在途会话 → 主状态终态即收敛");
     }
 
     // ---------- 按需触发翻译 ----------
 
     @Test
-    void translateDelegatesToPipelineAndReturnsRefreshedView() {
-        VideoTask before = succeededWithTranslation(null, null);
-        // loadTask 读一次；translateTask（mock，模拟内部已推进翻译子状态）后重读一次
-        when(repository.findByTaskNo(before.getTaskNo()))
-                .thenReturn(Optional.of(before))
-                .thenReturn(Optional.of(succeededWithTranslation(TranslationStatus.RUNNING, null)));
+    void translateStartsSessionAndReturnsView() {
+        VideoTask task = succeededTask();
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
-        TaskSnapshot view = service().translate(before.getTaskNo().value(), request.sourceLanguage(), request.targetLanguage());
+        TaskSnapshot view = service().translate(task.getTaskNo().value(), SOURCE_LANG, TARGET_LANG);
 
-        verify(pipeline).translateTask(before.getTaskNo(), sourceLanguage, targetLanguage);
-        assertEquals(before.getTaskNo().value(), view.taskNo());
+        verify(pipeline).translateTask(task, SupportedLanguage.SIMPLE_CHINESE, SupportedLanguage.TRADITIONAL_CHINESE);
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(),
+                sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "同步段抢到登记：202 返回前它就写好了（「订阅必须先于 POST」由此不再需要）");
+        assertEquals(task.getTaskNo().value(), view.taskNo());
         assertEquals(TaskStatus.SUCCEEDED, view.status());
-        assertEquals(TranslationStatus.RUNNING, view.translationStatus(),
-                "视图应反映触发后的翻译子状态（重读而非触发前的陈旧副本）");
+        // 本用例把管线 mock 掉了，异步体的 finally 不会跑——手工退登记，避免用例之间串味
+        sessionRegistry.finish(task.getWorkspaceKey());
+    }
+
+    @Test
+    void translateRejectsWhenAnotherPostSessionIsRunningOnSameWorkspace() {
+        VideoTask task = succeededTask();
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.CLEAN_SUBTITLES.getStageName()), "先占住登记，模拟重新生成在跑");
+
+        TaskConflictException e = assertThrows(TaskConflictException.class,
+                () -> service().translate(task.getTaskNo().value(), SOURCE_LANG, TARGET_LANG));
+
+        assertEquals(task.getTaskNo().value(), e.getExistingTask().taskNo(),
+                "409 必须附既有任务快照——冲突的出路是去订阅它（AC10）");
+        verify(pipeline, never()).translateTask(any(), any(), any());
+    }
+
+    @Test
+    void translateReleasesRegistrationWhenPipelineThrowsInSyncSegment() {
+        VideoTask task = succeededTask();
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+        doThrow(new IllegalStateException("模拟同步段抛出"))
+                .when(pipeline).translateTask(any(), any(), any());
+
+        assertThrows(IllegalStateException.class,
+                () -> service().translate(task.getTaskNo().value(), SOURCE_LANG, TARGET_LANG));
+
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "同步段抛出必须退登记，否则该工作区的互斥再也释放不掉（幽灵）");
+    }
+
+    @Test
+    void translateRejectsWhenMainStateNotSucceededAndLeavesNoRegistration() {
+        VideoTask task = VideoTask.newPending(TaskInputType.URL, "https://example.com/v",
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir");
+        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service().translate(task.getTaskNo().value(), SOURCE_LANG, TARGET_LANG));
+
+        verify(pipeline, never()).translateTask(any(), any(), any());
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "400 早于抢登记：主状态没就绪不该占住锁");
     }
 
     @Test
     void translateThrowsNotFoundWhenTaskMissing() {
         when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
-        assertThrows(TaskNotFoundException.class, () -> service().translate("ghost", request.sourceLanguage(), request.targetLanguage()));
-        verify(pipeline, never()).translateTask(any(), sourceLanguage, targetLanguage);
+        assertThrows(TaskNotFoundException.class, () -> service().translate("ghost", SOURCE_LANG, TARGET_LANG));
+        verify(pipeline, never()).translateTask(any(), any(), any());
     }
 
     @Test
     void translateRejectsBlankTaskNo() {
-        assertThrows(IllegalArgumentException.class, () -> service().translate(" ", request.sourceLanguage(), request.targetLanguage()));
-        verify(pipeline, never()).translateTask(any(), sourceLanguage, targetLanguage);
+        assertThrows(IllegalArgumentException.class, () -> service().translate(" ", SOURCE_LANG, TARGET_LANG));
+        verify(pipeline, never()).translateTask(any(), any(), any());
     }
 
     // ---------- 产物下载（含路径穿越防护） ----------
@@ -519,7 +542,7 @@ class VideoTaskServiceTest {
 
     @Test
     void regenerateWithKeywordsReplacesStoreAndDelegates() {
-        VideoTask task = succeededWithTranslation(null, null);
+        VideoTask task = succeededTask();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
 
         service().regenerate(task.getTaskNo().value(), List.of("影视飓风"));
@@ -532,7 +555,7 @@ class VideoTaskServiceTest {
 
     @Test
     void regenerateWithNullKeywordsKeepsExistingList() {
-        VideoTask task = succeededWithTranslation(null, null);
+        VideoTask task = succeededTask();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         when(keywordRepository.findByWorkspaceKey(task.getWorkspaceKey()))
                 .thenReturn(new SubtitleKeywords(List.of("旧词")));
@@ -561,7 +584,7 @@ class VideoTaskServiceTest {
 
     @Test
     void regenerateRejectsOverLimitBeforeTouchingAnything() {
-        VideoTask task = succeededWithTranslation(null, null);
+        VideoTask task = succeededTask();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         List<String> tooMany = new java.util.ArrayList<>();
         for (int i = 0; i < 51; i++) {
@@ -578,7 +601,7 @@ class VideoTaskServiceTest {
 
     @Test
     void regenerateConflictReturns409WithoutTouchingKeywords() {
-        VideoTask task = succeededWithTranslation(null, null);
+        VideoTask task = succeededTask();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(), SubtitleStageName.CLEAN_SUBTITLES.getStageName()),
                 "先占住模拟「已有会话在跑」");
@@ -594,7 +617,7 @@ class VideoTaskServiceTest {
     void regenerateReleasesRegistryWhenHandoffFails() {
         // AC10 的同步段这一半：抢到登记之后、委派出去之前任何一步抛了，登记必须在 finally 退掉——
         // 漏了该工作区的互斥就再也释放不掉（比卡 loading 更严重）
-        VideoTask task = succeededWithTranslation(null, null);
+        VideoTask task = succeededTask();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         doThrow(new IllegalStateException("模拟关键词落库失败：库不可达"))
                 .when(keywordRepository).replace(any(), any());
@@ -614,7 +637,7 @@ class VideoTaskServiceTest {
 
     @Test
     void keywordsReturnsStoreContentsAndFingerprint() {
-        VideoTask task = succeededWithTranslation(null, null);
+        VideoTask task = succeededTask();
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         SubtitleKeywords stored = new SubtitleKeywords(List.of("影视飓风"));
         when(keywordRepository.findByWorkspaceKey(task.getWorkspaceKey())).thenReturn(stored);
@@ -627,10 +650,11 @@ class VideoTaskServiceTest {
     }
 
 
-    private static VideoTask succeededWithTranslation(TranslationStatus translationStatus, String errorMessage) {
+    /** 主任务已成功、停在清洗阶段的既有任务——后置会话用例的起点。 */
+    private static VideoTask succeededTask() {
         return VideoTask.restore(7L, new TaskNo("abc123def456abc123def456abc123de"), TaskInputType.URL,
-                "https://example.com/v", new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, SubtitleStageName.CLEAN_SUBTITLES.getStageName(),
-                translationStatus, errorMessage,
+                "https://example.com/v", new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED,
+                SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now());
     }

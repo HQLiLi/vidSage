@@ -183,23 +183,43 @@ public class VideoTaskService {
     }
 
     /**
-     * 按需触发翻译：主任务 SUCCEEDED 后由用户显式触发——不看翻译的人不花 LLM 钱。
-     * 判定与幂等语义单源在 {@link SubtitlePipeline#translateTask}；本方法只做装载、委托与
-     * <b>重读回视图</b>——translateTask 内部可能已推进翻译子状态（启动 RUNNING / 幂等收敛
-     * SUCCEEDED），重读保证 202 响应的视图反映触发后的状态。
+     * 翻译字幕
      *
      * @param taskNo         对外任务号；不可为空白
      * @param sourceLanguage 源语种
      * @param targetLanguage 翻译目标语种
-     * @return 触发后的任务视图（translationStatus 反映翻译子状态）
+     * @return 触发后的任务视图
      * @throws IllegalArgumentException taskNo 为空白（400）或字幕尚未就绪（400）
      * @throws TaskNotFoundException    任务不存在（404）
+     * @throws TaskConflictException    工作区被占用，无法翻译（409）
      */
     public TaskSnapshot translate(String taskNo, String sourceLanguage, String targetLanguage) {
         SupportedLanguage sourceLang = SupportedLanguage.parse(sourceLanguage);
         SupportedLanguage targetLang = SupportedLanguage.parse(targetLanguage);
         VideoTask task = loadTask(taskNo);
-        pipeline.translateTask(task.getTaskNo(), sourceLang, targetLang);
+        if (task.getStatus() != TaskStatus.SUCCEEDED) {
+            throw new IllegalArgumentException("字幕尚未就绪：任务状态为 " + task.getStatus()
+                    + "，翻译只能在任务成功（SUCCEEDED）后触发；请先等主管线完成（可查 "
+                    + "GET /api/tasks/" + taskNo + " 或订阅其 SSE 事件）再试");
+        }
+
+        if (!taskSessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.TRANSLATE_SUBTITLES.getStageName())) {
+            throw new TaskConflictException(toSnapshot(task),
+                    "该工作区已有一次字幕后置会话在跑（翻译或重新生成）：taskNo=" + task.getTaskNo().value()
+                            + "；请等它跑完再触发，或用响应体 existingTask 里的 taskNo 订阅其 SSE 事件看进度");
+        }
+        boolean handedOff = false;
+        try {
+            pipeline.translateTask(task, sourceLang, targetLang);
+            handedOff = true;
+        } finally {
+            if (!handedOff) {
+                taskSessionRegistry.finish(task.getWorkspaceKey());
+            }
+        }
+        log.info("字幕翻译已触发: taskNo={}, source={}, target={}",
+                taskNo, sourceLang.getCode(), targetLang.getCode());
         return repository.findByTaskNo(task.getTaskNo())
                 .map(this::toSnapshot)
                 .orElseGet(() -> toSnapshot(task));
@@ -228,11 +248,10 @@ public class VideoTaskService {
                     + "，重新生成只能在任务成功（SUCCEEDED）后触发；请先等主管线完成（可查 "
                     + "GET /api/tasks/" + taskNo + " 或订阅其 SSE 事件）再试");
         }
-        // 工作区级互斥在同步段判（202 之前）：抢不到就 409，不排队等锁——202 后排队是骗人。
-        // 文案不能用查重那套「请勿重复提交」：冲突方手里就是这个任务号（status 还是 SUCCEEDED）
+
         if (!taskSessionRegistry.tryStart(task.getWorkspaceKey(), SubtitleStageName.CLEAN_SUBTITLES.getStageName())) {
             throw new TaskConflictException(toSnapshot(task),
-                    "该工作区已有一次字幕重新生成在跑：taskNo=" + task.getTaskNo().value()
+                    "该工作区已有一次字幕后置会话在跑（翻译或重新生成），任务号：" + task.getTaskNo().value()
                             + "；请等它跑完再触发，或用响应体 existingTask 里的 taskNo 订阅其 SSE 事件看进度");
         }
         boolean handedOff = false;
