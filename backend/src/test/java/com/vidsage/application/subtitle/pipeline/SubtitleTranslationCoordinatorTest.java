@@ -166,7 +166,6 @@ class SubtitleTranslationCoordinatorTest {
         stubTranslator(0, 0);
         when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
         when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
-        when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(SubtitleContext.empty()));
     }
 
@@ -179,33 +178,30 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     private void writeCleanTrack(String language) throws Exception {
-        SubtitleTrack clean = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, language, List.of(
+        SubtitleTrack clean = new SubtitleTrack(language, List.of(
                 new TranscriptionSegment(0, 5000, "我防关这边露出"),
                 new TranscriptionSegment(5000, 10000, "今天天气不错")), null);
         JSON.writeValue(cleanFile().toFile(), clean);
     }
 
     private Path cleanFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        return workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
     }
 
     private Path translateSegFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(
-                SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
+        return workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SEGMENTS.getFileName(PROPS.targetLanguage()));
     }
 
     private Path translateSrtFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SRT_TRANSLATED.fileName(
-                SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
+        return workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SRT.getFileName(PROPS.targetLanguage()));
     }
 
     private Path contextFile() {
-        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(SubtitleRoute.ASR_CLOUD, null));
+        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
     }
 
     private Path termsFile() {
-        return workDir.resolve(SubtitleArtifactSpec.TERMS.fileName(
-                SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
+        return workDir.resolve(SubtitleArtifactSpec.TERMS.getFileName(PROPS.targetLanguage()));
     }
 
     // ------------------------------------------------------------------
@@ -256,7 +252,7 @@ class SubtitleTranslationCoordinatorTest {
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> s.translate(new MediaInput.RemoteUrl("https://x")));
         // 消息要说清「缺哪个文件、先跑哪一步」
-        assertTrue(e.getMessage().contains(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null)),
+        assertTrue(e.getMessage().contains(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null)),
                 "消息应指明缺哪个文件");
         assertTrue(e.getMessage().contains("/api/subtitles/clean"), "消息应指明先跑哪一步");
     }
@@ -284,7 +280,7 @@ class SubtitleTranslationCoordinatorTest {
 
         // 写入非空检查点（合法 TranslatedTrack JSON）：判定为已完成
         JSON.writeValue(translateSegFile().toFile(),
-                new TranslatedTrack(SubtitleRoute.ASR_CLOUD, "en", "zh", true, List.of()));
+                new TranslatedTrack("en", "zh", true, List.of()));
 
         assertTrue(s.hasTranslationArtifact(input), "非空检查点在 → 已完成");
     }

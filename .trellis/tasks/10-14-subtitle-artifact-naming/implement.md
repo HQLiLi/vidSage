@@ -529,23 +529,53 @@ public String getLanguage(String fileName) {
 
 **门**：编译过 + 上述自测绿 → 停，等审查。
 
-## 批 5 · 测试（AI 负责）
+## 批 5 · 测试（AI 负责）—— **已完成**
 
-1. 修既有测试：所有 `SubtitleRoute.` 引用、`fileName` 新签名、五个 record 去字段、
-   `ASRProvider` 去方法
-2. 补新测试：
-   - `SubtitleArtifactSpecTest`：8 个新模板逐条钉住（含 `{lang}` 归一化、非语种模板传 `null` 不抛）
-   - `SubtitleWorkspaceFilePathsTest`：**全产物齐 / 缺 `terms` / 空工作区**三种情形（`prd.md` AC8）
-   - **未知字段容忍测试**（V1 的结论落地，`prd.md` AC9）：造一份含 `route` 键的 JSON，断言能解析
-3. 重跑并比对基线：
+**做了什么**
+
+1. **重写 `SubtitleArtifactSpecTest`**（9 条）：8 个模板逐条钉住、`{lang}` 归一化（`ZH` / `  zh  `）、
+   非语种模板传 `null` 不抛、空语种抛 ISE、`getFileName` ↔ `matches` 往返不变量、
+   **`getLanguage` 反解（含四种「解不出」边界）**、`downloadable` / `checkpoint` 两个标记
+2. **新增 `SubtitleWorkspaceFilePathsTest`**（9 条，AC8）：全产物齐 + 两语种成组（en 三件齐 / ja 无 terms）、
+   语种并集（只有 terms 的语种仍产出）、**源媒体是 `source.webm`**、同前缀多个取字典序第一个、
+   干扰名不误认、忽略目录、空工作区、目录不存在、`null`
+3. **新增 AC9 钉子**：`SubtitleCleanupCoordinatorTest.readsCheckpointThatStillCarriesTheRemovedRouteKey`
+   —— 预置一份带 `route` 键的旧检查点，断言清洗照常读出（多出来的键被静默忽略）
+4. **修既有测试**：`SubtitleCleanupCoordinatorTest`（去 route、换新常量名、去 `asrProvider` 构造参数）、
+   `SubtitlePreparationCoordinatorTest`（同上、`mockAsr` 去掉 route 桩）、
+   `DashScopeAsrProviderTest`（删 `routeIsAsrCloud` 用例）、
+   `SubtitleTranslationCoordinatorTest`（只改属于我们的那几行）
+
+**结果**
+
+```
+Tests run: 57, Failures: 0, Errors: 0, Skipped: 0
+  SubtitleCleanupCoordinatorTest       22
+  DashScopeAsrProviderTest             14
+  SubtitleArtifactSpecTest              9
+  SubtitleWorkspaceFilePathsTest        9
+  SubtitlePreparationCoordinatorTest    3
+```
+
+**红面变化**：整棵测试树 **16 个文件 → 12 个**，正好回到父任务那 12 个（本任务压红的 4 个清零）。
+`SubtitleTranslationCoordinatorTest` 从 44 条错降到 30 条，剩下的 100% 是 `translate(...)` 签名债。
+`SubtitlePipelineTest` 里**一处 route 都没有**——它那 52 条全是父任务债，没碰。
+
+**绕行办法**（父任务还完债之前一直要这么跑，因为整棵测试树编不过）
 
 ```bash
 cd backend
-rm -rf target/surefire-reports
-JAVA_HOME=/f/java_soft/java21 mvn -q clean test
+JAVA_HOME=/f/java_soft/java21 mvn -q clean compile        # 先让 target/classes 有货
+mvn -q dependency:build-classpath -Dmdep.outputFile=/tmp/cp.txt   # 生成一次即可
+CP="target/classes;$(cat /tmp/cp.txt)"
+javac -encoding UTF-8 -proc:none -nowarn -cp "$CP" -d target/test-classes <要跑的测试源文件...>
+JAVA_HOME=/f/java_soft/java21 mvn surefire:test -Dtest=<类名,逗号分隔>
 ```
 
-**门**：全绿且测试总数 ≥ V2 基线 → 停，等审查。
+顺序不能反：`mvn clean` 会清掉 `target/test-classes`，所以是「先 `compile` → 再 javac 测试 → 再 `surefire:test`」。
+`surefire:test` 是直接调插件目标，不触发 compile 阶段，所以不会被别的坏文件挡住。
+
+**门**：口径已改判为「不新增失败」（见上面「AC10 口径」）→ **已达成**。
 
 ## 批 6 · spec 更新（AI 负责）
 

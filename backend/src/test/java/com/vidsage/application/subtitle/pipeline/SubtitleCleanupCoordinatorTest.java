@@ -23,7 +23,6 @@ import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
-import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
@@ -59,7 +58,6 @@ class SubtitleCleanupCoordinatorTest {
 
     private final WorkspaceKeyGenerator workspaceKeyGenerator = mock(WorkspaceKeyGenerator.class);
     private final WorkspaceDirectoryManager workspaceDirectoryManager = mock(WorkspaceDirectoryManager.class);
-    private final ASRProvider asrProvider = mock(ASRProvider.class);
     private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
     private final SubtitleCleanser subtitleCleanser = mock(SubtitleCleanser.class);
 
@@ -78,16 +76,15 @@ class SubtitleCleanupCoordinatorTest {
     private SubtitleCleanupCoordinator service() {
         when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
         when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
-        when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
-        return new SubtitleCleanupCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, asrProvider, JSON, PROPS,
+        return new SubtitleCleanupCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, JSON, PROPS,
                 contextSummarizer, subtitleCleanser);
     }
 
     private void writeRawTrack() throws Exception {
-        SubtitleTrack raw = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of(
+        SubtitleTrack raw = new SubtitleTrack("zh", List.of(
                 new TranscriptionSegment(0, 5000, "我防关这边露出"),
                 new TranscriptionSegment(5000, 10000, "今天天气不错")), null);
-        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), raw);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null)).toFile(), raw);
     }
 
     /**
@@ -96,10 +93,10 @@ class SubtitleCleanupCoordinatorTest {
      * @param fingerprint 写进产物的那枚指纹；传 {@code null} 模拟存量产物（没有这个字段）
      */
     private void writeCleanTrack(String fingerprint) throws Exception {
-        SubtitleTrack clean = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of(
+        SubtitleTrack clean = new SubtitleTrack("zh", List.of(
                 new TranscriptionSegment(0, 5000, "我防关这边露出"),
                 new TranscriptionSegment(5000, 10000, "今天天气不错")), fingerprint);
-        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), clean);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null)).toFile(), clean);
     }
 
     @BeforeEach
@@ -109,7 +106,6 @@ class SubtitleCleanupCoordinatorTest {
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(SubtitleContext.empty()));
         when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
         when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
-        when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
     }
 
     @Test
@@ -120,8 +116,8 @@ class SubtitleCleanupCoordinatorTest {
         CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
 
         // 两条 -clean 产物都在且非空
-        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
-        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));
         assertTrue(Files.isRegularFile(cleanSeg) && Files.size(cleanSeg) > 0, "应产出 -clean.json");
         assertTrue(Files.isRegularFile(cleanSrt) && Files.size(cleanSrt) > 0, "应产出 -clean.srt");
         assertEquals(2, cleaned.segmentCount());
@@ -145,14 +141,14 @@ class SubtitleCleanupCoordinatorTest {
     @Test
     void emptyTranscriptionWritesNonEmptyCheckpointDespiteZeroByteSrt() throws Exception {
         // 空转写是合法产出（纯音乐 / 无语音）：raw segments=[]
-        SubtitleTrack empty = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, "zh", List.of(), null);
-        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(), empty);
+        SubtitleTrack empty = new SubtitleTrack("zh", List.of(), null);
+        JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null)).toFile(), empty);
         SubtitleCleanupCoordinator s = service();
 
         CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
 
-        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
-        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));
         assertEquals(0, first.segmentCount());
         assertEquals(0, first.srtSizeBytes());
         // 关键：SRT 是 0 字节，但检查点 JSON 必须非空——否则下次判「未完成」会反复重跑（死循环）
@@ -182,6 +178,28 @@ class SubtitleCleanupCoordinatorTest {
         SubtitleCleanupCoordinator s = service();
         assertThrows(IllegalArgumentException.class,
                 () -> s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()), null));
+    }
+
+    // ------------------------------------------------------------------
+    // 存量产物兼容（命名去路线化之前落的检查点）
+    // ------------------------------------------------------------------
+
+    @Test
+    void readsCheckpointThatStillCarriesTheRemovedRouteKey() throws Exception {
+        // 去路线化之前落的原始检查点里多一个 route 键（那时的 SubtitleTrack 有 route 字段）。
+        // record 去掉字段后，多出来的键必须被静默忽略——不成立的话 readOriginal 会抛 ISE，
+        // 整条清洗硬失败，代价与「当未完成重跑」完全不同。
+        // 钉的是「我们的代码能读回旧文件」，不是 Jackson 的默认值本身（V1 已实测：容器注入的
+        // JsonMapper 与 new ObjectMapper() 都忽略未知键，两侧一致）。
+        Files.writeString(workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null)),
+                "{\"route\":\"ASR_CLOUD\",\"language\":\"zh\","
+                        + "\"segments\":[{\"beginTimeMs\":0,\"endTimeMs\":5000,"
+                        + "\"text\":\"我防关这边露出\"}],\"keywordsFingerprint\":null}");
+        SubtitleCleanupCoordinator s = service();
+
+        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), new SubtitleKeywords(List.of()));
+
+        assertEquals(1, cleaned.segmentCount(), "带 route 键的旧检查点应被正常读出来");
     }
 
     // ------------------------------------------------------------------
@@ -246,29 +264,29 @@ class SubtitleCleanupCoordinatorTest {
     // ------------------------------------------------------------------
 
     private Path contextFile() {
-        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(SubtitleRoute.ASR_CLOUD, null));
+        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
     }
 
     /** 清洗检查点（-clean 的 segments JSON）。 */
     private Path cleanFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        return workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
     }
 
     /** 原始转写检查点——重跑的输入，任何路径都不许删它。 */
     private Path rawFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(SubtitleRoute.ASR_CLOUD, null));
+        return workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
     }
 
     private Path translateSegFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(SubtitleRoute.ASR_CLOUD, "en"));
+        return workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SEGMENTS.getFileName("en"));
     }
 
     private Path translateSrtFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SRT_TRANSLATED.fileName(SubtitleRoute.ASR_CLOUD, "en"));
+        return workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SRT.getFileName("en"));
     }
 
     private Path termsFile() {
-        return workDir.resolve(SubtitleArtifactSpec.TERMS.fileName(SubtitleRoute.ASR_CLOUD, "en"));
+        return workDir.resolve(SubtitleArtifactSpec.TERMS.getFileName("en"));
     }
 
     @Test
@@ -364,7 +382,7 @@ class SubtitleCleanupCoordinatorTest {
         s.regenerate(new MediaInput.RemoteUrl("https://x"), keywords, ProgressListener.noop());
 
         SubtitleTrack written = JSON.readValue(
-                workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null)).toFile(),
+                workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null)).toFile(),
                 SubtitleTrack.class);
         assertEquals(keywords.computeFingerprint(), written.keywordsFingerprint(),
                 "产物里必须记着生成它的指纹，否则下次没法判该不该重跑");

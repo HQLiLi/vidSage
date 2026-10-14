@@ -195,13 +195,6 @@ class DashScopeAsrProviderTest {
         assertEquals(AudioSpec.M4A_AAC_48K_MONO, provider.requiredAudioSpec());
     }
 
-    @Test
-    void routeIsAsrCloud() {
-        var provider = new DashScopeAsrProvider(
-                RestClient.builder(), new DashScopeProperties("test-key", MODEL));
-        assertEquals(SubtitleRoute.ASR_CLOUD, provider.route());
-    }
-
     /**
      * 组装最小合法命令，避免每个用例重复构造。
      */
