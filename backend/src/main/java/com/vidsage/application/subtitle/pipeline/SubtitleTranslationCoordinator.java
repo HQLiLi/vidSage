@@ -25,7 +25,6 @@ import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.port.TermLookupProvider;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
-import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.subtitle.SrtRenderer;
 import lombok.extern.slf4j.Slf4j;
@@ -67,7 +66,6 @@ public class SubtitleTranslationCoordinator {
     private final WorkspaceKeyGenerator workspaceKeyGenerator;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
-    private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
     private final SubtitleTranslateProperties props;
 
@@ -80,7 +78,6 @@ public class SubtitleTranslationCoordinator {
     /**
      * @param workspaceKeyGenerator     工作区key生成器
      * @param workspaceDirectoryManager 工作区目录管理器
-     * @param asrProvider               当前装配的 ASR provider（取路线与产物命名指纹）
      * @param objectMapper              Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      * @param props                     字幕翻译调参（目标语种 / 批次 / 重试 / 跨批历史上限）
      * @param contextSummarizer         内容总结器（摘要出主题 / 源语种 / 术语，供跨批上下文与跳过判定）
@@ -91,7 +88,6 @@ public class SubtitleTranslationCoordinator {
      */
     public SubtitleTranslationCoordinator(WorkspaceKeyGenerator workspaceKeyGenerator,
                                           WorkspaceDirectoryManager workspaceDirectoryManager,
-                                          ASRProvider asrProvider,
                                           ObjectMapper objectMapper,
                                           SubtitleTranslateProperties props,
                                           SubtitleContextSummarizer contextSummarizer,
@@ -99,7 +95,6 @@ public class SubtitleTranslationCoordinator {
                                           SubtitleTranslator subtitleTranslator) {
         this.workspaceKeyGenerator = workspaceKeyGenerator;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
-        this.asrProvider = asrProvider;
         this.objectMapper = objectMapper;
         this.props = props;
         this.contextSummarizer = contextSummarizer;

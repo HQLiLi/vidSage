@@ -495,17 +495,16 @@ public String getLanguage(String fileName) {
 | `collectLanguages(Set into, …)` | **`collectLanguages(Set languages, …)`**（形参改名） |
 | `MediaInput.SOURCE_INFO_JSON_NAME = SOURCE_FILE_PREFIX + "info.json"` | **字面量 `"source.info.json"`**（`UPLOAD_SOURCE_FILE_NAME` 同样是字面量 `"source.mp4"`） |
 
-**三条落地时留下的小欠账**（都不影响行为，记在这免得下个人重新发现）：
+**落地时留下的欠账——已全部收掉（2026-10-14 当天）**
 
-1. **`source.` 其实还是三处**：`SOURCE_FILE_PREFIX = "source."` 上面那两行仍写死字面量。
-   要真单源，改成 `SOURCE_FILE_PREFIX + "info.json"` / `SOURCE_FILE_PREFIX + "mp4"`
-   （接口里的常量表达式，编译期就能拼）。
-2. **`AudioArtifact.AUDIO_PREFIX` 写作 `public final static`**，仓库其余常量是
-   `public static final`——纯风格。
-3. **record 没有紧凑构造器做防御性拷贝**：`of` 里用的是 `ArrayList`，所以
-   `translationFilePaths()` 返回的是**可变列表**，调用方能改。`SubtitleKeywords` 有先例
-   （`values = List.copyOf(...)`），要堵就加一行。
-4. `TranslationFilePaths` 的 javadoc 第 11 行有个重复词：「翻译**翻译**清洗字幕后的字幕Json…」。
+| 欠账 | 收法 |
+|---|---|
+| `source.` 其实还是三处 | `SOURCE_INFO_JSON_NAME` / `UPLOAD_SOURCE_FILE_NAME` 改成 `SOURCE_FILE_PREFIX + "info.json"` / `+ "mp4"`，前缀真单源 |
+| `AudioArtifact.AUDIO_PREFIX` 写作 `public final static` | 改成 `public static final`，与仓库其余常量一致 |
+| record 没有紧凑构造器做防御性拷贝 | 加上 `translationFilePaths = List.copyOf(translationFilePaths)`（`SubtitleKeywords` 先例） |
+| `TranslationFilePaths` javadoc 有重复词 | 四条 `@param` 一并重写，顺带把描述写顺 |
+| `TaskArtifactResponse` 的 `@Schema` 示例还写着旧名 | 改成 `original-subtitles.srt` —— 这是 AC2 字面（`grep` 为空）唯一的一处漏网，且是**对外 API 文档**里的示例 |
+| `SubtitleTranslationCoordinator` 的 `asrProvider` 死字段 | 字段 / javadoc / 构造参数一起清；测试侧跟掉（`SubtitleTranslationCoordinatorTest` 不再传它） |
 
 ### 4.4 自测清单（批 5 由 AI 写成 `SubtitleWorkspaceFilePathsTest`，对应 AC8）
 

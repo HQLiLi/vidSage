@@ -1,6 +1,5 @@
 package com.vidsage.application.workspace;
 
-
 import com.vidsage.application.exception.InvalidWorkDirectoryException;
 import com.vidsage.domain.media.model.AudioArtifact;
 import com.vidsage.domain.media.model.MediaInput;
@@ -26,7 +25,8 @@ import java.util.stream.Stream;
  * @param translationFilePaths         翻译后的字幕相关（segmentJson,SRT文件，翻译术语）
  * @param contextJsonFilePath          字幕上下文Json（存储了从字幕中提取的主题、语种、术语表）列表
  * @param sourceMediaFilePath          用户上传/URL抓取的原始媒体文件
- * @param sourceInfoJsonFilePath       yt-dlp 解析URL源时产生的Json文件（暂时认为是临时文件，后续可能会删除）
+ * @param sourceInfoJsonFilePath       yt-dlp
+ *                                     解析URL源时产生的Json文件（暂时认为是临时文件，后续可能会删除）
  * @param audioFilePath                从用户上传/URL抓取的原始媒体文件中提取的音频文件
  */
 public record SubtitleWorkspaceFilePaths(
@@ -42,8 +42,10 @@ public record SubtitleWorkspaceFilePaths(
 
         Optional<Path> sourceMediaFilePath,
         Optional<Path> sourceInfoJsonFilePath,
-        Optional<Path> audioFilePath
-) {
+        Optional<Path> audioFilePath) {
+    public SubtitleWorkspaceFilePaths {
+        translationFilePaths = List.copyOf(translationFilePaths);
+    }
 
     /**
      * 获取工作目录中的产物文件Path列表
@@ -64,14 +66,13 @@ public record SubtitleWorkspaceFilePaths(
                 findPath(workDirectory, workspaceFileNames, SubtitleArtifactSpec.CLEAN_SRT),
                 getTranslationFiles(workDirectory, workspaceFileNames),
                 findPath(workDirectory, workspaceFileNames, SubtitleArtifactSpec.CONTEXT),
-                getFirstMatchingFilePath(workDirectory, workspaceFileNames, fileName ->
-                        fileName.startsWith(MediaInput.SOURCE_FILE_PREFIX) && !fileName.equals(MediaInput.SOURCE_INFO_JSON_NAME)),
-                getFirstMatchingFilePath(workDirectory, workspaceFileNames, fileName ->
-                        fileName.equals(MediaInput.SOURCE_INFO_JSON_NAME)),
-                getFirstMatchingFilePath(workDirectory, workspaceFileNames, fileName ->
-                        fileName.startsWith(AudioArtifact.AUDIO_PREFIX)
-                )
-        );
+                getFirstMatchingFilePath(workDirectory, workspaceFileNames,
+                        fileName -> fileName.startsWith(MediaInput.SOURCE_FILE_PREFIX)
+                                && !fileName.equals(MediaInput.SOURCE_INFO_JSON_NAME)),
+                getFirstMatchingFilePath(workDirectory, workspaceFileNames,
+                        fileName -> fileName.equals(MediaInput.SOURCE_INFO_JSON_NAME)),
+                getFirstMatchingFilePath(workDirectory, workspaceFileNames,
+                        fileName -> fileName.startsWith(AudioArtifact.AUDIO_PREFIX)));
     }
 
     /**
@@ -94,7 +95,6 @@ public record SubtitleWorkspaceFilePaths(
         }
     }
 
-
     /**
      * 根据文件模板获取指定的Path 重载
      */
@@ -111,7 +111,8 @@ public record SubtitleWorkspaceFilePaths(
      * @param lang      语种 （翻译会用到）
      * @return 找到的Path
      */
-    private static Optional<Path> findPath(Path directory, List<String> fileNames, SubtitleArtifactSpec spec, String lang) {
+    private static Optional<Path> findPath(Path directory, List<String> fileNames, SubtitleArtifactSpec spec,
+            String lang) {
         String fileName = spec.getFileName(lang);
         return fileNames.contains(fileName) ? Optional.of(directory.resolve(fileName)) : Optional.empty();
     }
@@ -139,7 +140,7 @@ public record SubtitleWorkspaceFilePaths(
      * 把某条带语种产物里出现过的语种收进 {@code languages}。
      */
     private static void collectLanguages(Set<String> languages, List<String> fileNames,
-                                         SubtitleArtifactSpec spec) {
+            SubtitleArtifactSpec spec) {
         for (String fileName : fileNames) {
             String language = spec.getLanguage(fileName);
             if (language != null) {

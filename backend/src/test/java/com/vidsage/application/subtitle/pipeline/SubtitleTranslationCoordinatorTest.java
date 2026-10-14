@@ -28,7 +28,6 @@ import com.vidsage.domain.subtitle.model.translation.TranslatedSubtitle;
 import com.vidsage.domain.subtitle.model.translation.TranslatedTrack;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerms;
-import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.model.translation.TranslateResult;
@@ -68,7 +67,6 @@ class SubtitleTranslationCoordinatorTest {
 
     private final WorkspaceKeyGenerator workspaceKeyGenerator = mock(WorkspaceKeyGenerator.class);
     private final WorkspaceDirectoryManager workspaceDirectoryManager = mock(WorkspaceDirectoryManager.class);
-    private final ASRProvider asrProvider = mock(ASRProvider.class);
     private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
     private final SubtitleTranslator subtitleTranslator = mock(SubtitleTranslator.class);
 
@@ -104,7 +102,7 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     private SubtitleTranslationCoordinator service(ObjectProvider<TermLookupProvider> lookupProvider) {
-        return new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, asrProvider, JSON, PROPS,
+        return new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, JSON, PROPS,
                 contextSummarizer, lookupProvider, subtitleTranslator);
     }
 
@@ -303,7 +301,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void blankTargetLanguageThrowsBeforeAnyWorkspaceIo() {
         SubtitleTranslationCoordinator s = new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager,
-                asrProvider, JSON, props("  "), contextSummarizer, absent(), subtitleTranslator);
+                JSON, props("  "), contextSummarizer, absent(), subtitleTranslator);
 
         assertThrows(IllegalStateException.class, () -> s.translate(new MediaInput.RemoteUrl("https://x")));
 
