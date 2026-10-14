@@ -12,7 +12,7 @@ import com.vidsage.domain.transcription.model.TranscriptionCommand;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.AudioSpec;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

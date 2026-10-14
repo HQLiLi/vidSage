@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "10-14-subtitle-artifact-naming"
+  ],
   "parent": "10-11-subtitle-keywords-multilang",
   "relatedFiles": [],
   "notes": "",

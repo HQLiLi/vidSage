@@ -10,18 +10,12 @@ import com.alibaba.dashscope.utils.OSSUtils;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.gson.JsonObject;
+import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.transcription.model.AudioSource;
 import com.vidsage.domain.transcription.model.TranscriptionCommand;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
-import com.vidsage.domain.media.model.AudioSpec;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.transcription.port.ASRProvider;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -29,6 +23,12 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 阿里云 DashScope 异步转写供应商（qwen-audio-3.1-asr-flash-filetrans）。
@@ -168,13 +168,6 @@ public class DashScopeAsrProvider implements ASRProvider {
         return AudioSpec.M4A_AAC_48K_MONO;
     }
 
-    /**
-     * 本实现产出云端 DashScope 转写字幕。
-     */
-    @Override
-    public SubtitleRoute route() {
-        return SubtitleRoute.ASR_CLOUD;
-    }
 
     /**
      * 把统一的音频来源解析为 DashScope filetrans 接口可接受的音频地址：

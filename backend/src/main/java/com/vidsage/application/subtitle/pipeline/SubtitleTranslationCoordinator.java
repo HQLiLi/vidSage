@@ -10,7 +10,6 @@ import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
@@ -109,30 +108,6 @@ public class SubtitleTranslationCoordinator {
     }
 
     /**
-     * 翻译检查点是否已存在且非空——管线启动翻译前的幂等判据。
-     *
-     * <p>目录意外缺失时创建空目录后返回 {@code false}，无副作用危害。
-     *
-     * @param input 媒体输入（与产字幕、清洗、翻译同源，用于定位工作目录）；不可为空
-     * @return 翻译检查点已在且非空时为 {@code true}
-     * @throws IllegalArgumentException input 为空
-     * @throws IllegalStateException    目标语种配置为空（与 translate 同一入口守卫）
-     */
-    public boolean hasTranslationArtifact(MediaInput input) {
-        if (input == null) {
-            throw new IllegalArgumentException(
-                    "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
-        }
-        String targetLanguage = Bcp47LanguagePolicy.resolveTargetLanguage(props.targetLanguage());
-        SubtitleRoute route = asrProvider.route();
-        WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
-        Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
-        Path translateSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(route, targetLanguage));
-        // 检查点判据单源在 CheckpointPolicy：JSON 非空 = 已完成，0 字节/缺失 = 未完成（SRT 派生视图不参与）
-        return CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(translateSeg));
-    }
-
-    /**
      * 翻译一份已清洗的字幕（不报告进度）。
      *
      * @param input          媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
@@ -169,14 +144,13 @@ public class SubtitleTranslationCoordinator {
         String sourceLangCode = sourceLanguage.getCode();
         String targetLangCode = targetLanguage.getCode();
 
-        SubtitleRoute route = asrProvider.route();
         WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
         Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
 
-        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(route, null));
-        Path translateSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(route, targetLangCode));
-        Path translateSrt = workDir.resolve(SubtitleArtifactSpec.SRT_TRANSLATED.fileName(route, targetLangCode));
-        Path termsFile = workDir.resolve(SubtitleArtifactSpec.TERMS.fileName(route, targetLangCode));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
+        Path translateSeg = workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SEGMENTS.getFileName(targetLangCode));
+        Path translateSrt = workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SRT.getFileName(targetLangCode));
+        Path termsFile = workDir.resolve(SubtitleArtifactSpec.TERMS.getFileName(targetLangCode));
 
         // 断点：检查点已在且非空 → 反序列化直接返回，本趟统计一律归零（含 untranslatedCount）
         TranslatedTrack existing = ArtifactFiles.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
@@ -187,11 +161,9 @@ public class SubtitleTranslationCoordinator {
                     StageProgress.State.SKIPPED);
             return toTranslated(existing, translateSeg, translateSrt, 0, 0);
         }
-        // 开始事件先于「-clean 缺失」卫语句发出——失败任务的用户消息里能带上所在阶段
         emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageProgress.State.RUNNING);
 
-        // -clean 缺失：报「缺什么、怎么补」。用 ISE 而不是 4xx——它属「服务端状态缺失」，
-        // 归 error-handling 的「环境不对」，且与清洗侧同一取舍（见 SubtitleCleanupCoordinator）。
+
         if (!ArtifactFiles.isNonEmpty(cleanSeg)) {
             throw new IllegalStateException("字幕尚未清洗：请先调用 POST /api/subtitles/clean 产出 -clean 字幕，再翻译（缺 "
                     + cleanSeg.getFileName() + "）");
@@ -201,7 +173,7 @@ public class SubtitleTranslationCoordinator {
 
         // 上下文：先读缓存，没有才摘要；摘要成功才落盘、空摘要绝不落盘——裁决单源在 CheckpointPolicy。
         // 翻译依赖 -clean，所以清洗必定先跑并落下上下文，这里通常命中缓存。
-        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(route, null));
+        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
         SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
         CheckpointPolicy.ContextResolution contextResolution = CheckpointPolicy.resolveContext(cached,
                 // 摘要请求惰性求值：缓存命中时连内容拼接与摘要调用都不发生。
@@ -229,14 +201,14 @@ public class SubtitleTranslationCoordinator {
         boolean skippedTranslation = sourceLanguage.isSameLanguage(targetLanguage);
         if (skippedTranslation) {
             // 源语种等于目标语种：不调 LLM，每条译文 = 原文（双语渲染器会把相同的两行并成一行）
-            track = new TranslatedTrack(route, sourceLangCode, targetLangCode, true, Bcp47LanguagePolicy.skipAll(segments));
+            track = new TranslatedTrack(sourceLangCode, targetLangCode, true, Bcp47LanguagePolicy.skipAll(segments));
             log.info("源语种与目标语种相同，跳过翻译: source={}, targetLanguage={}, segments={}",
                     sourceLanguage, targetLanguage, segments.size());
         } else {
             List<VerifiedTerm> officialTerms = readOfficialTerms(termsFile);
             TranslateResult result =
                     subtitleTranslator.translate(segments, context, targetLangCode, officialTerms, listener);
-            track = new TranslatedTrack(route, sourceLangCode, targetLangCode, false, result.segments());
+            track = new TranslatedTrack(sourceLangCode, targetLangCode, false, result.segments());
             retrySteps = result.retrySteps();
             untranslated = result.untranslatedCount();
         }
@@ -245,9 +217,9 @@ public class SubtitleTranslationCoordinator {
         emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE,
                 skippedTranslation ? "源语种与目标语种相同，跳过翻译" : "翻译完成",
                 skippedTranslation ? StageProgress.State.SKIPPED : StageProgress.State.SUCCEEDED);
-        log.debug("字幕翻译完成: route={}, sourceLanguage={}, targetLanguage={}, skipped={}, segments={}, "
+        log.debug("字幕翻译完成: sourceLanguage={}, targetLanguage={}, skipped={}, segments={}, "
                         + "retry={}, untranslated={}",
-                route.name(), sourceLanguage.getLabel(), targetLanguage.getLabel(), track.skipped(), track.segments().size(),
+                sourceLanguage.getLabel(), targetLanguage.getLabel(), track.skipped(), track.segments().size(),
                 retrySteps, untranslated);
         return toTranslated(track, translateSeg, translateSrt, retrySteps, untranslated);
     }
@@ -364,7 +336,7 @@ public class SubtitleTranslationCoordinator {
      */
     private static TranslatedSubtitle toTranslated(TranslatedTrack track, Path translateSeg, Path translateSrt,
                                                    int retrySteps, int untranslatedCount) {
-        return new TranslatedSubtitle(translateSrt, translateSeg, track.route(), track.sourceLanguage(),
+        return new TranslatedSubtitle(translateSrt, translateSeg, track.sourceLanguage(),
                 track.targetLanguage(), track.skipped(), track.segments().size(),
                 ArtifactFiles.sizeOrZero(translateSrt), retrySteps, untranslatedCount);
     }

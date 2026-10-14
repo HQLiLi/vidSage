@@ -13,7 +13,6 @@ import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.transcription.model.AudioSource;
@@ -97,25 +96,25 @@ public class SubtitlePreparationCoordinator {
                     + "或改用不带 listener 的 prepare(input) 两参重载");
         }
 
-        SubtitleRoute route = asrProvider.route();
+
         WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
         Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
-        Path segmentsPath = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(route, null));
-        Path srtPath = workDir.resolve(SubtitleArtifactSpec.SRT_RAW.fileName(route, null));
+        Path segmentsPath = workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
+        Path srtPath = workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SRT.getFileName(null));
 
         String transcribeAudioStageName = SubtitleStageName.TRANSCRIBE_AUDIO.getStageName();
         String writeSubtitlesStageName = SubtitleStageName.WRITE_SUBTITLES.getStageName();
         SubtitleTrack existing = readCheckpoint(segmentsPath);
         if (existing != null) {
-            log.info("字幕断点复用跳过: segments={}, routeToken={}", segmentsPath.getFileName(), route);
+            log.info("字幕断点复用跳过: segments={}", segmentsPath.getFileName());
             emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "已有 segments 产物，跳过转写", StageProgress.State.SKIPPED);
             emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(), "已有字幕产物，跳过写盘", StageProgress.State.SKIPPED);
             return toArtifact(srtPath, segmentsPath, existing);
         }
 
         AudioSpec spec = asrProvider.requiredAudioSpec();
-        log.debug("开始准备字幕: workDir={}, routeToken={}, audioSpec={}",
-                workDir.getFileName(), route, spec.container());
+        log.debug("开始准备字幕: workDir={}, audioSpec={}",
+                workDir.getFileName(), spec.container());
 
         AudioArtifact audio = audioPreparationCoordinator.prepare(input, spec, listener);
         emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.start(), "开始转写", StageProgress.State.RUNNING);
@@ -124,7 +123,7 @@ public class SubtitlePreparationCoordinator {
         emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "转写完成", StageProgress.State.SUCCEEDED);
 
         // 原始转写与关键词无关，指纹恒为 null——纠错发生在下游的 -clean 产物上
-        SubtitleTrack track = new SubtitleTrack(route, result.language(), result.segments(), null);
+        SubtitleTrack track = new SubtitleTrack(result.language(), result.segments(), null);
         if (result.segments().isEmpty()) {
             // 空转写是合法产出：0 字节 SRT + 内容正常（segments:[]）的 JSON
             log.warn("ASR 未识别出任何内容，产出空字幕: segmentsPath={}，可能是纯音乐或无语音音频",
@@ -171,7 +170,7 @@ public class SubtitlePreparationCoordinator {
      */
     private static SubtitleArtifact toArtifact(Path srtPath, Path segmentsPath, SubtitleTrack track) {
         long srtSizeBytes = ArtifactFiles.sizeOrZero(srtPath);
-        return new SubtitleArtifact(srtPath, segmentsPath, track.route(), track.language(),
+        return new SubtitleArtifact(srtPath, segmentsPath, track.language(),
                 track.segments().size(), srtSizeBytes);
     }
 
