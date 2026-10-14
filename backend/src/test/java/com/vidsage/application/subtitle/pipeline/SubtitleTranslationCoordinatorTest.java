@@ -20,7 +20,6 @@ import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.term.TermLookupCommand;
 import com.vidsage.domain.subtitle.model.term.TermLookupResult;
@@ -29,7 +28,6 @@ import com.vidsage.domain.subtitle.model.translation.TranslatedSubtitle;
 import com.vidsage.domain.subtitle.model.translation.TranslatedTrack;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerms;
-import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.model.translation.TranslateResult;
@@ -69,7 +67,6 @@ class SubtitleTranslationCoordinatorTest {
 
     private final WorkspaceKeyGenerator workspaceKeyGenerator = mock(WorkspaceKeyGenerator.class);
     private final WorkspaceDirectoryManager workspaceDirectoryManager = mock(WorkspaceDirectoryManager.class);
-    private final ASRProvider asrProvider = mock(ASRProvider.class);
     private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
     private final SubtitleTranslator subtitleTranslator = mock(SubtitleTranslator.class);
 
@@ -105,7 +102,7 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     private SubtitleTranslationCoordinator service(ObjectProvider<TermLookupProvider> lookupProvider) {
-        return new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, asrProvider, JSON, PROPS,
+        return new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, JSON, PROPS,
                 contextSummarizer, lookupProvider, subtitleTranslator);
     }
 
@@ -167,7 +164,6 @@ class SubtitleTranslationCoordinatorTest {
         stubTranslator(0, 0);
         when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
         when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
-        when(asrProvider.route()).thenReturn(SubtitleRoute.ASR_CLOUD);
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(SubtitleContext.empty()));
     }
 
@@ -180,33 +176,30 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     private void writeCleanTrack(String language) throws Exception {
-        SubtitleTrack clean = new SubtitleTrack(SubtitleRoute.ASR_CLOUD, language, List.of(
+        SubtitleTrack clean = new SubtitleTrack(language, List.of(
                 new TranscriptionSegment(0, 5000, "我防关这边露出"),
                 new TranscriptionSegment(5000, 10000, "今天天气不错")), null);
         JSON.writeValue(cleanFile().toFile(), clean);
     }
 
     private Path cleanFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null));
+        return workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
     }
 
     private Path translateSegFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SEGMENTS_TRANSLATED.fileName(
-                SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
+        return workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SEGMENTS.getFileName(PROPS.targetLanguage()));
     }
 
     private Path translateSrtFile() {
-        return workDir.resolve(SubtitleArtifactSpec.SRT_TRANSLATED.fileName(
-                SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
+        return workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SRT.getFileName(PROPS.targetLanguage()));
     }
 
     private Path contextFile() {
-        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(SubtitleRoute.ASR_CLOUD, null));
+        return workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
     }
 
     private Path termsFile() {
-        return workDir.resolve(SubtitleArtifactSpec.TERMS.fileName(
-                SubtitleRoute.ASR_CLOUD, PROPS.targetLanguage()));
+        return workDir.resolve(SubtitleArtifactSpec.TERMS.getFileName(PROPS.targetLanguage()));
     }
 
     // ------------------------------------------------------------------
@@ -257,7 +250,7 @@ class SubtitleTranslationCoordinatorTest {
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> s.translate(new MediaInput.RemoteUrl("https://x")));
         // 消息要说清「缺哪个文件、先跑哪一步」
-        assertTrue(e.getMessage().contains(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(SubtitleRoute.ASR_CLOUD, null)),
+        assertTrue(e.getMessage().contains(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null)),
                 "消息应指明缺哪个文件");
         assertTrue(e.getMessage().contains("/api/subtitles/clean"), "消息应指明先跑哪一步");
     }
@@ -285,7 +278,7 @@ class SubtitleTranslationCoordinatorTest {
 
         // 写入非空检查点（合法 TranslatedTrack JSON）：判定为已完成
         JSON.writeValue(translateSegFile().toFile(),
-                new TranslatedTrack(SubtitleRoute.ASR_CLOUD, "en", "zh", true, List.of()));
+                new TranslatedTrack("en", "zh", true, List.of()));
 
         assertTrue(s.hasTranslationArtifact(input), "非空检查点在 → 已完成");
     }
@@ -308,7 +301,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void blankTargetLanguageThrowsBeforeAnyWorkspaceIo() {
         SubtitleTranslationCoordinator s = new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager,
-                asrProvider, JSON, props("  "), contextSummarizer, absent(), subtitleTranslator);
+                JSON, props("  "), contextSummarizer, absent(), subtitleTranslator);
 
         assertThrows(IllegalStateException.class, () -> s.translate(new MediaInput.RemoteUrl("https://x")));
 

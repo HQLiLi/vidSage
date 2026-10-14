@@ -12,7 +12,7 @@ import com.vidsage.domain.transcription.model.TranscriptionCommand;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.AudioSpec;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -193,13 +193,6 @@ class DashScopeAsrProviderTest {
         var provider = new DashScopeAsrProvider(
                 RestClient.builder(), new DashScopeProperties("test-key", MODEL));
         assertEquals(AudioSpec.M4A_AAC_48K_MONO, provider.requiredAudioSpec());
-    }
-
-    @Test
-    void routeIsAsrCloud() {
-        var provider = new DashScopeAsrProvider(
-                RestClient.builder(), new DashScopeProperties("test-key", MODEL));
-        assertEquals(SubtitleRoute.ASR_CLOUD, provider.route());
     }
 
     /**
