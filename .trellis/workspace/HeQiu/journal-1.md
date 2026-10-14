@@ -1195,3 +1195,33 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 45: 字幕产物命名去路线化：SubtitleWorkspaceFilePaths 落地 + 运行期验收 + 归档
+<!-- trellis-session: v=2 fp=785a1ca563a1caef -->
+
+**Date**: 2026-10-14
+**Task**: 字幕产物命名去路线化：SubtitleWorkspaceFilePaths 落地 + 运行期验收 + 归档
+**Branch**: `feature/subtitle-multilang-translate`
+
+### Summary
+
+10-14-subtitle-artifact-naming 全流程收口。批1-3：8 项产物名去路线化、SubtitleRoute 整体退场（枚举+五个 record 字段+ASRProvider.route()）。批4：落地 application/workspace/ 的 SubtitleWorkspaceFilePaths.of(Path)（扫工作区出清单，缺席一律 Optional 不抛）+ 单独成文件的 TranslationFilePaths；MediaInput/SubtitleArtifactSpec 常量归位，SubtitleArtifactSpec 新增 getLanguage 反解（{lang} 正则加捕获组）。批5：57 测试全绿，测试树红面 16→12（余下全是父任务 translate 签名债）。批6：spec 订正 12 处（登记两个新包、删已不存在的 TaskArtifactScan、订正自定义异常陈述）。批7：运行期验收 AC1/AC5/AC6/AC7 全过（素材 BV1ZNgZ6nEee 32 秒；断点复用 LLM 批次 1→1；en+ja 并存）。批8：合并回 feature/subtitle-multilang-translate 并归档，父任务 handoff 记上第三棒。AC10 原文不可达成，口径改判为『不新增失败』后达成，prd 里刻意留未勾待点头。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2216390` | 编写SubtitleWorkspaceFilePaths.of前 |
+| `e5bac58` | feat(workspace): 落地 SubtitleWorkspaceFilePaths.of 与产物名常量归位 |
+| `778567c` | chore(task): 任务文档按 as-built 同步 |
+| `594ac33` | test(workspace): 补 SubtitleWorkspaceFilePaths 与产物名的单测，同步既有测试 |
+| `20adb01` | fix(workspace): 收掉落地时留下的六条欠账 |
+| `8d18db5` | docs(spec): 登记两个新包并订正产物命名与自定义异常的相关陈述 |
+| `539250b` | chore(task): 批 7 运行期验收结果与 AC 勾选 |
+| `9c92891` | chore(task): 父任务 handoff 记上第三棒状态（前置任务已归档，B 可恢复） |
+| `5047c2b` | Merge branch 'feature/subtitle-artifact-naming' into feature/subtitle-multilang-translate |
+
+### Status
+
+[OK] **Completed**
