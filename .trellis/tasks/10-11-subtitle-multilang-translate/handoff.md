@@ -1,6 +1,38 @@
 # 移交文档：翻译多语言选择与翻译子状态下线（子任务 B）
 
-## ▶ 当前状态（2026-10-14 · 第二棒，先读这段）
+## ▶ 当前状态（2026-10-14 · 第三棒，先读这段）
+
+**前置任务 `10-14-subtitle-artifact-naming` 已完结并归档 —— 本任务可以恢复了。**
+
+- **它落地了什么**（这些直接改变本任务的写法，详见它的 `implement.md`）：
+  - 字幕产物名去路线化：`segments-asr-cloud-clean.json` → `clean-segments.json` 等 8 项，
+    翻译侧是 `translated-{segments-<lang>.json,subtitles-<lang>.srt}` 与 `terms-<lang>.json`
+  - `SubtitleRoute` 整体退场：枚举删、**五个 record 的 `route` 字段一并删**
+    （`SubtitleTrack` / `TranslatedTrack` / `SubtitleArtifact` / `CleanedSubtitle` / `TranslatedSubtitle`）、
+    `ASRProvider.route()` 删
+  - 新增 `application/workspace/SubtitleWorkspaceFilePaths.of(Path)`——扫一遍工作区出产物清单
+    （字幕 5 项 + 译文按语种成组 + 媒体 3 项，**缺席一律 `Optional` 且不抛**）+ 单独成文件的
+    `TranslationFilePaths`（一个语种三件套：`langCode` / 译文 json / 双语 SRT / terms）
+  - `SubtitleArtifactSpec`：`fileName(route, lang)` → **`getFileName(lang)`**，常量名全换
+    （`SEGMENTS_RAW` → `ORIGINAL_SEGMENTS` …），新增 `getLanguage(String)` 反解语种
+  - `source.*` 名字族收进 `MediaInput`（`SOURCE_FILE_PREFIX` / `SOURCE_INFO_JSON_NAME`）、
+    音频前缀收进 `AudioArtifact.AUDIO_PREFIX`；新增 `application/exception/InvalidWorkDirectoryException`
+- **对本任务的直接影响（写代码前先看这几条）**：
+  1. 构造那五个 record 时**少传一个 `route` 参数**；`track.route()` 之类全部不存在了
+  2. `SubtitleTranslationCoordinator` 与 `SubtitleCleanupCoordinator` 的构造参数里
+     **已经没有 `asrProvider`**（死字段已清）；`SubtitlePreparationCoordinator` 保留它（要用 `requiredAudioSpec()`）
+  3. 读工作区里有什么产物，**可以直接用** `SubtitleWorkspaceFilePaths.of(workDir)`
+     —— 这正是 §11 第 1 刀要的东西
+  4. 测试树里本任务那 12 个文件仍编译不过（`translate(...)` 签名 + `translationStatus` 删），
+     **10-14 没有还这笔债**，红面就是它们
+- **分支**：`feature/subtitle-multilang-translate` 已合并 `feature/subtitle-artifact-naming`
+- **回来第一步**：仍读 **§11 本任务的恢复点**
+
+---
+
+> 【以下是 2026-10-14 第二棒的交待，写于 10-14 前置任务开工前，保留作史实】
+
+## ▶ 当时状态（2026-10-14 · 第二棒）
 
 **本任务已暂停，停在「字幕产物命名」任务之前。**
 
