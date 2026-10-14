@@ -81,29 +81,35 @@
 
 ## Acceptance Criteria
 
-- [ ] **AC1** 完整跑一次（准备 → 清洗 → 翻译）后，工作区里出现 R1 表格的全部新文件名，
+- [x] **AC1** 完整跑一次（准备 → 清洗 → 翻译）后，工作区里出现 R1 表格的全部新文件名，
       且**没有任何文件名含 `asr-cloud` / `asr-local` / `platform-` 字样**
-- [ ] **AC2** `grep -rn "asr-cloud\|asr-local" backend/src/` 输出为空（生产代码与测试都不再引用路线 token）
-- [ ] **AC3** `grep -rn "SubtitleRoute" backend/src/` 输出为空
-- [ ] **AC4** `grep -rn "raw" backend/src/main/java/com/vidsage/domain/subtitle/` 不再命中产物命名相关处
+- [x] **AC2** `grep -rn "asr-cloud\|asr-local" backend/src/` 输出为空（生产代码与测试都不再引用路线 token）
+- [x] **AC3** `grep -rn "SubtitleRoute" backend/src/` 输出为空
+- [x] **AC4** `grep -rn "raw" backend/src/main/java/com/vidsage/domain/subtitle/` 不再命中产物命名相关处
       （`raw` 词汇已全面对齐为 `original`）
-- [ ] **AC5** `GET /api/tasks/{taskNo}` 的 `artifacts` 清单里出现 6 类可下载产物，**名字为 R1 新名**
+- [x] **AC5** `GET /api/tasks/{taskNo}` 的 `artifacts` 清单里出现 6 类可下载产物，**名字为 R1 新名**
       （`original-subtitles.srt` / `clean-subtitles.srt` / `translated-subtitles-<lang>.srt`
       及三个对应的 JSON）
-- [ ] **AC6** 断点复用仍生效：对已跑完的工作区重复触发，命中复用、不调 LLM（日志有「断点复用跳过」）
-- [ ] **AC7** 多语种并存仍成立：同一工作区翻译两个目标语种后，两份 `translate-*` 产物同时存在、互不覆盖
-- [ ] **AC8** `SubtitleWorkspaceFilePaths` 对 R1 命名的工作区扫描结果正确（单测覆盖：全产物齐、
+- [x] **AC6** 断点复用仍生效：对已跑完的工作区重复触发，命中复用、不调 LLM（日志有「断点复用跳过」）
+- [x] **AC7** 多语种并存仍成立：同一工作区翻译两个目标语种后，两份 `translated-*` 产物同时存在、互不覆盖
+- [x] **AC8** `SubtitleWorkspaceFilePaths` 对 R1 命名的工作区扫描结果正确（单测覆盖：全产物齐、
       缺 `terms`、空工作区三种情形）
-- [ ] **AC9** 改名前的旧检查点 JSON（内容里多一个 `route` 键）仍能被解析、不抛异常
+- [x] **AC9** 改名前的旧检查点 JSON（内容里多一个 `route` 键）仍能被解析、不抛异常
       —— 钉一条测试。**这条必须在动手前先验证**：若未知字段会导致解析失败，
       `SubtitleTranslationCoordinator.readClean` 会抛 ISE 让翻译硬失败，代价与「重跑」不同
 - [ ] **AC10** `mvn clean test-compile` 与 `mvn test` 全绿，且测试总数不低于动手前的基线
       （基线值在动手前实测记录）
+      —— **2026-10-14 改判**：动手前实测**不存在基线**（干净 HEAD 上测试树就编译不过，
+      12 个文件是父任务遗留的债，本任务不还）。口径改为「**不新增失败**」，
+      详见 `implement.md` 的「AC10 口径」一节；该口径**已达成**（红面 16 → 12）。
+      **等你点头后再勾**。
 
 ## Notes
 
-- **待确认**：R1 表格里除 `original-segments.json` 外的 7 行是按对称推出来的，需逐行核对
-- **开放项**：R4 的 record 落位（`domain/subtitle/model/common/` 还是 `domain/shared/model/`）
-  与工厂签名，取决于最终是否只收字幕侧；技术设计见 `design.md`
+- ~~**待确认**：R1 表格里除 `original-segments.json` 外的 7 行是按对称推出来的，需逐行核对~~
+  —— 已逐行核对；其中翻译侧两行于 2026-10-14 由 `translate-*` 改为 `translated-*`（见 R1 订正段）
+- ~~**开放项**：R4 的 record 落位与工厂签名~~ —— 已定：顶层包 `application/workspace/`、
+  工厂 `SubtitleWorkspaceFilePaths.of(Path)`、嵌套 `TranslationFilePaths`，
+  技术设计见 `design.md` §5，as-built 见 `implement.md` §4.1
 - 本任务的产出方式：`src/main` 由项目所有者手写，AI 负责 `src/test`、spec 更新与运行期验收
   （沿用子任务 B 已定的分工）

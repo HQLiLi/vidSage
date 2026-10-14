@@ -617,19 +617,27 @@ taskkill //PID <pid> //F
 >    `backend/src/main/resources/` 下
 > 2. 本机 MySQL 需在 3306 上（已确认在）
 
-逐条走 `prd.md` 的 AC：
+逐条走 `prd.md` 的 AC —— **2026-10-14 实测全部通过**：
 
-| AC | 手段 |
-|---|---|
-| AC1 | `ls data/works/<新目录>`，逐个比对 `design.md` §2.1 的表；`grep -c "asr-cloud" <(ls ...)` = 0 |
-| AC5 | `curl GET /api/tasks/{taskNo}`，看 `artifacts` 里 6 类可下载产物是新名 |
-| AC6 | 重复触发同一语种，日志有「断点复用跳过」、不调 LLM |
-| AC7 | 同一工作区翻两个目标语种，两份 `translated-*` 并存、互不覆盖 |
+素材：`BV1ZNgZ6nEee`（**32 秒**，快照里最短的一条，在 `data/works-before/` 里能对照旧产物）。
+任务号 `008e87e5e4ab4f74b75e87ed7ba8b25d`。
 
-> SSE 抓取：**提交与订阅放同一条 shell**；触发前订阅会被终态快照立刻关掉。
-> 验收素材建议沿用子任务 B 用过的那条 B站 视频（其旧产物在 `data/works-before/` 里可对照）。
+| AC | 结果 | 取证 |
+|---|---|---|
+| **AC1** | ✅ | 工作区里 14 个文件，全部新名、**无一处 route token**：`original-segments.json` / `original-subtitles.srt` / `clean-segments.json` / `clean-subtitles.srt` / `context.json` / `translated-segments-{en,ja}.json` / `translated-subtitles-{en,ja}.srt` / `terms-{en,ja}.json` / `source.mp4` / `source.info.json` / `audio-16k1ch48k-t0.m4a`；`grep -E "asr-cloud|asr-local|platform-"` 计数 **0** |
+| **AC5** | ✅ | `GET /api/tasks/{taskNo}` 的 artifacts：单语种时 6 类（`original-{segments.json,subtitles.srt}` / `clean-{…}` / `translated-{segments-<lang>.json,subtitles-<lang>.srt}`），两语种后 8 条；`context` 正确**不入**清单（非可下载） |
+| **AC6** | ✅ | 对已跑完的工作区重复触发 en：日志 `字幕翻译断点复用跳过: translate=translated-segments-en.json`，且 `字幕翻译批次` 计数 **1 → 1**（**没调 LLM**） |
+| **AC7** | ✅ | 同一工作区再翻 ja：`translated-segments-{en,ja}.json` / `translated-subtitles-{en,ja}.srt` / `terms-{en,ja}.json` 并存，**en 未被覆盖**，LLM 只为 ja 调了 1 次 |
 
-**门**：AC 逐条有结果 → 停，等审查。
+**SSE 的一个坑（沿用父任务的已知缺口，不是本任务引入的）**：翻译阶段**订阅不到进度**——
+主状态已是 `SUCCEEDED`（终态），任何新订阅立刻拿到终态快照并关流，看不到 `translate-subtitles` 的 RUNNING。
+这正是父任务「删了 DB 翻译子状态、登记表接管还没做」那半截留下的硬边窗口。
+本次改用**看产物 + 看日志**取证，可行且更直接。
+
+**收工**：`taskkill //PID <pid> //F` 杀子 JVM，`netstat` 复查 18080 已释放。
+（后台 `mvn spring-boot:run` 任务会显示 failed exit 1——那是杀 JVM 导致的，正常。）
+
+**门**：AC1 / AC5 / AC6 / AC7 逐条有结果 → **已达成**，等审查。
 
 ## 批 8 · 收尾
 
