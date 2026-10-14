@@ -100,7 +100,10 @@ public String getFileName(String lang) {
 
 ## 5. `SubtitleWorkspaceFilePaths`
 
-### 5.1 落位 —— **已定：新建 `application/subtitle/workspace/`**（2026-10-14）
+> **本节是设计稿；as-built 的真实形态（方法名、字段名、文件划分）见 `implement.md`
+> §4.1 的代码与 §4.2.3 的差异表。**
+
+### 5.1 落位 —— **已定：新建 `application/workspace/`**（顶层包，2026-10-14）
 
 原稿列了甲（`application/subtitle/query/`，推荐）/ 乙（`application/task/query/`）/ 丙（原地
 `domain/shared/model/`）三选一，**三条都没选**，改选了新桶。理由按排除法：
@@ -127,7 +130,7 @@ public String getFileName(String lang) {
 ### 5.2 字段 —— **已定：嵌套 + `Optional`**
 
 字幕侧 8 项 + 媒体侧 3 项。翻译三项**不按平行 `List<Path>` 收**，改用
-`List<TranslationFiles>`，元素内带语种（详见 §7.1）。所有「可能没有」的项用 `Optional<Path>`，
+`List<TranslationFilePaths>`，元素内带语种（详见 §7.1）。所有「可能没有」的项用 `Optional<Path>`，
 不用 `null`（实测媒体三项在 17 个工作区里最多 15 个有——缺席是常态）。
 
 ### 5.3 工厂 `of(Path workDirectory)` 的算法
@@ -142,17 +145,22 @@ route 消失后，字幕侧的非语种产物已**完全确定**，只有语种�
    - audio-*                     → audio
    同前缀命中多个 → 取排序后第一个，不抛
 3. 语种集合：三个带语种的 spec（TRANSLATED_SEGMENTS / TRANSLATED_SRT / TERMS）
-   各拿自己的模板传哨兵 lang 得到前后缀，按前缀/后缀从 names 里切出语种，
-   **取三者并集**（术语查证跑在翻译之前，会出现「有 terms 没 segments」的语种），
+   各调自己的 `getLanguage(name)` 反解出语种，**取三者并集**
+   （术语查证跑在翻译之前，会出现「有 terms 没 segments」的语种），
    并**排序**（Files.list 顺序依赖文件系统）
-   —— 前后缀取自 getFileName() 本身，**不另写正则**，命名规则仍只有一份
 4. 非语种产物：拿 SPEC.getFileName(null) 的精确名在 names 里比对（不再逐个 stat）
 5. 缺席一律 Optional.empty() / 空 List，**不抛**（「没找到就走下游判重跑」）
 ```
 
-哨兵字符要求：**过得了 `resolveTargetLanguage` 的 `trim()` + `toLowerCase()` 而不变形**。
-用 `"@"`（`String.trim()` 剥的是 ≤ U+0020，`@` = 0x40 安全）。**已实测**：
-`resolveTargetLanguage` 只做「非空 + trim + toLowerCase」，**不查白名单**，`"@"` 原样通过。
+**反解归位**（2026-10-14 定）：原稿的「哨兵 `"@"` 切前后缀」已废弃。反解改由登记表自己提供
+——`SubtitleArtifactSpec` 的 `{lang}` 正则加**一对**捕获组，新增 `getLanguage(String fileName)`。
+（只写右括号会让正则语法错，`Pattern.compile` 在枚举 `<clinit>` 里抛，整个类不可用。）
+正解反解同源于模板那一份正则；顺带拆掉一颗雷：哨兵原本依赖
+`resolveTargetLanguage` 只做 trim + toLowerCase 不做白名单校验（已实测确实是），
+那个方法将来一旦加校验，整个 `of` 会当场炸。
+
+`workDirectory == null` 才抛 `InvalidWorkDirectoryException`（`extends IllegalArgumentException`；
+调用方传参错）。目录在却读不出来时抛 `UncheckedIOException`（环境故障，不伪装成「没产出」）。
 
 `workDirectory == null` 才抛 `IllegalArgumentException`（调用方传参错）。
 
@@ -196,9 +204,9 @@ List<Path> translatedTermsJsonFilePath,   // ← 长度不保证与上面相同
 
 **任何按下标配对的消费者都会错**。两个出路：
 
-- **(甲) 嵌套元素** —— **已定（2026-10-14）**：`List<TranslationFiles> translations`，
-  `record TranslationFiles(String targetLanguage, Optional<Path> segmentsJsonFilePath,
-  Optional<Path> srtFilePath, Optional<Path> termsJsonFilePath)`，
+- **(甲) 嵌套元素** —— **已定（2026-10-14）**：`List<TranslationFilePaths> translationFilePaths`，
+  `TranslationFilePaths` **单独成文件**（`application/workspace/`），字段是
+  `(langCode, translatedSegmentsJsonFilePath, translatedSrtFilePath, translatedTermsJsonFilePath)`，
   把「这个语种有没有 terms」变成元素内部的事
 - ~~(乙) 保住平行列表~~——否：它要求每个消费者自己反解语种并记住「不可压配对」，把一条
   类型上本该成立的约束推给了纪律
@@ -207,16 +215,18 @@ List<Path> translatedTermsJsonFilePath,   // ← 长度不保证与上面相同
 
 - **`from` vs `of`** —— **已定：`of`**。仓库惯例是「构造自己→`of*`，跨类型映射→`from`」，
   本工厂入参是原始值（`Path`），形如 `WorkspaceDir.of(label, key)`
-- **落位**（§5.1）—— **已定**：新建 `application/subtitle/workspace/`
-- **`INFO_JSON_NAME`** —— **已定**：工厂按前缀扫，**不搬迁**这个常量；代价是
-  `source.info.json` 这个字面量在 application 层再写一份。消掉它要把常量从
-  `YtDlpMediaAcquirer`（包级私有）提到 `domain/media/model`（与
-  `MediaInput.UPLOAD_SOURCE_FILE_NAME` 同处），**收益不抵一次跨层搬迁**，不做
+- **落位**（§5.1）—— **已定**：新建顶层包 `application/workspace/`
+- **`INFO_JSON_NAME`** —— **改判（2026-10-14）**：原稿写「不搬迁」，理由是收益不抵一次跨层搬迁。
+  但既然要顺手把媒体侧的前缀也收成常量，搬迁成本就被摊薄了，**结论翻成搬**：
+  `source.` 前缀族收进 `MediaInput`（`SOURCE_FILE_PREFIX` / `UPLOAD_SOURCE_FILE_NAME` /
+  `SOURCE_INFO_JSON_NAME` 三兄弟同处），`YtDlpMediaAcquirer` 反过来引用它
+  （`infrastructure → domain` 方向合法）。原先它在仓库里被断言 4 次，现在只剩 1 处。
+  音频前缀同理收进 `AudioArtifact.AUDIO_PREFIX`
 - **命名表 7 行**：`prd.md` R1 已按项目所有者确认定稿；其中翻译侧两行于 2026-10-14 改为
   `translated-*`（`prd.md` R1 订正段）
 
 > **2026-10-14 收口**：本文件的开放项**已全部关闭**——
-> §5.1 落位（新桶 `application/subtitle/workspace/`）、§5.2 嵌套 + `Optional`、
+> §5.1 落位（顶层包 `application/workspace/`）、§5.2 嵌套 + `Optional`、
 > §5.4「集中」取组装集中、§7.1 列表形状（嵌套，与父任务
 > `handoff.md` §9.3 的记载一致）、§7.2 的 `of` 与 `INFO_JSON_NAME`（不搬迁）。
 > 逐条理由见各节；落位那次讨论里还查实了「`domain/shared` 被 7 个上下文依赖、自身零反依赖」

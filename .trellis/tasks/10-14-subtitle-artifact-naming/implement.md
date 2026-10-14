@@ -207,96 +207,235 @@ grep -rn "\braw\b\|Raw" backend/src/main/java/com/vidsage/domain/subtitle/ \
 
 | # | 决策 | 定案 | 理由 |
 |---|---|---|---|
-| ① | 落位 | **新建 `application/subtitle/workspace/`** | `domain/` 排除：`domain/shared` 是共享内核（实测被 7 个上下文依赖、**自身零反依赖**），而工厂要认 `SubtitleArtifactSpec`（`domain/subtitle/`）——留在那里会成为共享内核第一次反依赖上下文。`shared/` 排除：规范明令不得收契约模型（`directory-structure.md:391`）。`query/` 排除：它现有含义是**对外读模型**（`TaskSnapshot` 那族），本类型是**管线内部的工作区视图**，名不副实 |
+| ① | 落位 | **`application/workspace/`**（新顶层包） | 最初定的是 `application/subtitle/workspace/`，**落笔时改成了顶层 `application/workspace/`**（2026-10-14）。改得有道理：这个 record 同时认字幕与媒体两边的文件，塞进 `subtitle` 只算半对；独立成包更诚实。代价是 `directory-structure.md` 里 application 的「五个上下文」要变六个，**批 6 必须登记**。<br>`domain/` 排除：`domain/shared` 是共享内核（实测被 7 个上下文依赖、**自身零反依赖**），而工厂要认 `SubtitleArtifactSpec`（`domain/subtitle/`）——留在那里会成为共享内核第一次反依赖上下文。`shared/` 排除：规范明令不得收契约模型（`directory-structure.md:391`）。`query/` 排除：它现有含义是**对外读模型**（`TaskSnapshot` 那族），本类型是**管线内部的工作区视图**，名不副实 |
 | ② | 缺席表示法 | `Optional<Path>` 字段 | 实测媒体三项 17 个工作区里最多 15 个有——**缺席是常态不是异常**；`null` 会逼每个消费者判空 |
 | ③ | 「集中」的粒度 | **组装集中**，不动既有结构 | 各条命名规则仍各归各家（`SubtitleArtifactSpec` / `AudioArtifact` / `MediaInput` / `YtDlpMediaAcquirer` / `WorkspaceDir` 一律不搬），本 record 就是**唯一的组装点**。跨上下文合并成一个「工作区文件台账」的更大集中**另开任务**，不在本任务内 |
 
-**新桶要办的入册手续（别漏）**：
+**新包要办的入册手续（别漏，三个新包）**：
 
-1. 建 `application/subtitle/workspace/package-info.java`——本仓库每个桶都有，且规范要求
-   「空目录不表达任何约束」，桶说明得写清它装什么（照 `application/task/subscribe/package-info.java`
-   的形状写：一句「装什么」+ 一条「不许装什么」）
-2. **批 6 要把这个新桶登记进 `directory-structure.md`** 的二级包清单，否则下个会话读规范时
-   这个桶是个孤儿
+| 新包 | 要办的事 |
+|---|---|
+| `application/workspace/` | 建 `package-info.java`（本仓库每个包都有，规范要求「空目录不表达任何约束」，说明得写清它装什么——照 `application/task/subscribe/package-info.java` 的形状：一句「装什么」+ 一条「不许装什么」） |
+| `application/exception/` | 同上建 `package-info.java`。注意现有两个应用异常在 `application/task/exception/`，这里是**新开的顶层异常包**——要么把那个也挪过来，要么在包说明里写清两者的分工 |
+| 两个都要 | **批 6 登记进 `directory-structure.md`**：application 的上下文清单（五个 → 六个）与二级包清单，否则下个会话读规范时它们是孤儿 |
 
-### 4.1 目标形状（可直接照抄）
+### 4.1 as-built 代码（**现状，以此为准**）
+
+> 下面两份就是仓库里的实际文件（`e5bac58` 提交的形态）。**本文后面的 §4.2 及 design.md 里的
+> 算法描述都是设计稿**，落地时改了不少名字，差异见 §4.2.2 的「落地时的差异」表。
+
+**`application/workspace/SubtitleWorkspaceFilePaths.java`**
 
 ```java
-package com.vidsage.application.subtitle.workspace;
+package com.vidsage.application.workspace;
 
+
+import com.vidsage.application.exception.InvalidWorkDirectoryException;
+import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
+
+/**
+ * 视频转字幕任务工作区的文件路径列表
+ * 暂时不包含临时tmp、part文件
+ * 翻译相关的会保留每个语种最新的翻译文件
+ *
+ * @param originalSegmentsJsonFilePath ASR提取的原始字幕Json
+ * @param originalSrtFilePath          ASR提取的原始字幕转化成SRT文件（后续可能会删除）
+ * @param cleanSegmentsJsonFilePath    经过清洗后的字幕Json
+ * @param cleanSrtFilePath             清洗后的字幕Json转化成SRT文件
+ * @param translationFilePaths         翻译后的字幕相关（segmentJson,SRT文件，翻译术语）
+ * @param contextJsonFilePath          字幕上下文Json（存储了从字幕中提取的主题、语种、术语表）列表
+ * @param sourceMediaFilePath          用户上传/URL抓取的原始媒体文件
+ * @param sourceInfoJsonFilePath       yt-dlp 解析URL源时产生的Json文件（暂时认为是临时文件，后续可能会删除）
+ * @param audioFilePath                从用户上传/URL抓取的原始媒体文件中提取的音频文件
+ */
 public record SubtitleWorkspaceFilePaths(
         Optional<Path> originalSegmentsJsonFilePath,
         Optional<Path> originalSrtFilePath,
+
         Optional<Path> cleanSegmentsJsonFilePath,
         Optional<Path> cleanSrtFilePath,
+
+        List<TranslationFilePaths> translationFilePaths,
+
         Optional<Path> contextJsonFilePath,
-        List<TranslationFiles> translations,      // 按语种成组，语种顺序稳定
+
         Optional<Path> sourceMediaFilePath,
         Optional<Path> sourceInfoJsonFilePath,
-        Optional<Path> audioFilePath) {
+        Optional<Path> audioFilePath
+) {
 
     /**
-     * 一个目标语种的三件产物。哪件缺席由它自己答——「没有专有名词」和「翻译失败」
-     * 都表现为 terms 空，这在元素内部看得见，不用去猜列表下标。
+     * 获取工作目录中的产物文件Path列表
      *
-     * @param targetLanguage BCP-47 短码（已归一化）
-     * @param termsJsonFilePath 术语查证结论；SKIP_NO_TERMS / 查证未启用 / 全部查证失败时为空
+     * @param workDirectory 工作区目录
+     * @return 视频转字幕任务工作区的文件路径列表
      */
-    public record TranslationFiles(String targetLanguage,
-                                   Optional<Path> segmentsJsonFilePath,
-                                   Optional<Path> srtFilePath,
-                                   Optional<Path> termsJsonFilePath) {
+    public static SubtitleWorkspaceFilePaths of(Path workDirectory) {
+        if (workDirectory == null) {
+            throw new InvalidWorkDirectoryException("工作区目录不能为空");
+        }
+        List<String> workspaceFileNames = getWorkspaceFileNames(workDirectory);
+
+        return new SubtitleWorkspaceFilePaths(
+                findPath(workDirectory, workspaceFileNames, SubtitleArtifactSpec.ORIGINAL_SEGMENTS),
+                findPath(workDirectory, workspaceFileNames, SubtitleArtifactSpec.ORIGINAL_SRT),
+                findPath(workDirectory, workspaceFileNames, SubtitleArtifactSpec.CLEAN_SEGMENTS),
+                findPath(workDirectory, workspaceFileNames, SubtitleArtifactSpec.CLEAN_SRT),
+                getTranslationFiles(workDirectory, workspaceFileNames),
+                findPath(workDirectory, workspaceFileNames, SubtitleArtifactSpec.CONTEXT),
+                getFirstMatchingFilePath(workDirectory, workspaceFileNames, fileName ->
+                        fileName.startsWith(MediaInput.SOURCE_FILE_PREFIX) && !fileName.equals(MediaInput.SOURCE_INFO_JSON_NAME)),
+                getFirstMatchingFilePath(workDirectory, workspaceFileNames, fileName ->
+                        fileName.equals(MediaInput.SOURCE_INFO_JSON_NAME)),
+                getFirstMatchingFilePath(workDirectory, workspaceFileNames, fileName ->
+                        fileName.startsWith(AudioArtifact.AUDIO_PREFIX)
+                )
+        );
+    }
+
+    /**
+     * 获取工作区目录下的文件名列表
+     *
+     * @param directory 工作区目录
+     * @return 文件名列表
+     */
+    private static List<String> getWorkspaceFileNames(Path directory) {
+        if (!Files.isDirectory(directory)) {
+            return List.of();
+        }
+        try (Stream<Path> entries = Files.list(directory)) {
+            return entries.filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException("扫描工作区目录失败：" + directory + ";" + e.getMessage(), e);
+        }
+    }
+
+
+    /**
+     * 根据文件模板获取指定的Path 重载
+     */
+    private static Optional<Path> findPath(Path directory, List<String> fileNames, SubtitleArtifactSpec spec) {
+        return findPath(directory, fileNames, spec, null);
+    }
+
+    /**
+     * 根据文件模板获取指定的Path
+     *
+     * @param directory 工作区目录
+     * @param fileNames 工作区目录下的文件名列表
+     * @param spec      模板
+     * @param lang      语种 （翻译会用到）
+     * @return 找到的Path
+     */
+    private static Optional<Path> findPath(Path directory, List<String> fileNames, SubtitleArtifactSpec spec, String lang) {
+        String fileName = spec.getFileName(lang);
+        return fileNames.contains(fileName) ? Optional.of(directory.resolve(fileName)) : Optional.empty();
+    }
+
+    /**
+     * 译文三件套：语种取自三条带语种产物的**并集**，字典序。
+     */
+    private static List<TranslationFilePaths> getTranslationFiles(Path dir, List<String> names) {
+        Set<String> languages = new TreeSet<>();
+        collectLanguages(languages, names, SubtitleArtifactSpec.TRANSLATED_SEGMENTS);
+        collectLanguages(languages, names, SubtitleArtifactSpec.TRANSLATED_SRT);
+        collectLanguages(languages, names, SubtitleArtifactSpec.TERMS);
+
+        List<TranslationFilePaths> files = new ArrayList<>(languages.size());
+        for (String language : languages) {
+            files.add(new TranslationFilePaths(language,
+                    findPath(dir, names, SubtitleArtifactSpec.TRANSLATED_SEGMENTS, language),
+                    findPath(dir, names, SubtitleArtifactSpec.TRANSLATED_SRT, language),
+                    findPath(dir, names, SubtitleArtifactSpec.TERMS, language)));
+        }
+        return files;
+    }
+
+    /**
+     * 把某条带语种产物里出现过的语种收进 {@code languages}。
+     */
+    private static void collectLanguages(Set<String> languages, List<String> fileNames,
+                                         SubtitleArtifactSpec spec) {
+        for (String fileName : fileNames) {
+            String language = spec.getLanguage(fileName);
+            if (language != null) {
+                languages.add(language);
+            }
+        }
+
+    }
+
+    /**
+     * 按名字认媒体侧文件；同前缀命中多个（重跑残留）取字典序第一个
+     */
+    private static Optional<Path> getFirstMatchingFilePath(Path dir, List<String> names, Predicate<String> matches) {
+        return names.stream().filter(matches).findFirst().map(dir::resolve);
     }
 }
 ```
 
-**为什么必须嵌套**（实测依据）：`terms` 与 `translate` 的份数不保证相同——盘上 7 个有译文的
-工作区里 **5 个已经错位**（如 `BV1C2ae6DEqW` 译文 `[en]` / 术语 `[]`）。三个平行 `List<Path>`
-的任何按下标配对的消费者都会错，且在类型上看不出来。
-
-### 4.2 `of(Path workDirectory)` 的算法
+**`application/workspace/TranslationFilePaths.java`**（**单独成文件**，不是内嵌 record）
 
 ```java
-private static final String SENTINEL_LANG = "@";   // 见 4.3 的哨兵说明
+package com.vidsage.application.workspace;
 
-public static SubtitleWorkspaceFilePaths of(Path workDirectory) {
-    if (workDirectory == null) {
-        throw new IllegalArgumentException("工作区目录不能为空");
-    }
-    // 1) 只列一次目录；列不出（目录不存在 / 不是目录）按空工作区处理，不抛
-    List<String> names = listFileNames(workDirectory);
-    // 2) 5 个非语种产物：拿 getFileName(null) 的精确名，在 names 里找
-    // 3) 语种集合：见 4.2.1
-    // 4) 每语种组 TranslationFiles：按 spec.getFileName(lang) 取精确名
-    // 5) 媒体三项：见 4.2.2
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
+
+import java.nio.file.Path;
+import java.util.Optional;
+
+/**
+ * @param langCode                       语种，对应{@link SupportedLanguage#getCode()}
+ * @param translatedSegmentsJsonFilePath 翻译清洗字幕后的字幕Json
+ * @param translatedSrtFilePath          翻译翻译清洗字幕后的字幕Json转化成SRT文件
+ * @param translatedTermsJsonFilePath    翻译后的术语表Json
+ */
+public record TranslationFilePaths(
+        String langCode,
+        Optional<Path> translatedSegmentsJsonFilePath,
+        Optional<Path> translatedSrtFilePath,
+        Optional<Path> translatedTermsJsonFilePath
+) {
 }
 ```
 
-- **`workDirectory == null` 是唯一抛的情形**（调用方传参错）。**其余一律不抛**——
-  「没找到」的语义是「下游判重跑」，不是错误（`CheckpointPolicy` 那条判据的上游就是这个）。
-- 名字一律**从第 1 步的 `names` 里比对**，不再对每个路径单独 stat：一次 I/O，且目录不存在时
-  行为统一（全 `empty`）。
-- 用 try-with-resources 包 `Files.list`（现有 `SubtitleCleanupCoordinator` 同一写法）。
+### 4.2 几处不显然的地方
 
-#### 4.2.1 语种集合怎么切（命名规则仍只有一份）
+1. **为什么语种取三者并集**：`SubtitleTranslationCoordinator.verifyTermsIfNeeded` 在翻译之前跑，
+   翻译若中途失败，盘上会留下「有 terms、没 segments」的语种。只看 `TRANSLATED_SEGMENTS`
+   会整个漏掉它，下次重跑就白跑一遍术语查证。
+2. **为什么 `translations` 必须有序**：`Files.list` 的返回顺序依赖文件系统，不排序测试会飘。
+   实现里靠 `TreeSet` 一次解决（顺带把并集也做了）。
+3. **为什么用 `names.contains(...)` 而不是逐个 `Files.isRegularFile`**：只列一次目录，
+   一次 I/O；且目录不存在时所有项的行为天然一致（全空）。仓库里
+   `VideoTaskService.scanArtifacts` 是同一个形状，照它写即可。
+4. **异常边界**（照工作区里已落的骨架对齐，只有半条是我定的）：`workDirectory == null` 抛
+   `InvalidWorkDirectoryException`——它 `extends IllegalArgumentException`，所以既满足
+   「参数错抛 IAE」的老契约，又能被 `ApiExceptionHandler` 按类型单独接。
+   目录**不存在 / 不是目录** → 空快照（还没产出，正常，不抛）。
+   目录**在却读不出来** → 抛 `UncheckedIOException`。
+   ⚠ **这一条你骨架里写的是 `throw new RuntimeException(e)`**，我换成了 `UncheckedIOException`：
+   前者会把「权限失败」和任何别的运行时异常混成一个类型，也不好按类型接；后者是 JDK 自带的
+   语义化包装（仓库里 `ExternalProcessRunner:174` 已有一处先例）。要改回去就是 catch 里一行。
+   若你更想跟 `VideoTaskService.scanArtifacts` 的「warn + 空表」齐平，也是改这一行。
+5. **为什么不做校验/不变式**：这是「现状的快照」不是「合法状态的断言」。加「有 segments 就必须
+   有 srt」这类不变式，会在断点复用、上次翻译失败重跑这些**正常**场景下抛异常，
+   把一个「该重跑」的信号变成硬失败。
 
-不另写正则、不硬编码 `translated-segments-`，而是**拿模板自己当模板**：
-
-```java
-String probe = SubtitleArtifactSpec.TRANSLATED_SEGMENTS.getFileName(SENTINEL_LANG);
-int at = probe.indexOf(SENTINEL_LANG);
-String prefix = probe.substring(0, at);        // "translated-segments-"
-String suffix = probe.substring(at + 1);       // ".json"
-// 对每个 name：startsWith(prefix) && endsWith(suffix) && 中间非空 → 中间那段是语种
-```
-
-三个带语种的产物（`TRANSLATED_SEGMENTS` / `TRANSLATED_SRT` / `TERMS`）各切一次，
-**取三个集合的并集**——不能只看 `TRANSLATED_SEGMENTS`：术语查证在翻译之前跑，
-翻译若中途失败，盘上会出现「有 terms、没 segments」的语种，只看 segments 会漏掉它。
-
-**并集必须排序后落进 `translations`**（`Files.list` 的顺序依赖文件系统，不排序测试会飘）。
-
-#### 4.2.2 媒体三项
+#### 4.2.1 媒体三项
 
 | 字段 | 认法 | 实测 |
 |---|---|---|
@@ -307,32 +446,86 @@ String suffix = probe.substring(at + 1);       // ".json"
 - **为什么只能扫**：媒体扩展名由 yt-dlp 定（`source.%(ext)s`），音频名要 `AudioSpec` 才算得出
   （`AudioArtifact.fileName(spec)`），而 `of(Path)` 手上只有目录。
 - 三项**都常常缺席**（本地文件输入没有 info json、未抽音频的工作区没有 audio）→ 一律 `Optional.empty()`。
-- 同前缀命中多个时（重跑残留）**取排序后第一个**，不抛——确定性优先于猜「哪个才对」。
 - `source.info.json` 这个字面量目前只在 `infrastructure/.../YtDlpMediaAcquirer.INFO_JSON_NAME`
   （包级私有）里有一份，本节会在 application 层再写一次。**这是有意接受的小重复**：
   搬到 `domain/media/model`（与 `MediaInput.UPLOAD_SOURCE_FILE_NAME` 同处）能消掉它，
   但多一次跨层搬迁，收益不抵成本。
 
-### 4.3 两处必须写进注释的取舍
 
-1. **哨兵为什么用 `"@"`**：`getFileName` 会过 `Bcp47LanguagePolicy.resolveTargetLanguage`，
-   实测它只做「非空 + `trim()` + `toLowerCase()`」、**不查白名单**。`"@"` 是 0x40，
-   `String.trim()` 剥的是 ≤ U+0020，且无大小写形态——**过这两道而不变形**。
-   换成 `"zh"` 这类真语种也能用，但会被自己的 `toLowerCase` 掩盖问题；换空白字符直接抛 ISE。
-2. **为什么不做校验/不变式**：这个 record 是「现状的快照」而不是「合法状态的断言」。
-   加了「segments 必须在 srt 也必须在」这类不变式，会在断点复用、上次翻译失败重跑等
-   正常场景下抛异常，把一个「该重跑」的信号变成硬失败。
+#### 4.2.2 常量归位：去的去向，以及落地时的差异
+
+record 里原来有 4 个私有常量，**现在一个都不剩**：
+
+| 原常量 | 去向 |
+|---|---|
+| `SENTINEL_LANG = "@"` | **删**。反解改问登记表 `SubtitleArtifactSpec.getLanguage(name)`。哨兵原本依赖「`resolveTargetLanguage` 不做白名单校验」，那颗雷一并拆掉 |
+| `SOURCE_PREFIX = "source."` | → `MediaInput.SOURCE_FILE_PREFIX`（新增） |
+| `SOURCE_INFO_JSON_NAME` | → `MediaInput.SOURCE_INFO_JSON_NAME`（新增）。原先**引用不到**：`YtDlpMediaAcquirer.INFO_JSON_NAME` 是包级私有，而 `application → infrastructure` 是禁止方向 |
+| `AUDIO_PREFIX = "audio-"` | → `AudioArtifact.AUDIO_PREFIX`（新增），与那句「命名规则单源在此」对齐 |
+
+**登记表新增的反解**（`SubtitleArtifactSpec`）：`{lang}` 那格的正则从 `[a-z0-9-]+` 改成
+`([a-z0-9-]+)`——**必须成对**，只写右括号会让整条正则语法错，`Pattern.compile` 在枚举
+`<clinit>` 里就抛 `PatternSyntaxException`，整个类不可用（不是「结果不对」，是碰一下这个类就炸）。
+反解方法体：
+
+```java
+public String getLanguage(String fileName) {
+    if (fileName == null || !template.contains("{lang}")) {
+        return null;
+    }
+    Matcher matcher = pattern.matcher(fileName);
+    return matcher.matches() ? matcher.group(1) : null;   // group(1) 不是 group()
+}
+```
+
+#### 4.2.3 落地时与设计稿的差异（**以代码为准**）
+
+设计稿（本文 §4.1 的旧版 + `design.md` §5）落地时改了这些名字/形态：
+
+| 设计稿 | as-built |
+|---|---|
+| `languageOf(String)` | **`getLanguage(String)`** |
+| `AudioArtifact.FILE_NAME_PREFIX` | **`AudioArtifact.AUDIO_PREFIX`** |
+| `TranslationFilePaths` 内嵌在 record 里 | **单独成文件** `application/workspace/TranslationFilePaths.java` |
+| `TranslationFilePaths(targetLanguage, segmentsJsonFilePath, srtFilePath, termsJsonFilePath)` | **`(langCode, translatedSegmentsJsonFilePath, translatedSrtFilePath, translatedTermsJsonFilePath)`** |
+| record 字段 `translations` | **`translationFilePaths`** |
+| `listFileNames` | **`getWorkspaceFileNames`** |
+| `exact(dir, names, spec[, lang])` | **`findPath(dir, fileNames, spec[, lang])`** |
+| `firstMatch` | **`getFirstMatchingFilePath`** |
+| `collectLanguages(Set into, …)` | **`collectLanguages(Set languages, …)`**（形参改名） |
+| `MediaInput.SOURCE_INFO_JSON_NAME = SOURCE_FILE_PREFIX + "info.json"` | **字面量 `"source.info.json"`**（`UPLOAD_SOURCE_FILE_NAME` 同样是字面量 `"source.mp4"`） |
+
+**三条落地时留下的小欠账**（都不影响行为，记在这免得下个人重新发现）：
+
+1. **`source.` 其实还是三处**：`SOURCE_FILE_PREFIX = "source."` 上面那两行仍写死字面量。
+   要真单源，改成 `SOURCE_FILE_PREFIX + "info.json"` / `SOURCE_FILE_PREFIX + "mp4"`
+   （接口里的常量表达式，编译期就能拼）。
+2. **`AudioArtifact.AUDIO_PREFIX` 写作 `public final static`**，仓库其余常量是
+   `public static final`——纯风格。
+3. **record 没有紧凑构造器做防御性拷贝**：`of` 里用的是 `ArrayList`，所以
+   `translationFilePaths()` 返回的是**可变列表**，调用方能改。`SubtitleKeywords` 有先例
+   （`values = List.copyOf(...)`），要堵就加一行。
+4. `TranslationFilePaths` 的 javadoc 第 11 行有个重复词：「翻译**翻译**清洗字幕后的字幕Json…」。
 
 ### 4.4 自测清单（批 5 由 AI 写成 `SubtitleWorkspaceFilePathsTest`，对应 AC8）
 
-| 情形 | 断言要点 |
-|---|---|
-| 全产物齐 | 8 项都 `isPresent`；`translations` 语种齐全且有序 |
-| 缺 `terms`（无专有名词的常见场景） | 该语种的 `TranslationFiles.termsJsonFilePath` 空，**其余两项在**；且不影响别的语种 |
-| 空工作区 | 全部 `empty` / 空列表，**不抛** |
-| 目录不存在 | 同上（`Files.list` 抛的 `NoSuchFileException` 被吞成空工作区） |
-| `workDirectory == null` | `IllegalArgumentException`（唯一抛的情形） |
-| 两个语种 | 两份 `TranslationFiles` 同时在、互不覆盖（AC7 的单测面） |
+下表**已在临时目录实跑过**（一次性程序，未入库），结果与「实测结果」列一致。批 5 要把它们落成 JUnit（`SubtitleWorkspaceFilePathsTest`），别只靠一次性程序。
+
+| # | 情形 | 断言要点 | 实测结果 |
+|---|---|---|---|
+| 1 | 全产物齐 + 两语种 + 媒体三项 | 5 项非语种 `isPresent`；媒体三项认出；`translationFilePaths` 两条且**按字典序**（en→ja） | ✅ en 三件齐、ja 无 terms |
+| 2 | 干扰文件名 | `original-segments.json.bak`、`translated-segments.json` 这类**不能被误认** | ✅ 都没被认 |
+| 3 | 只有 terms、没有 segments | 仍产出该语种的 `TranslationFilePaths`（并集逻辑） | ✅ `zh-hant` 只剩 terms |
+| 4 | 空工作区 | 全部 `empty` / 空列表，**不抛** | ✅ |
+| 5 | 目录不存在 | 同上，**不抛**（`Files.isDirectory` 守卫，不是靠 catch） | ✅ |
+| 6 | **源媒体是 `source.webm`**（不是 mp4） | `sourceMediaFilePath` 要认出它 | ✅ ← 这条当初写错过（判据只认 `source.mp4`），是实测抓出来的 |
+| 7 | `workDirectory == null` | `InvalidWorkDirectoryException` | ✅ |
+| 8 | 目录在、但读不出来 | `UncheckedIOException` | 未实跑（要造权限失败的目录，Windows 上不好造） |
+
+另有一条**不是 `of` 的行为**、但必须单测钉住的：`SubtitleArtifactSpec.getLanguage` 的五种边界
+（非语种模板→`null`、`zh-hant`→`zh-hant`、没语种段→`null`、`.bak`→`null`、`terms-ja`→`ja`）
+以及 `matches()` 未被捕获组影响。**这条当初漏写捕获组的左括号，整个枚举 `<clinit>` 就抛**，
+是这一组里最该有测试守着的地方。
 
 **门**：编译过 + 上述自测绿 → 停，等审查。
 
