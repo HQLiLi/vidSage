@@ -13,7 +13,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "任务产物文件（清单项）")
 public record TaskArtifactResponse(
         @Schema(description = "产物文件名（不含路径），可直接用于产物下载端点",
-                example = "subtitles-asr-cloud-translate-ja.srt") String name,
+                example = "original-subtitles.srt") String name,
         @Schema(description = "文件字节数", example = "10240") long sizeBytes) {
 
     /** 应用层读模型 → 对外响应的纯映射（无业务逻辑）：字段一一对应、直接透传。 */

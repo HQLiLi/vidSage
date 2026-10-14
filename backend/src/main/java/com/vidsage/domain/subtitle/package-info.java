@@ -15,6 +15,6 @@
  * 装翻译阶段的轨道与产物（{@code TranslatedTrack} / {@code TranslatedSubtitle} / {@code TranslatedSegment}
  * / {@code TranslateResult}）；{@code term/} 装术语查证词汇（{@code TermLookupCommand} /
  * {@code TermLookupResult} / {@code VerifiedTerm} / {@code VerifiedTerms}）；{@code common/}
- * 装跨环节共用词汇（{@code SubtitleArtifact} / {@code SubtitleRoute} / {@code SubtitleContext}）。
+ * 装跨环节共用词汇（{@code SubtitleArtifact} / {@code SubtitleContext}）。
  */
 package com.vidsage.domain.subtitle;

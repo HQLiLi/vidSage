@@ -18,7 +18,6 @@ import com.vidsage.application.task.subscribe.TaskSubscriptionRegistry;
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -81,21 +80,17 @@ class TaskSseConnectionManagerTest {
             default -> "任务执行中";
         };
         return TaskProgressMessage.of(TASK_NO, status,
-                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), progress, message, state), null);
+                new StageProgress(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), progress, message, state));
     }
 
-    /** 翻译事件：taskStatus 恒为主状态 SUCCEEDED（主管线终态），翻译子状态随给定值。 */
-    private static TaskProgressMessage translationEvent(TranslationStatus translationStatus) {
-        // 同上：翻译终态事件的 stage 跟翻译子状态走，RUNNING 那条才是真正的增量事件
-        StageProgress.State state = switch (translationStatus) {
-            case SUCCEEDED -> StageProgress.State.SUCCEEDED;
-            case FAILED -> StageProgress.State.FAILED;
-            default -> StageProgress.State.RUNNING;
-        };
-        int progress = translationStatus == TranslationStatus.SUCCEEDED ? 100 : 50;
+    /**
+     * 后置会话（翻译）事件：taskStatus 恒为主状态 SUCCEEDED（主管线已终态），
+     * 「翻译还在不在跑」全看 stage 的状态位——翻译子状态列已下线，这是它唯一的表达。
+     */
+    private static TaskProgressMessage translationEvent(StageProgress.State state) {
+        int progress = state == StageProgress.State.RUNNING ? 50 : 100;
         return TaskProgressMessage.of(TASK_NO, TaskStatus.SUCCEEDED,
-                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), progress, "第 2/3 批", state),
-                translationStatus);
+                new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), progress, "第 2/3 批", state));
     }
 
     // ---------- 注册与摘除 ----------
@@ -144,7 +139,7 @@ class TaskSseConnectionManagerTest {
 
         // 翻译事件的 taskStatus 恒为主状态 SUCCEEDED：若终态判定只看主状态，
         // 第一条翻译进度事件就会把连接收掉——翻译进行中（RUNNING）必须保持连接
-        push(0, translationEvent(TranslationStatus.RUNNING));
+        push(0, translationEvent(StageProgress.State.RUNNING));
 
         assertEquals(1, manager.emitterCount(TASK_NO), "翻译进行中的事件不得收口连接");
     }
@@ -153,7 +148,7 @@ class TaskSseConnectionManagerTest {
     void translationTerminalEventRemovesEmitter() {
         manager.open(TASK_NO, () -> event(TaskStatus.RUNNING));
 
-        push(0, translationEvent(TranslationStatus.SUCCEEDED));
+        push(0, translationEvent(StageProgress.State.SUCCEEDED));
 
         assertEquals(0, manager.emitterCount(TASK_NO), "翻译终态事件推完应立即收口并摘除");
     }
@@ -162,7 +157,7 @@ class TaskSseConnectionManagerTest {
     void translationFailureTerminalEventAlsoRemovesEmitter() {
         manager.open(TASK_NO, () -> event(TaskStatus.RUNNING));
 
-        push(0, translationEvent(TranslationStatus.FAILED));
+        push(0, translationEvent(StageProgress.State.FAILED));
 
         assertEquals(0, manager.emitterCount(TASK_NO), "翻译失败终态事件推完应立即收口并摘除");
     }
@@ -191,7 +186,7 @@ class TaskSseConnectionManagerTest {
     @Test
     void openKeepsSubscriptionWhenOnlyTranslationIsStillRunning() {
         // 「主状态终态但翻译还在跑」不得按终态收口：连接要活到翻译终态，订阅也不能退
-        manager.open(TASK_NO, () -> translationEvent(TranslationStatus.RUNNING));
+        manager.open(TASK_NO, () -> translationEvent(StageProgress.State.RUNNING));
 
         assertEquals(1, manager.emitterCount(TASK_NO), "翻译进行中，连接必须保持");
         assertFalse(unsubscribed.get(), "翻译进行中，订阅不得退订");

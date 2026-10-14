@@ -70,7 +70,8 @@ public class TaskProgressNotifier {
      */
     public void completeTranslation(VideoTask task) {
         videoTaskRepository.update(task);
-        broadcastTerminal(task, TaskStageEvent.fromTranslation(task));
+        broadcastTerminal(task,  new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(),
+            100, "翻译完成", StageProgress.State.SUCCEEDED));
     }
 
     /**
@@ -109,6 +110,20 @@ public class TaskProgressNotifier {
         }
     }
 
+    public void failTranslation(VideoTask task, String reason) {
+        String message = VideoTask.TRANSLATION_FAILURE_PREFIX + reason;
+        try {
+            task.recordTranslationFailure(message);
+            videoTaskRepository.update(task);
+            broadcastTerminal(task, new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(),
+                    0, message, StageProgress.State.FAILED));
+            log.error("任务翻译失败: taskNo={}, message={}", task.getTaskNo().value(), message);
+        } catch (RuntimeException e) {
+            log.error("翻译失败状态落库失败，任务可能停留在 RUNNING 登记里: taskNo={}, reason={}",
+                    task.getTaskNo().value(), e.getMessage(), e);
+        }
+    }
+
     /**
      * 组装 SSE 连接建立时的<b>快照事件</b>（DB 快照即权威，事件不落库）：
      * 只组装不发送——发送由 web 层决定，本方法不碰注册表、不落库。
@@ -121,7 +136,7 @@ public class TaskProgressNotifier {
         // terminal 派生据此判 false——重连的人不会一连上就被终态关掉
         String runningStage = taskSessionRegistry.findRunningStage(task.getWorkspaceKey());
         return TaskProgressMessage.of(task.getTaskNo().value(), task.getStatus(),
-                TaskStageEvent.from(task, runningStage), task.getTranslationStatus());
+                TaskStageEvent.from(task, runningStage));
     }
 
 
@@ -134,7 +149,7 @@ public class TaskProgressNotifier {
     private void broadcast(VideoTask task, StageProgress stageProgress) {
         String taskNo = task.getTaskNo().value();
         taskSubscriptionRegistry.broadcast(taskNo,
-                TaskProgressMessage.of(taskNo, task.getStatus(), stageProgress, task.getTranslationStatus())
+                TaskProgressMessage.of(taskNo, task.getStatus(), stageProgress)
         );
     }
 

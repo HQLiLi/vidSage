@@ -1,12 +1,12 @@
 package com.vidsage.application.task.pipeline;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -38,8 +38,8 @@ import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import com.vidsage.infrastructure.concurrency.SemaphoreTaskConcurrencyGate;
@@ -65,7 +65,8 @@ import org.mockito.Mockito;
  * 用 Mockito 的 timeout / after 验证信号量限流。
  *
  * <p>自动管线到清洗为止（prepare 0..70 / clean 70..100），翻译拆出为
- * {@code translateTask} 按需触发（幂等 / 不重入 / 终态收口各有钉子）。
+ * {@code translateTask} 按需触发。同步段的判定（404 / 400 未就绪 / 409 互斥 / 抢登记）都在
+ * {@code VideoTaskService}，本类只剩「提交异步体 + 三条退出路径各退一次登记」。
  */
 class SubtitlePipelineTest {
 
@@ -77,6 +78,10 @@ class SubtitlePipelineTest {
     private final SubtitlePreparationCoordinator subtitlePreparationCoordinator = Mockito.mock(SubtitlePreparationCoordinator.class);
     private final SubtitleCleanupCoordinator cleanupStage = Mockito.mock(SubtitleCleanupCoordinator.class);
     private final SubtitleTranslationCoordinator translationStage = Mockito.mock(SubtitleTranslationCoordinator.class);
+    private static final SupportedLanguage SOURCE_LANG = SupportedLanguage.JAPANESE;
+
+    private static final SupportedLanguage TARGET_LANG = SupportedLanguage.SIMPLE_CHINESE;
+
     private final TaskSubscriptionRegistry registry = new TaskSubscriptionRegistry();
     /** 后置会话在途登记：notifier（读）与 pipeline（写 / finally 退）必须是同一个实例，否则断言盯不住。 */
     private final TaskSessionRegistry sessionRegistry = new TaskSessionRegistry();
@@ -122,7 +127,6 @@ class SubtitlePipelineTest {
         assertEquals(TaskStatus.SUCCEEDED, task.getStatus());
         assertNotNull(task.getFinishedAt(), "成功应落 finished_at");
         assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), task.getCurrentStage(), "最后一个阶段应留痕在 current_stage");
-        assertNull(task.getTranslationStatus(), "自动管线不触发翻译，翻译子状态保持「从未触发」");
         // start + clean 回调 + succeed（mock 的 prepare 不发事件）
         verify(repository, Mockito.times(3)).update(task);
     }
@@ -135,8 +139,8 @@ class SubtitlePipelineTest {
 
         pipeline.runPipeline(task.getTaskNo());
 
-        verify(translationStage, never()).translate(any(), any());
-        verify(translationStage, never()).hasTranslationArtifact(any());
+        verify(translationStage, never()).translate(any(MediaInput.class), any(SupportedLanguage.class),
+                any(SupportedLanguage.class), any(ProgressListener.class));
         assertEquals(TaskStatus.SUCCEEDED, task.getStatus(),
                 "管线成功即终态——翻译等用户对 SUCCEEDED 任务显式触发");
     }
@@ -220,7 +224,8 @@ class SubtitlePipelineTest {
 
         assertEquals(TaskStatus.FAILED, task.getStatus());
         assertEquals("任务执行失败：字幕尚未获取：缺 segments-cloud.json", task.getErrorMessage());
-        verify(translationStage, never()).translate(any(), any());
+        verify(translationStage, never()).translate(any(MediaInput.class), any(SupportedLanguage.class),
+                any(SupportedLanguage.class), any(ProgressListener.class));
     }
 
     @Test
@@ -260,7 +265,6 @@ class SubtitlePipelineTest {
         TaskProgressMessage event = received.get(0);
         assertEquals(task.getTaskNo().value(), event.taskNo());
         assertEquals(TaskStatus.RUNNING, event.taskStatus());
-        assertNull(event.translationStatus(), "主管线事件的翻译子状态为 null（从未触发）");
         assertEquals(SubtitleStageName.EXTRACT_AUDIO.getStageName(), event.stage().stage());
         assertEquals(50, event.stage().progress(), "管线只透传，不做区间映射：回调 50 广播 50");
         assertEquals(TaskStatus.SUCCEEDED, received.get(1).taskStatus(), "终态广播随后到达");
@@ -281,7 +285,7 @@ class SubtitlePipelineTest {
         assertEquals(TaskStatus.SUCCEEDED, event.taskStatus());
         // complete 清空了订阅者：终态之后再广播该任务的事件无人可收
         registry.broadcast(task.getTaskNo().value(),
-                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null));
         assertEquals(1, received.size(), "终态收口后注册表不得再向订阅者投递事件");
     }
 
@@ -302,7 +306,7 @@ class SubtitlePipelineTest {
         assertEquals(TaskStatus.FAILED, event.taskStatus());
         assertEquals("任务执行失败：quota exceeded", event.stage().message(), "终态事件的消息应携带错误信息");
         registry.broadcast(task.getTaskNo().value(),
-                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null));
         assertEquals(1, received.size(), "终态收口后注册表不得再向订阅者投递事件");
     }
 
@@ -349,160 +353,93 @@ class SubtitlePipelineTest {
         verify(repository, never()).update(any());
     }
 
-    // ---------- 按需翻译 ----------
+    // ---------- 按需翻译（同步段判定在 VideoTaskService，本类只剩提交与退登记） ----------
 
     @Test
-    void translateTaskRejectsWhenMainTaskNotSucceeded() {
-        VideoTask pending = urlTask("https://example.com/v");
-        when(repository.findByTaskNo(pending.getTaskNo())).thenReturn(Optional.of(pending));
-
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service(2).translateTask(pending.getTaskNo()),
-                "主任务未 SUCCEEDED 时触发翻译必须被拒（错在调用方触发太早 → 400）");
-
-        assertTrue(e.getMessage().contains("字幕尚未就绪"), e.getMessage());
-        assertTrue(e.getMessage().contains(pending.getTaskNo().value()), e.getMessage());
-        verify(translationStage, never()).hasTranslationArtifact(any());
-        verify(translationStage, never()).translate(any(), any());
-    }
-
-    @Test
-    void translateTaskThrowsNotFoundWhenTaskMissing() {
-        when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
-
-        assertThrows(TaskNotFoundException.class, () -> service(2).translateTask(new TaskNo("ghost")));
-    }
-
-    @Test
-    void translateTaskReusesExistingArtifactWithoutLLM() {
+    void translateTaskSubmitsAsyncBodyAndCompletesWithTerminalBroadcast() {
         VideoTask task = succeededTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        // 检查点已在（上一次成功的翻译，或两段式改造前的存量产物）
-        when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(true);
-        SubtitlePipeline pipeline = service(2);
-
-        pipeline.translateTask(task.getTaskNo());
-
-        assertEquals(TranslationStatus.SUCCEEDED, task.getTranslationStatus(),
-                "检查点已在 → 幂等收敛为 SUCCEEDED");
-        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "主状态不被翻译幂等收敛改动");
-        verify(repository, times(1)).update(task);
-        verify(translationStage, never()).translate(any(), any());
-    }
-
-    @Test
-    void translateTaskIsNoOpWhenArtifactExistsAndTranslationAlreadySucceeded() {
-        VideoTask task = succeededTask("https://example.com/v");
-        task.translationStart();
-        task.translationSucceed();
-        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(true);
-        SubtitlePipeline pipeline = service(2);
-
-        pipeline.translateTask(task.getTaskNo());
-
-        verify(repository, never()).update(task);
-        verify(translationStage, never()).translate(any(), any());
-    }
-
-    @Test
-    void translateTaskDoesNotReenterWhileTranslationRunning() {
-        VideoTask task = succeededTask("https://example.com/v");
-        task.translationStart();
-        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        SubtitlePipeline pipeline = service(2);
-
-        pipeline.translateTask(task.getTaskNo());
-
-        assertEquals(TranslationStatus.RUNNING, task.getTranslationStatus(), "进行中的翻译保持 RUNNING");
-        // 重复触发在检查点判定之前即被拦下
-        verify(translationStage, never()).hasTranslationArtifact(any());
-        // 重复触发不得重入翻译
-        verify(translationStage, never()).translate(any(), any());
-        // 重复触发零落库
-        verify(repository, never()).update(task);
-    }
-
-    @Test
-    void translateTaskStartsTranslationAndCompletesWithTerminalBroadcast() {
-        VideoTask task = succeededTask("https://example.com/v");
-        when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         doAnswer(invocation -> {
-            ProgressListener listener = invocation.getArgument(1);
+            ProgressListener listener = invocation.getArgument(3);
             listener.onProgress(new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 40, "第 1/2 批",
                     StageProgress.State.RUNNING));
             return null;
-        }).when(translationStage).translate(any(MediaInput.class), any(ProgressListener.class));
+        }).when(translationStage).translate(any(MediaInput.class), any(SupportedLanguage.class),
+                any(SupportedLanguage.class), any(ProgressListener.class));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
+        // 同步段的抢登记在 service；这里模拟它已经抢到，好让「异步体退登记」这条钉住
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.TRANSLATE_SUBTITLES.getStageName()));
         SubtitlePipeline pipeline = service(2);
 
-        pipeline.translateTask(task.getTaskNo());
+        pipeline.translateTask(task, SOURCE_LANG, TARGET_LANG);
 
-        // 同步段：translationStart 已落库，202 响应的视图即反映「已触发」
-        assertEquals(TranslationStatus.RUNNING, task.getTranslationStatus());
-        // 异步段完成后第二次落库（translationSucceed）——times(2) 即终态同步点
-        verify(repository, timeout(2000).times(2)).update(task);
-        assertEquals(TranslationStatus.SUCCEEDED, task.getTranslationStatus());
+        // 翻译不再落 DB 子状态：异步体只落一次库（completeTranslation）
+        verify(repository, timeout(2000)).update(task);
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "翻译不改主状态");
 
         // 事件流：1 条进度（progress 直通，无 remap）+ 1 条翻译终态
         assertEquals(2, received.size(), () -> "翻译进度 + 终态应广播给订阅者：" + received);
         TaskProgressMessage progress = received.get(0);
         assertEquals(TaskStatus.SUCCEEDED, progress.taskStatus(),
                 "翻译事件的 taskStatus 恒为主状态 SUCCEEDED");
-        assertEquals(TranslationStatus.RUNNING, progress.translationStatus(),
-                "进度事件携带进行中的翻译子状态（SSE 终态判定据此不收口连接）");
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), progress.stage().stage());
         assertEquals(40, progress.stage().progress(), "翻译事件自成 0..100 段，直通不 remap");
+        assertFalse(progress.terminal(), "翻译进行中不得判终态（否则连接被提前收掉）");
 
         TaskProgressMessage terminal = received.get(1);
-        assertEquals(TaskStatus.SUCCEEDED, terminal.taskStatus(), "翻译终态广播的 taskStatus 用主状态");
-        assertEquals(TranslationStatus.SUCCEEDED, terminal.translationStatus());
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), terminal.stage().stage());
         assertEquals(100, terminal.stage().progress());
         assertEquals(StageProgress.State.SUCCEEDED, terminal.stage().state());
+        assertTrue(terminal.terminal());
 
         // 终态收口后注册表不再投递
         registry.broadcast(task.getTaskNo().value(),
-                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null));
         assertEquals(2, received.size(), "翻译终态 complete 后订阅者应已清空");
+
+        // 退登记：finally 跑过 → 该工作区可以再开一次后置会话（漏了就是永久幽灵）
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "异步体收口必须退登记，否则该工作区的互斥再也释放不掉");
     }
 
     @Test
-    void translationFailureMarksTranslationFailedAndBroadcastsTerminal() {
+    void translationFailureRecordsReasonAndBroadcastsFailedTerminal() {
         VideoTask task = succeededTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         doAnswer(invocation -> {
-            ProgressListener listener = invocation.getArgument(1);
+            ProgressListener listener = invocation.getArgument(3);
             listener.onProgress(new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), 40, "第 1/2 批",
                     StageProgress.State.RUNNING));
             throw new IllegalStateException("LLM 返回掉行");
-        }).when(translationStage).translate(any(MediaInput.class), any(ProgressListener.class));
+        }).when(translationStage).translate(any(MediaInput.class), any(SupportedLanguage.class),
+                any(SupportedLanguage.class), any(ProgressListener.class));
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.TRANSLATE_SUBTITLES.getStageName()));
         SubtitlePipeline pipeline = service(2);
 
-        pipeline.translateTask(task.getTaskNo());
+        pipeline.translateTask(task, SOURCE_LANG, TARGET_LANG);
 
-        // 异步段失败后第二次落库（translationFail）——times(2) 即终态同步点
-        verify(repository, timeout(2000).times(2)).update(task);
-        assertEquals(TranslationStatus.FAILED, task.getTranslationStatus());
+        verify(repository, timeout(2000)).update(task);
         assertEquals("翻译失败：LLM 返回掉行", task.getErrorMessage(), "失败原因带「翻译失败：」前缀落库");
         assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "翻译失败不得回退主状态");
 
         assertEquals(2, received.size(), () -> "进度 + 失败终态应广播给订阅者：" + received);
         TaskProgressMessage terminal = received.get(1);
         assertEquals(TaskStatus.SUCCEEDED, terminal.taskStatus());
-        assertEquals(TranslationStatus.FAILED, terminal.translationStatus());
         assertEquals(StageProgress.State.FAILED, terminal.stage().state());
         assertEquals("翻译失败：LLM 返回掉行", terminal.stage().message(),
                 "翻译失败终态事件的消息携带失败原因（SSE 上唯一的错误出口）");
 
         registry.broadcast(task.getTaskNo().value(),
-                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null));
         assertEquals(2, received.size(), "翻译终态 complete 后订阅者应已清空");
+
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "失败路径同样要退登记（异常路径漏一处就是永久幽灵）");
     }
 
     // ---------- 后置会话：重新生成字幕（AC9 / AC10 / AC12 的异步体这一半） ----------
@@ -641,22 +578,24 @@ class SubtitlePipelineTest {
     }
 
     @Test
-    void queuedTranslationInterruptFailsTranslationAndBroadcastsTerminal() {
+    void queuedTranslationInterruptFailsTranslationReleasesSessionAndBroadcastsTerminal() {
         VideoTask task = succeededTask("https://example.com/v");
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
-        when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(false);
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
+        assertTrue(sessionRegistry.tryStart(task.getWorkspaceKey(),
+                SubtitleStageName.TRANSLATE_SUBTITLES.getStageName()), "模拟 service 同步段已抢到登记");
 
-        service(interruptOnQueueGate()).translateTask(task.getTaskNo());
+        service(interruptOnQueueGate()).translateTask(task, SOURCE_LANG, TARGET_LANG);
 
-        assertEquals(TranslationStatus.FAILED, task.getTranslationStatus(),
-                "翻译已置 RUNNING 才排队，被打断不能吞状态");
         assertEquals("翻译失败：翻译在等待执行配额时被中断：请重新触发翻译", task.getErrorMessage());
         assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "翻译失败不得回退主状态");
         assertEquals(1, received.size(), () -> "失败终态只广播一条：" + received);
-        assertEquals(TranslationStatus.FAILED, received.get(0).translationStatus());
-        verify(translationStage, never()).translate(any(MediaInput.class), any(ProgressListener.class));
+        assertEquals(StageProgress.State.FAILED, received.get(0).stage().state());
+        verify(translationStage, never()).translate(any(MediaInput.class), any(SupportedLanguage.class),
+                any(SupportedLanguage.class), any(ProgressListener.class));
+        assertNull(sessionRegistry.findRunningStage(task.getWorkspaceKey()),
+                "排队被打断也必须退登记（三条退出路径的一条）");
     }
 
     /** 假闸门①：立刻同步跑 body（只看管线在「拿到许可」之后跑成什么样）。 */

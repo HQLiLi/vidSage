@@ -59,7 +59,9 @@ return switch (source) {
 
 **残留风险（有意接受）**：边界卫语句若漏写，客户端错误会被构造器报成 **500**。取舍理由是**失败方向反转**——旧形态是服务端 bug **伪装成 400 / WARN 静默存活**，新形态把服务端疏漏**喊成 500 / ERROR，可见**。宁可大声暴露服务端缺陷，也不要藏进「用户错误」里。
 
-项目当前**不定义自定义异常类**。上表与本判据以**语义**表达、不绑类型——将来引入自定义异常体系时，只需补类型映射，判据不动。等到需要跨层区分错误类型（例如给前端不同错误码）时再引入，不要提前造。
+**自定义异常类按「需要跨层区分错误码时再引入」这一条件引入，现已有四个**（清单见文末「尚未建立的约定」）。
+上表与本判据仍以**语义**表达、不绑类型：默认用 IAE（错在调用方）/ ISE（错在环境）承载含义，
+只有必须让前端区分状态码时才补一个具名类型 + 一条 `ApiExceptionHandler` 映射——**不为「以后可能用到」提前造**。
 
 ## 字符串判空
 
@@ -151,7 +153,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 | 吞异常（`catch` 后不处理或只 `printStackTrace`） | 现有代码没有一处吞异常，保持这个纪律 |
 | 返回 `null` 表示失败 | 调用方必须判空，容易漏 |
 | 抛异常但 message 无上下文 | 线上无法定位 |
-| 为"以后可能用到"预先造自定义异常体系 | 当前代码没有，属于过度设计 |
+| 为"以后可能用到"预先造自定义异常体系 | 只在「需要跨层区分错误码」时加类型（现共四个，见文末清单），其余仍走 IAE / ISE 语义 |
 | 在 Provider 里做重试/降级逻辑 | 重试属于管线编排层，不属于 Provider（现阶段也无此实现） |
 
 ## REST 层错误映射（已建立，且已提取为全局）
@@ -162,17 +164,31 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 - **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）；`TaskNotFoundException` → **404**；`TaskConflictException` → **409**（载荷额外附既有任务视图，见 `TaskConflictResponse`）
 - **409 现有两个场景**（2026-10-12 起并列，同一个异常类、同一条映射）：
   1. **同 URL / 同内容已有进行中任务**——提交查重命中（`VideoTaskService.rejectIfActive`）；
-  2. **同工作区已有后置会话（重新生成字幕）在跑**——`TaskSessionRegistry.tryStart` 抢登记失败
-     （任务 `10-11-subtitle-keyword-regenerate`）。判定在同步段、202 之前：抢不到就 409，不排队等锁。
+  2. **同工作区已有后置会话（重新生成字幕 **或** 翻译）在跑**——`TaskSessionRegistry.tryStart` 抢登记失败
+     （任务 `10-11-subtitle-keyword-regenerate` 起，`10-11-subtitle-multilang-translate` 2026-10-14 把翻译
+     也接进同一把锁）。判定在同步段、202 之前：抢不到就 409，不排队等锁。
+     **一把锁管两类后置会话**：两者都会动同一批产物（重新生成会删译文、翻译在读清洗产物），故互斥范围是
+     工作区级、不分类别；抢锁用各自阶段名（`clean-subtitles` / `translate-subtitles`）。
      **文案必须区分场景**——场景 2 的冲突方手里就是那个任务号（主状态还是 SUCCEEDED），
      套用场景 1 的「请勿重复提交」会让人以为提交写错了，故走 `TaskConflictException` 带 message 的构造器。
+     **已知缺口（未修）**：场景 2 只拦「后置会话 → 后置会话」；「后置会话在跑时**再提交一个新任务**」
+     不在守卫内——`rejectIfActive` 只查 DB 的 PENDING/RUNNING，而后置会话不落库。
 - **日志级别按「谁之过」分**：调用方输入问题（400 / 404 / 409）记 **WARN**——不该触发 ERROR 告警；服务端或环境故障（500）记 **ERROR** 并**带上异常对象**（保留调用栈供定位）
 - **响应体形状只有一处定义**：`{ "error": message }` 由 `ApiExceptionHandler` 统一产出，接口文档也不逐接口重复声明
 
 ## 尚未建立的约定
 
 - **错误码体系**：未定义。
-- **自定义异常类**：已按「需要跨层区分错误码时再引入」的既定条件落地**两个**——`TaskNotFoundException`（404，按 taskNo 取资源的三个端点统一）与 `TaskConflictException`（409，载荷附既有任务快照，2026-10-12 起覆盖「重复提交」与「后置会话互斥」两个场景）。**不再为别的场景提前造**：其余错误仍按 IAE / ISE 的语义表达。
+- **自定义异常类**：已按「需要跨层区分错误码时再引入」的既定条件落地**四个**，每个要么自带 `ApiExceptionHandler` 映射、要么继承现成映射的类型：
+
+  | 异常 | 包 | 映射 | 场景 |
+  |---|---|---|---|
+  | `TaskNotFoundException` | `application/task/exception/` | 404 | 按 taskNo 取资源的三个端点统一 |
+  | `TaskConflictException` | `application/task/exception/` | 409（载荷附既有任务快照） | 重复提交、同工作区后置会话互斥（重新生成 2026-10-12 / 翻译 2026-10-14） |
+  | `UnsupportedLanguageException` | `domain/exception/` | 400（专用映射） | 目标语种不在支持列表（`SupportedLanguage.parse` 认不出） |
+  | `InvalidWorkDirectoryException` | `application/exception/` | 400（**继承 `IllegalArgumentException`**，由 IAE 那条接，没另写映射） | 工作区目录入参为空（2026-10-14） |
+
+  **不再为别的场景提前造**：其余错误仍按 IAE / ISE 的语义表达。
 - **日志**：已落地，规范见 [logging-guidelines.md](./logging-guidelines.md)。
 
 

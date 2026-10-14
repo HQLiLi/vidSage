@@ -1,12 +1,11 @@
 package com.vidsage.domain.subtitle.model.common;
 
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.policy.Bcp47LanguagePolicy;
 import lombok.Getter;
 
-import java.util.Arrays;
-import java.util.Locale;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * 字幕产物的登记表：生成产物名，并回答一个文件是不是可下载的产物。
@@ -15,35 +14,35 @@ public enum SubtitleArtifactSpec {
     /**
      * 原始转写检查点。
      */
-    SEGMENTS_RAW("segments-{route}.json", true, true),
+    ORIGINAL_SEGMENTS("original-segments.json", true, true),
 
     /**
      * 原始 SRT：由 JSON 渲染的派生视图，不参与幂等判定。
      */
-    SRT_RAW("subtitles-{route}.srt", true, false),
+    ORIGINAL_SRT("original-subtitles.srt", true, false),
 
     /**
      * 清洗后检查点。
      */
-    SEGMENTS_CLEAN("segments-{route}-clean.json", true, true),
-    SRT_CLEAN("subtitles-{route}-clean.srt", true, false),
+    CLEAN_SEGMENTS("clean-segments.json", true, true),
+    CLEAN_SRT("clean-subtitles.srt", true, false),
 
     /**
      * 翻译检查点。带目标语种指纹——换语种绝不拿上一份凑数。
      */
-    SEGMENTS_TRANSLATED("segments-{route}-translate-{lang}.json", true, true),
-    SRT_TRANSLATED("subtitles-{route}-translate-{lang}.srt", true, false),
+    TRANSLATED_SEGMENTS("translated-segments-{lang}.json", true, true),
+    TRANSLATED_SRT("translated-subtitles-{lang}.srt", true, false),
 
 
     /**
      * 上下文摘要：清洗与翻译共用。故意不带语种指纹——主题/术语/源语种与译成什么语无关。
      */
-    CONTEXT("context-{route}.json", false, true),
+    CONTEXT("context.json", false, true),
 
     /**
      * 术语查证结论：删文件即重查；查证失败的词不进文件，下次自然补查。
      */
-    TERMS("terms-{route}-{lang}.json", false, true);
+    TERMS("terms-{lang}.json", false, true);
 
 
     private final String template; // 名称模板
@@ -62,20 +61,27 @@ public enum SubtitleArtifactSpec {
     }
 
 
-    public String fileName(SubtitleRoute route, String lang) {
-        String name = template.replace("{route}", routeToken(route));
-        return name.contains("{lang}") ? name.replace("{lang}", Bcp47LanguagePolicy.resolveTargetLanguage(lang)) : name;
+    public String getFileName(String lang) {
+        return template.contains("{lang}")
+                ? template.replace("{lang}", Bcp47LanguagePolicy.resolveTargetLanguage(lang))
+                : template;
     }
 
     /**
-     * 枚举名 → 产物 token：{@code ASR_CLOUD → asr-cloud}。
+     * 从文件名中获取语种:{@link SupportedLanguage#getCode()}。
+     * 如果调用模板不含{lang}或文件名为null则返回null
      *
-     * @param route 产物路线
-     * @return kebab 形式的路线 token
+     * @param fileName 文件名 跟翻译相关的，如 translated-subtitles-en.srt
+     * @return 语种code
      */
-    private static String routeToken(SubtitleRoute route) {
-        return route.name().toLowerCase(Locale.ROOT).replace('_', '-');
+    public String getLanguage(String fileName) {
+        if (fileName == null || !template.contains("{lang}")) {
+            return null;
+        }
+        Matcher matcher = pattern.matcher(fileName);
+        return matcher.matches() ? matcher.group(1) : null;
     }
+
 
     /**
      * 文件名是否匹配某条「可下载」的产物模板。
@@ -111,30 +117,14 @@ public enum SubtitleArtifactSpec {
             regex.append(Pattern.quote(template.substring(cursor, slotStart)));
             int slotEnd = template.indexOf('}', slotStart);
             String slot = template.substring(slotStart, slotEnd + 1);
-            regex.append(switch (slot) {
-                // 必须包非捕获组：| 的优先级最低，不加括号的话整条正则会被交替拆成四选一，
-                // 前缀字面量只跟第一个分支粘在一起，任何完整产物名都匹配不上
-                // （后果是 matches 恒 false → artifacts 清单恒空、重生成删不掉译文产物）
-                case "{route}" -> "(?:" + RouteAlternation.VALUE + ")";
-                case "{lang}" -> "[a-z0-9-]+";
-                // 占位符名字写错时早失败：否则它会被当成字面量，永远匹配不到任何文件，且不报错
-                default -> throw new IllegalStateException("未知的模板占位符：" + slot);
-            });
+            if (slot.equals("{lang}")) {
+                regex.append("([a-z0-9-]+)");
+            } else {
+                throw new IllegalStateException("未知的模板占位符：" + slot);
+            }
             cursor = slotEnd + 1;
         }
         return Pattern.compile(regex.toString());
-    }
-
-    /**
-     * 路线 token 交替的懒加载持有类
-     */
-    private static final class RouteAlternation {
-        static final String VALUE = Arrays.stream(SubtitleRoute.values())
-                .map(route -> Pattern.quote(routeToken(route)))
-                .collect(Collectors.joining("|"));
-
-        private RouteAlternation() {
-        }
     }
 
 

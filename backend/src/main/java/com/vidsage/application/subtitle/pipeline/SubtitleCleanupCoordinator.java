@@ -12,7 +12,6 @@ import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
@@ -53,7 +52,6 @@ public class SubtitleCleanupCoordinator {
 
     private final WorkspaceKeyGenerator workspaceKeyGenerator;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
-    private final ASRProvider asrProvider;
     private final ObjectMapper objectMapper;
     private final SubtitleCleanupProperties props;
 
@@ -64,7 +62,6 @@ public class SubtitleCleanupCoordinator {
     /**
      * @param workspaceKeyGenerator     工作区key生成器
      * @param workspaceDirectoryManager 工作区目录管理器
-     * @param asrProvider               当前装配的 ASR provider（取路线与产物命名指纹）
      * @param objectMapper              Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      * @param props                     字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
      * @param contextSummarizer         内容总结器（摘要出主题与术语，供跨批上下文用）
@@ -72,14 +69,13 @@ public class SubtitleCleanupCoordinator {
      */
     public SubtitleCleanupCoordinator(WorkspaceKeyGenerator workspaceKeyGenerator,
                                       WorkspaceDirectoryManager workspaceDirectoryManager,
-                                      ASRProvider asrProvider,
                                       ObjectMapper objectMapper,
                                       SubtitleCleanupProperties props,
                                       SubtitleContextSummarizer contextSummarizer,
                                       SubtitleCleanser subtitleCleanser) {
         this.workspaceKeyGenerator = workspaceKeyGenerator;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
-        this.asrProvider = asrProvider;
+    
         this.objectMapper = objectMapper;
         this.props = props;
         this.contextSummarizer = contextSummarizer;
@@ -172,12 +168,11 @@ public class SubtitleCleanupCoordinator {
         if (keywords == null) {
             throw new IllegalArgumentException("关键词不能为 null：请传 new SubtitleKeywords(List.of()) 表示不纠这一类");
         }
-        SubtitleRoute route = asrProvider.route();
         WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
         Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
-        Path rawSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(route, null));
-        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.SEGMENTS_CLEAN.fileName(route, null));
-        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.SRT_CLEAN.fileName(route, null));
+        Path originalSeg = workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
+        Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
+        Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));
         SubtitleTrack existing = readCheckpoint(cleanSeg);
         String fingerprint = keywords.computeFingerprint();
 
@@ -198,14 +193,14 @@ public class SubtitleCleanupCoordinator {
         emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.start(),
                 regenerate ? "开始重新生成字幕" : "开始清洗", StageProgress.State.RUNNING);
 
-        if (!ArtifactFiles.isNonEmpty(rawSeg)) {
+        if (!ArtifactFiles.isNonEmpty(originalSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
-                    + rawSeg.getFileName() + "）");
+                    + originalSeg.getFileName() + "）");
         }
-        SubtitleTrack raw = readRaw(rawSeg);
-        List<TranscriptionSegment> segments = raw.segments();
+        SubtitleTrack original = readOriginal(originalSeg);
+        List<TranscriptionSegment> segments = original.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
-        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.fileName(route, null));
+        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
         // 缓存只在「旧产物就是当前这份关键词生成的」时可用；否则那份上下文可能是别的关键词集下产的
         SubtitleContext cached = current
                 ? ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class)
@@ -237,11 +232,11 @@ public class SubtitleCleanupCoordinator {
         CleanseResult result = subtitleCleanser.clean(split, subtitleContext, keywords,
                 ProgressMapper.remap(listener, SubtitleStageName.CLEAN_SUBTITLES.start(), SubtitleStageName.CLEAN_SUBTITLES.end()));
 
-        SubtitleTrack cleaned = new SubtitleTrack(route, raw.language(), result.segments(), fingerprint);
+        SubtitleTrack cleaned = new SubtitleTrack(original.language(), result.segments(), fingerprint);
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换
         emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.end(), "清洗完成", StageProgress.State.SUCCEEDED);
-        log.info("字幕清洗完成: route={}, segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
-                route.name(), result.segments().size(), result.correctedCount(), result.retrySteps(),
+        log.info("字幕清洗完成: segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
+                result.segments().size(), result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());
         if (regenerate) {
             // 先成功、后删：走到这里说明新的 -clean 已经原子替换落盘了
@@ -266,8 +261,8 @@ public class SubtitleCleanupCoordinator {
         try (Stream<Path> entries = Files.list(workDir)) {
             for (Path entry : entries.toList()) {
                 String name = entry.getFileName().toString();
-                if (SubtitleArtifactSpec.SEGMENTS_TRANSLATED.matches(name)
-                        || SubtitleArtifactSpec.SRT_TRANSLATED.matches(name)
+                if (SubtitleArtifactSpec.TRANSLATED_SEGMENTS.matches(name)
+                        || SubtitleArtifactSpec.TRANSLATED_SRT.matches(name)
                         || SubtitleArtifactSpec.TERMS.matches(name)) {
                     Files.deleteIfExists(entry);
                     deleted++;
@@ -303,11 +298,11 @@ public class SubtitleCleanupCoordinator {
     /**
      * 读原始 segments JSON；解析失败抛 ISE（原始若坏，无法清洗）。
      */
-    private SubtitleTrack readRaw(Path rawSeg) {
+    private SubtitleTrack readOriginal(Path originalSeg) {
         try {
-            return objectMapper.readValue(rawSeg.toFile(), SubtitleTrack.class);
+            return objectMapper.readValue(originalSeg.toFile(), SubtitleTrack.class);
         } catch (JacksonException e) {
-            throw new IllegalStateException("原始字幕 segments 解析失败：" + rawSeg.getFileName()
+            throw new IllegalStateException("原始字幕 segments 解析失败：" + originalSeg.getFileName()
                     + "；原因：" + e.getMessage(), e);
         }
     }
@@ -336,7 +331,7 @@ public class SubtitleCleanupCoordinator {
     private static CleanedSubtitle toCleaned(SubtitleTrack track, Path cleanSeg, Path cleanSrt,
                                              int correctedCount, int retrySteps,
                                              int termHits, int termApplied) {
-        return new CleanedSubtitle(cleanSrt, cleanSeg, track.route(), track.language(),
+        return new CleanedSubtitle(cleanSrt, cleanSeg, track.language(),
                 track.segments().size(), ArtifactFiles.sizeOrZero(cleanSrt), correctedCount, retrySteps,
                 termHits, termApplied);
     }

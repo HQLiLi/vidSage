@@ -22,7 +22,6 @@ import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.subtitle.SrtRenderer;
@@ -43,8 +42,6 @@ import tools.jackson.databind.ObjectMapper;
  */
 class SubtitlePreparationCoordinatorTest {
 
-    private static final SubtitleRoute ROUTE = SubtitleRoute.ASR_CLOUD;
-
     // ---------- prepare 编排 ----------
 
     @Test
@@ -52,18 +49,16 @@ class SubtitlePreparationCoordinatorTest {
             @TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         var service = serviceWith(
-                tempDir, ROUTE, AudioSpec.M4A_AAC_48K_MONO, List.of(), "zh", mapper);
+                tempDir, AudioSpec.M4A_AAC_48K_MONO, List.of(), "zh", mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
 
-        assertEquals(ROUTE, artifact.route());
         assertEquals(0, artifact.segmentCount());
         assertEquals(0, artifact.srtSizeBytes());
 
         String json = Files.readString(artifact.segmentsPath());
         var track = mapper.readValue(json, SubtitleTrack.class);
         assertEquals(0, track.segments().size(), "空转写 JSON 里 segments 应为 []");
-        assertEquals(ROUTE, track.route());
     }
 
     @Test
@@ -71,16 +66,16 @@ class SubtitlePreparationCoordinatorTest {
             @TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         // 预置非空 segments JSON → prepare 应跳过音频准备与转写
-        var track = new SubtitleTrack(ROUTE, "zh",
+        var track = new SubtitleTrack("zh",
                 List.of(new TranscriptionSegment(0, 1440, "已有内容。")), null);
-        Path segmentsPath = tempDir.resolve(SubtitleArtifactSpec.SEGMENTS_RAW.fileName(ROUTE, null));
+        Path segmentsPath = tempDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
         Files.writeString(segmentsPath, mapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(track));
 
         var audioPrep = mock(AudioPreparationCoordinator.class);
         var transcribe = mock(Transcriber.class);
         var service = new SubtitlePreparationCoordinator(stubKeyGenerator(), tempDirWorkspace(tempDir), audioPrep, transcribe,
-                mockAsr(tempDir, ROUTE, AudioSpec.M4A_AAC_48K_MONO), mapper);
+                mockAsr(tempDir, AudioSpec.M4A_AAC_48K_MONO), mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
 
@@ -95,7 +90,7 @@ class SubtitlePreparationCoordinatorTest {
             @TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         // 只有 SRT 在、segments JSON 不在 → 必须重新跑，不能跳过（决策 4 的回归测试）
-        Files.writeString(tempDir.resolve(SubtitleArtifactSpec.SRT_RAW.fileName(ROUTE, null)),
+        Files.writeString(tempDir.resolve(SubtitleArtifactSpec.ORIGINAL_SRT.getFileName(null)),
                 SrtRenderer.toSrt(List.of(new TranscriptionSegment(0, 1440, "陈旧 SRT。"))));
 
         var audioPrep = mock(AudioPreparationCoordinator.class);
@@ -106,7 +101,7 @@ class SubtitlePreparationCoordinatorTest {
         when(transcribe.transcribe(any(), any())).thenReturn(
                 new TranscriptionResult(List.of(new TranscriptionSegment(0, 1440, "新转写。")), "zh"));
         var service = new SubtitlePreparationCoordinator(stubKeyGenerator(), tempDirWorkspace(tempDir), audioPrep, transcribe,
-                mockAsr(tempDir, ROUTE, audioSpec), mapper);
+                mockAsr(tempDir, audioSpec), mapper);
 
         SubtitleArtifact artifact = service.prepare(input(tempDir), ProgressListener.noop());
 
@@ -122,7 +117,7 @@ class SubtitlePreparationCoordinatorTest {
 
     /** 组装被测服务：除特意留出的依赖外全用真实 mock，编排路径覆盖静态断言。 */
     private static SubtitlePreparationCoordinator serviceWith(
-            Path tempDir, SubtitleRoute route, AudioSpec audioSpec,
+            Path tempDir, AudioSpec audioSpec,
             List<TranscriptionSegment> segments, String language, ObjectMapper mapper) {
         var audioPrep = mock(AudioPreparationCoordinator.class);
         var transcribe = mock(Transcriber.class);
@@ -130,7 +125,7 @@ class SubtitlePreparationCoordinatorTest {
                 new AudioArtifact(tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(new TranscriptionResult(segments, language));
         return new SubtitlePreparationCoordinator(stubKeyGenerator(), tempDirWorkspace(tempDir), audioPrep, transcribe,
-                mockAsr(tempDir, route, audioSpec), mapper);
+                mockAsr(tempDir, audioSpec), mapper);
     }
 
     private static WorkspaceDirectoryManager tempDirWorkspace(Path tempDir) {
@@ -145,9 +140,8 @@ class SubtitlePreparationCoordinatorTest {
         return kg;
     }
 
-    private static ASRProvider mockAsr(Path tempDir, SubtitleRoute route, AudioSpec audioSpec) {
+    private static ASRProvider mockAsr(Path tempDir, AudioSpec audioSpec) {
         var asr = mock(ASRProvider.class);
-        when(asr.route()).thenReturn(route);
         when(asr.requiredAudioSpec()).thenReturn(audioSpec);
         return asr;
     }

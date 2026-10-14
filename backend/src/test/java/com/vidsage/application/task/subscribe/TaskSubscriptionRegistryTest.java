@@ -30,7 +30,7 @@ class TaskSubscriptionRegistryTest {
 
     private static TaskProgressMessage event(TaskStatus status) {
         return TaskProgressMessage.of("t0", status,
-                new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 50, "第 1/2 批", StageProgress.State.RUNNING), null);
+                new StageProgress(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), 50, "第 1/2 批", StageProgress.State.RUNNING));
     }
 
     // ---------- 订阅与广播 ----------

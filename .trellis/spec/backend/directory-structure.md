@@ -18,7 +18,7 @@ com.vidsage
 │   ├── subtitle/                  # 字幕上下文
 │   └── shared/                    # 共享内核：跨上下文领域词汇
 ├── application/                   # 应用服务层：用例编排、读模型、应用消息与异常、本层定义的出站端口
-│   ├── task/ media/ transcription/ subtitle/ diagnostics/
+│   ├── task/ media/ transcription/ subtitle/ workspace/ diagnostics/ exception/
 ├── infrastructure/                # 基础设施层：出站适配
 │   ├── persistence/               # entity / mapper / repository（MyBatis-Plus 三件套）
 │   ├── process/                   # 外部进程执行能力
@@ -59,20 +59,22 @@ com.vidsage
 
 各层「装什么」的细则：
 
-**`domain/`（五个上下文 + 共享内核）**：
+**`domain/`（四个上下文 + 共享内核 + `exception/`）**：
 
 - 领域词汇：`record` / `enum` / `sealed` 接口等中立契约（如 `TranscriptionCommand` / `TranscriptionResult`、`MediaInput`、`CleanedSubtitle`）。
 - 状态机与业务规则：出现「随调用改变状态、并拒绝非法变化」的对象才进 `domain/`——如 `domain/task/VideoTask`（`PENDING → RUNNING → SUCCEEDED/FAILED`，非法迁移抛 `IllegalStateException`）。只有字段约束的数据（`record` + 紧凑构造器）同样是 domain 居民，但它们是**领域词汇**，不是状态机；两类并存，不互相冒充。（历史注：2026-09-30 MVP-1 时 `domain/` 曾与顶层 `model/` 并存——「有状态机的进 domain、纯数据的留 model」；2026-10-05 四层化后 `model/` 整体并入 `domain/`，判据收敛为「领域的东西都进 domain」。）
 - **端口接口**（六边形原则：端口属于六边形内部，适配器在 infrastructure）：`ASRProvider` → `domain/transcription/port/`；`MediaAcquirer` / `AudioExtractor` → `domain/media/port/`；`TermLookupProvider` / `SubtitleCleanser` / `SubtitleTranslator` / `SubtitleContextSummarizer` → `domain/subtitle/port/`；`VideoTaskRepository` → `domain/task/port/`。均无框架注解、纯契约，与领域层 purity 一致。**端口也可以定义在 application**（`ToolDiagnostics` → `application/diagnostics/port/`；`FileStateReader` → `application/media/port/`（2026-10-08，文件 stat 采样是技术词汇，实现落 `infrastructure/fs/`）），归属判据见[端口归属判据](#端口归属判据)。
-- **值对象**：落位跟着**归属**走——谁定义它的含义就住谁那儿（`TaskNo` → `domain/task/model/`；`SubtitleStageName`（2026-10-07）→ `domain/subtitle/model/common/`：被 media 与 task 引用，但含义由字幕管线的阶段划分定义）。**只有归属落位会造出上下文互相依赖时才退到共享内核 `domain/shared/`**——`WorkspaceKey`（`VideoTask`（task）持有、`VideoTaskService`（application/task）计算、`MediaInput`（media）携带、`VideoTaskRepository` 按它查询，放共享内核避免 `domain/task → domain/media` 依赖）与进度词汇 `StageProgress` / `ProgressListener`（media / subtitle / task 三处共用（2026-10-11 订正，原写 transcription——transcription 上下文并无进度通道，`Transcriber` 不接 listener）；数据词汇进 `model/`、接口进 `port/`）。**第二批值对象已按同判据落地（2026-10-06 业务逻辑下沉 Phase A）**：`SourceUri`（输入身份规范化串：URL 原文 / 本地路径按 path|size|mtime 定身份）与 `WorkspaceDir`（目录名公式 `sanitize(标签)-key` + Windows 保留名安全化），同为 task 与 media 两上下文共用，随行的 `sanitizeName` / 保留名规则一并入域。
-- **纯函数领域政策**（2026-10-06 业务逻辑下沉 Phase B/C 落地）：无状态、零 I/O 的规则判据收进 domain——应用层持事实（量字节、读文件、查库），域做裁决；政策对象是**值对象 / 纯函数领域服务，不是技术端口**。现行归属：`domain/subtitle/policy/Bcp47LanguagePolicy`（语种政策，2026-10-13 自 Bcp47Language 改名）、`domain/subtitle/policy/TermVerification`（术语查证触发与记账）、`domain/subtitle/policy/CheckpointPolicy`（检查点语义 + 上下文缓存-or-摘要）；`domain/task/policy/TaskArtifactScan`（产物可见性白名单）、`domain/task/policy/TaskStageEvent`（任务状态 → 阶段事件的渲染政策，2026-10-06 自 `VideoTaskService` 的两个包级私有 static 下沉——跨包共用同一份形状，靠 public 政策而非放宽可见性）；`domain/media/model/AudioArtifact.fileName`（音频规格指纹命名）、`domain/media/model/MediaInput.ofTaskInput`（TaskInputType → 变体重建工厂 + `source.mp4` 落盘名）；`domain/task/VideoTask` 上的查询谓词 `isEventTerminal`（终态判定，web 收口引用）与 `ACTIVE_STATUSES`（active 判据，repository 查重引用）。
+- **值对象**：落位跟着**归属**走——谁定义它的含义就住谁那儿（`TaskNo` → `domain/task/model/`；`SubtitleStageName`（2026-10-07）→ `domain/subtitle/model/common/`：被 media 与 task 引用，但含义由字幕管线的阶段划分定义；`SupportedLanguage`（2026-10-14）→ `domain/subtitle/model/translation/`：翻译的支持语种白名单——短码、中文名、别名集合，外加「是不是同一门语言」的判据，含义由翻译定义）。**只有归属落位会造出上下文互相依赖时才退到共享内核 `domain/shared/`**——`WorkspaceKey`（`VideoTask`（task）持有、`VideoTaskService`（application/task）计算、`MediaInput`（media）携带、`VideoTaskRepository` 按它查询，放共享内核避免 `domain/task → domain/media` 依赖）与进度词汇 `StageProgress` / `ProgressListener`（media / subtitle / task 三处共用（2026-10-11 订正，原写 transcription——transcription 上下文并无进度通道，`Transcriber` 不接 listener）；数据词汇进 `model/`、接口进 `port/`）。**第二批值对象已按同判据落地（2026-10-06 业务逻辑下沉 Phase A）**：`SourceUri`（输入身份规范化串：URL 原文 / 本地路径按 path|size|mtime 定身份）与 `WorkspaceDir`（目录名公式 `sanitize(标签)-key` + Windows 保留名安全化），同为 task 与 media 两上下文共用，随行的 `sanitizeName` / 保留名规则一并入域。
+- **纯函数领域政策**（2026-10-06 业务逻辑下沉 Phase B/C 落地）：无状态、零 I/O 的规则判据收进 domain——应用层持事实（量字节、读文件、查库），域做裁决；政策对象是**值对象 / 纯函数领域服务，不是技术端口**。现行归属：`domain/subtitle/policy/Bcp47LanguagePolicy`（语种政策，2026-10-13 自 Bcp47Language 改名；现有两个纯函数：`resolveTargetLanguage`（配置语种 → 归一化短码）、`skipAll`（跳过翻译时逐条译文照抄原文）；`resolveSourceLanguage` 已于 2026-10-14 删除——跳过判据改成 `SupportedLanguage` 的枚举相等后它没有调用者了）、`domain/subtitle/policy/TermVerification`（术语查证触发与记账）、`domain/subtitle/policy/CheckpointPolicy`（检查点语义 + 上下文缓存-or-摘要）；`domain/task/policy/TaskStageEvent`（任务状态 → 阶段事件的渲染政策，2026-10-06 自 `VideoTaskService` 的两个包级私有 static 下沉——跨包共用同一份形状，靠 public 政策而非放宽可见性）；`domain/media/model/AudioArtifact.fileName`（音频规格指纹命名）、`domain/media/model/MediaInput.ofTaskInput`（TaskInputType → 变体重建工厂 + `source.mp4` 落盘名）；`domain/task/VideoTask` 上的查询谓词 `isEventTerminal`（终态判定，web 收口引用）与 `ACTIVE_STATUSES`（active 判据，repository 查重引用）。
 
-**`application/`（五个上下文）**——用例编排的家，五类一等构件：
+**`application/`（六个上下文 + `exception/`）**——用例编排的家，五类一等构件
+（`workspace/` 是 2026-10-14 新增的第六个上下文：工作区文件清单的组装视图；
+`exception/` 装跨上下文的具名异常，见 `error-handling.md` 的「尚未建立的约定」）：
 
 - **用例服务**：`@Service` 编排类，**有 web 调用面**（`VideoTaskService`——`TaskController` 唯一注入的应用服务）或**被多处方共用的横切编排能力**（有编排内容才算；单一规则 / 单一事实的机械件归机制/协作件档，见[构件说明](#构件说明服务与管线构件)）。组装契约、委托端口，不出现适配器实现类与 SDK 类型。
 - **管线构件**：`@Component` 编排类，**没有 web 调用面**——`SubtitlePipeline`（管线的所有者：阶段顺序、进度广播、终态收口）与各阶段构件（认领进度阶段的那一步，只被上级管线按顺序调用一次）。判据、命名与「为什么不下沉 domain」见下节[构件说明](#构件说明服务与管线构件)。
-- **读模型**：`TaskSnapshot` / `TaskArtifact` / `TaskArtifactFile`——面向查询的应用层投影，**零 web 注解**（2026-10-06 读模型拆分：对外 @Schema 集中到 `web/dto/TaskResponse`，见[契约类的位置](#契约类的位置)判据 2）。
-- **应用消息 / 应用异常**：`TaskProgressMessage`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`。
+- **读模型**：`TaskSnapshot` / `TaskArtifact` / `TaskArtifactFile`（`application/task/query/`）——面向查询的应用层投影，**零 web 注解**；`SubtitleWorkspaceFilePaths` / `TranslationFilePaths`（`application/workspace/`，2026-10-14）——扫工作区目录得出的文件清单视图，同样零 web 注解，但**只服务管线自身**、不上接口（2026-10-06 读模型拆分：对外 @Schema 集中到 `web/dto/TaskResponse`，见[契约类的位置](#契约类的位置)判据 2）。
+- **应用消息 / 应用异常**：`TaskProgressMessage`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`（`application/task/exception/`）、`InvalidWorkDirectoryException`（`application/exception/`，2026-10-14；继承 `IllegalArgumentException`，跨上下文）。
 - **中立订阅机制**：`TaskSubscriptionRegistry` / `Subscription`——application 层管线广播事件、web 层挂「写 emitter」回调，两边都依赖它。判据是「写得出它不许装什么」：**禁 HTTP 类型**（`SseEmitter` 只活 `web/sse/`，承诺落在 [`subscribe/package-info.java`](../../../backend/src/main/java/com/vidsage/application/task/subscribe/package-info.java)）、**禁业务编排**；与 `shared/` 同类「机制包」先例。（历史注：该机制 2026-09-30 曾定调为顶层 `subscribe/` 包，2026-10-05 四层化归入 `application/task/`；升级条件随之带入——出现多传输协议（SSE + WebSocket）并存或包内构件 ≥3 时再议拆分。）
 
 上述五类构件在 `application/task/` 内按角色子包落位（2026-10-05，2026-10-06 补 `pipeline/`，2026-10-10 补 `message/`，2026-10-12 补 `session/`）：服务门面留根，管线构件进 `pipeline/`、读模型进 `query/`、应用消息进 `message/`、应用异常进 `exception/`、中立订阅机制进 `subscribe/`（禁 HTTP 类型的承诺随迁入其包说明）；另有机制/协作件 `TaskProgressNotifier`（非上述五类，三档表见[构件说明](#构件说明服务与管线构件)）进 `notify/`，与 `subscribe/` 的分工是「一个管谁能收、一个管什么时候送、送之前先落库」；`TaskSessionRegistry`（后置会话在途登记：**哪个工作区的哪个后置会话在跑**，2026-10-12）进 `session/`——读它的是 `TaskProgressNotifier`（快照渲染成该阶段的 RUNNING），写它的是字幕管线（`finally` 退登记是硬要求），与订阅表「管线广播 / web 挂回调」的分工同形；判据见下文[二级包怎么分](#二级包怎么分)。
@@ -99,7 +101,7 @@ com.vidsage
 
   （`Service` 后缀仍**不许**用在管线构件上：它在本项目的含义是「用例入口 / 横切服务」，管线构件与两者都不沾。2026-10-06 命名对齐前，六个阶段类叫 `SubtitleService` / `SubtitleCleanupService` / …，名不副实。）
 
-**为什么管线构件不下沉 `domain/`**：它们全是 I/O 密集（读工作区、调端口、写产物文件），而 `domain → shared` 禁止、`domain` 的紧凑构造器不许做 I/O；纯业务判据已下沉完（`CheckpointPolicy` / `TermVerification` / `Bcp47LanguagePolicy` / `TaskArtifactScan` 等）。**问题不在分层，在名字。**
+**为什么管线构件不下沉 `domain/`**：它们全是 I/O 密集（读工作区、调端口、写产物文件），而 `domain → shared` 禁止、`domain` 的紧凑构造器不许做 I/O；纯业务判据已下沉完（`CheckpointPolicy` / `TermVerification` / `Bcp47LanguagePolicy` 等）。**问题不在分层，在名字。**
 
 > 判据的来历（2026-10-06 命名对齐）：旧口径下这两档都叫 `XxxService`，但全项目**只有 `VideoTaskService` 有 web 调用面**，其余每一个的调用者都恰好只有一个——没有一个是独立用例（当时的横切例外 `WorkspaceService` 已于 2026-10-09 端口倒置任务拆除，能力拆进 `WorkspaceDirectoryManager` 与 `WorkspaceKeyGenerator`）。名字在撒谎，故按「有没有 web 调用面」重划，并让 stereotype 跟着判据走。
 
@@ -195,7 +197,7 @@ com.vidsage
 
 三条轴各管各的，**不要互相推导**：
 
-- **`domain/`、`application/` 按限界上下文分**：`task/`、`media/`、`transcription/`、`subtitle/`（application 另有 `diagnostics/`）。上下文是领域概念的家；跨上下文词汇进 `domain/shared/` 共享内核。
+- **`domain/`、`application/` 按限界上下文分**：`task/`、`media/`、`transcription/`、`subtitle/`（application 另有 `diagnostics/`，2026-10-14 起另有 `workspace/`）。上下文是领域概念的家；跨上下文词汇进 `domain/shared/` 共享内核，跨上下文的具名异常进各层的 `exception/`。
 - **上下文包内按「角色」拆桶，桶名用该层已有的角色词**（2026-10-06 包结构整理定，取代旧的「1–3 类平铺即可」阈值）：判据不看包有多大，只看**这个类在所属层的角色**——角色决定桶路径，新增类据此机械落位。**根留该包的门面**，该上下文没有门面时根只剩 `package-info.java`（合法）；**有成员才建桶**，不建空目录：
 
 | 层 | 桶 | 根留什么 |
@@ -369,7 +371,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 | `TranscriptionResult` | `domain/transcription/model/` | 字段为 `List<TranscriptionSegment>` + `String`，形状可直接对外 → 直接充当对外契约，补 `@Schema` |
 | `TaskSnapshot` / `TaskArtifact` | `application/task/query/` | 任务查询的应用层读模型（查询期产物扫描随行）→ **零 web 注解**（判据 2）；对外 @Schema 在 `web/dto/TaskResponse` 与元素级 `web/dto/TaskArtifactResponse`。流式下载出参 `TaskArtifactFile`（同在 `query/`）字段走响应头不进 JSON，**不补 @Schema** |
 | `TaskResponse` / `TaskArtifactResponse` | `web/dto/` | 任务提交 / 查询端点的对外响应（判据 2）：@Schema 齐全（自原 `TaskView` / `TaskArtifact` 逐条迁入，注解参数未改写），静态工厂 `from(读模型)` 纯映射，JSON 字段名 / 类型与拆分前逐一一致 |
-| `TaskProgressMessage` | `application/task/message/` | 应用 → web 的进度消息 → **不带 `@Schema`**：SSE 端点返回的是 `SseEmitter`，本类型只作 `TaskSseConnectionManager` 写出 SSE 事件时的入参流转，注解进不了 `/v3/api-docs`（2026-10-07 删）；2026-10-10 迁入 `message/` 桶，与 `exception/` 对称；`terminal` 为派生字段（构造时算一次送出，消费方不重算）——**判据两截（2026-10-12 随 D 组地基改，原为单源）**：① 主状态与翻译子状态的收敛判定在 `VideoTask.isEventTerminal`；② 「有没有在途后置会话」隐式编在 `stage` 的状态位里（RUNNING 态 = 在跑），故 `terminal = isEventTerminal(...) && (stage 为 null 或 stage 非 RUNNING)`。隐式派生保住「一条判据一个来源」，代价是「在途会话」这件事不落成独立字段，读代码要意识到这层含义（任务 `10-11-subtitle-keyword-regenerate` design §7 评审点 2） |
+| `TaskProgressMessage` | `application/task/message/` | 应用 → web 的进度消息 → **不带 `@Schema`**：SSE 端点返回的是 `SseEmitter`，本类型只作 `TaskSseConnectionManager` 写出 SSE 事件时的入参流转，注解进不了 `/v3/api-docs`（2026-10-07 删）；2026-10-10 迁入 `message/` 桶，与 `exception/` 对称；`terminal` 为派生字段（构造时算一次送出，消费方不重算）——**判据两截（2026-10-12 随 D 组地基改，原为单源；2026-10-14 翻译子状态下线后第二截的输入源换成登记表）**：① 主状态是否终态，单源在 `VideoTask.isEventTerminal(TaskStatus)`（只吃主状态——原签名还带一个翻译子状态参数，那一列已删）；② 「有没有在途后置会话」隐式编在 `stage` 的状态位里（RUNNING 态 = 在跑），故 `terminal = isEventTerminal(...) && (stage 为 null 或 stage 非 RUNNING)`。隐式派生保住「一条判据一个来源」，代价是「在途会话」这件事不落成独立字段，读代码要意识到这层含义（任务 `10-11-subtitle-keyword-regenerate` design §7 评审点 2） |
 | `SubmitUrlRequest` | `web/dto/` | 入参契约；只带 url 字符串进应用层，`MediaInput` 的构造在 application 内完成（2026-10-06 起 web main 不依赖 `domain/`） |
 | `TaskConflictResponse` | `web/dto/` | HTTP 专属组合形状（错误说明 + 既有任务视图），由 `ApiExceptionHandler` 从 application 异常映射 |
 
@@ -388,7 +390,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 
 **准入判据**：纯静态工具、无状态、不发起网络 / 外部进程；可引用 spring-core 工具类与 Jackson / slf4j，去掉容器仍可编译；只依赖 JDK + Jackson + slf4j + domain 词汇；不含业务编排。（历史注：本包 2026-10-05 DDD 四层化前叫顶层 `utils/`，子包结构不变，仅改名。）
 
-**`shared/<领域>/` —— 领域化助手包（2026-09-27 以 `utils/` 立；2026-09-27 修订边界）**：`shared/` 是允许的顶层包，`shared/<领域>/` 装该领域的助手——**只收纯算法助手，以及仅使用 `java.nio.file` 的本地文件系统助手**；以领域名限定归属。服务编排、适配器实现、`*Properties`、契约模型一律不得进入。参照：`shared/subtitle/`（切分器 / 相似度 / 渲染器 / 产物命名 / 术语命中判定）、`shared/fs/ArtifactFiles`（产物落盘、JSON 产物读写与大小判定）、`shared/text/TextTail`（文本尾部截取）、`shared/progress/ProgressMapper`（进度监听器重挂）。
+**`shared/<领域>/` —— 领域化助手包（2026-09-27 以 `utils/` 立；2026-09-27 修订边界）**：`shared/` 是允许的顶层包，`shared/<领域>/` 装该领域的助手——**只收纯算法助手，以及仅使用 `java.nio.file` 的本地文件系统助手**；以领域名限定归属。服务编排、适配器实现、`*Properties`、契约模型一律不得进入。参照：`shared/subtitle/`（`SrtRenderer` 渲染器 / `SubtitleSegmentSplitter` 切分器 / `TermMatcher` 术语命中判定 / `TextSimilarity` 文本相似度——**没有「产物命名」**，命名规则单源在 `domain/subtitle/model/common/SubtitleArtifactSpec`）、`shared/fs/ArtifactFiles`（产物落盘、JSON 产物读写与大小判定）、`shared/text/TextTail`（文本尾部截取）、`shared/progress/ProgressMapper`（进度监听器重挂）。
 
 **Spring 边界看容器，不看 jar**：判据是「**把 Spring 容器整个拿掉，这个包还能不能编译并通过测试**」——**能**才准进。故 `org.springframework.util.*` 这类纯静态工具**允许**；Spring 注解（`@Component` / `@Service` / `@Autowired` / `@Value` / `@ConfigurationProperties` 等）、`ApplicationContext`、`Environment`、HTTP 类型**禁止**。
 

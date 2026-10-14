@@ -16,7 +16,6 @@ import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.infrastructure.persistence.entity.VideoTaskEntity;
 import com.vidsage.infrastructure.persistence.mapper.VideoTaskMapper;
 import java.util.Collection;
@@ -84,7 +83,6 @@ class MybatisVideoTaskRepositoryTest {
         entity.setWorkspaceDir("dir-a1b2c3d4e5f6");
         entity.setStatus(TaskStatus.RUNNING);
         entity.setCurrentStage(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName());
-        entity.setTranslationStatus(TranslationStatus.SUCCEEDED);
         entity.setErrorMessage(null);
         when(mapper.selectOne(any())).thenReturn(entity);
 
@@ -100,8 +98,6 @@ class MybatisVideoTaskRepositoryTest {
         assertEquals("dir-a1b2c3d4e5f6", task.getWorkspaceDir());
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals(SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(), task.getCurrentStage());
-        assertEquals(TranslationStatus.SUCCEEDED, task.getTranslationStatus(),
-                "翻译子状态应随行双向转换（NULL=从未触发 → null）");
         // 重建出的领域对象可直接继续走状态机（RUNNING → FAILED）
         task.fail("失败详情");
         assertEquals(TaskStatus.FAILED, task.getStatus());
@@ -140,7 +136,7 @@ class MybatisVideoTaskRepositoryTest {
     @Test
     void updateWritesMutatedDomainStateBackToEntity() {
         VideoTask task = VideoTask.restore(9L, new TaskNo("abc123"), TaskInputType.URL, "https://example.com/v",
-                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.RUNNING, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null, null,
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.RUNNING, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), null);
         task.fail("翻译失败：请检查 DEEPSEEK_API_KEY");
@@ -157,19 +153,19 @@ class MybatisVideoTaskRepositoryTest {
     }
 
     @Test
-    void updateCarriesTranslationStatusTransition() {
+    void updateCarriesTranslationFailureIntoErrorMessage() {
         VideoTask task = VideoTask.restore(11L, new TaskNo("def456"), TaskInputType.URL, "https://example.com/v",
-                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null, null,
+                new WorkspaceKey("a1b2c3d4e5f6"), "dir", TaskStatus.SUCCEEDED, SubtitleStageName.CLEAN_SUBTITLES.getStageName(), null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now());
-        task.translationStart();
+        task.recordTranslationFailure(VideoTask.TRANSLATION_FAILURE_PREFIX + "LLM 超时");
 
         repository.update(task);
 
         ArgumentCaptor<VideoTaskEntity> captor = ArgumentCaptor.forClass(VideoTaskEntity.class);
         verify(mapper).updateById(captor.capture());
-        assertEquals(TranslationStatus.RUNNING, captor.getValue().getTranslationStatus(),
-                "翻译子状态迁移应写回实体（NULL → RUNNING）");
-        assertEquals(TaskStatus.SUCCEEDED, captor.getValue().getStatus(), "主状态不被翻译迁移改动");
+        assertEquals(VideoTask.TRANSLATION_FAILURE_PREFIX + "LLM 超时", captor.getValue().getErrorMessage(),
+                "翻译失败原因写回 error_message（翻译子状态列已下线）");
+        assertEquals(TaskStatus.SUCCEEDED, captor.getValue().getStatus(), "主状态不被翻译失败改动");
     }
 }

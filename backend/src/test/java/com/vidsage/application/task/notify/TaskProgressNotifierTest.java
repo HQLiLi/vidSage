@@ -20,7 +20,6 @@ import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import java.util.List;
@@ -100,14 +99,16 @@ class TaskProgressNotifierTest {
         assertEquals(TaskStatus.SUCCEEDED, received.get(0).taskStatus());
         // complete 生效：终态之后再广播无人可收
         registry.broadcast(task.getTaskNo().value(),
-                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null));
         assertEquals(1, received.size(), "终态收口后注册表不得再向订阅者投递事件");
     }
 
     @Test
-    void completeTranslationBroadcastsFromTranslationStageAndClearsSubscription() {
-        VideoTask task = succeededWithTranslation();
-        StageProgress expected = TaskStageEvent.fromTranslation(task);
+    void completeTranslationBroadcastsTranslateStageAndClearsSubscription() {
+        VideoTask task = succeededTask();
+        // 翻译子状态已下线：翻译成功这件事只有本方法说得出，stage 是写死的翻译阶段终态
+        StageProgress expected = new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(),
+                100, "翻译完成", StageProgress.State.SUCCEEDED);
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
 
@@ -115,11 +116,28 @@ class TaskProgressNotifierTest {
 
         verify(repository).update(task);
         assertEquals(1, received.size(), "翻译终态只广播一条");
-        assertEquals(expected, received.get(0).stage(), "翻译终态的 stage 取 TaskStageEvent.fromTranslation");
-        assertEquals(TranslationStatus.SUCCEEDED, received.get(0).translationStatus());
+        assertEquals(expected, received.get(0).stage(), "翻译终态的 stage 是翻译阶段的 SUCCEEDED");
         registry.broadcast(task.getTaskNo().value(),
-                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null, null));
+                TaskProgressMessage.of(task.getTaskNo().value(), TaskStatus.FAILED, null));
         assertEquals(1, received.size(), "翻译终态收口后注册表不得再投递");
+    }
+
+    @Test
+    void failTranslationRecordsPrefixedReasonKeepsMainStateAndBroadcastsFailed() {
+        VideoTask task = succeededTask();
+        List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
+        registry.subscribe(task.getTaskNo().value(), received::add);
+
+        notifier.failTranslation(task, "LLM 超时");
+
+        verify(repository).update(task);
+        assertEquals(VideoTask.TRANSLATION_FAILURE_PREFIX + "LLM 超时", task.getErrorMessage(),
+                "失败原因带前缀落 error_message");
+        assertEquals(TaskStatus.SUCCEEDED, task.getStatus(), "翻译失败不动主状态（字幕与已有译文都还在）");
+        assertEquals(1, received.size(), "翻译失败广播一条终态");
+        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), received.get(0).stage().stage());
+        assertEquals(StageProgress.State.FAILED, received.get(0).stage().state());
+        assertTrue(received.get(0).terminal(), "失败也是终态（收口后重连拿失败快照）");
     }
 
     @Test
@@ -149,7 +167,6 @@ class TaskProgressNotifierTest {
         assertEquals(task.getTaskNo().value(), snapshot.taskNo());
         assertEquals(task.getStatus(), snapshot.taskStatus());
         assertEquals(TaskStageEvent.from(task, null), snapshot.stage(), "快照与终态广播挑同一个渲染器");
-        assertEquals(task.getTranslationStatus(), snapshot.translationStatus());
         verify(repository, never()).update(any());
         assertEquals(0, received.size(), "快照只组装不发送，不碰注册表");
     }
@@ -190,11 +207,4 @@ class TaskProgressNotifierTest {
         return task;
     }
 
-    /** 主任务成功且翻译已完成——翻译终态用例的起点。 */
-    private static VideoTask succeededWithTranslation() {
-        VideoTask task = succeededTask();
-        task.translationStart();
-        task.translationSucceed();
-        return task;
-    }
 }

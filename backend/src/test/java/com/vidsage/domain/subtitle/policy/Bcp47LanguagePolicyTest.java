@@ -1,11 +1,9 @@
 package com.vidsage.domain.subtitle.policy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.translation.TranslatedSegment;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 
@@ -14,7 +12,10 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Bcp47LanguagePolicy 的纯单元测试：语种归一化与源语种推断。
+ * Bcp47LanguagePolicy 的纯单元测试：语种归一化与跳过翻译时的照抄。
+ *
+ * <p>「是不是同一门语言」那套判据已搬到 {@code SupportedLanguage.isSameLanguage}
+ * （跳过判据改成枚举相等之后），它的用例在 {@code SupportedLanguageTest}。
  */
 class Bcp47LanguagePolicyTest {
 
@@ -35,31 +36,6 @@ class Bcp47LanguagePolicyTest {
     void resolveTargetLanguageNullThrows() {
         assertThrows(IllegalStateException.class,
                 () -> Bcp47LanguagePolicy.resolveTargetLanguage(null));
-    }
-
-    @Test
-    void mainLanguageSubtagComparisonIgnoresRegionAndCase() {
-        assertTrue(Bcp47LanguagePolicy.isSameMainLanguage("zh-CN", "zh"));
-        assertTrue(Bcp47LanguagePolicy.isSameMainLanguage("zh-Hant", "ZH"));
-        assertTrue(Bcp47LanguagePolicy.isSameMainLanguage(" zh ", "zh"));
-        assertTrue(Bcp47LanguagePolicy.isSameMainLanguage("zh-tw", "zh-cn"));
-        assertFalse(Bcp47LanguagePolicy.isSameMainLanguage("zh", "en"));
-        assertFalse(Bcp47LanguagePolicy.isSameMainLanguage("", "zh"));
-        assertFalse(Bcp47LanguagePolicy.isSameMainLanguage("zh", "zhx"));
-        // 两边都取不到语种：「未知 vs 未知」不是「同一门语言」——判成同一门会导致静默漏译
-        assertFalse(Bcp47LanguagePolicy.isSameMainLanguage("", ""));
-        assertFalse(Bcp47LanguagePolicy.isSameMainLanguage(null, null));
-        assertFalse(Bcp47LanguagePolicy.isSameMainLanguage("  ", null));
-    }
-
-    @Test
-    void sourceLanguageResolvesFromContextFirstThenTrack() {
-        assertEquals("de", Bcp47LanguagePolicy.resolveSourceLanguage(
-                new SubtitleContext("主题", "de", List.of()), "zh"), "摘要给的语种优先");
-        assertEquals("zh", Bcp47LanguagePolicy.resolveSourceLanguage(
-                SubtitleContext.empty(), "zh"), "摘要为空时回退 ASR 语种");
-        assertEquals("", Bcp47LanguagePolicy.resolveSourceLanguage(
-                SubtitleContext.empty(), null), "两者皆空时为空串");
     }
 
     @Test

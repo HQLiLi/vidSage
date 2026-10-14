@@ -25,11 +25,15 @@ public sealed interface MediaInput {
      */
     String dirLabel();
 
-    String UPLOAD_SOURCE_FILE_NAME = "source.mp4";
-
+    /*源媒体文件前缀*/
+    String SOURCE_FILE_PREFIX = "source.";
+    /*源媒体信息*/
+    String SOURCE_INFO_JSON_NAME = SOURCE_FILE_PREFIX + "info.json";
+    /*用户上传源文件落盘名称*/
+    String UPLOAD_SOURCE_FILE_NAME = SOURCE_FILE_PREFIX + "mp4";
 
     static MediaInput ofTaskInput(TaskInputType inputType, String sourceUri,
-                                  Path workspaceDir, WorkspaceKey workspaceKey) {
+            Path workspaceDir, WorkspaceKey workspaceKey) {
         return switch (inputType) {
             case URL -> new RemoteUrl(sourceUri);
             case UPLOAD -> new InWorkspace(workspaceDir.resolve(UPLOAD_SOURCE_FILE_NAME), workspaceKey,
