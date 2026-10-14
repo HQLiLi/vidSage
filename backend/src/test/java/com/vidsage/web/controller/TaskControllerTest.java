@@ -286,7 +286,7 @@ class TaskControllerTest {
 
     @Test
     void translateReturnsAcceptedWithRefreshedTaskResponse() throws Exception {
-        when(taskService.translate(TASK_NO))
+        when(taskService.translate(TASK_NO, request.sourceLanguage(), request.targetLanguage()))
                 .thenReturn(succeededView(TranslationStatus.RUNNING));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO))
@@ -299,7 +299,7 @@ class TaskControllerTest {
 
     @Test
     void translateMapsMissingTaskToNotFound() throws Exception {
-        when(taskService.translate("ghost")).thenThrow(new TaskNotFoundException("ghost"));
+        when(taskService.translate("ghost", request.sourceLanguage(), request.targetLanguage())).thenThrow(new TaskNotFoundException("ghost"));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", "ghost"))
                 .andExpect(status().isNotFound())
@@ -309,7 +309,7 @@ class TaskControllerTest {
     @Test
     void translateMapsNotReadyTaskToBadRequest() throws Exception {
         // 主任务未 SUCCEEDED 时触发翻译：错在调用方触发太早 → IAE → 400（error-handling.md「错在调用方」）
-        when(taskService.translate(TASK_NO)).thenThrow(new IllegalArgumentException(
+        when(taskService.translate(TASK_NO, request.sourceLanguage(), request.targetLanguage())).thenThrow(new IllegalArgumentException(
                 "字幕尚未就绪：任务状态为 RUNNING，翻译只能在任务成功（SUCCEEDED）后触发；"
                         + "请先等主管线完成再试"));
 
@@ -323,7 +323,7 @@ class TaskControllerTest {
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", " "))
                 .andExpect(status().isBadRequest());
 
-        verify(taskService, never()).translate(anyString());
+        verify(taskService, never()).translate(anyString(), request.sourceLanguage(), request.targetLanguage());
     }
 
     // ---------- 重新生成字幕（关键词） ----------

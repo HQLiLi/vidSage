@@ -2,9 +2,12 @@ package com.vidsage.web.controller;
 
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.domain.exception.UnsupportedLanguageException;
 import com.vidsage.web.dto.TaskConflictResponse;
 import com.vidsage.web.dto.TaskResponse;
+
 import java.util.Map;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -35,6 +38,20 @@ public class ApiExceptionHandler {
         log.warn("请求参数不合法: {}", errorMessage(e));
         return Map.of("error", errorMessage(e));
     }
+
+    /**
+     * 目标语种不在支持列表（错在调用方）→ 400，记 WARN。
+     *
+     * @param e 语种解析失败异常
+     * @return 错误体 {@code { "error": message }}
+     */
+    @ExceptionHandler(UnsupportedLanguageException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handleUnsupportedLanguage(UnsupportedLanguageException e) {
+        log.warn("目标语种不支持: {}", errorMessage(e));
+        return Map.of("error", errorMessage(e));
+    }
+
 
     /**
      * taskNo 对应的任务不存在（错在调用方传了未知的任务号）→ 404，记 WARN。

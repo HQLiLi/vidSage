@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -357,7 +356,7 @@ class SubtitlePipelineTest {
         when(repository.findByTaskNo(pending.getTaskNo())).thenReturn(Optional.of(pending));
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service(2).translateTask(pending.getTaskNo()),
+                () -> service(2).translateTask(pending.getTaskNo(), sourceLanguage, targetLanguage),
                 "主任务未 SUCCEEDED 时触发翻译必须被拒（错在调用方触发太早 → 400）");
 
         assertTrue(e.getMessage().contains("字幕尚未就绪"), e.getMessage());
@@ -370,7 +369,7 @@ class SubtitlePipelineTest {
     void translateTaskThrowsNotFoundWhenTaskMissing() {
         when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
-        assertThrows(TaskNotFoundException.class, () -> service(2).translateTask(new TaskNo("ghost")));
+        assertThrows(TaskNotFoundException.class, () -> service(2).translateTask(new TaskNo("ghost"), sourceLanguage, targetLanguage));
     }
 
     @Test
@@ -381,7 +380,7 @@ class SubtitlePipelineTest {
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(true);
         SubtitlePipeline pipeline = service(2);
 
-        pipeline.translateTask(task.getTaskNo());
+        pipeline.translateTask(task.getTaskNo(), sourceLanguage, targetLanguage);
 
         assertEquals(TranslationStatus.SUCCEEDED, task.getTranslationStatus(),
                 "检查点已在 → 幂等收敛为 SUCCEEDED");
@@ -399,7 +398,7 @@ class SubtitlePipelineTest {
         when(translationStage.hasTranslationArtifact(any(MediaInput.class))).thenReturn(true);
         SubtitlePipeline pipeline = service(2);
 
-        pipeline.translateTask(task.getTaskNo());
+        pipeline.translateTask(task.getTaskNo(), sourceLanguage, targetLanguage);
 
         verify(repository, never()).update(task);
         verify(translationStage, never()).translate(any(), any());
@@ -412,7 +411,7 @@ class SubtitlePipelineTest {
         when(repository.findByTaskNo(task.getTaskNo())).thenReturn(Optional.of(task));
         SubtitlePipeline pipeline = service(2);
 
-        pipeline.translateTask(task.getTaskNo());
+        pipeline.translateTask(task.getTaskNo(), sourceLanguage, targetLanguage);
 
         assertEquals(TranslationStatus.RUNNING, task.getTranslationStatus(), "进行中的翻译保持 RUNNING");
         // 重复触发在检查点判定之前即被拦下
@@ -438,7 +437,7 @@ class SubtitlePipelineTest {
         registry.subscribe(task.getTaskNo().value(), received::add);
         SubtitlePipeline pipeline = service(2);
 
-        pipeline.translateTask(task.getTaskNo());
+        pipeline.translateTask(task.getTaskNo(), sourceLanguage, targetLanguage);
 
         // 同步段：translationStart 已落库，202 响应的视图即反映「已触发」
         assertEquals(TranslationStatus.RUNNING, task.getTranslationStatus());
@@ -484,7 +483,7 @@ class SubtitlePipelineTest {
         registry.subscribe(task.getTaskNo().value(), received::add);
         SubtitlePipeline pipeline = service(2);
 
-        pipeline.translateTask(task.getTaskNo());
+        pipeline.translateTask(task.getTaskNo(), sourceLanguage, targetLanguage);
 
         // 异步段失败后第二次落库（translationFail）——times(2) 即终态同步点
         verify(repository, timeout(2000).times(2)).update(task);
@@ -648,7 +647,7 @@ class SubtitlePipelineTest {
         List<TaskProgressMessage> received = new CopyOnWriteArrayList<>();
         registry.subscribe(task.getTaskNo().value(), received::add);
 
-        service(interruptOnQueueGate()).translateTask(task.getTaskNo());
+        service(interruptOnQueueGate()).translateTask(task.getTaskNo(), sourceLanguage, targetLanguage);
 
         assertEquals(TranslationStatus.FAILED, task.getTranslationStatus(),
                 "翻译已置 RUNNING 才排队，被打断不能吞状态");

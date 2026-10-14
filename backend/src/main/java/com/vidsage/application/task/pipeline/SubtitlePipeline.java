@@ -5,18 +5,17 @@ import com.vidsage.application.subtitle.pipeline.SubtitleCleanupCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.exception.TaskNotFoundException;
-import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.notify.TaskProgressNotifier;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.application.task.session.TaskSessionRegistry;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.model.TaskStatus;
-import com.vidsage.domain.task.model.TranslationStatus;
 import com.vidsage.domain.task.policy.TaskStageEvent;
 import com.vidsage.domain.task.port.VideoTaskRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -151,11 +150,13 @@ public class SubtitlePipeline {
      *
      * <p>同步段只做判定与状态落库，LLM 翻译在虚拟线程异步执行，事件自成 {@code 0..100} 段广播。
      *
-     * @param taskNo 对外任务号
+     * @param taskNo         对外任务号
+     * @param sourceLanguage 源语种
+     * @param targetLanguage 翻译目标语种
      * @throws TaskNotFoundException    任务不存在
      * @throws IllegalArgumentException 主任务尚未成功（字幕尚未就绪）
      */
-    public void translateTask(TaskNo taskNo) {
+    public void translateTask(TaskNo taskNo, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage) {
         VideoTask task = repository.findByTaskNo(taskNo)
                 .orElseThrow(() -> new TaskNotFoundException(taskNo.value()));
         if (task.getStatus() != TaskStatus.SUCCEEDED) {
@@ -163,35 +164,12 @@ public class SubtitlePipeline {
                     + "，翻译只能在任务成功（SUCCEEDED）后触发；请先等主管线完成（可查 "
                     + "GET /api/tasks/" + taskNo.value() + " 或订阅其 SSE 事件）再试");
         }
-        if (task.getTranslationStatus() == TranslationStatus.RUNNING) {
-            log.info("翻译进行中，重复触发不重入: taskNo={}", taskNo.value());
-            return;
-        }
-        MediaInput input = toMediaInput(task);
-        if (translationStage.hasTranslationArtifact(input)) {
-            // 检查点已在，收敛为 SUCCEEDED：不看翻译的人不花钱，看过的人不重复花钱
-            if (task.getTranslationStatus() != TranslationStatus.SUCCEEDED) {
-                task.translationSucceed();
-                repository.update(task);
-                log.info("翻译产物已存在，幂等收敛为 SUCCEEDED（未调用 LLM）: taskNo={}", taskNo);
-            }
-            return;
-        }
-        try {
-            task.translationStart();
-        } catch (IllegalStateException e) {
-            // 并发重复触发的竞争兜底：先到者已把翻译置为 RUNNING，本次视同「不重入」，
-            // 调用方重读任务得到的视图即反映进行中的翻译
-            log.info("翻译启动竞争失败，视同重复触发不重入: taskNo={}", taskNo);
-            return;
-        }
-        repository.update(task);
-        // 不打 workspaceDir：目录名内嵌 URL / 原始文件名（用户资源，脱敏红线），按 taskNo 可查库还原
-        log.info("翻译已触发: taskNo={}, inputType={}", task.getTaskNo().value(), task.getInputType());
 
+
+        MediaInput input = toMediaInput(task);
         // 翻译开始起始时间，用于计算翻译耗时（含排队）
         long startTimeMs = System.currentTimeMillis();
-        concurrencyGate.submit(() -> runTranslationPipeline(task, input, startTimeMs),
+        concurrencyGate.submit(() -> runTranslationPipeline(task, input, sourceLanguage, targetLanguage, startTimeMs),
                 () -> {
                     log.warn("翻译等待执行配额时被中断: taskNo={}", task.getTaskNo().value());
                     // 翻译已置 RUNNING 才排队，被打断不能吞状态：标记失败（可重新触发），广播终态收口
@@ -235,13 +213,14 @@ public class SubtitlePipeline {
      * 翻译阶段事件自成 0..100 段直通广播（无区间映射——主任务的 0..100 已在主管线跑完，
      * 翻译是独立的第二段）；翻译事件的 taskStatus 恒为主状态 SUCCEEDED。
      *
-     * @param startTimeMs 排队前的时刻——成本日志的口径是「含排队时间」，所以要由调用方在提交前取好传进来
-     *                    （进到本方法时排队已经结束，在这里取就晚了）
+     * @param sourceLanguage 源语种
+     * @param targetLanguage 翻译目标语种
+     * @param startTimeMs    排队前的时刻——成本日志的口径是「含排队时间」，所以要由调用方在提交前取好传进来
+     *                       （进到本方法时排队已经结束，在这里取就晚了）
      */
-    private void runTranslationPipeline(VideoTask task, MediaInput input, long startTimeMs) {
+    private void runTranslationPipeline(VideoTask task, MediaInput input, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage, long startTimeMs) {
         try {
-            translationStage.translate(input, translationProgressListener(task));
-            task.translationSucceed();
+            translationStage.translate(input, sourceLanguage, targetLanguage, translationProgressListener(task));
             taskProgressNotifier.completeTranslation(task);
             log.info("任务翻译完成: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - startTimeMs);
         } catch (Exception e) {
@@ -323,7 +302,6 @@ public class SubtitlePipeline {
     private void failTranslation(VideoTask task, String reason, Exception cause) {
         String message = VideoTask.TRANSLATION_FAILURE_PREFIX + reason;
         try {
-            task.translationFail(message);
             taskProgressNotifier.completeTranslation(task);
             if (cause == null) {
                 log.warn("任务翻译失败: taskNo={}, message={}", task.getTaskNo().value(), message);

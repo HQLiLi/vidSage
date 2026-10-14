@@ -70,7 +70,8 @@ public class TaskProgressNotifier {
      */
     public void completeTranslation(VideoTask task) {
         videoTaskRepository.update(task);
-        broadcastTerminal(task, TaskStageEvent.fromTranslation(task));
+        broadcastTerminal(task,  new StageProgress(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(),
+            100, "翻译完成", StageProgress.State.SUCCEEDED));
     }
 
     /**
@@ -121,7 +122,7 @@ public class TaskProgressNotifier {
         // terminal 派生据此判 false——重连的人不会一连上就被终态关掉
         String runningStage = taskSessionRegistry.findRunningStage(task.getWorkspaceKey());
         return TaskProgressMessage.of(task.getTaskNo().value(), task.getStatus(),
-                TaskStageEvent.from(task, runningStage), task.getTranslationStatus());
+                TaskStageEvent.from(task, runningStage));
     }
 
 
@@ -134,7 +135,7 @@ public class TaskProgressNotifier {
     private void broadcast(VideoTask task, StageProgress stageProgress) {
         String taskNo = task.getTaskNo().value();
         taskSubscriptionRegistry.broadcast(taskNo,
-                TaskProgressMessage.of(taskNo, task.getStatus(), stageProgress, task.getTranslationStatus())
+                TaskProgressMessage.of(taskNo, task.getStatus(), stageProgress)
         );
     }
 

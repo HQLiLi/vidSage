@@ -6,18 +6,19 @@ import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.application.task.message.TaskProgressMessage;
 import com.vidsage.application.task.notify.TaskProgressNotifier;
 import com.vidsage.application.task.pipeline.SubtitlePipeline;
+import com.vidsage.application.task.query.KeywordsSnapshot;
 import com.vidsage.application.task.query.TaskArtifact;
 import com.vidsage.application.task.query.TaskArtifactFile;
 import com.vidsage.application.task.query.TaskSnapshot;
-import com.vidsage.application.task.query.KeywordsSnapshot;
 import com.vidsage.application.task.session.TaskSessionRegistry;
 import com.vidsage.domain.media.model.MediaFileInfo;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.WorkspaceDir;
 import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
-import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.task.VideoTask;
 import com.vidsage.domain.task.model.TaskInputType;
@@ -187,14 +188,18 @@ public class VideoTaskService {
      * <b>重读回视图</b>——translateTask 内部可能已推进翻译子状态（启动 RUNNING / 幂等收敛
      * SUCCEEDED），重读保证 202 响应的视图反映触发后的状态。
      *
-     * @param taskNo 对外任务号；不可为空白
+     * @param taskNo         对外任务号；不可为空白
+     * @param sourceLanguage 源语种
+     * @param targetLanguage 翻译目标语种
      * @return 触发后的任务视图（translationStatus 反映翻译子状态）
      * @throws IllegalArgumentException taskNo 为空白（400）或字幕尚未就绪（400）
      * @throws TaskNotFoundException    任务不存在（404）
      */
-    public TaskSnapshot translate(String taskNo) {
+    public TaskSnapshot translate(String taskNo, String sourceLanguage, String targetLanguage) {
+        SupportedLanguage sourceLang = SupportedLanguage.parse(sourceLanguage);
+        SupportedLanguage targetLang = SupportedLanguage.parse(targetLanguage);
         VideoTask task = loadTask(taskNo);
-        pipeline.translateTask(task.getTaskNo());
+        pipeline.translateTask(task.getTaskNo(), sourceLang, targetLang);
         return repository.findByTaskNo(task.getTaskNo())
                 .map(this::toSnapshot)
                 .orElseGet(() -> toSnapshot(task));
@@ -208,7 +213,7 @@ public class VideoTaskService {
      * 抢工作区登记（抢不到 → 409，附既有任务快照——冲突的出路是去订阅它）→
      * keywords 非 {@code null} 落库、读回生效清单、委派管线异步体。
      *
-     * @param taskNo  对外任务号
+     * @param taskNo   对外任务号
      * @param keywords 请求体里的关键词：{@code null} = 不改变已有列表；{@code []} = 清空
      * @return 任务视图（主状态本就不变，视图反映触发后的快照）
      * @throws TaskNotFoundException    任务不存在（404）
@@ -395,7 +400,7 @@ public class VideoTaskService {
      */
     private TaskSnapshot toSnapshot(VideoTask task) {
         return new TaskSnapshot(task.getTaskNo().value(), task.getInputType(), task.getSourceUri(),
-                task.getStatus(), task.getTranslationStatus(), task.getCurrentStage(), task.getErrorMessage(),
+                task.getStatus(), task.getCurrentStage(), task.getErrorMessage(),
                 task.getCreatedAt(), task.getStartedAt(), task.getFinishedAt(),
                 scanArtifacts(task.getTaskNo().value(), task.getWorkspaceDir()));
     }

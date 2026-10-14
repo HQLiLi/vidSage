@@ -5,12 +5,11 @@ import com.vidsage.domain.task.model.TaskInputType;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.domain.task.model.TaskStatus;
 import com.vidsage.domain.task.model.TranslationStatus;
+import lombok.Getter;
 
 import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
-
-import lombok.Getter;
 
 /**
  * 视频任务：任务生命周期<b>状态机</b>的载体——它带有<b>拒绝非法状态迁移</b>的行为方法（如
@@ -19,10 +18,6 @@ import lombok.Getter;
  * <p>主状态机的合法迁移只有三条（{@link #start()} / {@link #succeed()} / {@link #fail(String)}，
  * 见各自的方法注释）。SUCCEEDED / FAILED 是终态，任何再迁移、以及 PENDING 直接跳到终态，
  * 都抛 {@link IllegalStateException}。
- *
- * <p><b>翻译子状态机</b>：主任务 SUCCEEDED 后由用户按需触发的第二生命周期，见
- * {@link #translationStart()} / {@link #translationSucceed()} / {@link #translationFail(String)}。
- * 仅主状态 SUCCEEDED 后允许流转，主状态不因翻译失败而回退。
  *
  * <p>状态与时间戳只能经迁移方法变更；{@code id} 是数据库内部行 id（persistence
  * 层回填），<b>不对外</b>——对外只暴露 taskNo。重建已持久化任务只能走 {@link #restore}。
@@ -72,11 +67,6 @@ public class VideoTask {
      */
     private String currentStage;
 
-    /**
-     * 翻译子状态：{@code null} = 从未触发；仅主状态 SUCCEEDED 后
-     * 经迁移方法流转。与主状态 {@link #status} 相互独立。
-     */
-    private TranslationStatus translationStatus;
 
     /**
      * 终态错误信息（中文，面向用户）。主任务失败、翻译子状态失败、重新生成失败
@@ -110,7 +100,7 @@ public class VideoTask {
      */
     private VideoTask(Long id, TaskNo taskNo, TaskInputType inputType, String sourceUri,
                       WorkspaceKey workspaceKey, String workspaceDir, TaskStatus status, String currentStage,
-                      TranslationStatus translationStatus, String errorMessage, LocalDateTime createdAt,
+                      String errorMessage, LocalDateTime createdAt,
                       LocalDateTime updatedAt, LocalDateTime startedAt, LocalDateTime finishedAt) {
         this.id = id;
         this.taskNo = taskNo;
@@ -120,7 +110,6 @@ public class VideoTask {
         this.workspaceDir = workspaceDir;
         this.status = status;
         this.currentStage = currentStage;
-        this.translationStatus = translationStatus;
         this.errorMessage = errorMessage;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -142,21 +131,19 @@ public class VideoTask {
                                        WorkspaceKey workspaceKey, String workspaceDir) {
         LocalDateTime now = LocalDateTime.now();
         return new VideoTask(null, new TaskNo(newTaskNo()), inputType, sourceUri, workspaceKey, workspaceDir,
-                TaskStatus.PENDING, null, null, null, now, now, null, null);
+                TaskStatus.PENDING, null, null, now, now, null, null);
     }
 
     /**
      * 重建已持久化的任务：仅供 persistence 层把数据库行还原成领域对象使用，业务代码不得用它凭空造任务。
-     *
-     * @param translationStatus 翻译子状态；数据库 NULL（从未触发）以 {@code null} 传入
      */
     public static VideoTask restore(Long id, TaskNo taskNo, TaskInputType inputType, String sourceUri,
                                     WorkspaceKey workspaceKey, String workspaceDir, TaskStatus status,
-                                    String currentStage, TranslationStatus translationStatus,
+                                    String currentStage,
                                     String errorMessage, LocalDateTime createdAt,
                                     LocalDateTime updatedAt, LocalDateTime startedAt, LocalDateTime finishedAt) {
         return new VideoTask(id, taskNo, inputType, sourceUri, workspaceKey, workspaceDir, status,
-                currentStage, translationStatus, errorMessage, createdAt, updatedAt, startedAt, finishedAt);
+                currentStage, errorMessage, createdAt, updatedAt, startedAt, finishedAt);
     }
 
     /**
@@ -211,57 +198,6 @@ public class VideoTask {
     }
 
     /**
-     * 翻译子状态启动：主任务 SUCCEEDED 后按需触发翻译。允许从「从未触发」
-     * （null）、失败（FAILED，失败重试）与已完成（SUCCEEDED，检查点被删后的重跑）进入；
-     * 翻译进行中（RUNNING）重复触发被拒绝——调用方以此保证「不重入」。
-     *
-     * @throws IllegalStateException 主任务不在 SUCCEEDED，或翻译已在进行中
-     */
-    public void translationStart() {
-        requireMainSucceededForPostLifecycle("启动翻译");
-        if (translationStatus == TranslationStatus.RUNNING) {
-            throw new IllegalStateException("非法状态迁移：翻译已在进行中（RUNNING），不得重复触发");
-        }
-        translationStatus = TranslationStatus.RUNNING;
-        updatedAt = LocalDateTime.now();
-    }
-
-    /**
-     * 翻译子状态收敛为 SUCCEEDED：正常完成（RUNNING → SUCCEEDED）与幂等收敛（触发时发现翻译
-     * 产物已在，从不触发 / 失败直接收敛）都走这里。主状态保持 SUCCEEDED 不变。
-     *
-     * @throws IllegalStateException 主任务不在 SUCCEEDED，或翻译已处于 SUCCEEDED（无需再收敛）
-     */
-    public void translationSucceed() {
-        requireMainSucceededForPostLifecycle("收敛翻译为 SUCCEEDED");
-        if (translationStatus == TranslationStatus.SUCCEEDED) {
-            throw new IllegalStateException("非法状态迁移：翻译已处于 SUCCEEDED，不得重复收敛");
-        }
-        translationStatus = TranslationStatus.SUCCEEDED;
-        updatedAt = LocalDateTime.now();
-    }
-
-    /**
-     * 翻译子状态迁移到 FAILED：只有进行中的翻译可以失败。错误信息复用 {@code errorMessage}
-     * （由调用方带 {@link #TRANSLATION_FAILURE_PREFIX} 组装），主状态保持 SUCCEEDED 不变——
-     * 主状态机的终态错误与翻译子状态的失败原因共用一列，同一任务同一时刻只有一种「最近终态失败」。
-     *
-     * @param errorMessage 翻译失败原因（中文，面向用户；由调用方带 {@link #TRANSLATION_FAILURE_PREFIX}
-     *                     组装「缺什么、怎么补」）
-     * @throws IllegalStateException 主任务不在 SUCCEEDED，或翻译不处于 RUNNING
-     */
-    public void translationFail(String errorMessage) {
-        requireMainSucceededForPostLifecycle("翻译标记失败");
-        if (translationStatus != TranslationStatus.RUNNING) {
-            throw new IllegalStateException("非法状态迁移：翻译失败要求当前翻译状态为 RUNNING，当前为 "
-                    + translationStatus);
-        }
-        translationStatus = TranslationStatus.FAILED;
-        this.errorMessage = errorMessage;
-        updatedAt = LocalDateTime.now();
-    }
-
-    /**
      * 记一次后置会话（重新生成字幕）的失败原因：主状态保持 SUCCEEDED——旧字幕一个字没少、还能用，
      * 重生成失败只是「这次更新没成」，不是任务失败，所以不能走 {@link #fail}
      * （SUCCEEDED 是终态，不许再迁移）。只刷新 {@code errorMessage} 与 {@code updatedAt}，
@@ -276,11 +212,13 @@ public class VideoTask {
         this.updatedAt = LocalDateTime.now();
     }
 
-    /** 主管线失败的前缀：{@link #fail} 落的文案都以它开头，由 SubtitlePipeline 组装。 */
+    /**
+     * 主管线失败的前缀：{@link #fail} 落的文案都以它开头，由 SubtitlePipeline 组装。
+     */
     public static final String TASK_FAILURE_PREFIX = "任务执行失败：";
 
     /**
-     * 翻译失败的前缀：{@link #translationFail} 落的文案都以它开头，由 SubtitlePipeline 组装。
+     * 翻译失败的前缀：由 SubtitlePipeline 组装。
      * {@link #clearRegenerateFailure} 不认领它——翻译是另一台生命周期，不是重新生成。
      */
     public static final String TRANSLATION_FAILURE_PREFIX = "翻译失败：";
@@ -316,13 +254,11 @@ public class VideoTask {
      * 任务是否已经结束：主状态是终态（SUCCEEDED / FAILED），且翻译没在进行中。
      * 用于事件分发——返回 {@code true} 表示该任务不会再产生后续状态事件。
      *
-     * @param mainStatus        任务主状态
-     * @param translationStatus 翻译子状态；从未触发为 {@code null}
+     * @param mainStatus 任务主状态
      * @return 任务是否结束
      */
-    public static boolean isEventTerminal(TaskStatus mainStatus, TranslationStatus translationStatus) {
-        boolean mainTerminal = mainStatus == TaskStatus.SUCCEEDED || mainStatus == TaskStatus.FAILED;
-        return mainTerminal && translationStatus != TranslationStatus.RUNNING;
+    public static boolean isEventTerminal(TaskStatus mainStatus) {
+        return mainStatus == TaskStatus.SUCCEEDED || mainStatus == TaskStatus.FAILED;
     }
 
     /**

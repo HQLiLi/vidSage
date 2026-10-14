@@ -48,12 +48,6 @@ public class VideoTaskEntity {
     /** 最近阶段名（与 StageProgress.stage 同词表）。 */
     private String currentStage;
 
-    /**
-     * 翻译子状态：主任务 SUCCEEDED 后按需触发的第二生命周期；
-     * 数据库 NULL = 从未触发，映射为 {@code null}。枚举名与 {@code task.translation_status}
-     * 的 ENUM 值逐字相同。
-     */
-    private TranslationStatus translationStatus;
 
     /** 终态错误信息（中文，面向用户；主任务失败或翻译子状态失败）。 */
     private String errorMessage;

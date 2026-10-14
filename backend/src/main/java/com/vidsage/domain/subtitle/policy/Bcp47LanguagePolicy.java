@@ -53,42 +53,6 @@ public final class Bcp47LanguagePolicy {
     }
 
     /**
-     * 两份语种标签是不是同一门语言：<b>只比连字符前的主语言子标签</b>，大小写不敏感。
-     *
-     * <p><b>为什么不直接 {@code equals}</b>：LLM 可能返回 {@code zh-CN} 而不是 {@code zh}，直接比对会
-     * 失配 → 本该跳过的中文视频被送去翻译一遍，<b>中文译成中文</b>，白烧一轮 LLM 还可能改坏原文，
-     * 而且这个失败是静默的（不报错、日志里也看不出异常）。
-     *
-     * <p><b>任一方为空即为 {@code false}</b>：两边都取不到语种时主语言子标签都是空串，直接比会得出
-     * {@code true}，把「两个都不知道是什么语言」判成同一门语言。而「语种未知则不跳过、照译」是既定
-     * 取舍（宁可多跑一趟，不可静默漏译），故这里把「未知」显式排除，让这个方法单独拿去用也是对的。
-     *
-     * @param a 语种标签，可为 {@code null} 或空白
-     * @param b 语种标签，可为 {@code null} 或空白
-     * @return 主语言子标签相同且都非空时为 {@code true}；任一方取不到语种时为 {@code false}
-     */
-    public static boolean isSameMainLanguage(String a, String b) {
-        String left = mainLanguageSubtag(a);
-        String right = mainLanguageSubtag(b);
-        return !left.isEmpty() && !right.isEmpty() && left.equals(right);
-    }
-
-    /**
-     * 取 BCP-47 标签的主语言子标签：去空白、转小写、截到第一个连字符之前。
-     *
-     * @param language 语种标签，可为 {@code null}
-     * @return 主语言子标签；{@code null} 时为空串
-     */
-    private static String mainLanguageSubtag(String language) {
-        if (language == null) {
-            return "";
-        }
-        String trimmed = language.trim().toLowerCase(Locale.ROOT);
-        int dash = trimmed.indexOf('-');
-        return dash < 0 ? trimmed : trimmed.substring(0, dash);
-    }
-
-    /**
      * 跳过翻译时的逐条产物：译文照抄原文，时间戳原样带过。
      *
      * @param segments 源段落

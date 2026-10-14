@@ -382,9 +382,9 @@ class VideoTaskServiceTest {
                 .thenReturn(Optional.of(before))
                 .thenReturn(Optional.of(succeededWithTranslation(TranslationStatus.RUNNING, null)));
 
-        TaskSnapshot view = service().translate(before.getTaskNo().value());
+        TaskSnapshot view = service().translate(before.getTaskNo().value(), request.sourceLanguage(), request.targetLanguage());
 
-        verify(pipeline).translateTask(before.getTaskNo());
+        verify(pipeline).translateTask(before.getTaskNo(), sourceLanguage, targetLanguage);
         assertEquals(before.getTaskNo().value(), view.taskNo());
         assertEquals(TaskStatus.SUCCEEDED, view.status());
         assertEquals(TranslationStatus.RUNNING, view.translationStatus(),
@@ -395,14 +395,14 @@ class VideoTaskServiceTest {
     void translateThrowsNotFoundWhenTaskMissing() {
         when(repository.findByTaskNo(new TaskNo("ghost"))).thenReturn(Optional.empty());
 
-        assertThrows(TaskNotFoundException.class, () -> service().translate("ghost"));
-        verify(pipeline, never()).translateTask(any());
+        assertThrows(TaskNotFoundException.class, () -> service().translate("ghost", request.sourceLanguage(), request.targetLanguage()));
+        verify(pipeline, never()).translateTask(any(), sourceLanguage, targetLanguage);
     }
 
     @Test
     void translateRejectsBlankTaskNo() {
-        assertThrows(IllegalArgumentException.class, () -> service().translate(" "));
-        verify(pipeline, never()).translateTask(any());
+        assertThrows(IllegalArgumentException.class, () -> service().translate(" ", request.sourceLanguage(), request.targetLanguage()));
+        verify(pipeline, never()).translateTask(any(), sourceLanguage, targetLanguage);
     }
 
     // ---------- 产物下载（含路径穿越防护） ----------
