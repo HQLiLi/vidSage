@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 45
+- **Total Sessions**: 46
 - **Last Active**: 2026-10-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1227 | Active |
+| `journal-1.md` | ~1250 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 46 | 2026-10-14 | 翻译多语言选择与翻译子状态下线：收尾（批 3–5 + 测试债） | `165ec65`, `03dd97f` | `dev` |
 | 45 | 2026-10-14 | 字幕产物命名去路线化：SubtitleWorkspaceFilePaths 落地 + 运行期验收 + 归档 | `2216390`, `e5bac58`, `778567c`, `594ac33`, `20adb01`, `8d18db5`, `539250b`, `9c92891`, `5047c2b` | `feature/subtitle-multilang-translate` |
 | 44 | 2026-10-13 | 失败前缀常量化 + 后置生命周期守卫改名 | `04d2f5c`, `d177a60` | `dev` |
 | 43 | 2026-10-13 | 注释收口：三层回归扫描（domain / application / infrastructure） | `96cd921`, `0f0a173` | `dev` |

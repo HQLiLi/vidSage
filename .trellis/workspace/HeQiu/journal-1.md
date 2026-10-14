@@ -1225,3 +1225,26 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 46: 翻译多语言选择与翻译子状态下线：收尾（批 3–5 + 测试债）
+<!-- trellis-session: v=2 fp=20733241833c547f -->
+
+**Date**: 2026-10-14
+**Task**: 翻译多语言选择与翻译子状态下线：收尾（批 3–5 + 测试债）
+**Branch**: `dev`
+
+### Summary
+
+把翻译接进工作区登记表（tryStart + 409 + 三条退登记路径，AC9/AC10 冒烟通过）、失败收口落 error_message 并广播 FAILED 终态（AC8）、清掉批 4 全部残留（AC7）、新增 GET /api/languages 四项清单（AC1）；测试树 8 个文件跟上子状态下线与签名漂移，新增 SupportedLanguageTest / LanguageControllerTest，mvn clean test = 569 全绿。另订正四份 spec 并把「提交 vs 后置会话」这条从未落文档的缺口写进 error-handling.md。E（过时判据）与 ④（清失败原因）按用户指示留待后续。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `165ec65` | feat(subtitle): 翻译接入登记表、失败收口与语种清单端点 |
+| `03dd97f` | docs(spec): 订正后置会话互斥口径、语种枚举落位与失败可见性 |
+
+### Status
+
+[OK] **Completed**
