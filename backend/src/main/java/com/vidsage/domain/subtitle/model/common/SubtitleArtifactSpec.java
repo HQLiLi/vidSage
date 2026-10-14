@@ -1,8 +1,10 @@
 package com.vidsage.domain.subtitle.model.common;
 
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.policy.Bcp47LanguagePolicy;
 import lombok.Getter;
 
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -65,6 +67,21 @@ public enum SubtitleArtifactSpec {
                 : template;
     }
 
+    /**
+     * 从文件名中获取语种:{@link SupportedLanguage#getCode()}。
+     * 如果调用模板不含{lang}或文件名为null则返回null
+     *
+     * @param fileName 文件名 跟翻译相关的，如 translated-subtitles-en.srt
+     * @return 语种code
+     */
+    public String getLanguage(String fileName) {
+        if (fileName == null || !template.contains("{lang}")) {
+            return null;
+        }
+        Matcher matcher = pattern.matcher(fileName);
+        return matcher.matches() ? matcher.group(1) : null;
+    }
+
 
     /**
      * 文件名是否匹配某条「可下载」的产物模板。
@@ -101,7 +118,7 @@ public enum SubtitleArtifactSpec {
             int slotEnd = template.indexOf('}', slotStart);
             String slot = template.substring(slotStart, slotEnd + 1);
             if (slot.equals("{lang}")) {
-                regex.append("[a-z0-9-]+");
+                regex.append("([a-z0-9-]+)");
             } else {
                 throw new IllegalStateException("未知的模板占位符：" + slot);
             }

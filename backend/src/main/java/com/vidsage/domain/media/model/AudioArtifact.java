@@ -13,6 +13,9 @@ import java.util.Locale;
  */
 public record AudioArtifact(Path audioPath, AudioSpec spec, long sizeBytes) {
 
+    /*提取出来的媒体名前缀*/
+    public final static String AUDIO_PREFIX = "audio-";
+
     /**
      * 音频产物文件名，带<b>完整规格指纹</b>：{@code audio-<采样率>k<声道>ch[-<码率>k]-t<音频轨号>.<扩展名>}，
      * 如 {@code audio-16k1ch48k-t0.m4a}、{@code audio-16k1ch-t1.wav}（无损容器无码率段）。
@@ -29,7 +32,7 @@ public record AudioArtifact(Path audioPath, AudioSpec spec, long sizeBytes) {
      * @return 音频产物文件名（不含目录）
      */
     public static String fileName(AudioSpec spec) {
-        StringBuilder name = new StringBuilder("audio-")
+        StringBuilder name = new StringBuilder(AUDIO_PREFIX)
                 .append(sampleRateKilo(spec.sampleRateHz()))
                 .append(spec.channels())
                 .append("ch");

@@ -25,6 +25,9 @@ public sealed interface MediaInput {
      */
     String dirLabel();
 
+    String SOURCE_FILE_PREFIX = "source.";
+    String SOURCE_INFO_JSON_NAME = "source.info.json";
+
     String UPLOAD_SOURCE_FILE_NAME = "source.mp4";
 
 
