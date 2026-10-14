@@ -188,7 +188,7 @@
 同类：跨层的鉴权 / 脱敏 / 并发约定，都别写成字段的定语。
 
 **13. 名字对领域读者是费的，就用注释补一句用途。**
-`isEventTerminal(TaskStatus, TranslationStatus)` 里没有任何 "Event"，读代码的人会问
+`isEventTerminal(TaskStatus)` 里没有任何 "Event"，读代码的人会问
 「哪个 Event 的 terminal」。补一句「用于事件分发——返回 {@code true} 表示该任务不会再产生后续状态事件」，
 这笔账就还上了。**这不是「复述方法名」——恰恰是名字没说清的那半。**
 

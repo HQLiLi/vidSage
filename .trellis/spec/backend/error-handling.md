@@ -164,10 +164,15 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 - **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）；`TaskNotFoundException` → **404**；`TaskConflictException` → **409**（载荷额外附既有任务视图，见 `TaskConflictResponse`）
 - **409 现有两个场景**（2026-10-12 起并列，同一个异常类、同一条映射）：
   1. **同 URL / 同内容已有进行中任务**——提交查重命中（`VideoTaskService.rejectIfActive`）；
-  2. **同工作区已有后置会话（重新生成字幕）在跑**——`TaskSessionRegistry.tryStart` 抢登记失败
-     （任务 `10-11-subtitle-keyword-regenerate`）。判定在同步段、202 之前：抢不到就 409，不排队等锁。
+  2. **同工作区已有后置会话（重新生成字幕 **或** 翻译）在跑**——`TaskSessionRegistry.tryStart` 抢登记失败
+     （任务 `10-11-subtitle-keyword-regenerate` 起，`10-11-subtitle-multilang-translate` 2026-10-14 把翻译
+     也接进同一把锁）。判定在同步段、202 之前：抢不到就 409，不排队等锁。
+     **一把锁管两类后置会话**：两者都会动同一批产物（重新生成会删译文、翻译在读清洗产物），故互斥范围是
+     工作区级、不分类别；抢锁用各自阶段名（`clean-subtitles` / `translate-subtitles`）。
      **文案必须区分场景**——场景 2 的冲突方手里就是那个任务号（主状态还是 SUCCEEDED），
      套用场景 1 的「请勿重复提交」会让人以为提交写错了，故走 `TaskConflictException` 带 message 的构造器。
+     **已知缺口（未修）**：场景 2 只拦「后置会话 → 后置会话」；「后置会话在跑时**再提交一个新任务**」
+     不在守卫内——`rejectIfActive` 只查 DB 的 PENDING/RUNNING，而后置会话不落库。
 - **日志级别按「谁之过」分**：调用方输入问题（400 / 404 / 409）记 **WARN**——不该触发 ERROR 告警；服务端或环境故障（500）记 **ERROR** 并**带上异常对象**（保留调用栈供定位）
 - **响应体形状只有一处定义**：`{ "error": message }` 由 `ApiExceptionHandler` 统一产出，接口文档也不逐接口重复声明
 
@@ -179,7 +184,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
   | 异常 | 包 | 映射 | 场景 |
   |---|---|---|---|
   | `TaskNotFoundException` | `application/task/exception/` | 404 | 按 taskNo 取资源的三个端点统一 |
-  | `TaskConflictException` | `application/task/exception/` | 409（载荷附既有任务快照） | 重复提交、同工作区后置会话互斥（2026-10-12） |
+  | `TaskConflictException` | `application/task/exception/` | 409（载荷附既有任务快照） | 重复提交、同工作区后置会话互斥（重新生成 2026-10-12 / 翻译 2026-10-14） |
   | `UnsupportedLanguageException` | `domain/exception/` | 400（专用映射） | 目标语种不在支持列表（`SupportedLanguage.parse` 认不出） |
   | `InvalidWorkDirectoryException` | `application/exception/` | 400（**继承 `IllegalArgumentException`**，由 IAE 那条接，没另写映射） | 工作区目录入参为空（2026-10-14） |
 

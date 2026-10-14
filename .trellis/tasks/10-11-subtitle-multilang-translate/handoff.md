@@ -1,6 +1,44 @@
 # 移交文档：翻译多语言选择与翻译子状态下线（子任务 B）
 
-## ▶ 当前状态（2026-10-14 · 第三棒，先读这段）
+## ▶ 当前状态（2026-10-14 · 第四棒，先读这段）
+
+**本任务（子任务 B）已恢复。翻译侧未完事项已逐条按代码实核 → 见 §14；与 §4 冲突处以 §14 为准。**
+
+**本会话（第四棒）已落**
+
+| 项 | 状态 |
+|---|---|
+| 前置任务 `10-14-subtitle-artifact-naming` | 已完结归档，已合回本分支（`5047c2b`） |
+| `translate` 方法体两刀 | ✅ **91 行 → 66 行**。**刀 2** 抽 `reuseCheckpointIfPresent`（`SubtitleTranslationCoordinator:202`）；**刀 3** 抽 `resolveContext`（同文件 `:225`），**顺带收掉 §4.3「决策 5 第二半」**——翻译侧摘要不带关键词，`FRESH_SUMMARY` 改为只打日志、不落盘 |
+| 三处失实注释订正 | ✅ 类注释里的旧产物名（`-translate-<target>.json`）、`terms-<route>-<target>.json`、指向已不存在的 `isSameMainLanguage` |
+| `props` 死字段 | ✅ 连同构造参数已清（项目所有者执行）；`import SubtitleTranslateProperties` 悬空，待顺手删 |
+| 编译 | ✅ `mvn clean compile` = BUILD SUCCESS |
+| 路径来源那 4 行 `resolve` | **有意不动** —— `SubtitleWorkspaceFilePaths.of()` 是扫盘快照，给不出「还不存在」的写目标；它真正的消费者是 `deleteTranslatedArtifacts`。详见 §14.5 |
+
+**下一步（全表见 §14.2）**
+
+1. **A · 批 3 登记表接管翻译会话** —— 卡着 AC9 + AC10，`regenerate:233-255` 是现成样板
+2. **B · #2 翻译失败收口** —— 失败现在被广播成「翻译完成」
+3. **E · 过时判据**（译文 §14.4 + 术语表 §14.6，**都是零判据**）—— 推荐方案「乙 + 甲」
+
+**A 与 B 建议一起做**：都动 `SubtitlePipeline` + `TaskProgressNotifier`，分两次改同一个文件不划算。
+
+**⚠ 两条硬边**
+
+1. **翻译侧没有自动化网**：`SubtitleTranslationCoordinatorTest` 仍在父任务那 12 个编不过的文件里
+   → 本会话改动的验收只能靠**运行期冒烟**（断点复用 / 源=目标跳过 / 术语查证，三条路各走一遍）
+2. **批 4 已做而批 3 未做**（design §6 要求反过来）：正处在「并发不拦 + 重连看不到正在翻译」的窗口
+
+**未提交改动**：`backend/src/main/.../SubtitleTranslationCoordinator.java` + 本文件。**未归档。**
+硬门不变：完成即停等审查；提交 / 合并 / 归档逐门等批准；合回 `feature/subtitle-multilang-translate`。
+
+---
+
+> 【以下是第三棒（2026-10-14）的交待，写于前置任务 `10-14` 开工前，保留作史实。其中
+> 「读工作区里有什么产物**可以直接用** `SubtitleWorkspaceFilePaths.of(workDir)`」一条**已被第四棒核否**
+> —— 它是扫盘快照、给不出还不存在的写目标，见 §14.5；另 §2.4 的残留清单也已被 §14.3 订正】
+
+## ▶ 当时状态（2026-10-14 · 第三棒）
 
 **前置任务 `10-14-subtitle-artifact-naming` 已完结并归档 —— 本任务可以恢复了。**
 
@@ -400,3 +438,138 @@ SSE 抓取：**提交与订阅放同一条 shell**；`--max-time` 留足。**注
 - **工作区根**：`vidsage.workspace.root` 默认 `./data/works`（相对 `backend/`），
   `application-local.yml` 没覆盖；`backend/data/` 已在 `.gitignore` 内
 - 本会话全程**未改任何代码**，只读盘 + 查代码 + 建任务
+
+---
+
+## 14. 第四棒（2026-10-14）实核：翻译侧还剩什么
+
+本节**逐条按代码实核**，不抄 §4；与 §4 冲突的以本节为准。
+
+### 14.1 本会话已落的
+
+- `SubtitleTranslationCoordinator.translate` 方法体两刀（**91 行 → 66 行**）：
+  - **刀 2** 断点复用抽 `reuseCheckpointIfPresent`（`SubtitleTranslationCoordinator:202`）
+  - **刀 3** 上下文解析抽 `resolveContext`（同文件 `:225`）—— **顺带收掉 §4.3「决策 5 第二半」**：
+    翻译侧摘要不带关键词，`FRESH_SUMMARY` 改成只打日志、不落盘
+- 注释订正三处：类注释 `-translate-<target>.json` → 真实产物名、
+  `terms-<route>-<target>.json` → `terms-<target>.json`、
+  `isSameMainLanguage`（已不存在）→ `{@link SupportedLanguage#isSameLanguage}`
+- `SubtitleTranslationCoordinator` 的 `props` 死字段连同构造参数已清（项目所有者执行）；
+  第 5 行的 `import SubtitleTranslateProperties;` 现在悬空，待顺手删
+- `mvn clean compile` = **BUILD SUCCESS**，IDE 诊断该文件为空
+
+**未提交、未归档。** `SubtitleTranslationCoordinatorTest` 仍在父任务那 12 个红文件里
+→ 本轮改动**没有自动化网**，验收只能靠运行期冒烟（断点复用 / 源=目标跳过 / 术语查证三条路）。
+
+### 14.2 仍未做（按优先级）
+
+| # | 事项 | 现状（实核） |
+|---|---|---|
+| **A** | **批 3 · 登记表接管翻译会话** | `VideoTaskService.translate:196-202` 只 parse + loadTask + 委托，**没有 `tryStart`、没有 409**；`regenerate:233-255` 是现成样板。后果：AC9 收不到翻译进度、AC10 并发**实测不拦**（三次翻译并发全跑完） |
+| **B** | **#2 翻译失败收口（AC8）** | `SubtitlePipeline.failTranslation:302-305` 调的是 `notifier.completeTranslation(task)` → **失败被广播成「翻译完成」**、`error_message` 不落库。缺三块：`VideoTask.recordTranslationFailure/clearTranslationFailure`（grep 为空）、`TaskProgressNotifier.failTranslation`（只有 `failRegenerate:98`）、管线里两处调用点改调 notifier |
+| **C** | **批 4 没删干净（AC7）** | 见 14.3 |
+| **D** | **批 5 · `GET /api/languages`（AC1）** | 全仓 grep 为空：`LanguageController` / `LanguageResponse` / `LanguageOptionSnapshot` / `SubtitleLanguageService` 一个都没有 |
+| **E** | **过时判据（今天新挖）**：译文 + 术语表 | **都是零判据**，且**共用同一把刀**（只在 `regenerate` 删）。译文见 14.4；术语表见 14.6，另有一条「部分失败永不补查」的硬伤 |
+| **F** | 死代码 | `Bcp47LanguagePolicy.resolveSourceLanguage:48` **零调用者**（可删）；同类的 `resolveTargetLanguage` 被 `SubtitleArtifactSpec:67` 生产调用（**不能删**）、`skipAll` 有调用者 |
+| **G** | spec 尾巴 | `error-handling.md:62/:154`「项目当前不定义自定义异常类」失实；409 场景未扩成「后置会话」；`directory-structure.md` 里 `TaskArtifactScan` 已不存在 |
+| **H** | 前端 | `translate` 要 body、`translationStatus` 已消失、新增 `GET /api/languages`（另开任务） |
+
+### 14.3 批 4 的残留（AC7 的 grep 还不为空）
+
+| 残留 | 位置 |
+|---|---|
+| 枚举本体 | `domain/task/model/TranslationStatus.java` |
+| **4 处悬空 import**（只剩 import，无实际使用） | `TaskProgressMessage:6` / `TaskSnapshot:5` / `VideoTask:7` / `VideoTaskEntity:5` |
+| 库表列 + 迁移说明块 | `resources/schema.sql:7,9,11,23` |
+| 包说明 | `domain/task/package-info.java:9` |
+| **两处撒谎的 javadoc**（对外契约的注释里还写着这个字段） | `VideoTaskService:194`、`TaskController:136` |
+
+> §2.4 说「`VideoTask` 里还剩 2 处 `translationStatus`（构造器形参 + `@param`）」—— **已失实**，
+> 那里现在只剩一个悬空 import。悬空 import **不影响编译**，所以这不是「编不过」，是「没删干净」。
+
+### 14.4 翻译过时判据（未做）
+
+`deleteTranslatedArtifacts` **只在 `regenerate` 末尾跑**（`SubtitleCleanupCoordinator:241-244`）；
+主管线那条普通 `clean`（`SubtitlePipeline:242` → `doClean(..., regenerate=false)`）**一个字都不删**。
+所以译文目前**没有任何「过时」判据**——translate 只看 `translated-segments-<lang>.json`
+在不在、非不非空（`readJsonOrNull`），不看它基于哪一版 `clean-segments`。
+
+两条裂缝：
+
+1. **可达且静默**：`regenerate` 先落库关键词（`VideoTaskService:242-247`）再异步跑；异步那趟失败时
+   （摘要降级 → ISE，`doClean:220`）**关键词已改、`clean-segments` 还是旧的、译文也没删**。之后重新提交
+   同一素材（`rejectIfActive` 只看「进行中」，旧任务已 SUCCEEDED）→ 主管线用**新关键词**调 `clean`
+   → 指纹不匹配 → 重跑清洗换掉 `clean-segments` → **但 `regenerate=false`，不删译文** → 下次翻译
+   把那批基于旧内容的译文当断点复用。
+2. **不自证**：就算走 regenerate，删失败只记 WARN 不抛（`:271-275`），依赖「上一次删成功了」。
+
+候选方向：**甲**（把删除挪出 regenerate，改成「写完 clean-segments 就删」）、
+**乙**（译文记下它基于的 `clean-segments` 内容身份，读时比对，不匹配当没有重跑）、
+**丙**（比 mtime）。推荐 **乙 + 甲**。
+
+- **乙 一次能覆盖两件**：译文与术语表的上游是**同一次清洗**（术语表依赖 `context.terms`，
+  而 context 与 `clean-segments` 在清洗时一起产出），所以「记下基于的那次 clean 的内容身份」
+  这一条判据可以同时管译文（§14.4）和术语表（§14.6），不用两套。
+- ⚠ 乙 **不能**拿现成的 `keywordsFingerprint` 当判据 —— regenerate 允许「关键词没变也重跑一遍」，
+  同关键词两次清洗的内容可以不同（要**内容身份**，不是关键词身份）。
+
+### 14.5 本会话新发现、未决
+
+- `SubtitleCleanupCoordinator.readCheckpoint:286` 与 `SubtitlePreparationCoordinator.readCheckpoint:145`
+  **与 `ArtifactFiles.readJsonOrNull` 逐字等价**（同一件事做两遍，只差日志文案）→ 可删两份换现成助手。
+  项目所有者：**先放着**。
+- `SubtitleWorkspaceFilePaths`（10-14 落地）**生产零调用**。`translate` 用不上它：写目标按名
+  `resolve` 即可，存在性判据单源在 `ArtifactFiles` / `CheckpointPolicy`；它的真消费者是
+  `deleteTranslatedArtifacts`（要枚举「盘上有哪些语种」）。
+
+### 14.6 术语表（`terms-<lang>.json`）也没有过时判据
+
+判据 = **「文件存在且非空」**：`verifyTermsIfNeeded` 传
+`CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(termsFile))` →
+`TermVerification.decide:41` 命中 `SKIP_ALREADY_VERIFIED`（该枚举值自己的注释就写着
+「存在且非空 = 已查证，删文件即重查」）。**语种维度已隔离**（按语种分文件），除此之外零过时判断：
+
+| 依赖维度 | 隔离了吗 |
+|---|---|
+| 目标语种 | ✓ 按 `terms-<lang>.json` 分文件 |
+| **上游 `context.terms`**（摘要器产，关键词进摘要器） | ✗ 关键词变了 → 术语表换了 → 旧产物照旧被判「已查证」，新词永远不查 |
+| **provider**（`vidsage.term-lookup.provider` 换实现） | ✗ 判据看不见 provider，换了也永不重查 |
+
+作废机制与译文**共用同一把刀**（`deleteTranslatedArtifacts:264-266` 把 `TERMS` 一起删），
+所以 §14.4 的两条裂缝原样适用。
+
+**另有一条比「过时」更硬的（今天核出）——部分失败永不补查**：
+
+- `Outcome.persistable()` = `official + common + none > 0`（`TermVerification`）——
+  **只要有一条查成，就落盘**
+- 判据又是「文件存在且非空即已查证」
+- → **部分失败的那几个词从此永不补查**；只有**全部失败**才不落盘
+- `FailedLookup` 的 javadoc 写着「（下次文件缺失时补查）」——**这句在部分失败时是假的**，
+  文件并不缺失。`persistable()` 的注释（「落一份空产物会把整批词固化成『已查证』，
+  下次永远不会再补查」）明明预见了这个危险，却只守住了全失败那一半。
+  **注释与实现不自洽。**
+
+---
+
+## ▶ 收尾（2026-10-14 · 第五棒）
+
+**本任务到此结束：批 3 / 批 4 收尾 / 批 5 / 失败收口 / spec 订正 / 测试债 全部落地，测试全绿（569 / 0 / 0 / 1 skipped），已合回 `dev` 并归档。**
+
+| 项 | 结果 |
+|---|---|
+| **A** 批 3 · 登记表接管翻译会话 | ✅ `tryStart` + 409（附既有任务快照）+ 三条退登记路径全落；**运行期冒烟**：AC9 首帧是 `translate-subtitles` RUNNING 且 `terminal=false`、AC10 并发触发 409、跑完再触发 202（无幽灵） |
+| **B** #2 · 翻译失败收口（AC8） | ✅ 失败落 `error_message`（「翻译失败：」前缀）+ 广播 `translate-subtitles` 的 FAILED 终态；失败后再触发仍 202 |
+| **C** 批 4 残留（AC7） | ✅ 枚举本体 / 3 处悬空 import / package-info / `schema.sql` 列 全清；`src/main/java` 与 `src/test/java` 的 grep 为空 |
+| **D** 批 5 · `GET /api/languages`（AC1） | ✅ 四项 `code` + 中文 `label`（简中 / 繁中 / 英语 / 日语），实测 200；源语种与目标语种**共用这一份清单**，前端回传 `code` |
+| **F** 死代码 | ✅ 实际无货可清：`hasTranslationArtifact`、`resolveSourceLanguage` 主代码里早已不存在；`SubtitleWorkspaceFilePaths` 留着等 E 的消费者 |
+| **G** spec 订正 | ✅ `error-handling.md`（409 扩成「后置会话」+ 记下已知缺口）、`directory-structure.md`（语种枚举落位 / 政策件两个纯函数 / terminal 判据）、`frontend/api.md`（失败只能读 `errorMessage`）、`comment-guidelines.md` |
+| **测试债** | ✅ 8 个文件跟上子状态下线与签名漂移；新增 `SupportedLanguageTest`（5 条）与 `LanguageControllerTest`（2 条） |
+
+**留给后续（都不在本任务范围）**
+
+1. **E · 过时判据**（译文 §14.4 + 术语表 §14.6，含「部分失败永不补查」那条硬伤）—— 用户指示后面再做
+2. **④ · 成功路径清失败原因**（决策 6）—— 判据**不能**用 `TranslatedSubtitle.skipped()`（它读的是检查点里存的 flag，不是「本次是否跳过」）；用户指示后面再做
+3. **新缺口 · 提交 vs 后置会话** —— 翻译 / 重洗完在跑时同工作区还能提交新任务，主管线的 clean 会重写翻译正在读的 `clean-segments` / `context`。**从没进过任何文档**，现已记进 `error-handling.md` 的「已知缺口」；要修得先让登记表 value 带上 taskNo（或仓储加「按工作区取最近任务」），故单独开一条更合适
+4. **AC 措辞三处待裁**：AC5（`zh` 实测是**合法**输入，不是白名单外）、AC7（pattern 有假阳性 `translationFail` ⊂ `translationFailure`，且与 AC12 的迁移说明冲突）、AC11（「基线只增不减」与批 4 的删面设计打架）
+5. **prd / design / implement 与现状的偏差**：§1 那张表 + 语种枚举落位改 `model/translation/` + 跳过判据已换成枚举相等 + 测试基线数字（prd 写 498，实际 569）
+6. **运行期验收的遗留物**：工作区 `...BV1ZNgZ6nEee-7d329d996d16` 里留下了 zh-hant 三件套产物（A 冒烟真翻出来的）
