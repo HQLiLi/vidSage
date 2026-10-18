@@ -32,6 +32,15 @@ public interface TaskRunRepository {
     Optional<TaskRun> findLatestByTaskId(long taskId);
 
     /**
+     * 按 {@code (task_id, run_no)} 定位一条 run：SSE 端点按路径上的 runNo 取那条 run 时用。
+     *
+     * @param taskId 所属字幕任务
+     * @param runNo  任务内递增序号
+     * @return 对应的 run；不存在时为空
+     */
+    Optional<TaskRun> findByTaskIdAndRunNo(long taskId, int runNo);
+
+    /**
      * 整体回写 run（推进 {@code current_stage}；收口 {@code fail(...)} 之后整体回写）：
      * 按 id 覆盖全部字段。
      *

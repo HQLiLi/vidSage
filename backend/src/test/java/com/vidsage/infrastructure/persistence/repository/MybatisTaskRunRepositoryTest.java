@@ -30,7 +30,8 @@ import org.springframework.dao.DuplicateKeyException;
  * {@link MybatisTaskRunRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>。
  *
  * <p>覆盖「实体 ↔ 领域对象逐字段双向转换」「insertRunning 按 MAX+1 回填 run_no 与自增 id」
- * 「撞 uk_active_run 时返回空、不外抛」「查最近一条按 run_no 倒序」「启动收口先取后收」。
+ * 「撞 uk_active_run 时返回空、不外抛」「查最近一条按 run_no 倒序」
+ * 「按 (task_id, run_no) 定位」「启动收口先取后收」。
  */
 class MybatisTaskRunRepositoryTest {
 
@@ -109,6 +110,25 @@ class MybatisTaskRunRepositoryTest {
         assertEquals(TaskRunType.TRANSLATE, run.getRunType());
         assertEquals("zh-Hans", run.getTargetLanguage());
         assertEquals(TaskRunStatus.RUNNING, run.getStatus());
+    }
+
+    @Test
+    void findByTaskIdAndRunNoMapsEntityBackToDomain() {
+        TaskRunEntity entity = entity();
+        when(mapper.selectOne(any())).thenReturn(entity);
+
+        Optional<TaskRun> found = repository.findByTaskIdAndRunNo(7L, 3);
+
+        assertTrue(found.isPresent());
+        assertEquals(9L, found.get().getId());
+        assertEquals(3, found.get().getRunNo());
+    }
+
+    @Test
+    void findByTaskIdAndRunNoReturnsEmptyWhenRunMissing() {
+        when(mapper.selectOne(any())).thenReturn(null);
+
+        assertTrue(repository.findByTaskIdAndRunNo(7L, 99).isEmpty());
     }
 
     @Test

@@ -20,6 +20,7 @@ import com.vidsage.domain.task.port.VideoTaskRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
 import java.util.Optional;
 
 /**
@@ -105,7 +106,7 @@ public class SubtitlePipeline {
         long startTimeMs = System.currentTimeMillis();
         concurrencyGate.submit(() -> {
             try {
-                cleanupStage.regenerate(input, keywords, regenerationProgressListener(task));
+                cleanupStage.regenerate(input, workDir(task), keywords, regenerationProgressListener(task));
                 // 成功收口前清掉上一次重生成的失败原因（只认前缀，不动翻译/主管线的错误记录）
                 task.clearRegenerateFailure();
                 taskProgressNotifier.completeTask(task);
@@ -203,7 +204,7 @@ public class SubtitlePipeline {
      */
     private void runTranslationPipeline(VideoTask task, MediaInput input, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage, long startTimeMs) {
         try {
-            translationStage.translate(input, sourceLanguage, targetLanguage, translationProgressListener(task));
+            translationStage.translate(input, workDir(task), sourceLanguage, targetLanguage, translationProgressListener(task));
             taskProgressNotifier.completeTranslation(task);
             log.info("任务翻译完成: taskNo={}, cost={}ms", task.getTaskNo().value(), System.currentTimeMillis() - startTimeMs);
         } catch (Exception e) {
@@ -220,11 +221,12 @@ public class SubtitlePipeline {
      */
     private void prepareAndClean(VideoTask task) {
         MediaInput input = toMediaInput(task);
+        Path workDir = workDir(task);
         ProgressListener listener = createProgressListener(task);
         // 阶段 1：prepare 准备字幕文件
-        subtitlePreparationCoordinator.prepare(input, listener);
+        subtitlePreparationCoordinator.prepare(input, workDir, listener);
         // 阶段 2：清洗字幕文件
-        cleanupStage.clean(input, keywordRepository.findByWorkspaceKey(task.getWorkspaceKey()), listener);
+        cleanupStage.clean(input, workDir, keywordRepository.findByWorkspaceKey(task.getWorkspaceKey()), listener);
     }
 
     /**
@@ -272,6 +274,14 @@ public class SubtitlePipeline {
         }
     }
 
+
+    /**
+     * 定位这条任务的工作区目录（不存在则创建）：目录名由持久化的输入原文与内容 key 推出，
+     * 和产物写在同一个目录。调用方算一次传给各阶段，阶段不再自己算。
+     */
+    private Path workDir(VideoTask task) {
+        return workspaceDirectoryManager.ensureWorkspaceDirectory(task.getSourceUri(), task.getWorkspaceKey());
+    }
 
     /**
      * 从持久化字段还原管线的媒体输入：变体选择与落点规则单源在 {@link MediaInput#ofTaskInput}，

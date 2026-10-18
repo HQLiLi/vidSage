@@ -1,11 +1,8 @@
 package com.vidsage.application.subtitle.pipeline;
 
-import com.vidsage.application.media.WorkspaceKeyGenerator;
-import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.StageProgress;
-import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
@@ -60,9 +57,6 @@ public class SubtitleTranslationCoordinator {
      */
     private static final int STAGE_DONE = 100;
 
-    private final WorkspaceKeyGenerator workspaceKeyGenerator;
-    private final WorkspaceDirectoryManager workspaceDirectoryManager;
-
     private final ObjectMapper objectMapper;
     private final SubtitleContextSummarizer contextSummarizer;
 
@@ -71,23 +65,17 @@ public class SubtitleTranslationCoordinator {
     private final SubtitleTranslator subtitleTranslator;
 
     /**
-     * @param workspaceKeyGenerator     工作区key生成器
-     * @param workspaceDirectoryManager 工作区目录管理器
-     * @param objectMapper              Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
-     * @param contextSummarizer         内容总结器（摘要出主题 / 源语种 / 术语，供跨批上下文与跳过判定）
-     * @param lookupProvider            术语译名查证 provider，用 {@link ObjectProvider} 而不是直接注入：
-     *                                  查证是增益不是前提，配置里删掉 {@code vidsage.term-lookup.provider}
-     *                                  应当让应用照常起、只关查证，而不是缺 bean 起不来
-     * @param subtitleTranslator        字幕翻译器（持有翻译专用的 ChatClient）
+     * @param objectMapper      Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
+     * @param contextSummarizer 内容总结器（摘要出主题 / 源语种 / 术语，供跨批上下文与跳过判定）
+     * @param lookupProvider    术语译名查证 provider，用 {@link ObjectProvider} 而不是直接注入：
+     *                          查证是增益不是前提，配置里删掉 {@code vidsage.term-lookup.provider}
+     *                          应当让应用照常起、只关查证，而不是缺 bean 起不来
+     * @param subtitleTranslator 字幕翻译器（持有翻译专用的 ChatClient）
      */
-    public SubtitleTranslationCoordinator(WorkspaceKeyGenerator workspaceKeyGenerator,
-                                          WorkspaceDirectoryManager workspaceDirectoryManager,
-                                          ObjectMapper objectMapper,
+    public SubtitleTranslationCoordinator(ObjectMapper objectMapper,
                                           SubtitleContextSummarizer contextSummarizer,
                                           ObjectProvider<TermLookupProvider> lookupProvider,
                                           SubtitleTranslator subtitleTranslator) {
-        this.workspaceKeyGenerator = workspaceKeyGenerator;
-        this.workspaceDirectoryManager = workspaceDirectoryManager;
         this.objectMapper = objectMapper;
         this.contextSummarizer = contextSummarizer;
         this.lookupProvider = lookupProvider;
@@ -98,41 +86,40 @@ public class SubtitleTranslationCoordinator {
      * 翻译一份已清洗的字幕（不报告进度）。
      *
      * @param input          媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
+     * @param workDir        这条输入的工作区目录（调用方已定位好）
      * @param sourceLanguage 源语种
      * @param targetLanguage 翻译目标语种
      * @return 翻译产物（双语 SRT + segments 路径 + 源/目标语种 + 是否跳过 + 统计）
      * @throws IllegalArgumentException input 为空
      * @throws IllegalStateException    -clean 字幕缺失（先跑清洗）、解析或写入失败；目标语种为空
      */
-    public TranslatedSubtitle translate(MediaInput input, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage) {
-        return translate(input, sourceLanguage, targetLanguage, ProgressListener.noop());
+    public TranslatedSubtitle translate(MediaInput input, Path workDir, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage) {
+        return translate(input, workDir, sourceLanguage, targetLanguage, ProgressListener.noop());
     }
 
     /**
      * 翻译一份已清洗的字幕，产出双语 SRT 与翻译检查点。
      *
      * @param input          媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
+     * @param workDir        这条输入的工作区目录（调用方已定位好）
      * @param sourceLanguage 源语种
      * @param targetLanguage 翻译目标语种
-     * @param listener       进度监听；不可为 {@code null}——不关心进度用单参重载
+     * @param listener       进度监听；不可为 {@code null}——不关心进度用不带 listener 的重载
      * @return 翻译产物（双语 SRT + segments 路径 + 源/目标语种 + 是否跳过 + 统计）
      * @throws IllegalArgumentException input 或 listener 为空
      * @throws IllegalStateException    -clean 字幕缺失（先跑清洗）、解析或写入失败；目标语种为空
      */
-    public TranslatedSubtitle translate(MediaInput input, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage, ProgressListener listener) {
+    public TranslatedSubtitle translate(MediaInput input, Path workDir, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage, ProgressListener listener) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
         }
         if (listener == null) {
             throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
-                    + "或改用不带 listener 的 translate(input) 单参重载");
+                    + "或改用不带 listener 的 translate(input, workDir, sourceLanguage, targetLanguage) 重载");
         }
         String sourceLangCode = sourceLanguage.getCode();
         String targetLangCode = targetLanguage.getCode();
-
-        WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
-        Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
 
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
         Path translateSeg = workDir.resolve(SubtitleArtifactSpec.TRANSLATED_SEGMENTS.getFileName(targetLangCode));

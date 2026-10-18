@@ -11,9 +11,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.application.media.WorkspaceKeyGenerator;
-import com.vidsage.application.media.port.WorkspaceDirectoryManager;
-import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
@@ -69,8 +66,6 @@ class SubtitleTranslationCoordinatorTest {
     @TempDir(cleanup = CleanupMode.NEVER)
     Path workDir;
 
-    private final WorkspaceKeyGenerator workspaceKeyGenerator = mock(WorkspaceKeyGenerator.class);
-    private final WorkspaceDirectoryManager workspaceDirectoryManager = mock(WorkspaceDirectoryManager.class);
     private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
     private final SubtitleTranslator subtitleTranslator = mock(SubtitleTranslator.class);
 
@@ -106,8 +101,7 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     private SubtitleTranslationCoordinator service(ObjectProvider<TermLookupProvider> lookupProvider) {
-        return new SubtitleTranslationCoordinator(workspaceKeyGenerator, workspaceDirectoryManager, JSON,
-                contextSummarizer, lookupProvider, subtitleTranslator);
+        return new SubtitleTranslationCoordinator(JSON, contextSummarizer, lookupProvider, subtitleTranslator);
     }
 
     /** 查证 provider 缺席的 ObjectProvider：getIfAvailable() 返回 null，等价于 yml 删掉 provider 行。 */
@@ -166,8 +160,6 @@ class SubtitleTranslationCoordinatorTest {
         lookupCommands.clear();
         officialTermsReceived.clear();
         stubTranslator(0, 0);
-        when(workspaceKeyGenerator.parseMediaToWorkspaceKey(any())).thenReturn(new WorkspaceKey("a1b2c3d4e5f6"));
-        when(workspaceDirectoryManager.ensureWorkspaceDirectory(any(), any())).thenReturn(workDir);
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(SubtitleContext.empty()));
     }
 
@@ -215,7 +207,7 @@ class SubtitleTranslationCoordinatorTest {
         writeCleanTrack();
         SubtitleTranslationCoordinator s = service();
 
-        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         // 两条 -translate 产物都在且非空
         assertTrue(Files.isRegularFile(translateSegFile()) && Files.size(translateSegFile()) > 0,
@@ -235,12 +227,12 @@ class SubtitleTranslationCoordinatorTest {
         // 首跑带非零统计，好钉住「断点复用把它们一律归零」
         stubTranslator(2, 1);
 
-        TranslatedSubtitle first = s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        TranslatedSubtitle first = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
         assertEquals(2, first.retrySteps());
         assertEquals(1, first.untranslatedCount());
 
         // 二跑：-translate.json 已在，应断点复用，不再走翻译
-        TranslatedSubtitle second = s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        TranslatedSubtitle second = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertEquals(1, translatorCalls.get(), "断点复用后不应再调翻译器");
         assertEquals(2, second.segmentCount());
@@ -252,7 +244,7 @@ class SubtitleTranslationCoordinatorTest {
     void translateMissingCleanThrows() {
         SubtitleTranslationCoordinator s = service();
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET));
+                () -> s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET));
         // 消息要说清「缺哪个文件、先跑哪一步」
         assertTrue(e.getMessage().contains(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null)),
                 "消息应指明缺哪个文件");
@@ -262,7 +254,7 @@ class SubtitleTranslationCoordinatorTest {
     @Test
     void translateNullInputThrows() {
         SubtitleTranslationCoordinator s = service();
-        assertThrows(IllegalArgumentException.class, () -> s.translate(null, SOURCE, TARGET));
+        assertThrows(IllegalArgumentException.class, () -> s.translate(null, workDir, SOURCE, TARGET));
     }
 
     // ------------------------------------------------------------------
@@ -301,7 +293,7 @@ class SubtitleTranslationCoordinatorTest {
         SubtitleTranslationCoordinator s = service();
 
         // 源语种与目标语种解析成同一个枚举（zh / zh-CN / zh-SG / zh-Hans 都归一到这里）→ 跳过，不调 LLM
-        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), TARGET, TARGET);
+        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, TARGET, TARGET);
 
         assertSkipped(translated);
         assertEquals(2, translated.segmentCount());
@@ -312,7 +304,7 @@ class SubtitleTranslationCoordinatorTest {
         writeCleanTrack();
         SubtitleTranslationCoordinator s = service();
 
-        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertFalse(translated.skipped());
         assertEquals(1, translatorCalls.get(), "语种不同应调用翻译器");
@@ -340,7 +332,7 @@ class SubtitleTranslationCoordinatorTest {
         }).when(subtitleTranslator).translate(any(), any(), any(), any(), any());
         List<StageProgress> events = new ArrayList<>();
 
-        service().translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET, events::add);
+        service().translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET, events::add);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
         assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), events.get(0).stage());
@@ -355,10 +347,10 @@ class SubtitleTranslationCoordinatorTest {
     void translateCheckpointHitEmitsSingleSkippedEvent() throws Exception {
         writeCleanTrack();
         SubtitleTranslationCoordinator s = service();
-        s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         List<StageProgress> events = new ArrayList<>();
-        s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET, events::add);
+        s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET, events::add);
 
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
         assertEquals(StageProgress.State.SKIPPED, events.get(0).state());
@@ -372,7 +364,7 @@ class SubtitleTranslationCoordinatorTest {
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.of(contextWithLanguage("zh")));
         List<StageProgress> events = new ArrayList<>();
 
-        service().translate(new MediaInput.RemoteUrl("https://x"), TARGET, TARGET, events::add);
+        service().translate(new MediaInput.RemoteUrl("https://x"), workDir, TARGET, TARGET, events::add);
 
         // 阶段先「开始」（做完了读 -clean / 上下文这些前置工作），LLM 翻译跳过后以 SKIPPED 收尾
         assertEquals(2, events.size(), () -> "同语种跳过应发「开始 → SKIPPED」两条：" + events);
@@ -386,7 +378,7 @@ class SubtitleTranslationCoordinatorTest {
     void translateRejectsNullListener() throws Exception {
         writeCleanTrack();
         assertThrows(IllegalArgumentException.class,
-                () -> service().translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET, null));
+                () -> service().translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET, null));
     }
 
     // ------------------------------------------------------------------
@@ -400,7 +392,7 @@ class SubtitleTranslationCoordinatorTest {
                 .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
         SubtitleTranslationCoordinator s = service();
 
-        s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         // 翻译侧的摘要不带关键词（关键词是清洗那次的入参，翻译拿不到），落盘会盖掉清洗侧那份带关键词的；
         // 而清洗命中断点复用后不会再来覆盖，这份残次品就常驻了——所以只喂本次翻译，不落盘
@@ -414,7 +406,7 @@ class SubtitleTranslationCoordinatorTest {
         JSON.writeValue(contextFile().toFile(), new SubtitleContext("中世纪剑术", "de", List.of()));
         SubtitleTranslationCoordinator s = service();
 
-        s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         verify(contextSummarizer, never()).summarize(any(), any());
     }
@@ -425,7 +417,7 @@ class SubtitleTranslationCoordinatorTest {
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
         SubtitleTranslationCoordinator s = service();
 
-        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertFalse(Files.exists(contextFile()),
                 "降级成空上下文绝不能落盘，否则下次会命中这份空缓存");
@@ -455,7 +447,7 @@ class SubtitleTranslationCoordinatorTest {
                 "只狼", "official:Sekiro",
                 "弹刀", "")));
 
-        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertFalse(translated.skipped(), "查证不得改变翻译主流程");
         assertTrue(Files.isRegularFile(termsFile()) && Files.size(termsFile()) > 0,
@@ -486,7 +478,7 @@ class SubtitleTranslationCoordinatorTest {
                 new VerifiedTerm("只狼", "只狼", "游戏名", "Sekiro", "官方译名（来源：example.com）"))));
 
         service(present(stubLookup("只狼", "official:Sekiro")))
-                .translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+                .translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertEquals(0, lookupCommands.size(),
                 "terms 产物已存在 = 已查证，零查证调用（删文件即重查）");
@@ -499,7 +491,7 @@ class SubtitleTranslationCoordinatorTest {
                 .thenReturn(Optional.of(contextWithTerms("zh")));
         SubtitleTranslationCoordinator s = service(present(stubLookup("只狼", "official:Sekiro")));
 
-        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), TARGET, TARGET);
+        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, TARGET, TARGET);
 
         assertTrue(translated.skipped(), "同语种应跳过翻译");
         assertEquals(0, lookupCommands.size(), "同语种不翻译，也就不查证——目标语种默认 zh 的中文素材不烧搜索费");
@@ -513,7 +505,7 @@ class SubtitleTranslationCoordinatorTest {
                 .thenReturn(Optional.of(contextWithTerms("en")));
         SubtitleTranslationCoordinator s = service(absent());
 
-        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertFalse(translated.skipped(), "查证关闭不得挡翻译");
         assertEquals(1, translatorCalls.get(), "翻译照常进行");
@@ -528,7 +520,7 @@ class SubtitleTranslationCoordinatorTest {
         // 桩没给任何术语配结论 → 全部抛异常 = 全部查证失败
         SubtitleTranslationCoordinator s = service(present(stubLookup()));
 
-        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertFalse(Files.exists(termsFile()),
                 "全部失败不落产物——空产物会把整批词固化成「已查证」，下次永远不会再补查");
@@ -549,7 +541,7 @@ class SubtitleTranslationCoordinatorTest {
                 new VerifiedTerm("只狼", "只狼", "游戏名", "Sekiro", "官方译名（来源：example.com）"),
                 new VerifiedTerm("弹刀", "弹刀", "机制名", "", "弃权"))));
 
-        service().translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        service().translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertEquals(1, translatorCalls.get());
         List<VerifiedTerm> received = officialTermsReceived.get(0);
@@ -564,7 +556,7 @@ class SubtitleTranslationCoordinatorTest {
         when(contextSummarizer.summarize(any(), any()))
                 .thenReturn(Optional.of(contextWithTerms("en")));
         // provider 缺席 = 查证关闭 = terms 文件不存在：翻译照常，官方译名按空表
-        service().translate(new MediaInput.RemoteUrl("https://x"), SOURCE, TARGET);
+        service().translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
         assertEquals(1, translatorCalls.get(), "官方译名是增益不是前提，缺产物不挡翻译");
         assertTrue(officialTermsReceived.get(0).isEmpty(), "无产物应传空表而不是 null");

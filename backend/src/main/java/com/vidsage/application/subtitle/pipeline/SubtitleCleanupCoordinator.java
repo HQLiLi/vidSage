@@ -1,11 +1,8 @@
 package com.vidsage.application.subtitle.pipeline;
 
-import com.vidsage.application.media.WorkspaceKeyGenerator;
-import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.StageProgress;
-import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
@@ -18,7 +15,6 @@ import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
-import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.fs.ArtifactFiles;
 import com.vidsage.shared.progress.ProgressMapper;
 import com.vidsage.shared.subtitle.SrtRenderer;
@@ -50,8 +46,6 @@ import java.util.stream.Stream;
 @Component
 public class SubtitleCleanupCoordinator {
 
-    private final WorkspaceKeyGenerator workspaceKeyGenerator;
-    private final WorkspaceDirectoryManager workspaceDirectoryManager;
     private final ObjectMapper objectMapper;
     private final SubtitleCleanupProperties props;
 
@@ -60,22 +54,15 @@ public class SubtitleCleanupCoordinator {
     private final SubtitleCleanser subtitleCleanser;
 
     /**
-     * @param workspaceKeyGenerator     工作区key生成器
-     * @param workspaceDirectoryManager 工作区目录管理器
-     * @param objectMapper              Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
-     * @param props                     字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
-     * @param contextSummarizer         内容总结器（摘要出主题与术语，供跨批上下文用）
-     * @param subtitleCleanser          字幕清洗器（持有清洗专用的 ChatClient）
+     * @param objectMapper      Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
+     * @param props             字幕清洗调参（切分预算 / 批次 / 重试 / 相似度阈值）
+     * @param contextSummarizer 内容总结器（摘要出主题与术语，供跨批上下文用）
+     * @param subtitleCleanser  字幕清洗器（持有清洗专用的 ChatClient）
      */
-    public SubtitleCleanupCoordinator(WorkspaceKeyGenerator workspaceKeyGenerator,
-                                      WorkspaceDirectoryManager workspaceDirectoryManager,
-                                      ObjectMapper objectMapper,
+    public SubtitleCleanupCoordinator(ObjectMapper objectMapper,
                                       SubtitleCleanupProperties props,
                                       SubtitleContextSummarizer contextSummarizer,
                                       SubtitleCleanser subtitleCleanser) {
-        this.workspaceKeyGenerator = workspaceKeyGenerator;
-        this.workspaceDirectoryManager = workspaceDirectoryManager;
-    
         this.objectMapper = objectMapper;
         this.props = props;
         this.contextSummarizer = contextSummarizer;
@@ -85,40 +72,43 @@ public class SubtitleCleanupCoordinator {
     /**
      * 清洗一份字幕（不带关键词、不报告进度）。
      *
-     * @param input 媒体输入（与产字幕同源，用于定位工作目录）；不可为空
+     * @param input   媒体输入（与产字幕同源，用于定位工作目录）；不可为空
+     * @param workDir 这条输入的工作区目录（调用方已定位好）
      * @return 清洗产物（-clean SRT + segments 路径 + 统计）
      * @throws IllegalArgumentException input 为空
      * @throws IllegalStateException    原始字幕缺失 / 解析或写入失败
      */
-    public CleanedSubtitle clean(MediaInput input) {
-        return clean(input, new SubtitleKeywords(List.of()));
+    public CleanedSubtitle clean(MediaInput input, Path workDir) {
+        return clean(input, workDir, new SubtitleKeywords(List.of()));
     }
 
     /**
      * 清洗一份字幕（不报告进度）。
      *
      * @param input    媒体输入；不可为空
+     * @param workDir  这条输入的工作区目录（调用方已定位好）
      * @param keywords 用户手填的关键词（专有名词正确写法，纠正同音误写）；空清单就是「不纠这一类」
      * @return 清洗产物（路径 + 语种 + 句数 + 修正/重试统计）
      * @throws IllegalArgumentException input 为空
      * @throws IllegalStateException    原始 segments 缺失（先跑产字幕）、解析或写入失败
      */
-    public CleanedSubtitle clean(MediaInput input, SubtitleKeywords keywords) {
-        return clean(input, keywords, ProgressListener.noop());
+    public CleanedSubtitle clean(MediaInput input, Path workDir, SubtitleKeywords keywords) {
+        return clean(input, workDir, keywords, ProgressListener.noop());
     }
 
     /**
      * 清洗一份字幕。
      *
      * @param input    媒体输入；不可为空
+     * @param workDir  这条输入的工作区目录（调用方已定位好）
      * @param keywords 用户手填的关键词（专有名词正确写法）；不可为 {@code null}
-     * @param listener 进度监听；不可为 {@code null}——不关心进度用两参重载
+     * @param listener 进度监听；不可为 {@code null}——不关心进度用不带 listener 的重载
      * @return 清洗产物（路径 + 语种 + 句数 + 修正/重试统计）
      * @throws IllegalArgumentException input 或 listener 为空
      * @throws IllegalStateException    原始 segments 缺失（先跑产字幕）、解析或写入失败
      */
-    public CleanedSubtitle clean(MediaInput input, SubtitleKeywords keywords, ProgressListener listener) {
-        return doClean(input, keywords, listener, false);
+    public CleanedSubtitle clean(MediaInput input, Path workDir, SubtitleKeywords keywords, ProgressListener listener) {
+        return doClean(input, workDir, keywords, listener, false);
     }
 
     /**
@@ -136,26 +126,28 @@ public class SubtitleCleanupCoordinator {
      * 反过来先删，重跑失败时用户会同时失去字幕和译文，从「能用」掉到「什么都没有」。
      *
      * @param input    媒体输入；不可为空
+     * @param workDir  这条输入的工作区目录（调用方已定位好）
      * @param keywords 本次要用的关键词（调用方已落库）；不可为 {@code null}
      * @param listener 进度监听；不可为 {@code null}
      * @return 清洗产物（路径 + 语种 + 句数 + 修正/重试统计）
      * @throws IllegalArgumentException input 或 listener 为空
      * @throws IllegalStateException    原始 segments 缺失、摘要降级为空上下文、解析或写入失败
      */
-    public CleanedSubtitle regenerate(MediaInput input, SubtitleKeywords keywords, ProgressListener listener) {
-        return doClean(input, keywords, listener, true);
+    public CleanedSubtitle regenerate(MediaInput input, Path workDir, SubtitleKeywords keywords, ProgressListener listener) {
+        return doClean(input, workDir, keywords, listener, true);
     }
 
     /**
      * 清洗一条路径：两条入口（首次跑 / 重新生成）在这里汇合，只有 {@code regenerate} 这一个布尔不同。
      *
      * @param input      媒体输入；不可为空
+     * @param workDir    这条输入的工作区目录（调用方已定位好）
      * @param keywords   用户手填的关键词；不可为 {@code null}
      * @param listener   进度监听；不可为 {@code null}
      * @param regenerate {@code true} = 跳过 {@code -clean} 检查点、摘要失败即整体失败、成功后清理翻译与术语产物
      * @return 清洗产物
      */
-    private CleanedSubtitle doClean(MediaInput input, SubtitleKeywords keywords,
+    private CleanedSubtitle doClean(MediaInput input, Path workDir, SubtitleKeywords keywords,
                                     ProgressListener listener, boolean regenerate) {
         if (input == null) {
             throw new IllegalArgumentException(
@@ -163,13 +155,11 @@ public class SubtitleCleanupCoordinator {
         }
         if (listener == null) {
             throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
-                    + "或改用不带 listener 的 clean(input, keywords) 两参重载");
+                    + "或改用不带 listener 的 clean(input, workDir, keywords) 重载");
         }
         if (keywords == null) {
             throw new IllegalArgumentException("关键词不能为 null：请传 new SubtitleKeywords(List.of()) 表示不纠这一类");
         }
-        WorkspaceKey workspaceKey = workspaceKeyGenerator.parseMediaToWorkspaceKey(input);
-        Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(input.dirLabel(), workspaceKey);
         Path originalSeg = workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
         Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));

@@ -49,7 +49,8 @@ class TaskRunTest {
     @Test
     void restoreRebuildsAnyStatusIncludingInterrupted() {
         LocalDateTime created = LocalDateTime.of(2026, 10, 17, 10, 0);
-        TaskRun run = TaskRun.restore(9L, 7L, 3, TaskRunType.MAIN, null, TaskRunStatus.INTERRUPTED,
+        TaskRun run = TaskRun.restore(9L, 7L, 3, TaskRunType.MAIN, null,
+                TaskRunStatus.INTERRUPTED,
                 "transcribe-audio", "上次被中断了", created, created.plusMinutes(5), created);
 
         assertEquals(9L, run.getId());

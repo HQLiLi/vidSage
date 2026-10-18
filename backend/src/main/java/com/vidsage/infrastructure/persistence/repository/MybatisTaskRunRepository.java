@@ -61,6 +61,20 @@ public class MybatisTaskRunRepository implements TaskRunRepository {
     }
 
     /**
+     * 按 {@code (task_id, run_no)} 定位一条 run。
+     *
+     * @param taskId 所属字幕任务
+     * @param runNo  任务内递增序号
+     * @return 对应的 run；不存在时为空
+     */
+    public Optional<TaskRun> findByTaskIdAndRunNo(long taskId, int runNo) {
+        TaskRunEntity entity = mapper.selectOne(Wrappers.<TaskRunEntity>lambdaQuery()
+                .eq(TaskRunEntity::getTaskId, taskId)
+                .eq(TaskRunEntity::getRunNo, runNo));
+        return entity == null ? Optional.empty() : Optional.of(toDomain(entity));
+    }
+
+    /**
      * 全量回写 run（阶段推进 / 收口之后调用）：按 id 覆盖全部字段。
      *
      * @param run 已变更的 run（须经 {@code TaskRun} 的迁移方法产生变更）
