@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.config.WorkspaceProperties;
-import com.vidsage.domain.shared.model.WorkspaceDir;
-import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.workspace.model.SourceKey;
+import com.vidsage.domain.workspace.model.WorkspaceDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -34,30 +34,28 @@ class NioWorkspaceDirectoryManagerTest {
 
     @Test
     void createsDirectoryAndNestedRootLazily() {
-        Path dir = manager().ensureWorkspaceDirectory("sample", new WorkspaceKey("a1b2c3d4e5f6"));
+        Path dir = manager().ensureWorkspaceDirectory(new SourceKey("BV11QMd6WEJp|1"));
 
         assertTrue(Files.isDirectory(dir), "调用后目录必须已存在");
         assertTrue(Files.isDirectory(root()), "根目录应被一并创建");
         // 目录在调用前不存在：本断言通过「先算路径再判存在」间接保证——根在调用前必然不存在
     }
 
-    // ---------- 显式 key 入口 ----------
+    // ---------- 目录名公式 ----------
 
     @Test
-    void explicitKeyEntryCreatesDirectoryWithSanitizedLabelAndGivenKey() {
-        Path dir = manager().ensureWorkspaceDirectory("上传 视频:mp4", new WorkspaceKey("a1b2c3d4e5f6"));
+    void directoryNameIsSanitizedSourceKey() {
+        Path dir = manager().ensureWorkspaceDirectory(new SourceKey("BV11QMd6WEJp|1"));
 
-        assertEquals("上传 视频_mp4-a1b2c3d4e5f6", dir.getFileName().toString(),
-                "目录名 = sanitize(标签)-<显式 key>，key 原样使用、不重算");
+        assertEquals("BV11QMd6WEJp_1", dir.getFileName().toString(),
+                "目录名 = sanitize(身份键)，竖线换成下划线");
         assertTrue(Files.isDirectory(dir), "调用后目录必须已存在");
     }
 
     @Test
-    void explicitKeyEntryFallsBackLabelForBlankOrNull() {
-        assertEquals(WorkspaceDir.FALLBACK_NAME + "-a1b2c3d4e5f6",
-                manager().ensureWorkspaceDirectory("  ", new WorkspaceKey("a1b2c3d4e5f6")).getFileName().toString());
-        assertEquals(WorkspaceDir.FALLBACK_NAME + "-a1b2c3d4e5f6",
-                manager().ensureWorkspaceDirectory(null, new WorkspaceKey("a1b2c3d4e5f6")).getFileName().toString());
+    void fallsBackToMediaForReservedSourceKey() {
+        assertEquals(WorkspaceDir.FALLBACK_NAME,
+                manager().ensureWorkspaceDirectory(new SourceKey("NUL")).getFileName().toString());
     }
 
     @Test

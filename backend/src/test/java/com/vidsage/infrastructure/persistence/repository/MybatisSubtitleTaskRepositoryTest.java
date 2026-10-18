@@ -14,7 +14,7 @@ import static org.mockito.Mockito.when;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.vidsage.domain.subtitle.SubtitleTask;
+import com.vidsage.domain.task.SubtitleTask;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.infrastructure.persistence.entity.SubtitleTaskEntity;
 import com.vidsage.infrastructure.persistence.mapper.SubtitleTaskMapper;

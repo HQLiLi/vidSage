@@ -1,6 +1,6 @@
 package com.vidsage.domain.media.port;
 
-import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioStageOutput;
 import com.vidsage.domain.media.model.AudioSpec;
 import java.nio.file.Path;
 
@@ -24,5 +24,5 @@ public interface AudioExtractor {
      * @throws IllegalStateException    配置缺失（找不到 ffmpeg）、<b>目标产物已存在</b>（本接口不覆盖已有产物，
      *                                 上位调用方应先判存在即跳过）或外部命令未按预期完成（非零退出、超时、产物为空）
      */
-    AudioArtifact extract(Path mediaPath, Path outputPath, AudioSpec spec);
+    AudioStageOutput extract(Path mediaPath, Path outputPath, AudioSpec spec);
 }

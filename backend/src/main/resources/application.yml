@@ -60,14 +60,10 @@ vidsage:
     # 任务工作目录根；单任务子目录按内容寻址生成，目录可删
     root: ${VIDSAGE_WORKSPACE_ROOT:./data/works}
   term-lookup:
-    # 术语官方译名联网查证（翻译流程内逐条搜索目标语种译名 → 写独立产物 terms-<route>-<target>.json，
-    # context 永不改写）。删除本行 = 整个查证关闭，翻译照常（不发起任何搜索、不花钱）
+    # 术语官方译名联网查证
     provider: dashscope
     dashscope:
-      # 与 ASR 复用同一个百炼 key
       api-key: ${DASHSCOPE_API_KEY}
-      # 查证模型：挑 qwen flash 系列里输出价最低的当前代（以官方价目页为准）。
-      # 别换 Omni 系列——它搜索时强制 agent 策略走思考模式、必须流式，与本处的非流式调用不兼容。
       model: qwen3.7-flash
   download:
     yt-dlp:

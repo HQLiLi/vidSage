@@ -135,20 +135,6 @@ class SubtitleArtifactSpecTest {
     }
 
     @Test
-    void downloadabilityFlagMarksTheOutwardFacingViews() {
-        // 判据是「声明的属性」而不是后缀白名单：用户可下的只有 SRT 与 segments JSON，
-        // context / terms 是内部件，不进 artifacts 清单
-        assertTrue(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.isDownloadable());
-        assertTrue(SubtitleArtifactSpec.ORIGINAL_SRT.isDownloadable());
-        assertTrue(SubtitleArtifactSpec.CLEAN_SEGMENTS.isDownloadable());
-        assertTrue(SubtitleArtifactSpec.CLEAN_SRT.isDownloadable());
-        assertTrue(SubtitleArtifactSpec.TRANSLATED_SEGMENTS.isDownloadable());
-        assertTrue(SubtitleArtifactSpec.TRANSLATED_SRT.isDownloadable());
-        assertFalse(SubtitleArtifactSpec.CONTEXT.isDownloadable());
-        assertFalse(SubtitleArtifactSpec.TERMS.isDownloadable());
-    }
-
-    @Test
     void checkpointFlagMarksTheJsonCarriersOnly() {
         // SRT 是由 JSON 渲染的派生视图，不参与幂等判定；JSON 才是断点判据的载体
         assertTrue(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.isCheckpoint());

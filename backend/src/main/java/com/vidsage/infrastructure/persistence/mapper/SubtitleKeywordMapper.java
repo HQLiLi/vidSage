@@ -20,20 +20,21 @@ import org.apache.ibatis.annotations.Param;
 public interface SubtitleKeywordMapper extends BaseMapper<SubtitleKeywordEntity> {
 
     /**
-     * 按工作区覆盖式写入：有就只更 {@code keywords}，没有就插一行。
-     * {@code created_at} 不参与更新——覆盖是「改关键词」，不是「重新填一次」。
+     * 按任务覆盖式写入：有就只更 {@code keywords} 与 {@code updated_at}，没有就插一行。
+     * {@code created_at} 不参与更新——覆盖是「改关键词」，不是「重新填一次」；
+     * 首次插入时 {@code created_at} 与 {@code updated_at} 取同一个 {@code now}，两列同值。
      *
-     * @param workspaceKey 工作区短哈希
-     * @param keywords     整份清单（分隔符已由 {@code MybatisSubtitleKeywordRepository} 拼好，本接口只见字符串）
-     * @param createdAt    首次写入时间
+     * @param taskId   字幕任务的内部行 id
+     * @param keywords 整份清单（分隔符已由 {@code MybatisSubtitleKeywordRepository} 拼好，本接口只见字符串）
+     * @param now      本次写入的时刻（首插时同时落 created_at 与 updated_at；覆盖时只刷 updated_at）
      * @return 受影响行数（MySQL 对 upsert 恒返回 1 或 2，具体语义与本项目无关）
      */
     @Insert("""
-            INSERT INTO subtitle_keyword (workspace_key, keywords, created_at)
-            VALUES (#{workspaceKey}, #{keywords}, #{createdAt})
-            ON DUPLICATE KEY UPDATE keywords = #{keywords}
+            INSERT INTO subtitle_keyword (task_id, keywords, created_at, updated_at)
+            VALUES (#{taskId}, #{keywords}, #{now}, #{now})
+            ON DUPLICATE KEY UPDATE keywords = #{keywords}, updated_at = #{now}
             """)
-    int replaceByWorkspaceKey(@Param("workspaceKey") String workspaceKey,
-                              @Param("keywords") String keywords,
-                              @Param("createdAt") LocalDateTime createdAt);
+    int replaceByTaskId(@Param("taskId") long taskId,
+                        @Param("keywords") String keywords,
+                        @Param("now") LocalDateTime now);
 }

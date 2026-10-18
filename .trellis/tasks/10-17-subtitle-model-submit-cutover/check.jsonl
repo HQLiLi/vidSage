@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/10-17-subtitle-model-submit-cutover/prd.md", "reason": "AC1–AC13 逐条核（身份键去重 / 提交 202 与并发收敛 / 互斥无残留 / 崩溃恢复 / SSE 三种结果 / 死订阅两条 / 契约 / 关键词换锚点 / 旧件零残留 / 三种 run 跑通 / 回归 / 包结构 / 文档与规范）"}
+{"file": ".trellis/tasks/10-17-subtitle-model-submit-cutover/implement.md", "reason": "核步骤 0 的目录树与退场清单是否逐条落地；核步骤 5 的收尾判据（grep 旧件为空）；核 14 条欠账是否如实记账而不是被悄悄做掉或漏掉 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "对版依据：§4 三处状态机的每个值恰好一条路径（尤其 TaskRun 不得出现 interrupt()）、§5 写集边界、§7.1 的 C63 两条落地约束。注意它的 SSE 四处已被本段 prd 订正，别拿旧说法判红 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核落位与命名：端口在 application|domain 的 port/、三件套在 persistence 三个子包、实现落 infrastructure（HTTP 类型例外落 web）、测试包镜像主包；核 application/X 与 domain/X 是否一一对应 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "反向核验：表清单是否五张、subtitle_keyword 的锚点与 updated_at 是否与 spec 自洽、SQL 是否与 schema.sql 一致"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核异常类型选择（未就绪必须是 400 不是 409）、错误信息中文且含缺什么怎么补、守卫命名 validateXxx"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核注释（首行大白话、枚举与常量逐个有注释）、测试命名与断言风格、没有夹带范围外的风格改名"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "核代码注释里没有 C*/§/W*/段编号/日期/任务号 —— 这些只允许出现在任务文档里"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核脱敏红线：任何新增日志、异常消息、测试断言都不得打印 source_uri 的值"}

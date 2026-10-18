@@ -1,14 +1,10 @@
 /**
- * 任务上下文：任务生命周期与任务词汇的家。
+ * 任务上下文：任务与执行轴的实体与词汇。
  *
- * <p>根只留主状态机 {@code VideoTask}——它承载合法迁移规则，也带两处查询谓词
- * {@code isEventTerminal}（终态判定，web 收口引用）与 {@code ACTIVE_STATUSES}（active 判据，
- * repository 查重引用）。
- *
- * <p>{@code model/} 装数据词汇——状态枚举 {@code TaskStatus} / {@code TaskInputType}
- * 与任务号值对象 {@code TaskNo}；{@code policy/} 装无状态政策
- * {@code TaskStageEvent}（任务状态 → 阶段事件的渲染）；{@code port/} 装端口接口
- * {@code VideoTaskRepository}，由 {@code infrastructure/persistence/repository/} 的
- * {@code MybatisVideoTaskRepository} 实现。
+ * <p>根装两个实体：{@code SubtitleTask}（字幕任务身份，一个媒体对应一个对外稳定的 task_no）与
+ * {@code TaskRun}（一次执行，插入即抢互斥）。{@code model/} 装数据词汇——对外任务号值对象
+ * {@code TaskNo}、一条 run 的对外引用 {@code RunRef}、执行类型 {@code TaskRunType} 与执行状态
+ * {@code TaskRunStatus}；{@code port/} 装持久化端口 {@code SubtitleTaskRepository} 与
+ * {@code TaskRunRepository}，由 persistence 层实现。
  */
 package com.vidsage.domain.task;

@@ -33,7 +33,7 @@ class NioFileStateReaderTest {
 
         MediaFileInfo info = reader.getFileState(file);
 
-        assertEquals(file, info.path(), "快照 path 与传入原样一致（absolute 化归 SourceUri 公式）");
+        assertEquals(file, info.path(), "快照 path 与传入原样一致，不做 absolute 化");
         assertEquals(64, info.sizeBytes());
         assertTrue(info.modifyTimeMs() > 0);
         assertTrue(info.isAvailable());

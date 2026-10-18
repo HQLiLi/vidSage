@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/10-17-subtitle-model-submit-cutover/prd.md", "reason": "本段范围、T1–T8 八条取舍、49 条需求、AC1–AC13 —— 写代码前先对齐要交付什么、什么不做（范围外表逐条写明交给哪一段）"}
+{"file": ".trellis/tasks/10-17-subtitle-model-submit-cutover/implement.md", "reason": "十步执行清单（含步骤 5 换血主步的不可再分理由、步骤 6 的包结构重排与异常包的不做判据）、每步判据、回滚点、14 条欠账 —— 这是本次的执行清单 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "权威终态设计：§1 六张表 DDL、§2 索引命名 N4 与枚举列 VARCHAR(32) 的 N6、§3 领域类与 port 落点、§4 三处状态机的每个值恰好一条路径、§5 写集与事务边界、§6 对外契约、§7 各条写路径（C63 并发分支与两条落地约束在 §7.1）。注意：§3 / §6 / §9 关于 SSE 的四处已被本段 prd 订正（implement.md 步骤 8.1） —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "四层结构、端口归属与实现在哪层、持久化三层命名与可见性、方法名动词开头、domain 层禁止清单。本段要新增一条规则：端口实现落 infrastructure/，签名需要 HTTP 类型时落 web/<构件桶>/ —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "MyBatis-Plus 用法（只用 BaseMapper、值对象与 String 列的转换收敛在 Repository、枚举按名映射）、单测不连真库的测试策略。本段要同步：表清单从六张改五张、subtitle_keyword 换锚点"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "异常类型选择（400 用 IllegalArgumentException、404 用自定义、状态机非法迁移抛 IllegalStateException）、错误信息中文且要含缺什么怎么补、前置守卫命名 validateXxx"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "注释要求、测试写法与命名（throwsWhen... 异常路径模式）、依赖原则"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "脱敏红线：source_uri（URL 原文 / 上传文件原始名）不得写日志 —— 本段新增的日志（身份键回落、启动收口）与测试断言都要守"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "内容分流表 + pre-commit 钩子：代码注释里不写 C*/§/W*/段编号/日期 —— 那些只写在任务文档里"}

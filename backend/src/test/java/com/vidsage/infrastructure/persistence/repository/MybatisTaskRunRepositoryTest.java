@@ -11,9 +11,9 @@ import static org.mockito.Mockito.when;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.vidsage.domain.subtitle.TaskRun;
-import com.vidsage.domain.subtitle.model.TaskRunStatus;
-import com.vidsage.domain.subtitle.model.TaskRunType;
+import com.vidsage.domain.task.TaskRun;
+import com.vidsage.domain.task.model.TaskRunStatus;
+import com.vidsage.domain.task.model.TaskRunType;
 import com.vidsage.infrastructure.persistence.entity.TaskRunEntity;
 import com.vidsage.infrastructure.persistence.mapper.TaskRunMapper;
 import java.time.LocalDateTime;
@@ -30,7 +30,8 @@ import org.springframework.dao.DuplicateKeyException;
  * {@link MybatisTaskRunRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>。
  *
  * <p>覆盖「实体 ↔ 领域对象逐字段双向转换」「insertRunning 按 MAX+1 回填 run_no 与自增 id」
- * 「撞 uk_active_run 时返回空、不外抛」「查最近一条按 run_no 倒序」「启动收口先取后收」。
+ * 「撞 uk_task_run_task_id_active_flag 时返回空、不外抛」「查最近一条按 run_no 倒序」
+ * 「锁定读版本带 FOR SHARE」「按 (task_id, run_no) 定位」「启动收口先取后收」。
  */
 class MybatisTaskRunRepositoryTest {
 
@@ -112,6 +113,25 @@ class MybatisTaskRunRepositoryTest {
     }
 
     @Test
+    void findByTaskIdAndRunNoMapsEntityBackToDomain() {
+        TaskRunEntity entity = entity();
+        when(mapper.selectOne(any())).thenReturn(entity);
+
+        Optional<TaskRun> found = repository.findByTaskIdAndRunNo(7L, 3);
+
+        assertTrue(found.isPresent());
+        assertEquals(9L, found.get().getId());
+        assertEquals(3, found.get().getRunNo());
+    }
+
+    @Test
+    void findByTaskIdAndRunNoReturnsEmptyWhenRunMissing() {
+        when(mapper.selectOne(any())).thenReturn(null);
+
+        assertTrue(repository.findByTaskIdAndRunNo(7L, 99).isEmpty());
+    }
+
+    @Test
     void findLatestByTaskIdOrdersByRunNoDescending() {
         when(mapper.selectOne(any())).thenReturn(null);
 
@@ -125,6 +145,36 @@ class MybatisTaskRunRepositoryTest {
         assertTrue(segment.contains("run_no"), () -> "最近一条按 run_no 定位：" + segment);
         assertTrue(segment.contains("order by") && segment.contains("desc"),
                 () -> "必须按 run_no 倒序取一条：" + segment);
+    }
+
+    @Test
+    void findLatestForShareByTaskIdUsesLockedReadWithLimitOne() {
+        when(mapper.selectOne(any())).thenReturn(null);
+
+        repository.findLatestForShareByTaskId(7L);
+
+        // getSqlSegment() 已把 .last() 追加的片段拼在末尾（MP 3.5 AbstractWrapper#getSqlSegment）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<AbstractWrapper<TaskRunEntity, ?, ?>> captor =
+                ArgumentCaptor.forClass(AbstractWrapper.class);
+        verify(mapper).selectOne(captor.capture());
+        String segment = captor.getValue().getSqlSegment().toLowerCase(java.util.Locale.ROOT);
+        assertTrue(segment.contains("order by") && segment.contains("desc"),
+                () -> "与 findLatestByTaskId 同语义，按 run_no 倒序：" + segment);
+        assertTrue(segment.contains("for share"),
+                () -> "并发分支必须用锁定读，才读得到对方刚提交的行：" + segment);
+        assertTrue(segment.contains("limit 1"), () -> "只取最近一条：" + segment);
+    }
+
+    @Test
+    void findLatestForShareByTaskIdMapsEntityBackToDomain() {
+        when(mapper.selectOne(any())).thenReturn(entity());
+
+        Optional<TaskRun> found = repository.findLatestForShareByTaskId(7L);
+
+        assertTrue(found.isPresent());
+        assertEquals(9L, found.get().getId());
+        assertEquals(3, found.get().getRunNo());
     }
 
     @Test
