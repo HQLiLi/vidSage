@@ -1,9 +1,10 @@
 package com.vidsage.application.task.message;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.vidsage.domain.shared.model.StageProgress;
-import com.vidsage.domain.subtitle.TaskRun;
-import com.vidsage.domain.subtitle.model.TaskRunStatus;
-import com.vidsage.domain.subtitle.model.TaskRunType;
+import com.vidsage.domain.task.TaskRun;
+import com.vidsage.domain.task.model.TaskRunStatus;
+import com.vidsage.domain.task.model.TaskRunType;
 import com.vidsage.domain.task.model.RunRef;
 import org.springframework.util.StringUtils;
 
@@ -33,7 +34,8 @@ public sealed interface TaskRunProgress
     StageProgress stage();
 
     /** 这条 run 是否已结束（{@code status != RUNNING}）。 */
-    default boolean terminal() {
+    @JsonProperty("terminal")
+    default boolean isTerminal() {
         return status() != TaskRunStatus.RUNNING;
     }
 

@@ -17,8 +17,8 @@
 ## 建表契约
 
 > **现状是六张表**（`workspace` / `subtitle_task` / `task_run` / `subtitle_artifact` /
-> `intermediate_file` / `subtitle_keyword`），**另有旧 `task` 表仍在** —— 新模型落地期间的新旧并存，
-> 后续段落会删掉它。全文见 `backend/src/main/resources/schema.sql`；
+> `intermediate_file` / `subtitle_keyword`）；旧的 `task` 表已随字幕模型重构退场。
+> 全文见 `backend/src/main/resources/schema.sql`；
 > **逐列的权威定义与「为什么这么定」在 `.trellis/tasks/10-15-subtitle-task-model-refactor/design.md` §1–§2**
 > （归档后会挪到 `.trellis/tasks/archive/` 下同名目录）。本文件不复述 DDL，只写规则。
 
@@ -29,7 +29,7 @@
 | `task_run` | 每次执行（提交 / 重新生成 / 翻译）各一行 | `RUNNING` / `SUCCEEDED` / `FAILED` / `INTERRUPTED` |
 | `subtitle_artifact` | 产物版本：一行 = 一个逻辑版本，文件用固定四列表达 | `CREATING` / `READY` / `SUPERSEDED` / `FAILED` / `DELETED` |
 | `intermediate_file` | 中间产物缓存（媒体源 / 元信息 / 音频），跨 run 存活 | `READY` / `SUPERSEDED` / `DELETED` |
-| `subtitle_keyword` | 用户手填的关键词，一个任务一份（覆盖写） | 无 |
+| `subtitle_keyword` | 用户手填的关键词，按 `task_id` 一个任务一份（覆盖写）；唯一约束 `uk_subtitle_keyword_task_id` | 无 |
 
 ### 七条规则
 
@@ -76,7 +76,8 @@ CONSTRAINT uk_task_run_task_id_active_flag UNIQUE (task_id, active_flag)
 **6. 时间列按需，不再「四件套」。** 每张表只落它真正需要的：`created_at` 普遍都有，`task_run` 另有
 `started_at` / `finished_at`，`subtitle_artifact` 只有 `created_at`。
 **凡是带 `updated_at` 的表，写入点一律是「在同一条 UPDATE 里一起刷」**，首插时与 `created_at` 同值 ——
-`subtitle_task` 是每次 run 收尾、`workspace` 是指纹写入、`intermediate_file` 是三条状态变更。
+`subtitle_task` 是每次 run 收尾、`workspace` 是指纹写入、`intermediate_file` 是三条状态变更、
+`subtitle_keyword` 是覆盖写那条 upsert 的 UPDATE 分支。
 **「有列没写入路径」是明确的病，不许留**（定了列就要同时定谁写、什么时候写）。
 
 **7. 脱敏红线：`source_uri` 列不得写日志。** 它装 URL 原文 / 上传文件原始名，含用户原始信息。
@@ -88,7 +89,7 @@ CONSTRAINT uk_task_run_task_id_active_flag UNIQUE (task_id, active_flag)
 | 自增列未定义为主键 | 建表即败：MySQL 1075「there can be only one auto column and it must be defined as a key」（2026-09-30 实测） |
 | 枚举列用 `ENUM`，事后要加新值 | 必须手工 `ALTER TABLE` —— 本仓已改用 `VARCHAR(32)` 规避 |
 | 生成列省掉 `STORED` 或写成普通列 | 唯一索引失去「只约束一个状态值」的语义，互斥/当前版静默失效 |
-| 同 workspace_key 且 PENDING/RUNNING 重复提交 | `TaskConflictException` → 409（携带 existingTask）——**旧栈行为，新模型落地后改为撞 `task_run` 的 `active_flag` 唯一键** |
+| 同一 task 已有 `RUNNING` run 时再触发 | `TaskConflictException` → 409（响应体与 202 同形状 `{taskNo, runNo}`）——撞 `task_run` 的 `uk_task_run_task_id_active_flag` |
 | taskNo 不存在 | `TaskNotFoundException` → 404 |
 | 真库不可达且 sql.init.mode=always | 上下文启动失败——刻意显式暴露，不做静默降级 |
 
@@ -131,7 +132,7 @@ spring.sql.init.mode: always   # CREATE TABLE IF NOT EXISTS 幂等，启动即�
 
 - 只用第一档 `BaseMapper<T>`；**禁** `IService` / `ServiceImpl` 继承（理由见 directory-structure.md 反模式表）。
 - MP 类型（`BaseMapper` / `LambdaQueryWrapper` / `IPage`）不越出 `infrastructure/persistence/` 包。
-- **值对象 ↔ String 列**：领域侧的值对象（`domain/task/model/TaskNo`、`domain/shared/model/WorkspaceKey`、
+- **值对象 ↔ String 列**：领域侧的值对象（`domain/task/model/TaskNo`、
   2026-10-17 起的 `domain/workspace/model/SourceKey` 等）与枚举（`SourceType` 等）在实体里一律是
   `String` / enum 列，转换收敛在 `MybatisXxxRepository` 的实体↔领域映射边界 —— schema / SQL / Mapper
   层对该转换无感知。
@@ -145,18 +146,53 @@ spring.sql.init.mode: always   # CREATE TABLE IF NOT EXISTS 幂等，启动即�
 
 #### Wrong：application 层直接注入 Mapper
 ```java
-@Service class Foo { private final VideoTaskMapper mapper; }   // ❌ Mapper 是 persistence 的内部细节
+@Service class Foo { private final SubtitleTaskMapper mapper; }   // ❌ Mapper 是 persistence 的内部细节
 ```
 #### Correct：依赖 domain 的端口，实现住 persistence
 ```java
-@Service class Foo { private final VideoTaskRepository repository; }   // ✅ 实现类 MybatisVideoTaskRepository
+@Service class Foo { private final SubtitleTaskRepository repository; }   // ✅ 实现类 MybatisSubtitleTaskRepository
 ```
+
+## 事务与并发读
+
+**规则**：一个事务里凡是「要读到**另一个并发事务刚提交的行**」的读，一律用**锁定读**（`.last("FOR SHARE")`）。
+普通 `SELECT` 走的是事务快照（MySQL 默认 REPEATABLE READ，快照在**事务里第一条普通读**那一刻建立），
+读不到对方在快照建立之后提交的行。
+
+**为什么容易漏**：撞唯一键后「重查对方刚插的行」这类分支，头几条重查通常都记得加锁定读，
+到后面再查一条（例如「取那条既有的 run」）就忘了 —— 而它读的同样是对方刚提交的行。
+
+**漏了的后果不是「偶发」而是「必现」**：只要走到那个分支就抛 `IllegalStateException`，HTTP 500。
+而且它只在**真并发**下出现 —— 串行重试、普通压测都复现不了，因为那些时候快照本来就是新的、
+根本走不到撞键分支。
+
+### Wrong vs Correct
+
+#### Wrong：撞键分支里最后一条重查用了普通读
+```java
+Optional<Workspace> ws = workspaceRepository.findForShareBySourceTypeAndSourceKey(type, key);  // ✅ 锁定读
+Optional<SubtitleTask> task = subtitleTaskRepository.findForShareByWorkspaceId(wsId);          // ✅ 锁定读
+Optional<TaskRun> run = taskRunRepository.findLatestByTaskId(taskId);                          // ❌ 普通读：快照里没这条
+```
+#### Correct：同一事务里要读对方刚提交的行，一条都不能漏
+```java
+Optional<TaskRun> run = taskRunRepository.findLatestForShareByTaskId(taskId);                  // ✅
+```
+
+**这类分支怎么验**：多进程 curl 并发**测不出来**（进程启动错开几毫秒，根本进不去撞键分支）。
+要用**单进程并行连接**把到达时间压到亚毫秒，例如：
+```bash
+curl -s --parallel --parallel-immediate --parallel-max 8 -o /dev/null -w '%{http_code} ' \
+     -X POST -H 'Content-Type: application/json' -d '{"url":"..."}' \
+     $(for i in $(seq 8); do echo "http://localhost:8080/api/tasks"; done)
+```
+判据：应当恰好一个 202、其余 409（且 409 带的是**正在跑那条**的 runNo）；出现 500 就是漏了锁定读。
 
 ## 测试策略
 
-- **单测不连真库**：`MybatisVideoTaskRepositoryTest` mock 全部 Mapper，断言实体↔领域对象双向转换
-  （含 `TaskNo` / `WorkspaceKey` 值对象与 String 列的互转）与查询条件。2026-10-17 新增的五个仓储
-  （`workspace` / `subtitle_task` / `task_run` / `subtitle_artifact` / `intermediate_file`）同此口径。
+- **单测不连真库**：各 `MybatisXxxRepositoryTest`（如 `MybatisSubtitleTaskRepositoryTest`）mock 全部 Mapper，
+  断言实体↔领域对象双向转换（含 `TaskNo` 值对象与 String 列的互转）与查询条件。2026-10-17 起的六个仓储
+  （`workspace` / `subtitle_task` / `task_run` / `subtitle_artifact` / `intermediate_file` / `subtitle_keyword`）同此口径。
   `LambdaQueryWrapper` 的列名解析走 `TableInfo` 缓存，纯单测要在 `@BeforeAll` 手工
   `TableInfoHelper.initTableInfo(...)` 注册一次。
 - **真库连通由冒烟测试承担**：`VidSageApplicationTests` 标 `@ActiveProfiles("local")`（测试类路径的

@@ -15,13 +15,13 @@ import static org.mockito.Mockito.when;
 import com.vidsage.application.task.message.TaskRunProgress;
 import com.vidsage.application.task.port.TaskProgressBroadcaster;
 import com.vidsage.domain.shared.model.StageProgress;
-import com.vidsage.domain.subtitle.SubtitleTask;
-import com.vidsage.domain.subtitle.TaskRun;
-import com.vidsage.domain.subtitle.model.TaskRunStatus;
-import com.vidsage.domain.subtitle.model.TaskRunType;
+import com.vidsage.domain.task.SubtitleTask;
+import com.vidsage.domain.task.TaskRun;
+import com.vidsage.domain.task.model.TaskRunStatus;
+import com.vidsage.domain.task.model.TaskRunType;
 import com.vidsage.domain.subtitle.port.SubtitleArtifactRepository;
-import com.vidsage.domain.subtitle.port.SubtitleTaskRepository;
-import com.vidsage.domain.subtitle.port.TaskRunRepository;
+import com.vidsage.domain.task.port.SubtitleTaskRepository;
+import com.vidsage.domain.task.port.TaskRunRepository;
 import com.vidsage.domain.task.model.RunRef;
 import com.vidsage.domain.task.model.TaskNo;
 import java.time.LocalDateTime;
@@ -121,7 +121,7 @@ class TaskRunSupervisorTest {
         verify(subtitleTaskRepository).touchUpdatedAt(eq(List.of(TASK_ID)), any());
         ArgumentCaptor<TaskRunProgress> captor = ArgumentCaptor.forClass(TaskRunProgress.class);
         verify(broadcaster).publish(eq(ref), captor.capture());
-        assertTrue(captor.getValue().terminal(), "终态事件 terminal 为真");
+        assertTrue(captor.getValue().isTerminal(), "终态事件 terminal 为真");
         verify(broadcaster).complete(ref);
     }
 
@@ -136,7 +136,7 @@ class TaskRunSupervisorTest {
         assertEquals("转写失败：请检查 DASHSCOPE_API_KEY", run.getErrorMessage());
         ArgumentCaptor<TaskRunProgress> captor = ArgumentCaptor.forClass(TaskRunProgress.class);
         verify(broadcaster).publish(eq(ref), captor.capture());
-        assertTrue(captor.getValue().terminal());
+        assertTrue(captor.getValue().isTerminal());
         assertEquals("转写失败：请检查 DASHSCOPE_API_KEY", captor.getValue().stage().message());
         verify(broadcaster).complete(ref);
     }

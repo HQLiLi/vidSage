@@ -158,9 +158,22 @@ public class BilibiliMediaIdentityResolver implements MediaIdentityResolver {
         }
         Matcher matcher = AV_PATTERN.matcher(segment);
         if (matcher.matches()) {
-            return avToBv(Long.parseLong(matcher.group(1)));
+            Long aid = parseAvNumber(matcher.group(1));
+            return aid == null ? null : avToBv(aid);
         }
         return null;
+    }
+
+    /**
+     * av 号数字串转成数值；位数超出 {@code long} 能表示的范围时返回 {@code null}，由调用方回落。
+     * <b>不抛异常</b>——「抽不到视频号」是降级路径不是失败路径。
+     */
+    private static Long parseAvNumber(String digits) {
+        try {
+            return Long.parseLong(digits);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
@@ -291,7 +304,8 @@ public class BilibiliMediaIdentityResolver implements MediaIdentityResolver {
             }
             return URI.create(url).resolve(location).toString();
         } catch (RuntimeException e) {
-            log.warn("短链跟跳转失败，回落规范化 URL: host={}, reason={}", hostOf(url), e.getMessage());
+            // 只记异常类名，不记 message：I/O 异常的消息里带着请求 URL（即 source_uri），属脱敏红线
+            log.warn("短链跟跳转失败，回落规范化 URL: host={}, reason={}", hostOf(url), e.getClass().getSimpleName());
             return null;
         }
     }

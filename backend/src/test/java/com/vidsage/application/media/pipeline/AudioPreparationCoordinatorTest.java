@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.domain.media.model.AcquiredMedia;
-import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioStageOutput;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
@@ -58,12 +58,12 @@ class AudioPreparationCoordinatorTest {
     void runsBothStagesOnFirstRun() {
         AcquiredMedia media = acquiredMedia();
         Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
-        var artifact = new AudioArtifact(audioPath, AudioSpec.WAV_PCM_16K_MONO, 12);
+        var artifact = new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 12);
         when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.empty());
         when(acquisitionStage.acquire(input, workDir)).thenReturn(media);
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO)).thenReturn(artifact);
 
-        AudioArtifact result = service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
+        AudioStageOutput result = service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
 
         assertSame(artifact, result);
         verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO);
@@ -79,7 +79,7 @@ class AudioPreparationCoordinatorTest {
         Path audioPath = workDir.resolve("audio-16k1ch48k-t0.m4a");
         when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.M4A_AAC_48K_MONO))
-                .thenReturn(new AudioArtifact(audioPath, AudioSpec.M4A_AAC_48K_MONO, 9));
+                .thenReturn(new AudioStageOutput(audioPath, AudioSpec.M4A_AAC_48K_MONO, 9));
 
         service().prepare(input, workDir, AudioSpec.M4A_AAC_48K_MONO, listener);
 
@@ -96,7 +96,7 @@ class AudioPreparationCoordinatorTest {
         Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
         when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(any(), any(), any()))
-                .thenReturn(new AudioArtifact(audioPath, AudioSpec.WAV_PCM_16K_MONO, 8));
+                .thenReturn(new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 8));
 
         service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
 
@@ -112,7 +112,7 @@ class AudioPreparationCoordinatorTest {
         Files.write(workDir.resolve("audio-16k1ch-t0.wav"), new byte[5]);
         when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
 
-        AudioArtifact result = service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
+        AudioStageOutput result = service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
 
         verify(audioExtractor, never()).extract(any(), any(), any());
         assertEquals(workDir.resolve("audio-16k1ch-t0.wav"), result.audioPath());
@@ -128,7 +128,7 @@ class AudioPreparationCoordinatorTest {
         Files.write(audioPath, new byte[0]);
         when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO))
-                .thenReturn(new AudioArtifact(audioPath, AudioSpec.WAV_PCM_16K_MONO, 7));
+                .thenReturn(new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 7));
 
         service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
 
@@ -190,7 +190,7 @@ class AudioPreparationCoordinatorTest {
         Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
         when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO))
-                .thenReturn(new AudioArtifact(audioPath, AudioSpec.WAV_PCM_16K_MONO, 3));
+                .thenReturn(new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 3));
 
         assertDoesNotThrow(() -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO));
     }

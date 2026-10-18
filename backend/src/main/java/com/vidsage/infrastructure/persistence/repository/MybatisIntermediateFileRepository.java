@@ -1,9 +1,9 @@
 package com.vidsage.infrastructure.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.vidsage.domain.subtitle.IntermediateFile;
-import com.vidsage.domain.subtitle.model.IntermediateFileStatus;
-import com.vidsage.domain.subtitle.port.IntermediateFileRepository;
+import com.vidsage.domain.intermediate.IntermediateFile;
+import com.vidsage.domain.intermediate.model.IntermediateFileStatus;
+import com.vidsage.domain.intermediate.port.IntermediateFileRepository;
 import com.vidsage.infrastructure.persistence.entity.IntermediateFileEntity;
 import com.vidsage.infrastructure.persistence.mapper.IntermediateFileMapper;
 import java.time.LocalDateTime;

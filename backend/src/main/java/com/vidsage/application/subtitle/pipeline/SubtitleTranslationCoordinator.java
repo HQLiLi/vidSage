@@ -23,6 +23,7 @@ import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.port.TermLookupProvider;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
 import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.progress.StageEvents;
 import com.vidsage.shared.subtitle.SrtRenderer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -133,7 +134,7 @@ public class SubtitleTranslationCoordinator {
             return isReused.get();
         }
 
-        emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageProgress.State.RUNNING);
+        StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageProgress.State.RUNNING);
         if (!ArtifactFiles.isNonEmpty(cleanSeg)) {
             throw new IllegalStateException("字幕尚未清洗：请先调用 POST /api/subtitles/clean 产出 -clean 字幕，再翻译（缺 "
                     + cleanSeg.getFileName() + "）");
@@ -164,7 +165,7 @@ public class SubtitleTranslationCoordinator {
         }
 
         writeTranslatedArtifacts(translateSeg, translateSrt, track);   // 先 JSON（检查点）再 SRT（派生），都原子替换
-        emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE,
+        StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE,
                 skippedTranslation ? "源语种与目标语种相同，跳过翻译" : "翻译完成",
                 skippedTranslation ? StageProgress.State.SKIPPED : StageProgress.State.SUCCEEDED);
         log.debug("字幕翻译完成: sourceLanguage={}, targetLanguage={}, skipped={}, segments={}, "
@@ -193,7 +194,7 @@ public class SubtitleTranslationCoordinator {
             return Optional.empty();
         }
         log.info("字幕翻译断点复用跳过: translate={}", translateSeg.getFileName());
-        emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE, "已有翻译产物，跳过翻译",
+        StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE, "已有翻译产物，跳过翻译",
                 StageProgress.State.SKIPPED);
         return Optional.of(toTranslated(existing, translateSeg, translateSrt, 0, 0));
     }
@@ -287,13 +288,6 @@ public class SubtitleTranslationCoordinator {
                 outcome.failures().size(), System.currentTimeMillis() - start);
     }
 
-    /**
-     * 发一个阶段事件
-     */
-    private static void emit(ProgressListener listener, String stage, int progress, String message,
-                             StageProgress.State state) {
-        listener.onProgress(new StageProgress(stage, progress, message, state));
-    }
 
     /**
      * 读术语官方译名产物，交给翻译器渲染「按给定译名翻」的术语参考。

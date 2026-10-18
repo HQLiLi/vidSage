@@ -1,8 +1,8 @@
 package com.vidsage.infrastructure.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.vidsage.domain.subtitle.SubtitleTask;
-import com.vidsage.domain.subtitle.port.SubtitleTaskRepository;
+import com.vidsage.domain.task.SubtitleTask;
+import com.vidsage.domain.task.port.SubtitleTaskRepository;
 import com.vidsage.domain.task.model.TaskNo;
 import com.vidsage.infrastructure.persistence.entity.SubtitleTaskEntity;
 import com.vidsage.infrastructure.persistence.mapper.SubtitleTaskMapper;

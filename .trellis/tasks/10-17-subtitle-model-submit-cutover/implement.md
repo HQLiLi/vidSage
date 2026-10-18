@@ -440,7 +440,7 @@ TaskRun      resolveRun(String taskNo, int runNo)                          // SS
 ① 事务外：算身份键
    URL 路线    → mediaIdentityResolver.resolve(url)          ← 网络，绝不能在事务里
    上传路线    → 流式写盘边算 sha256（全 64 位）→ SourceKey   ← 文件 IO，同样在事务外
-② 事务内（一个 @Transactional 方法，同类内直接调用，不隔代理边界）：
+② 事务内（**`TransactionTemplate` 显式圈边界**，2026-10-18 订正 —— 原写「一个 `@Transactional` 方法，同类内直接调用」，但**同类自调用会绕过 Spring 代理、事务静默失效**；而「事务方法只能同类内调用」正是身份键必须留在事务外逼出来的，所以这里改用模板。**不是禁用 `@Transactional`**，别处该用照用）：
    a. 关键词校验（超限 → IAE/400），早于一切 I/O
    b. workspace 命中？未命中就 INSERT；撞 uk_source → 锁定读重查（findForShareBySourceTypeAndSourceKey）
    c. subtitle_task 命中？未命中就 INSERT；撞 uk_workspace → 锁定读重查（findForShareByWorkspaceId）

@@ -1,6 +1,6 @@
 package com.vidsage.infrastructure.provider.audio.ffmpeg;
 
-import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioStageOutput;
 import com.vidsage.domain.media.model.AudioContainer;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.infrastructure.process.ProcessOutcome;
@@ -68,7 +68,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
     }
 
     @Override
-    public AudioArtifact extract(Path mediaPath, Path outputPath, AudioSpec spec) {
+    public AudioStageOutput extract(Path mediaPath, Path outputPath, AudioSpec spec) {
         // 卫语句前置：先失败再干活
         if (mediaPath == null) {
             throw new IllegalArgumentException("媒体文件路径不能为空：请传本地已存在的媒体文件路径");
@@ -138,7 +138,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         long finalSize = ArtifactFiles.sizeOrZero(output);
         log.info("音频抽取完成: exit=0, container={}, sizeBytes={}, elapsedMs={}",
                 spec.container(), finalSize, outcome.elapsedMs());
-        return new AudioArtifact(output, spec, finalSize);
+        return new AudioStageOutput(output, spec, finalSize);
     }
 
     /**

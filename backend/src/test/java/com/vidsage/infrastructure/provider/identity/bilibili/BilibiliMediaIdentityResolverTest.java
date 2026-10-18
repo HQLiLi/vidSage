@@ -106,6 +106,17 @@ class BilibiliMediaIdentityResolverTest {
     }
 
     @Test
+    void fallsBackWhenAvNumberOverflowsLong() {
+        // av 号位数超出 long 能表示的范围：不能抛异常（会被映射成 400），走回落路径
+        String overflowing = "https://www.bilibili.com/video/av99999999999999999999999999";
+        server.expect(requestTo(overflowing)).andRespond(withStatus(HttpStatus.OK));
+
+        ResolvedMediaIdentity identity = resolver.resolve(overflowing);
+
+        assertEquals(overflowing, identity.sourceKey().value(), "抽不到视频号 → 回落规范化 URL，不抛异常");
+    }
+
+    @Test
     void fallsBackToNormalizedUrlWhenVideoIdCannotBeResolved() {
         String unknown = "https://example.com/watch/42?spm_id_from=x&vd_source=y";
         server.expect(requestTo(unknown)).andRespond(withStatus(HttpStatus.OK));

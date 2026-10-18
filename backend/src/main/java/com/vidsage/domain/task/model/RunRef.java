@@ -1,6 +1,6 @@
 package com.vidsage.domain.task.model;
 
-import com.vidsage.domain.subtitle.TaskRun;
+import com.vidsage.domain.task.TaskRun;
 
 /**
  * 一条 run 的对外引用：{@code (taskNo, runNo)} 这一对。

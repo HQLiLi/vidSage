@@ -9,7 +9,7 @@ import org.apache.ibatis.annotations.Update;
 
 /**
  * {@code workspace} 表的数据访问接口：单表 CRUD 走 {@link BaseMapper}，
- * 指纹写入额外给一条定向 {@code @Update}（照 {@code SubtitleKeywordMapper.replaceByWorkspaceKey} 的样板）。
+ * 指纹写入额外给一条定向 {@code @Update}（照 {@code SubtitleKeywordMapper.replaceByTaskId} 的样板）。
  *
  * <p>两个锁定读（{@code FOR SHARE}）由 {@code MybatisWorkspaceRepository} 在 Wrapper 上追加 {@code .last()}，
  * 不在这里另写 {@code @Select}。

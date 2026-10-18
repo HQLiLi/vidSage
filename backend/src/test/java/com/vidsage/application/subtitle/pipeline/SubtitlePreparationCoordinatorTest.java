@@ -14,11 +14,11 @@ import com.vidsage.application.media.pipeline.AudioPreparationCoordinator;
 import com.vidsage.application.transcription.pipeline.Transcriber;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
-import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioStageOutput;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
-import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageOutput;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.subtitle.SrtRenderer;
@@ -48,7 +48,7 @@ class SubtitlePreparationCoordinatorTest {
         var service = serviceWith(
                 tempDir, AudioSpec.M4A_AAC_48K_MONO, List.of(), "zh", mapper);
 
-        SubtitleArtifact artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop());
+        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop());
 
         assertEquals(0, artifact.segmentCount());
         assertEquals(0, artifact.srtSizeBytes());
@@ -74,7 +74,7 @@ class SubtitlePreparationCoordinatorTest {
         var service = new SubtitlePreparationCoordinator(audioPrep, transcribe,
                 mockAsr(tempDir, AudioSpec.M4A_AAC_48K_MONO), mapper);
 
-        SubtitleArtifact artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop());
+        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop());
 
         verify(audioPrep, never()).prepare(any(), any(), any(), any());
         verify(transcribe, never()).transcribe(any(), anyString());
@@ -93,14 +93,14 @@ class SubtitlePreparationCoordinatorTest {
         var audioPrep = mock(AudioPreparationCoordinator.class);
         var transcribe = mock(Transcriber.class);
         var audioSpec = AudioSpec.M4A_AAC_48K_MONO;
-        when(audioPrep.prepare(any(), any(), any(), any())).thenReturn(new AudioArtifact(
+        when(audioPrep.prepare(any(), any(), any(), any())).thenReturn(new AudioStageOutput(
                 tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(
                 new TranscriptionResult(List.of(new TranscriptionSegment(0, 1440, "新转写。")), "zh"));
         var service = new SubtitlePreparationCoordinator(audioPrep, transcribe,
                 mockAsr(tempDir, audioSpec), mapper);
 
-        SubtitleArtifact artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop());
+        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop());
 
         verify(transcribe).transcribe(any(), any());
         assertEquals(1, artifact.segmentCount(), "SRT 在而 segments JSON 不在时必须重新转写");
@@ -119,7 +119,7 @@ class SubtitlePreparationCoordinatorTest {
         var audioPrep = mock(AudioPreparationCoordinator.class);
         var transcribe = mock(Transcriber.class);
         when(audioPrep.prepare(any(), any(), any(), any())).thenReturn(
-                new AudioArtifact(tempDir.resolve("audio.m4a"), audioSpec, 100));
+                new AudioStageOutput(tempDir.resolve("audio.m4a"), audioSpec, 100));
         when(transcribe.transcribe(any(), any())).thenReturn(new TranscriptionResult(segments, language));
         return new SubtitlePreparationCoordinator(audioPrep, transcribe,
                 mockAsr(tempDir, audioSpec), mapper);

@@ -2,8 +2,8 @@ package com.vidsage.infrastructure.fs;
 
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.config.WorkspaceProperties;
-import com.vidsage.domain.shared.model.WorkspaceDir;
-import com.vidsage.domain.shared.model.WorkspaceKey;
+import com.vidsage.domain.workspace.model.SourceKey;
+import com.vidsage.domain.workspace.model.WorkspaceDir;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -12,7 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * 工作区目录的本机实现：把 label + key 拼出的目录名解析到配置的根目录下，并确保它存在。
+ * 工作区目录的本机实现：把身份键推出来的目录名解析到配置的根目录下，并确保它存在。
  */
 @Slf4j
 @Component
@@ -27,14 +27,13 @@ public class NioWorkspaceDirectoryManager implements WorkspaceDirectoryManager {
     /**
      * 解析工作区目录并确保它存在（已存在时是幂等空操作）。
      *
-     * @param label 给人看的目录名标签
-     * @param key   内容寻址 key
+     * @param key 身份键
      * @return 已创建的工作区目录绝对路径
      * @throws IllegalStateException 目录创建失败（根路径不可写等）
      */
     @Override
-    public Path ensureWorkspaceDirectory(String label, WorkspaceKey key) {
-        return ensureCreated(getWorkspaceRoot().resolve(WorkspaceDir.of(label, key).value()));
+    public Path ensureWorkspaceDirectory(SourceKey key) {
+        return ensureCreated(getWorkspaceRoot().resolve(WorkspaceDir.of(key).value()));
     }
 
     /**

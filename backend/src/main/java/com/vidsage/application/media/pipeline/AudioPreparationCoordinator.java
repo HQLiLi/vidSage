@@ -1,16 +1,16 @@
 package com.vidsage.application.media.pipeline;
 
 import com.vidsage.domain.media.model.AcquiredMedia;
-import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioStageOutput;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.media.port.AudioExtractor;
-import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.model.StageProgress.State;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.progress.StageEvents;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -25,7 +25,7 @@ import java.util.Optional;
  *
  * <p><b>断点复用</b>（产物存在且大小 &gt; 0 即跳过，0 字节视为不存在、必须重跑）：获取媒体阶段由
  * {@link MediaAcquirerDispatcher#reuseExisting} 判断——只有适配器知道 {@code source.<ext>} 的推导
- * 规则与 info json 的解析；抽取音频阶段由本阶段判断，音频产物名由 {@link AudioArtifact#fileName}
+ * 规则与 info json 的解析；抽取音频阶段由本阶段判断，音频产物名由 {@link AudioStageOutput#fileName}
  * 按规格指纹给出（命名规则单源在 domain），且<b>先校验 spec 再判断点</b>，不放过「非法 spec +
  * 文件恰好存在」这条路径。
  */
@@ -56,7 +56,7 @@ public class AudioPreparationCoordinator {
      * @param spec    音频输出规格
      * @return 音频产物
      */
-    public AudioArtifact prepare(MediaInput input, Path workDir, AudioSpec spec) {
+    public AudioStageOutput prepare(MediaInput input, Path workDir, AudioSpec spec) {
         return prepare(input, workDir, spec, ProgressListener.noop());
     }
 
@@ -73,7 +73,7 @@ public class AudioPreparationCoordinator {
      *                                  或输入内容不合法（文件不存在、路径非法等）
      * @throws IllegalStateException    外部工具缺失，或外部命令未按预期完成（非零退出、超时、产物为空）
      */
-    public AudioArtifact prepare(MediaInput input, Path workDir, AudioSpec spec, ProgressListener listener) {
+    public AudioStageOutput prepare(MediaInput input, Path workDir, AudioSpec spec, ProgressListener listener) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
@@ -103,15 +103,15 @@ public class AudioPreparationCoordinator {
             Optional<AcquiredMedia> existing = acquisitionStage.reuseExisting(input, workDir);
             if (existing.isPresent()) {
                 log.info("获取媒体阶段跳过（断点复用）: media={}", existing.get().mediaPath().getFileName());
-                emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "已有本地媒体，跳过获取", State.SKIPPED);
+                StageEvents.emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "已有本地媒体，跳过获取", State.SKIPPED);
                 return existing.get();
             }
-            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "开始获取媒体", State.RUNNING);
+            StageEvents.emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "开始获取媒体", State.RUNNING);
             AcquiredMedia media = acquisitionStage.acquire(input, workDir);
-            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "媒体获取完成", State.SUCCEEDED);
+            StageEvents.emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.end(), "媒体获取完成", State.SUCCEEDED);
             return media;
         } catch (RuntimeException e) {
-            emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "获取媒体失败：" + describe(e), State.FAILED);
+            StageEvents.emit(listener, stageName, SubtitleStageName.ACQUIRE_MEDIA.start(), "获取媒体失败：" + describe(e), State.FAILED);
             throw e;
         }
     }
@@ -119,14 +119,14 @@ public class AudioPreparationCoordinator {
     /**
      * 抽取音频阶段：判是否有非空音频产物——有则跳过，否则委托抽取。
      */
-    private AudioArtifact runExtractStage(AcquiredMedia media, Path workDir, AudioSpec spec,
+    private AudioStageOutput runExtractStage(AcquiredMedia media, Path workDir, AudioSpec spec,
                                           ProgressListener listener) {
         String stageName = SubtitleStageName.EXTRACT_AUDIO.getStageName();
 
         try {
-            // 抽取目标按规格指纹命名（命名规则单源在 AudioArtifact.fileName）：
+            // 抽取目标按规格指纹命名（命名规则单源在 AudioStageOutput.fileName）：
             // 同一输入、不同规格的产物互不覆盖，断点复用不会错拿
-            Path audioPath = workDir.resolve(AudioArtifact.fileName(spec));
+            Path audioPath = workDir.resolve(AudioStageOutput.fileName(spec));
             long existingSize = ArtifactFiles.sizeOrZero(audioPath);
             // 断点判据语义单源在 CheckpointPolicy（非空 = 已完成、0 字节 = 未完成）：
             // 与三个字幕阶段的 JSON 检查点是同一条「产物非空才算完成」政策
@@ -134,15 +134,15 @@ public class AudioPreparationCoordinator {
                 log.info("extract 阶段跳过（断点复用）: file={}, sizeBytes={}",
                         audioPath.getFileName(), existingSize);
 
-                emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "已有音频产物，跳过抽取", State.SKIPPED);
-                return new AudioArtifact(audioPath, spec, existingSize);
+                StageEvents.emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "已有音频产物，跳过抽取", State.SKIPPED);
+                return new AudioStageOutput(audioPath, spec, existingSize);
             }
-            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "开始抽取音频", State.RUNNING);
-            AudioArtifact artifact = audioExtractor.extract(media.mediaPath(), audioPath, spec);
-            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "音频抽取完成", State.SUCCEEDED);
+            StageEvents.emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "开始抽取音频", State.RUNNING);
+            AudioStageOutput artifact = audioExtractor.extract(media.mediaPath(), audioPath, spec);
+            StageEvents.emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.end(), "音频抽取完成", State.SUCCEEDED);
             return artifact;
         } catch (RuntimeException e) {
-            emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "抽取音频失败：" + describe(e), State.FAILED);
+            StageEvents.emit(listener, stageName, SubtitleStageName.EXTRACT_AUDIO.start(), "抽取音频失败：" + describe(e), State.FAILED);
             throw e;
         }
     }
@@ -154,12 +154,4 @@ public class AudioPreparationCoordinator {
         return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
 
-    /**
-     * 发一个阶段事件。
-     */
-    private static void emit(ProgressListener listener, String stage, int progress, String message,
-                             State state) {
-        log.debug("阶段事件: stage={}, progress={}, state={}", stage, progress, state);
-        listener.onProgress(new StageProgress(stage, progress, message, state));
-    }
 }

@@ -2,13 +2,13 @@ package com.vidsage.application.subtitle.pipeline;
 
 import com.vidsage.application.media.pipeline.AudioPreparationCoordinator;
 import com.vidsage.application.transcription.pipeline.Transcriber;
-import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioStageOutput;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
-import com.vidsage.domain.subtitle.model.common.SubtitleArtifact;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageOutput;
 import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
@@ -16,6 +16,7 @@ import com.vidsage.domain.transcription.model.AudioSource;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.port.ASRProvider;
 import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.progress.StageEvents;
 import com.vidsage.shared.subtitle.SrtRenderer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -61,7 +62,7 @@ public class SubtitlePreparationCoordinator {
      * @param workDir 这条输入的工作区目录（调用方已定位好）
      * @return 两个产物路径与元信息
      */
-    public SubtitleArtifact prepare(MediaInput input, Path workDir) {
+    public SubtitleStageOutput prepare(MediaInput input, Path workDir) {
         return prepare(input, workDir, ProgressListener.noop());
     }
 
@@ -75,7 +76,7 @@ public class SubtitlePreparationCoordinator {
      * @throws IllegalArgumentException 输入或监听为空
      * @throws IllegalStateException    媒体获取 / 抽音频 / 转写 / 产物写入失败（由底层原样上抛或包装）
      */
-    public SubtitleArtifact prepare(MediaInput input, Path workDir, ProgressListener listener) {
+    public SubtitleStageOutput prepare(MediaInput input, Path workDir, ProgressListener listener) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
@@ -93,8 +94,8 @@ public class SubtitlePreparationCoordinator {
         SubtitleTrack existing = readCheckpoint(segmentsPath);
         if (existing != null) {
             log.info("字幕断点复用跳过: segments={}", segmentsPath.getFileName());
-            emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "已有 segments 产物，跳过转写", StageProgress.State.SKIPPED);
-            emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(), "已有字幕产物，跳过写盘", StageProgress.State.SKIPPED);
+            StageEvents.emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "已有 segments 产物，跳过转写", StageProgress.State.SKIPPED);
+            StageEvents.emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(), "已有字幕产物，跳过写盘", StageProgress.State.SKIPPED);
             return toArtifact(srtPath, segmentsPath, existing);
         }
 
@@ -102,11 +103,11 @@ public class SubtitlePreparationCoordinator {
         log.debug("开始准备字幕: workDir={}, audioSpec={}",
                 workDir.getFileName(), spec.container());
 
-        AudioArtifact audio = audioPreparationCoordinator.prepare(input, workDir, spec, listener);
-        emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.start(), "开始转写", StageProgress.State.RUNNING);
+        AudioStageOutput audio = audioPreparationCoordinator.prepare(input, workDir, spec, listener);
+        StageEvents.emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.start(), "开始转写", StageProgress.State.RUNNING);
         TranscriptionResult result = transcriber.transcribe(
                 new AudioSource.AudioFilePath(audio.audioPath().toString()), null);
-        emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "转写完成", StageProgress.State.SUCCEEDED);
+        StageEvents.emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "转写完成", StageProgress.State.SUCCEEDED);
 
         // 原始转写与关键词无关，指纹恒为 null——纠错发生在下游的 -clean 产物上
         SubtitleTrack track = new SubtitleTrack(result.language(), result.segments(), null);
@@ -115,10 +116,10 @@ public class SubtitlePreparationCoordinator {
             log.warn("ASR 未识别出任何内容，产出空字幕: segmentsPath={}，可能是纯音乐或无语音音频",
                     segmentsPath.getFileName());
         }
-        emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.start(),
+        StageEvents.emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.start(),
                 "开始写字幕产物", StageProgress.State.RUNNING);
         writeArtifacts(segmentsPath, srtPath, track);
-        emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(),
+        StageEvents.emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(),
                 "字幕产物写入完成", StageProgress.State.SUCCEEDED);
         return toArtifact(srtPath, segmentsPath, track);
     }
@@ -152,19 +153,12 @@ public class SubtitlePreparationCoordinator {
     }
 
     /**
-     * 产物 → {@link SubtitleArtifact}：从磁盘读 SRT 字节数（空转写时为 0）。
+     * 产物 → {@link SubtitleStageOutput}：从磁盘读 SRT 字节数（空转写时为 0）。
      */
-    private static SubtitleArtifact toArtifact(Path srtPath, Path segmentsPath, SubtitleTrack track) {
+    private static SubtitleStageOutput toArtifact(Path srtPath, Path segmentsPath, SubtitleTrack track) {
         long srtSizeBytes = ArtifactFiles.sizeOrZero(srtPath);
-        return new SubtitleArtifact(srtPath, segmentsPath, track.language(),
+        return new SubtitleStageOutput(srtPath, segmentsPath, track.language(),
                 track.segments().size(), srtSizeBytes);
     }
 
-    /**
-     * 发一个阶段事件。
-     */
-    private static void emit(ProgressListener listener, String stage, int progress, String message,
-                             StageProgress.State state) {
-        listener.onProgress(new StageProgress(stage, progress, message, state));
-    }
 }

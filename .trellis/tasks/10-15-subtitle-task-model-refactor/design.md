@@ -261,30 +261,41 @@ INDEX      idx_<表名>_<列名...> (...)
 
 > handoff §9.4h 把「任务域拆包」留给本文定（N5 末）。本节是那个决定。
 
-**结论：删 `domain/task/` 整个包，新建 `domain/workspace/`。**
+**结论：`domain/` 按「任务与执行 / 内容加工」两条轴平铺成六条上下文** —— `task`（任务与执行）/
+`subtitle`（字幕内容）/ `intermediate`（中间产物）/ `workspace`（媒体身份）/ `media` / `transcription`。
+`domain/task/` 不再是旧栈那个三合一包，而是**重写为「任务与执行」轴**（`SubtitleTask` / `TaskRun`
+及它们的值对象、端口都在这里）；`domain/intermediate/` 从字幕内容里独立成包。
 
 | 类 | 落点 | 说明 |
 |---|---|---|
 | `Workspace` | `domain/workspace/` | 媒体身份实体 |
 | `SourceType` | `domain/workspace/model/` | **原 `TaskInputType` 改名** —— 对齐 `workspace.source_type` 列（同 `TaskRunStatus` ↔ `task_run.status` 的模式） |
 | `SourceKey` | `domain/workspace/model/` | 值对象：URL 路线 `bvid\|p`、上传路线 sha256 |
+| `WorkspaceDir` | `domain/workspace/model/` | 目录名值对象（原 `domain/shared/model/`）；工厂 `of(SourceKey)` = `sanitizeName(source_key)`，`sanitizeName` 原地保留 |
 | `MediaIdentityResolver` | `domain/workspace/port/` | URL 规范化策略（C7–C12：剥跟踪参数、取 `BV...`、`av` 换算、短链跟跳转） |
 | `WorkspaceRepository` | `domain/workspace/port/` | |
-| `SubtitleTask` | `domain/subtitle/` | 身份实体 |
-| `TaskNo` | `domain/subtitle/model/` | 从 `domain/task/model/` 搬来 |
-| `TaskRun` | `domain/subtitle/` | 状态机在这里（C36） |
-| `TaskRunStatus` | `domain/subtitle/model/` | **原 `TaskStatus` 改名**（N5） |
+| `SubtitleTask` | `domain/task/` | 身份实体 |
+| `TaskRun` | `domain/task/` | 状态机在这里（C36） |
+| `TaskNo` | `domain/task/model/` | **原地不动**（`domain/task/` 就是任务与执行轴） |
+| `TaskRunStatus` | `domain/task/model/` | **原 `TaskStatus` 改名**（N5） |
+| `RunRef` | `domain/task/model/` | `(taskNo, runNo)` 对外引用；`taskNo` 的家（见 §6） |
 | `SubtitleArtifact` | `domain/subtitle/` | **旧 record 让名**（N1） |
-| `IntermediateFile` | `domain/subtitle/` | 枚举 `IntermediateFileType` |
-| 五个 Repository port | `domain/subtitle/port/` | 见下 |
+| `IntermediateFile` | `domain/intermediate/` | **独立成包**；枚举 `IntermediateFileType` |
 | `TaskStageEvent` | **删** | 见下 |
 
-**port 清单**：`WorkspaceRepository` / `SubtitleTaskRepository` / `TaskRunRepository` / `SubtitleArtifactRepository` / `IntermediateFileRepository` / `SubtitleKeywordRepository`（已有，换锚点）。
+**port 清单**：`WorkspaceRepository` / `MediaIdentityResolver`（`domain/workspace/port/`）、
+`SubtitleTaskRepository` / `TaskRunRepository`（`domain/task/port/`）、
+`SubtitleArtifactRepository` / `SubtitleKeywordRepository`（`domain/subtitle/port/`）、
+`IntermediateFileRepository`（`domain/intermediate/port/`）。
 
 > **订正 handoff §8.1**：那里写「`VideoTaskRepository` 拆成 **4 个** port」—— 那是 C62 加 `intermediate_file` 之前的数，实际是 **5 个**。
 
 **`TaskStageEvent` 删除（N5）**：它是纯函数政策类（`final class` + 私有构造 + `static from(VideoTask, String runningStage)`），入参 `VideoTask` 要删、`switch` 里有 `case PENDING` 要删值；而 `runningStage` 这个参数存在的**唯一理由**就是把后置会话算进流里的那处隐式编码，新模型 `uk_active_run` 让它整块消失。
-**它的替代者** = 「连接建立即推 DB 快照」（C57 的兜底），现状已有雏形在 `TaskProgressNotifier.createSnapshot`，落位到 application 的 SSE 侧。
+**它的替代者** = 「连接建立即推 DB 快照」（C57 的兜底）：快照由 `application/task/message/TaskRunProgress`
+的静态工厂组装（`of(ref, run, null)`），广播走 `application/task/port/TaskProgressBroadcaster` 端口，
+实现落 `web/sse/SseTaskProgressBroadcaster`。原来的「中立发布-订阅」那套整块退场
+（`TaskSubscriptionRegistry` / `Subscription` / `TaskProgressNotifier` / `TaskSseConnectionManager`）——
+订阅与连接合一，连接表按 `RunRef` 分桶。
 
 **让名的旧类**（N1，D-7：不问"换个什么名"，问"旧类还该不该存在"）：
 
@@ -294,7 +305,8 @@ INDEX      idx_<表名>_<列名...> (...)
 | `AudioArtifact`（record） | 改名 `AudioStageOutput` | 11 文件 / 41 处 |
 | `SubtitleArtifactSpec`（enum） | 文件名模板那半**要留**（C24 文件名不变）；`downloadable` 白名单那半被 `/artifacts` 端点取代 | — |
 | `TaskArtifact` / `TaskArtifactFile` / `TaskArtifactResponse` | 被 `/artifacts` 与下载端点取代 | — |
-| `WorkspaceKey` / `WorkspaceDir` | 退场（`source_key` + `sanitizeName` 取代） | — |
+| `WorkspaceKey` | 退场（`source_key` 取代） | — |
+| `WorkspaceDir` | **不退场** —— 搬去 `domain/workspace/model/`，工厂从 `of(label, key)` 换成 `of(SourceKey)`（`sanitizeName` 原地保留） | — |
 
 **改名顺序要求**（N5）：**先落定删除集 → 删 → 再对存活集改名**。`TaskStatus` 的 165 处 / 17 文件里大部分落在本次要删/改的文件上，混着做会把成本算错。
 **假朋友**：`DashScopeAsrProvider` 那 4 处 `TaskStatus` 是 `com.alibaba.dashscope.common.TaskStatus`（阿里 SDK 同名枚举）→ **显式排除，改名走 IDE rename symbol，不做文本替换**。
@@ -387,6 +399,11 @@ INDEX      idx_<表名>_<列名...> (...)
 
 **实现层**：现状全仓 `@Transactional` = 0、持久化栈是 **MyBatis-Plus**（不是 JPA）。MyBatis 的 `SqlSession` 不像 Hibernate 的 Session 会因语句失败而失效，`DataSourceTransactionManager` 也不会因一条 SQL 撞唯一键就把事务标脏 —— **rollback-only 只发生在 Spring 事务代理边界**。这条是 C63「同一事务内 catch 重复键继续用」可行的依据。
 
+**W1 的实现手段是 `TransactionTemplate` 显式圈边界**（不是 `@Transactional` 注解）：身份键计算
+（短链跟跳转 / 流式算 sha256）必须留在事务外，于是事务方法只能被**同类内**调用 —— 而同类自调用会绕过
+Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**这不是「本仓禁用 `@Transactional`」**：
+别处该用照用，只是本处不适用。
+
 ---
 
 ## 6. 对外契约（C53–C58）
@@ -396,11 +413,11 @@ INDEX      idx_<表名>_<列名...> (...)
 
 | # | 决策 |
 |---|---|
-| **C53** | 端点路径不变（`/api/tasks/{taskNo}/...`）；`GET /api/tasks/{taskNo}` = **身份 + `lastRun`（单值）**；扁平的 `status` / `currentStage` / `errorMessage` / `startedAt` / `finishedAt` **五个字段全删**（`subtitle_task` 没有状态列，任何扁平状态都是派生量；**压平是渲染层的事**） |
+| **C53** | 端点路径不变（`/api/tasks/{taskNo}/...`）；`GET /api/tasks/{taskNo}` = **身份 + `lastRun`（单值）**；扁平的 `status` / `currentStage` / `errorMessage` / `startedAt` / `finishedAt` **五个字段全删**，`artifacts` 字段**也删**（产物清单归 `/artifacts`）（`subtitle_task` 没有状态列，任何扁平状态都是派生量；**压平是渲染层的事**） |
 | **C54** | 新增 `GET /api/tasks/{taskNo}/artifacts` = **当前有效产物**（只有 `READY`），按**版本行**给；**不给历史**（历史行是空壳 —— C24 作废时清空旧行文件列） |
 | **C55** | 下载端点从 `/{fileName}` 改成按 `type` + `file` + `?lang=` 定位 |
-| **C56** | 提交 / 翻译 / 重生成三个 POST 统一返回 **202 或 409 + `{ taskNo, runNo }`**；`TaskConflictResponse.existingTask` 删掉（202 里的 `lastRun` 四个字段全是常量、零信息、且可能已被异步体推进 → **不可依赖**；不可依赖的字段比没有更糟） |
-| **C57** | SSE = **一条 run 一条流**，run 终态即关；事件带 `runNo` / `runType` / `targetLanguage` / `status` / `stage` / `terminal`；`terminal` 语义从「流结束」**降为「这条 run 结束了」** |
+| **C56** | 提交 / 翻译 / 重生成三个 POST 统一返回 **202 或 409 + `{ taskNo, runNo }`**，**409 响应体不含文案、与 202 同形状**（前端靠状态码判）；`TaskConflictResponse.existingTask` 删掉（202 里的 `lastRun` 四个字段全是常量、零信息、且可能已被异步体推进 → **不可依赖**；不可依赖的字段比没有更糟） |
+| **C57** | SSE = **一条 run 一条流**，run 终态即关；端点 `GET /api/tasks/{taskNo}/runs/{runNo}/events`，三种结果：runNo 不存在 → **404**；run 仍 `RUNNING` → **开流**（连接建立即推一条 DB 快照）；run 已终态 → **204 No Content**（不推终态快照，客户端改查 `GET /{taskNo}` 的 `lastRun`）。消息是 `TaskRunProgress` **sealed 三变体**（`Main` / `Reclean` / `Translate`，各带 `runType`），事件带 `runNo` / `runType` / `targetLanguage`（仅 `Translate`）/ `status` / `stage` / `terminal`；订阅键是 `RunRef`（`(taskNo, runNo)`）；`terminal` 语义从「流结束」**降为「这条 run 结束了」** |
 | **C58** | **不做 run 历史端点**（痛点已由落库本身解决；纯读端点将来加的成本≈0） |
 
 **`GET /api/tasks/{taskNo}`**
@@ -454,6 +471,10 @@ INDEX      idx_<表名>_<列名...> (...)
   "stage": { "stage": "translate-llm", "progress": 40, "message": "...", "state": "RUNNING" },
   "terminal": false }
 ```
+
+> **`taskNo` 的家是 `RunRef`**（`record RunRef(TaskNo, int runNo)`）：`TaskRun` 只带内部 `taskId`，
+> 不带对外号（`task_run` 表也没有 `task_no` 列）；`RunRef.of(TaskNo, TaskRun)` 由调用方拼（它手里有
+> `SubtitleTask`），`TaskRunProgress` 的 `taskNo` / `runNo` 都从 ref 取。
 
 **前端需要的每件事，各自有唯一来源**（这是 C53 的验算）：
 
@@ -715,7 +736,10 @@ root / sanitizeName(workspace.source_key) / <用途>_file_name
 | `latest_clean_artifact_id` / `latest_translate_map` | 「查一句就有」的镜像，砍（C5） |
 | `task_stage`（表） | 范围外的能力（C5） |
 | `TaskConflictResponse.existingTask` | C56 |
-| `TaskStageEvent` | 「连接建立即推 DB 快照」（C57 的兜底） |
+| `TaskStageEvent` | 「连接建立即推 DB 快照」（C57 的兜底）—— 快照组装归 `TaskRunProgress` 的静态工厂，广播归 `TaskProgressBroadcaster` 端口（实现 `web/sse/SseTaskProgressBroadcaster`） |
+| `TaskSubscriptionRegistry` / `Subscription` | 连接表按 `RunRef` 分桶 + 直接广播（端口 `TaskProgressBroadcaster`） |
+| `TaskProgressNotifier` | `TaskRunSupervisor`（落终态 / 广播 / 清流）与 `TaskRunProgress` 的静态工厂 |
+| `TaskSseConnectionManager` | `web/sse/SseTaskProgressBroadcaster` |
 | `WorkspaceKey` / `WorkspaceDir.of(label,key)` | `source_key` + `sanitizeName` |
 | `task` 表 | 六张新表 |
 | `temp_file`（那个被砍的旧名字） | `intermediate_file`（**不沿用旧名**，N3） |

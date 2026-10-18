@@ -38,7 +38,7 @@
 
 ### 提交路径（§7.1 / §7.2 / W1 / C63）
 
-7. **W1 事务**：`workspace` 与 `subtitle_task` 同插、同事务（`@Transactional`，本仓首次引入）。
+7. **W1 事务**：`workspace` 与 `subtitle_task` 同插、同事务（~~`@Transactional`，本仓首次引入~~，2026-10-18 改：**用 `TransactionTemplate` 显式圈边界**）。理由：身份键计算（短链跟跳转 / 流式算 sha256）必须留在事务外，于是事务方法只能被**同类内**调用 —— 而同类自调用会绕过 Spring 代理、`@Transactional` **静默失效**，那比显式模板危险。**这不是「本仓禁用 `@Transactional`」**：别处该用照用，只是本处不适用。
 8. 命中分支：`SELECT workspace WHERE source_type + source_key` 命中 → 拿它的 `subtitle_task` → 进第 10 步。
 9. **C63 并发分支**：未命中 → 同事务内插两行；撞 `uk_source` → **不报 409、不重试插入、不回滚重开**，在同一事务内用**锁定读**（`FOR SHARE`）重查 `workspace`，再用**锁定读**按 `uk_workspace` 重查 `subtitle_task`，两行到手后照常进第 10 步。**两行都要锁定读**（`subtitle_task` 用普通 SELECT 读不到对方刚提交的行 → 只能去 INSERT → 再撞一次键）。
 10. **W2**：`TaskRunSupervisor.start(taskId, MAIN, null)` 插 `RUNNING` run；撞 `uk_active_run` → 409 + `{taskNo, runNo}`。
@@ -82,7 +82,7 @@
 28. `GET /api/tasks/{taskNo}` = **身份 + `lastRun`（单值）**；扁平的 `status` / `currentStage` / `errorMessage` / `startedAt` / `finishedAt` **五个字段全删**；`artifacts` 字段**也删**（产物清单归 S3 的 `/artifacts`）。从未执行 → `lastRun` 为 `null`（契约允许，虽然按 W1+W2 同事务它到不了）。
 29. 三个 POST（提交 URL / 上传 / 重生成 / 翻译 —— 共四个触发点、三类响应）统一 **202 或 409 + `{taskNo, runNo}`**，**同形状**；`TaskConflictResponse.existingTask` 删掉。**409 响应体不含文案**（design C56 的「同形状」），前端靠状态码判。
 30. **「未就绪」仍是 400**，不是 409 —— 新模型里 409 只剩 `uk_active_run` 撞键一种语义。
-31. `GET /api/tasks/{taskNo}/keywords` 形状不变（`{keywords, fingerprint}`）；**本段 fingerprint 仍从 `clean-segments.json` 读**（S3 起改从 `CLEANED` 行的 `keywordsFingerprint` 读）—— 记成欠账。
+31. `GET /api/tasks/{taskNo}/keywords` 形状不变（`{keywords, fingerprint}`）；**本段 fingerprint 仍由 `SubtitleKeywords.computeFingerprint()` 现算**（~~本段 fingerprint 仍从 `clean-segments.json` 读~~，2026-10-18 订正：**现状就不读文件** —— 它是同一份清单的纯函数，清洗阶段写进 `clean-segments.json` 的就是同一个值）；S3 起改从 `CLEANED` 行的 `keywordsFingerprint` 读 —— 记成欠账。
 32. **下载端点 `GET /api/tasks/{taskNo}/artifacts/{fileName}` 随旧栈一起删**（S3 按 `type` + `file` + `?lang=` 重建）。本段**没有**任何取产物的 HTTP 手段，验收走绕道 `ls backend/data/works/<dir>/`（父 prd 已记账）。
 
 ### `subtitle_keyword` 换锚点（§1.5）
@@ -122,7 +122,7 @@
     **只改终态描述，不搬理由**（design 自己的章程：理由给一行 + 编号引用；T4–T7 的论证留在本 prd）。
 
 48. 改写 [directory-structure.md](../../../.trellis/spec/backend/directory-structure.md)：**端口实现落 `infrastructure/`；签名需要 HTTP 类型时落 `web/<构件桶>/`**（理由：地基「HTTP 类型只在 web」优先，统一性「端口落点」让一步）。这条由 T4 逼出来，落 `web/sse/` 是本仓第一个。同时把 `subscribe/` 这个「中立机制包」的旧说法按现状订正。
-49. 同步 [database-guidelines.md](../../../.trellis/spec/backend/database-guidelines.md)：表清单从六张（`task` 由 S2 删）改成**五张**，`subtitle_keyword` 的锚点列与新增 `updated_at` 一并订正。**spec 是现状文档，直接重写为现状**，不留旧说法。
+49. 同步 [database-guidelines.md](../../../.trellis/spec/backend/database-guidelines.md)：表清单从 ~~六张~~ **七张**（`task` 由 S2 删）改成 ~~五张~~ **六张**（2026-10-18 订正：原写的「六→五」**少数了一张** —— 删 `task` 前是 7 张、删后 6 张；以 `schema.sql` 里 `CREATE TABLE` 的条数为准），`subtitle_keyword` 的锚点列与新增 `updated_at` 一并订正。**spec 是现状文档，直接重写为现状**，不留旧说法。
 
 ## 约束
 
@@ -148,7 +148,7 @@
 ## 验收标准
 
 - [ ] **AC1 身份键**：同一个视频因跟踪参数不同的两个 URL（如 `?spm_id_from=` / `?vd_source=` 各一份）解析出**同一个 `SourceKey`** 与同一行 `workspace`；`av...` 换算成 `bvid`；`p` 缺省 1；`b23.tv` 短链跟一次跳转拿到 `bvid`（**长链零网络请求**用打桩计数验）；抽不到时回落规范化 URL 且**不抛异常**。
-- [ ] **AC2 提交路径**：提交 URL → 202 `{taskNo, runNo}`；同 URL 二次提交 → **插新 run**（不是 409），`run_no` 递增；并发提交同一个**新** URL（**3 个并发请求**，2 个复现不出来）收敛到**同一条 `subtitle_task`**、不报 409。
+- [ ] **AC2 提交路径**：提交 URL → 202 `{taskNo, runNo}`；同 URL 二次提交 → **插新 run**（不是 409），`run_no` 递增；并发提交同一个**新** URL（**3 个并发请求**，2 个复现不出来）收敛到**同一条 `subtitle_task`**、~~不报 409~~（2026-10-18 订正：**这句与 design §7.1 第 5 步冲突** —— 三个请求收敛到同一个 task 之后各自都要插 run，`uk_active_run` 只放行一个，**另外两个必然 409**（响应体带同一个 `taskNo` 与 `runNo`）。实测：**1×202 + 2×409**，库里恰好 1 行 `workspace` + 1 行 `subtitle_task`，无重复键炸成 500。原意应是「不报**旧模型那种去重 409**」，那种 409 已随新模型消失）。
 - [ ] **AC3 互斥**：同一 task 并发触发 → 一方 409 且响应体带 `taskNo`；`uk_active_run` 无残留（跑完后 `SELECT count(*) FROM task_run WHERE status='RUNNING'` 为 0）。
 - [ ] **AC4 崩溃恢复**：`kill` 进程后重启 → 残留 run 变 `INTERRUPTED`、残留 artifact 变 `FAILED`、被收掉的 task `updated_at` 更新；启动日志有「收掉 N 行」。
 - [ ] **AC5 SSE 端点**：`/runs/{runNo}/events` 三种结果各验一次（**404** / **RUNNING 开流**且首条是 DB 快照 / **已终态 204**）；事件是 `TaskRunProgress` 三变体之一、`runType` 与路径上的 run 一致；`terminal` 在 run 落终态时为真。
@@ -157,7 +157,7 @@
 - [ ] **AC8 关键词换锚点**：`SHOW CREATE TABLE subtitle_keyword` 是 `task_id BIGINT` + `updated_at` + `uk_subtitle_keyword_task_id`；覆盖写刷新 `updated_at`、首插两列同值。
 - [ ] **AC9 旧件零残留**：Goal 里点名的那批类/表全仓 grep 为空；`TaskStatus` 的剩余命中只有阿里 SDK 那一处 import。
 - [ ] **AC10 三种 run 跑通**：`MAIN` / `RECLEAN` / `TRANSLATE` 各跑一次，产物在盘上、run 状态与失败原因互不串台（`RECLEAN` 失败不把 `MAIN` 的记录改掉）。
-- [ ] **AC11 回归**：`clean test-compile` 过；全量测试绿且**条数只增不减**（基线开工前重量）；后端能起服务；`backend/data/works*` 从零重建后能跑通一次完整流程（提交 → 202 → SSE 跟到底 → `ls` 看到产物）。
+- [ ] **AC11 回归**：`clean test-compile` 过；全量测试绿且**条数只增不减**（基线开工前重量）—— ~~2026-10-18 订正：本段是「换血」，老栈的测试随类一起删，条数字面必然下降~~，口径改为「**随删类走的除外**」，并须给出逐类账（本段实测 678 → 550：随类删除 −128、重写缩水 −20、新增 +20）；后端能起服务；`backend/data/works*` 从零重建后能跑通一次完整流程（提交 → 202 → SSE 跟到底 → `ls` 看到产物）。
 - [ ] **AC12 包结构**：`domain/` 是 `task` / `subtitle` / `intermediate` / `workspace` / `media` / `transcription` 六包平铺，`domain/subtitle/` 里不再有任务轴的类；`application/` 下没有 `task/pipeline/`，`SubtitlePipeline` 与三个 Coordinator 同在 `application/subtitle/pipeline/`；**`application/X` 与 `domain/X` 逐对核，一一对应**。
 - [ ] **AC13 文档与规范同步**：`design.md` 的四处已按现状重写（§3 替代者、§6 C57/C53/C56、§9 退场清单），且它不再说「保留中立注册表」；`directory-structure.md` 新增的端口实现落点规则已落，且 `web/sse/SseTaskProgressBroadcaster` 与该规则自洽；`database-guidelines.md` 表清单是五张。
 

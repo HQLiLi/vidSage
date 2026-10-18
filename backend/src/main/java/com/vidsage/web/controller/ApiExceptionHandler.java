@@ -3,8 +3,7 @@ package com.vidsage.web.controller;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.domain.exception.UnsupportedLanguageException;
-import com.vidsage.web.dto.TaskConflictResponse;
-import com.vidsage.web.dto.TaskResponse;
+import com.vidsage.web.dto.TaskRunRefResponse;
 
 import java.util.Map;
 
@@ -69,22 +68,19 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * 冲突（错在调用方）→ 409，记 WARN。两个场景共用本映射：提交查重命中、
-     * 同工作区已有后置会话（重新生成字幕）在跑——故日志文案写「冲突」不写「重复提交」，
-     * 具体是哪种由异常携带的 message 说明。
+     * 冲突（错在调用方）→ 409，记 WARN。只有一种语义：该任务已有一次执行在跑。
      *
-     * <p>响应体是 {@code { "error": ... }} 的有意扩展（{@link TaskConflictResponse}）：冲突的可操作
-     * 出路是「改用既有任务」，光有文字说明不够，把既有任务视图一并返回。异常载荷是应用层读模型
-     * {@code TaskSnapshot}（零 web 注解），经 {@link TaskResponse#from} 映射为对外响应。
+     * <p>响应体与 202 同形状 {@code {taskNo, runNo}}，<b>不含文案</b>：调用方靠状态码判冲突，
+     * 拿这对去订阅那条正在跑的 run 的进度。
      *
-     * @param e 冲突异常（携带既有任务快照）
-     * @return 冲突体：错误说明 + 既有任务视图
+     * @param e 冲突异常
+     * @return 冲突体 {@code {taskNo, runNo}}
      */
     @ExceptionHandler(TaskConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
-    public TaskConflictResponse handleTaskConflict(TaskConflictException e) {
+    public TaskRunRefResponse handleTaskConflict(TaskConflictException e) {
         log.warn("任务冲突被拒绝: {}", errorMessage(e));
-        return new TaskConflictResponse(errorMessage(e), TaskResponse.from(e.getExistingTask()));
+        return new TaskRunRefResponse(e.getTaskNo(), e.getRunNo());
     }
 
     /**

@@ -8,16 +8,19 @@ import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.vidsage.application.task.TaskRunRef;
 import com.vidsage.application.task.message.TaskRunProgress;
 import com.vidsage.domain.shared.model.StageProgress;
-import com.vidsage.domain.subtitle.TaskRun;
-import com.vidsage.domain.subtitle.model.TaskRunStatus;
-import com.vidsage.domain.subtitle.model.TaskRunType;
+import com.vidsage.domain.task.TaskRun;
+import com.vidsage.domain.task.model.TaskRunStatus;
+import com.vidsage.domain.task.model.TaskRunType;
 import com.vidsage.domain.task.model.RunRef;
 import com.vidsage.domain.task.model.TaskNo;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +29,7 @@ import org.mockito.MockedConstruction;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * {@link SseTaskProgressBroadcaster} 的纯单元测试：不起 Spring 容器。
+ * {@link SseTaskProgressBroadcaster} 的纯单元测试：不起 Spring 容器，取快照用的服务用 mock。
  *
  * <p>连接表行为用真实 {@code SseEmitter} 观察（未初始化的 emitter 写事件进缓冲区、不抛）；
  * 投递与断连收口用 {@code mockConstruction} 截获构造出的 emitter——Spring 的完成回调没有公开触发口，
@@ -37,6 +40,8 @@ class SseTaskProgressBroadcasterTest {
     private static final String TASK_NO = "t7";
 
     private static final long TASK_ID = 7L;
+
+    private final Map<RunRef, TaskRunProgress> snapshots = new HashMap<>();
 
     private SseTaskProgressBroadcaster broadcaster;
 
@@ -54,7 +59,9 @@ class SseTaskProgressBroadcasterTest {
 
     @Test
     void openKeepsEmitterUntilCleanup() {
-        broadcaster.open(ref(1), runningEvent(ref(1)));
+        stubSnapshot(ref(1), runningEvent(ref(1)));
+
+        broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
 
         assertEquals(1, broadcaster.emitterCount(ref(1)));
         assertEquals(0, broadcaster.emitterCount(ref(2)), "连接按 RunRef 隔离");
@@ -62,16 +69,35 @@ class SseTaskProgressBroadcasterTest {
 
     @Test
     void terminalSnapshotClosesAndRemovesConnection() {
-        broadcaster.open(ref(1), terminalEvent(ref(1)));
+        stubSnapshot(ref(1), terminalEvent(ref(1)));
+
+        broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
 
         assertEquals(0, broadcaster.emitterCount(ref(1)), "终态快照推完即收口");
         assertFalse(broadcaster.hasBucket(ref(1)), "空桶要被回收");
     }
 
     @Test
+    void openPushesTerminalSnapshotAndClosesWhenRunFinishedDuringWindow() throws IOException {
+        // 复查时 run 已收口：要推一条终态快照把流收掉，而不是静默关流
+        try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class)) {
+            stubSnapshot(ref(1), terminalEvent(ref(1)));
+
+            broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
+
+            SseEmitter emitter = mocked.constructed().get(0);
+            verify(emitter, times(1)).send(any(SseEmitter.SseEventBuilder.class));
+            verify(emitter).complete();
+            assertEquals(0, broadcaster.emitterCount(ref(1)));
+        }
+    }
+
+    @Test
     void differentRunsDoNotAffectEachOther() {
-        broadcaster.open(ref(1), runningEvent(ref(1)));
-        broadcaster.open(ref(2), runningEvent(ref(2)));
+        stubSnapshot(ref(1), runningEvent(ref(1)));
+        stubSnapshot(ref(2), runningEvent(ref(2)));
+        broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
+        broadcaster.open(taskRunRef(2), () -> snapshotOf(ref(2)));
 
         broadcaster.publish(ref(1), terminalEvent(ref(1)));
 
@@ -82,8 +108,9 @@ class SseTaskProgressBroadcasterTest {
 
     @Test
     void publishDropsOnlyTheFailingConnection() {
-        SseEmitter dead = broadcaster.open(ref(1), runningEvent(ref(1)));
-        broadcaster.open(ref(1), runningEvent(ref(1)));
+        stubSnapshot(ref(1), runningEvent(ref(1)));
+        SseEmitter dead = broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
+        broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
         // 把第一条置为「已完结」态：再往它写必抛 IllegalStateException，于是只摘它自己
         dead.complete();
 
@@ -95,9 +122,11 @@ class SseTaskProgressBroadcasterTest {
 
     @Test
     void completeClosesEveryConnectionOfTheRunAndDropsBucket() {
-        broadcaster.open(ref(1), runningEvent(ref(1)));
-        broadcaster.open(ref(1), runningEvent(ref(1)));
-        broadcaster.open(ref(2), runningEvent(ref(2)));
+        stubSnapshot(ref(1), runningEvent(ref(1)));
+        stubSnapshot(ref(2), runningEvent(ref(2)));
+        broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
+        broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
+        broadcaster.open(taskRunRef(2), () -> snapshotOf(ref(2)));
 
         broadcaster.complete(ref(1));
 
@@ -119,8 +148,9 @@ class SseTaskProgressBroadcasterTest {
     void publishesToEveryConnectionOfTheSameRun() throws IOException {
         try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class)) {
             RunRef run = ref(1);
-            broadcaster.open(run, runningEvent(run));
-            broadcaster.open(run, runningEvent(run));
+            stubSnapshot(run, runningEvent(run));
+            broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
+            broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
             List<SseEmitter> emitters = mocked.constructed();
 
             broadcaster.publish(run, runningEvent(run));
@@ -138,7 +168,8 @@ class SseTaskProgressBroadcasterTest {
     void openRegistersSingleCompletionCallbackThatRemovesEmitterOnDisconnect() {
         try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class)) {
             RunRef run = ref(1);
-            SseEmitter emitter = broadcaster.open(run, runningEvent(run));
+            stubSnapshot(run, runningEvent(run));
+            SseEmitter emitter = broadcaster.open(taskRunRef(1), () -> snapshotOf(ref(1)));
 
             ArgumentCaptor<Runnable> callback = ArgumentCaptor.forClass(Runnable.class);
             verify(emitter, times(1)).onCompletion(callback.capture());
@@ -152,6 +183,18 @@ class SseTaskProgressBroadcasterTest {
     }
 
     // ---------- 夹具 ----------
+
+    private void stubSnapshot(RunRef run, TaskRunProgress event) {
+        snapshots.put(run, event);
+    }
+
+    private TaskRunProgress snapshotOf(RunRef run) {
+        return snapshots.get(run);
+    }
+
+    private static TaskRunRef taskRunRef(int runNo) {
+        return new TaskRunRef(TASK_NO, runNo);
+    }
 
     private static RunRef ref(int runNo) {
         return new RunRef(new TaskNo(TASK_NO), runNo);

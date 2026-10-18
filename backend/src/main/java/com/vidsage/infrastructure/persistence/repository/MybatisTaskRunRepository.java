@@ -1,8 +1,8 @@
 package com.vidsage.infrastructure.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.vidsage.domain.subtitle.TaskRun;
-import com.vidsage.domain.subtitle.port.TaskRunRepository;
+import com.vidsage.domain.task.TaskRun;
+import com.vidsage.domain.task.port.TaskRunRepository;
 import com.vidsage.infrastructure.persistence.entity.TaskRunEntity;
 import com.vidsage.infrastructure.persistence.mapper.TaskRunMapper;
 import java.time.LocalDateTime;
@@ -40,7 +40,7 @@ public class MybatisTaskRunRepository implements TaskRunRepository {
         try {
             mapper.insert(entity);
         } catch (DuplicateKeyException e) {
-            // 撞 uk_active_run：该 task 已有 RUNNING 行，抢互斥失败。撞键是预期分支不是异常，故不外抛。
+            // 撞 uk_task_run_task_id_active_flag：该 task 已有 RUNNING 行，抢互斥失败。撞键是预期分支不是异常，故不外抛。
             return Optional.empty();
         }
         return Optional.of(toDomain(entity));
@@ -57,6 +57,21 @@ public class MybatisTaskRunRepository implements TaskRunRepository {
                 .eq(TaskRunEntity::getTaskId, taskId)
                 .orderByDesc(TaskRunEntity::getRunNo)
                 .last("LIMIT 1"));
+        return entity == null ? Optional.empty() : Optional.of(toDomain(entity));
+    }
+
+    /**
+     * 查最近一条 run 的<b>锁定读</b>版本（提交路径并发分支）：{@code FOR SHARE} 绕过一致性快照，
+     * 读到对方刚提交的行。语义与 {@link #findLatestByTaskId} 相同，只是读法不同。
+     *
+     * @param taskId 所属字幕任务
+     * @return 最近一条 run；从未执行时为空
+     */
+    public Optional<TaskRun> findLatestForShareByTaskId(long taskId) {
+        TaskRunEntity entity = mapper.selectOne(Wrappers.<TaskRunEntity>lambdaQuery()
+                .eq(TaskRunEntity::getTaskId, taskId)
+                .orderByDesc(TaskRunEntity::getRunNo)
+                .last("LIMIT 1 FOR SHARE"));
         return entity == null ? Optional.empty() : Optional.of(toDomain(entity));
     }
 
