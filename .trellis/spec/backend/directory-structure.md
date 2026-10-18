@@ -299,13 +299,18 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 新写的方法一律动词开头，让调用点读起来就是一句话。存量有不符合的（见下方待改清单），本次只立规则、不动代码。
 
+**前置守卫（不返回值、不满足即抛的那种）另有专门口径：`validateXxx`**（2026-10-17 立；存量四处的旧名与目标名**记在 error-handling.md 的待改清单里**，不在下方这张）——
+细则、以及「取值即抛的访问器为何仍叫 `requireXxx`」见 [error-handling.md](./error-handling.md) 的「前置守卫的命名」。
+
 判定式前缀算动词，不用改：`isXxx` / `hasXxx` / `supports` / `matches` / `fail` —— `isEventTerminal`、`hasTranslationArtifact` 都已合规。
 
 **造东西还是做判断，决定用 `of` 还是 `is`**（2026-10-12 立规当日追加）：
 
 | 语义 | 前缀 | 例子 |
 |---|---|---|
-| **造一个 X**（返回新实例） | `of` / `from`（见下方解禁） | `WorkspaceDir.of(dir)`、`TaskStageEvent.from(task)` |
+| **由形参构成 / 转变而来** | `of(x)` / `from(x)`（**必须有实参**） | `WorkspaceDir.of(dir)`、`TaskStageEvent.from(task)`、`SubtitleTask.of(workspaceId)` |
+| **凭空生成**（没有「由谁而来」这个来源） | **按来源或状态命名，不套 `of`** | `TaskNo.random()`、`SubtitleContext.empty()`、`TermLookupResult.none()` |
+| **造一个还缺一块的 X**（初态是半成品，要靠后续迁移补齐） | `createXxx`（存量 `newXxx` 同族，不必改） | `SubtitleArtifact.createCreatingArtifact(...)` —— 产出的是 `CREATING` 占位行、文件列全 `null`；存量 `VideoTask.newPending(...)` |
 | **判断是不是 X**（返回 `boolean`） | `is` / `has` | `isEventTerminal(status)`、`outcome.persistable()` → `isPersistable()` |
 
 **为什么这条要单列**：社区惯例里 `empty()` / `none()` / `ofNullable()` 这类名字横跨两边，
@@ -318,12 +323,29 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 的既定惯例。`ofXxx` / `fromXxx` 家族（`ofTaskInput` / `ofHash` / `fromTranslation`）同理——前缀已经声明了动作，
 宾语再重述一遍只会变啰嗦。`WorkspaceDir.of`、`MediaInput.ofTaskInput`、`TaskStageEvent.from` 等**已合规**，
 不进待改清单。
-**被否方案**：按字面判成「介词开头」，逼出 `computeXxx` / `createXxx` 这类自造词——它们读起来不比 `of` 清楚，
-却让本仓和 JDK 惯例分家。
 
-**解禁不等于「凡是工厂都放行」**：前缀说的是「造一个 X」，`none` / `empty` 说的是「X 为空」，
-前者是动作、后者是状态，性质不同——按上表，造一个空上下文叫 `ofEmpty()`，仍是工厂；
-`TermLookupResult.none()` 同理改成 `ofNone()`。
+**`of` 的门槛是「参数传入即完整可用」**（2026-10-17 立）：JDK 与社区里 `of` 的四个用法——值对象组装
+（`LocalDate.of`）、不可变集合（`List.of`）、枚举聚合（`EnumSet.of`）、轻量包装 / 流（`Optional.of`）——
+共同前提都是**造出来就完整：没有生命周期、没有半成品状态**。分水岭是「**有没有一个状态值专门表示
+「还没成」**」：`TaskRun` 的 `RUNNING` 是正常起点（字段齐全、startedAt 已落）不是半成品，`Workspace`
+没有状态列（指纹两列留空是可选元数据，不是占位）—— 两者都配 `of`；而 `SubtitleArtifact` 的 `CREATING`
+是明文写着「行在、内容还没写完」的占位态，它的工厂就不配叫 `of`，归 `createXxx`。
+
+**`of` 的宾语是形参**（2026-10-18 补）：`of(x)` 读作「由 x 构成 / 转变而来」，所以**它必须有实参**。
+`TaskNo.ofRandom()` 这类空参写法是错的 —— 凭空生成一个任务号没有「由谁而来」的来源，而那个宾语也不是空的
+（空白任务号恰恰非法）。唯一合法的空参是**宾语本身可取 0** 的情形：`List.of()` = 造一张空表 ✓；`Optional.of()`
+就不行，JDK 为此另给了 `Optional.empty()`。
+
+**被否方案**：按字面判成「介词开头」，逼出 `computeXxx` 这类自造词——它读起来不比 `of` 清楚，
+却让本仓和 JDK 惯例分家。
+（2026-10-17 订正：原文把 `createXxx` 一并否掉了，否错了。该否的是「**拿 `createXxx` 当 `of` 的同义词**」——
+同一个「造一个完整可用的 X」有两种写法，那才是分家；而**半成品初态**的实体工厂是另一件事，
+`createXxx` 在那儿不是 `of` 的同义词而是分工，故按上表解禁。）
+
+**解禁不等于「凡是工厂都放行」**：`of` 的宾语是**形参**，所以**无参的「凭空生成」不套 `of`** —— 空上下文仍叫
+`SubtitleContext.empty()`、查证无果仍叫 `TermLookupResult.none()`、随机造的任务号叫 `TaskNo.random()`。
+（**2026-10-18 订正**：本条原先写的是「造一个空上下文叫 `ofEmpty()`、`TermLookupResult.none()` 同理改成 `ofNone()`」——
+那条口径错在把 `of` 当成「造东西」的万能前缀；同 JDK 的 `Optional.empty()`，空 / 无本来就叫 `empty()` / `none()`。）
 
 **待改清单**（2026-10-12 登记，按优先级分三档；本规则立规时**不改代码**，另开任务处理）：
 
@@ -331,7 +353,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 |---|---|---|
 | 高 | 属性式取值器——省掉 `get`，读起来像字段不像动作 | `fileName`（`AudioArtifact:34`、`SubtitleArtifactSpec:65`）、`dirLabel`（`MediaInput:29,55,78`——含接口声明与两个 record 实现）、`end`（`SubtitleStageName:90`）、`chars`（`MessageHistory:54`）、`batchJson`（`LlmSubtitleCleanser:350`、`LlmSubtitleTranslator:335`）、`configKey`（`ProcessToolDiagnostics:355`）、`emitterCount`（`TaskSseConnectionManager:154`） |
 | 中 | 名词化——动作整个丢了，或退化成介词短语 | `beat`（`TaskSseConnectionManager:170`）、`snapshot`（`VideoTaskService:210`）、`tools`（`MediaController:50`）、`ratio`（`TextSimilarity:29`）、`noop`（`ProgressListener:33`）、`baselineOf`（`LlmSubtitleCleanser:489`）、`durationMsOf`（`YtDlpMediaAcquirer:350`）、`daysSinceRelease`（`ProcessToolDiagnostics:235`）、`freshnessWarning`（同文件 `:265`）、`missingHint`（同文件 `:324`）、`warningLines`（`YtDlpMediaAcquirer:384`） |
-| 低 | 静态工厂 / 判定式以状态词开头——说的是「X 为空」而非「造一个 X」。**目标名已定**（造东西→`ofXxx`，做判断→`isXxx`） | `none` → **`ofNone`**（`TermLookupResult:21`，4 处调用：2 主 + 2 测）<br>`empty` → **`ofEmpty`**（`SubtitleContext:45`，约 30 处调用，**26 处在测试**）<br>`persistable` → **`isPersistable`**（`TermVerification:156`，2 处调用，是真判定式） |
+| 低 | 判定式以状态词开头——说的是「是不是 X」而非「造一个 X」。**2026-10-18 撤下两条**：`none` / `empty` **不改了**（同 JDK 的 `Optional.empty()`，本来就叫对了；加 `of` 前缀反而错，因为 `of` 要求实参） | `persistable` → **`isPersistable`**（`TermVerification:156`，2 处调用，是真判定式） |
 
 复算命令（改完一档就把该档从表里划掉；两个分支分别抓**有访问修饰符**与**无修饰符的包私有声明**，缺一不可）：
 
