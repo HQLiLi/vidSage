@@ -26,6 +26,36 @@ return switch (source) {
 };
 ```
 
+### 前置守卫的命名：`validateXxx`（2026-10-17 立）
+
+把卫语句抽成方法时，**不返回值的**（不满足即抛、通过了就往下走）名字用 **`validateXxx`**：
+
+```java
+private void validateStatus(SubtitleArtifactStatus required, String targetDescription) { ... }  // 领域状态机
+private static void validateTaskNo(String taskNo) { ... }                                        // 入参边界
+```
+
+**为什么不用 `requireXxx`**：`require` 读起来像「向调用方索要一个东西」（Kotlin 的 `require(condition)` 也是这个语义），而这类方法**不索要、不改状态、只校验并拒绝** —— `validate` 才是它干的事。这是 2026-10-17 由项目所有者定的口径。
+
+**但「取值即抛」的访问器仍叫 `requireXxx`** —— 它们**返回一个值**，`validate` 不承诺返回，套上去会撒谎：
+
+| 保留 `requireXxx` 的（返回值的） | 返回 |
+|---|---|
+| `ProcessToolDiagnostics.requireFfmpeg()` / `requireFfprobe()` / `requireYtDlp()` / `requireResolved(...)` | `Path` —— 解析不出来就抛 |
+| `DashScopeAsrProvider.requirePublicUrl(url)` | `String` —— 校验通过就返回那个 URL |
+| `YtDlpMediaAcquirer.requireTitle(info)` | `String` —— 取不到就抛 |
+
+**存量待改清单（遗留，别在无关任务里顺手改）** —— 只列**不返回值**的四个：
+
+| 位置 | 旧名 | 目标名 |
+|---|---|---|
+| `domain/task/VideoTask` | `requireStatus` | `validateStatus` |
+| `domain/task/VideoTask` | `requireMainSucceededForPostLifecycle` | `validateMainSucceededForPostLifecycle` |
+| `application/task/subscribe/TaskSubscriptionRegistry` | `requireTaskNo` | `validateTaskNo` |
+| `web/sse/TaskSseConnectionManager` | `requireTaskNo` | `validateTaskNo` |
+
+> 本仓新代码（2026-10-17 起的 `domain/subtitle/` 三个状态机实体）已经用的是 `validateStatus` / `validateRunning`；上面四处是存量，等各自的文件被其它任务碰到时再改。
+
 ## 异常类型选择
 
 | 情况 | 异常 | 现有例子 |

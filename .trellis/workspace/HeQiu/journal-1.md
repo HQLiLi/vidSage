@@ -1248,3 +1248,28 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 47: 字幕模型重构 S1 数据层地基：实现 + 四轮评审改名 + 注释标记清理
+<!-- trellis-session: v=2 fp=96a51d9c3c560b03 -->
+
+**Date**: 2026-10-18
+**Task**: 字幕模型重构 S1 数据层地基：实现 + 四轮评审改名 + 注释标记清理
+**Branch**: `feature/subtitle-model-foundation`
+
+### Summary
+
+建 workspace / subtitle_task / task_run / subtitle_artifact / intermediate_file 五张新表，配五个领域类（三个带状态机）、七个枚举、SourceKey 与五个仓储端口 + MyBatis 实现 + 10 个测试类，纯增量不动调用方；测试基线 569 → 649 全绿。评审四轮把命名收紧：实体迁移改目标态动词（completeCreation / supersede / confirmDeletion / revive）、私有守卫改 validateXxx、intermediate_file.kind 统一成 file_type、task 号生成收进 TaskNo.random()；并把 of 的适用判据（必须带实参）与工厂三族写进 directory-structure.md，把前置守卫命名写进 error-handling.md，把 database-guidelines.md 的建表契约一节按六表现状重写。代码注释里所有 C*/§/W*/design.md 指针、日期、任务号、阶段编号按 comment-guidelines 的内容分流表清干净；application.yml 与 schema.sql 一并清。真库验过 AC1（五张表逐列对版，含 51 个列注释逐字一致）与 AC6（旧契约回归，走断点复用）。分支 feature/subtitle-model-foundation 已推送，尚未合并回 dev。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `39dfa48` | feat(subtitle): 模型重构 S1 数据层地基（五张表 + 领域类 + 仓储端口与实现） |
+| `bf97754` | docs(spec): 订正建表契约、补工厂判据与前置守卫命名 |
+| `72004c9` | chore(config): 清理 application.yml 注释里的出处与历史 |
+| `c6ec7cb` | chore(task): S1 任务工件与父任务文档订正 |
+
+### Status
+
+[OK] **Completed**
