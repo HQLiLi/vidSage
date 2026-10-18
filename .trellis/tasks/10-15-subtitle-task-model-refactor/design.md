@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS task_run
     target_language VARCHAR(16) NULL     COMMENT '只有 TRANSLATE 有值',
     status          VARCHAR(32) NOT NULL COMMENT 'RUNNING / SUCCEEDED / FAILED / INTERRUPTED',
     current_stage   VARCHAR(64) NULL     COMMENT '前端「卡在哪一步」',
-    error_message   TEXT        NULL     COMMENT '失败原因（不再需要中文前缀区分来源）',
+    error_message   TEXT        NULL     COMMENT '失败原因（不用中文前缀区分来源）',
     started_at      DATETIME    NULL     COMMENT '插 RUNNING 行时填 now()',
     finished_at     DATETIME    NULL     COMMENT '落终态时填 now()；INTERRUPTED 填启动收口的时刻',
     created_at      DATETIME    NOT NULL COMMENT '创建时间',
@@ -176,6 +176,17 @@ CREATE TABLE IF NOT EXISTS subtitle_keyword
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT ='字幕关键词（当前生效一份）';
 ```
 
+> **定案（2026-10-17）：`updated_at` 加，当审计列用。**
+>
+> handoff §4.5 写了这列却**没给写入时机**，且它那句「同现状」是笔误 —— 现状 `schema.sql` 这张表本来就只有 `created_at`，本列是本次新增的。所以定「加」不能只把列加回去，必须**同时定死写入点**：
+>
+> - **写入点 = 与 `keywords` 同一条 upsert 的 UPDATE 分支**（`ON DUPLICATE KEY UPDATE keywords = ?, updated_at = ?`），不另开写入路径。首插时 `created_at` 与 `updated_at` 同值。
+> - **列与写入点一起落在 S2**（关键词换锚点那一段）。**S1 不动这张表** —— 本表本次既改列名又改类型，`CREATE TABLE IF NOT EXISTS` 不改已存在的表、MySQL 8 也没有 `DROP COLUMN IF EXISTS`，所以 S2 必须手工 `DROP` 后重建，`updated_at` 由那次重建一并带进来。S1 现在去 `ALTER` 加一列既拿不到效果（老表不走 `CREATE`）也没必要。
+>   （2026-10-17 订正：初稿写的是「S1 只建列、不写它」，与 prd 需求 6「`subtitle_keyword` 本段一个字节不动」自相矛盾，实施时被子 agent 查出。）
+> - 现状表没有 `updated_at`，所以这次是**净增一列**，不是「保留现状」。
+
+> **通用口径（本次一并定，回答同族的四处）**：凡是带 `updated_at` 的表，写入点一律是「**在同一条 UPDATE 里一起刷**」，首插时与 `created_at` 同值。落到各表 —— `subtitle_task` = 每次 run 收尾（C45，它是该表唯一的 UPDATE）；`workspace` = 指纹写入那条 UPDATE（§7.3 步骤 2.4，它是 `workspace` 唯一的 UPDATE）；`intermediate_file` = 重新产出回 `READY` / 级联标 `SUPERSEDED` / 删完标 `DELETED` 三条；本表 = 覆盖写。`subtitle_artifact` 与 `task_run` 不带 `updated_at`，不在此列（`task_run` 的 `started_at` / `finished_at` 由 §1.3 单独定）。
+
 > ⚠️ **本表本次既改列名又改类型**（`workspace_key CHAR(12)` → `task_id BIGINT`），而 `CREATE TABLE IF NOT EXISTS` 不改已存在的表、MySQL 8 也没有 `DROP COLUMN IF EXISTS` → **旧库必须手工 `DROP TABLE subtitle_keyword` 一次**（§9.4i：存量可弃）。这条要写进新 `schema.sql` 的头部注释。
 
 ### 1.6 intermediate_file —— 中间产物（task 级缓存）
@@ -186,7 +197,7 @@ CREATE TABLE IF NOT EXISTS intermediate_file
     id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '内部自增行 id，不对外',
     task_id             BIGINT       NOT NULL COMMENT '逻辑外键 → subtitle_task.id',
     file_name           VARCHAR(255) NOT NULL COMMENT '工作区内文件名；文件系统上限即 255',
-    kind                VARCHAR(32)  NOT NULL COMMENT 'SOURCE_MEDIA / INFO_JSON / AUDIO',
+    file_type           VARCHAR(32)  NOT NULL COMMENT 'SOURCE_MEDIA / INFO_JSON / AUDIO',
     status              VARCHAR(32)  NOT NULL COMMENT 'READY / SUPERSEDED / DELETED',
     derived_from_run_id BIGINT       NULL     COMMENT '产出它的那条 run（审计，无承重用途）',
     created_at          DATETIME     NOT NULL COMMENT '创建时间',
@@ -200,9 +211,9 @@ CREATE TABLE IF NOT EXISTS intermediate_file
 
 1. **`uk(task_id, file_name)` 决定了状态机的形状** —— 一个文件在一个 task 里**只有一行**，所以「重新产出」是 `UPDATE` 那行回 `READY`，不是插新行。这跟 `subtitle_artifact` **本质不同**：那边有版本交替，这边没有版本、一行到底 —— 所以不需要 `revision`，也不需要 `CREATING`。
 2. **`file_name` 是 255 不是 1024** —— 它是**文件名**不是路径，文件系统本身就卡在 255。
-3. **`kind` 三个值，每个都有代码常量背书**：
+3. **`file_type` 三个值，每个都有代码常量背书**：
 
-| kind | 文件名 | 常量 |
+| file_type | 文件名 | 常量 |
 |---|---|---|
 | `SOURCE_MEDIA` | `source.<ext>` | `MediaInput.SOURCE_FILE_PREFIX` |
 | `INFO_JSON` | `source.info.json` | `MediaInput.SOURCE_INFO_JSON_NAME` |
@@ -236,7 +247,7 @@ INDEX      idx_<表名>_<列名...> (...)
 
 ### 2.1 枚举列一律 `VARCHAR(32)`（N6）
 
-不用 `ENUM`、也不用 `CHECK`。适用范围：`source_type` / `run_type` / `task_run.status` / `artifact_type` / `subtitle_artifact.status` / `kind` / `intermediate_file.status` + 两个 `active_flag`。
+不用 `ENUM`、也不用 `CHECK`。适用范围：`source_type` / `run_type` / `task_run.status` / `artifact_type` / `subtitle_artifact.status` / `file_type` / `intermediate_file.status` + 两个 `active_flag`。
 
 - **与 C6 同一口径**：ENUM 是 DB 层约束，而本项目「手改表已经靠手工」，约束会让改表更难受。
 - **加值零 DDL**：本次就要加 `INTERRUPTED`；ENUM 下每次加值都要手工 `ALTER TABLE`。
@@ -264,7 +275,7 @@ INDEX      idx_<表名>_<列名...> (...)
 | `TaskRun` | `domain/subtitle/` | 状态机在这里（C36） |
 | `TaskRunStatus` | `domain/subtitle/model/` | **原 `TaskStatus` 改名**（N5） |
 | `SubtitleArtifact` | `domain/subtitle/` | **旧 record 让名**（N1） |
-| `IntermediateFile` | `domain/subtitle/` | 枚举 `IntermediateFileKind`（N3） |
+| `IntermediateFile` | `domain/subtitle/` | 枚举 `IntermediateFileType` |
 | 五个 Repository port | `domain/subtitle/port/` | 见下 |
 | `TaskStageEvent` | **删** | 见下 |
 

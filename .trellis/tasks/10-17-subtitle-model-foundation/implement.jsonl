@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/10-17-subtitle-model-foundation/prd.md", "reason": "本段范围、22 条需求与 AC1–AC7 —— 写代码前先对齐要交付什么、什么不做（范围外表逐条写明交给哪一段）"}
+{"file": ".trellis/tasks/10-17-subtitle-model-foundation/implement.md", "reason": "段内顺序（步骤 0–8）、五个端口的逐方法清单与 design 依据、步骤 6 的八条实现约定、验证命令、回滚点、八条欠账 —— 这是本次的执行清单"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "权威终态设计：§1 五张表 DDL（逐字照抄进 schema.sql）、§2 索引命名规则 N4 与枚举列 VARCHAR(32) 的 N6、§3 领域类与 port 落点表、§4 三处状态机的「每个值恰好一条路径」、§5 写集与事务边界、§7 各条写路径（端口方法依据全出自这里）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "持久化三层（Entity/Mapper/Repository 的命名与可见性）、端口归属判据与「端口在 domain、实现在 persistence」、按包选 stereotype、方法名动词开头与 of/is 判据、domain 层禁止清单（不加会改变行为的框架注解）"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "MyBatis-Plus 用法（只用 BaseMapper、值对象↔String 列转换收敛在 Repository、枚举按名映射）、单测不连真库的测试策略。注意：本文件的「建表契约」一节写的是旧 task 表、含与 design N6 冲突的 ENUM 规则，以 design 为准；这一节正是步骤 8 要改写的对象"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "注释要求（全大写常量与枚举常量一律留注释、首行大白话、解释原因不解释显而易见）、测试写法与命名（throwsWhen... 异常路径模式）、依赖原则"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "状态机非法迁移抛 IllegalStateException、错误信息中文且要含「缺什么、怎么补」——五张表的实体迁移方法都按这条写"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "脱敏红线：source_uri（URL 原文 / 上传文件原始名）不得写日志 —— Workspace 实体的字段注释与任何测试断言都要守这条"}

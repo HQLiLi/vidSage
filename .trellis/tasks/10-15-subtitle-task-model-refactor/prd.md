@@ -76,7 +76,7 @@
 
 | # | 子任务 | 交付 | 前置 |
 |---|---|---|---|
-| **S1** | `10-17-subtitle-model-foundation` | 五张新表 DDL + 五个领域类 + 四个新 port + MyBatis 实现。**纯增量**：不动任何调用方 | — |
+| **S1** | `10-17-subtitle-model-foundation` | 五张新表 DDL + 五个领域类 + **五个**新 port（~~四个~~，2026-10-17 订正：那是 C62 加 `intermediate_file` 之前的数，见 design §3）+ MyBatis 实现。**纯增量**：不动任何调用方 | — |
 | **S2** | `10-17-subtitle-model-submit-cutover` | 身份键、提交路径（W1 事务 + C63）、run 生命周期（收口 / 启动收口 / 互斥）、新契约骨架、SSE、`subtitle_keyword` 换锚点、旧栈整块删 | S1 |
 | **S3** | `10-17-subtitle-artifact-authority` | artifact 表读写与换版落定、`/artifacts` 端点、下载端点改按 `type`+`file`+`?lang=` | S2 |
 | **S4** | `10-17-subtitle-reclean-run` | RECLEAN run、W5 换版 + 下游级联、两种终态 | S3 |
