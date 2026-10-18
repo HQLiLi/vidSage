@@ -1273,3 +1273,71 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 48: 字幕模型重构 S2：换血（提交路径 + run 生命周期 + SSE + 新契约）
+<!-- trellis-session: v=2 fp=effc35bb6a9ad931 -->
+
+**Date**: 2026-10-18
+**Task**: 字幕模型重构 S2：换血（提交路径 + run 生命周期 + SSE + 新契约）
+**Branch**: `dev`
+
+### Summary
+
+S2 换血全段落地：步骤 1–9 + 三面检查修复 + 四项收尾清理；全量测试 555 绿，真库冒烟 AC1–AC11 逐条过。
+
+### Main Changes
+
+## 做了什么
+
+字幕模型重构 S2（`10-17-subtitle-model-submit-cutover`，父 10-15 的第 2/8 段）：把「旧栈还在跑」换成「新栈在跑」。
+
+- **步骤 1–4**（`ebd706d`）：身份键 `MediaIdentityResolver`（B 站：剥跟踪参数 / av 换算 / 短链只跟一次 + 进程内有界 LRU）；SSE 全套（`RunRef` / `TaskRunProgress` sealed 三变体 / `TaskProgressBroadcaster` 端口 / `SseTaskProgressBroadcaster`）；`TaskRunSupervisor`（start / advance / finish / recoverInterruptedRuns）；四个 coordinator 收 `workDir`。
+- **步骤 5–9**（`d13dd8d`）：schema 删 `task` 表、`subtitle_keyword` 换锚点到 `task_id` 并净增 `updated_at`；`SubtitleTaskService`（`TransactionTemplate` 显式圈事务 + C63 撞键锁定读）；新对外契约（身份 + `lastRun`、四个触发点统一 202/409、SSE 迁到 `/runs/{runNo}/events`、终态 204）；旧栈整块删；包结构按「任务与执行 / 内容加工」两条轴重排；启动收口；design 与两份 spec 同步。
+
+## 关键决策
+
+- **T9 撤回**：原定「`taskNo` 加进 `TaskRun`」，项目所有者改口径为「`taskNo` 的家是 `RunRef`，实体只留内部 `taskId`」—— 实体上那个家落不了库、读回要补查，而三处读调用方手里本来就有 `SubtitleTask`。
+- **事务机制**：`handleSubmit` 用 `TransactionTemplate` 而非 `@Transactional` —— 身份键计算必须留在事务外，于是事务方法只能同类内调用，而同类自调用会绕过 Spring 代理、注解静默失效。**不是禁用 `@Transactional`**，别处该用照用。
+- **步骤 4 边界收窄**：原 4.1/4.2/4.3（`WorkspaceDir` 换工厂 / `MediaInput` 瘦身 / 目录管理器换签名）移入步骤 5，因为它们与 `VideoTaskService` 互锁（它手里只有老的 `WorkspaceKey`）。
+- **`@Lazy` 换掉**：F5 的修法一度让 broadcaster 依赖应用服务、成 bean 环；改成 `open(ref, Supplier<快照>)`，环消失（起服务无 BeanCurrentlyInCreation 可证）。
+
+## 三面检查与修复
+
+规范关 / 契约关 / 逻辑关三面纯读，跑出 5 条，全部落地：
+
+- **F1（必现 bug）**：C63 并发分支一进就 500 —— 事务快照建立早于胜者提交，`workspace` / `subtitle_task` 两行重查用了 `FOR SHARE` 拿到了，但**取既有 run 那一步用的是普通读**，陈旧快照里看不到 → `IllegalStateException`。修法：`TaskRunRepository.findLatestForShareByTaskId`（照 design 自己的原则补一处）。
+  **复现要点**：三个 curl 进程测不出来（启动错开几毫秒，根本进不去 C63）；要单进程 `curl --parallel --parallel-immediate` 把到达压到亚毫秒 —— 修复前 3 轮全是 1×202 + 7×500，修复后 3 轮全是 1×202 + 7×409。
+- **web→domain 依赖违规**：`TaskController` 曾直接 import 四个 domain 类型 → 开流判定收进应用层，controller 现在零 domain import。
+- **F5 SSE 订阅 TOCTOU**：判定可订阅到建桶之间若恰好收口，连接永远收不到终态 → 改成建桶之后再取快照。
+- **F4**：`av` 号溢出时抛 400（违反「抽不到要回落」）→ 改回落。
+- 删死类 `SourceUri`（含它的测试与两处文档订正）。
+
+## 收尾清理（项目所有者逐个提问后落）
+
+- `emit` 在四个 coordinator 里重复四份 → 收成 `shared/progress/StageEvents`。
+- `catch (Throwable)` 接住之后 JVM 不再打默认堆栈 → 补 `log.error`，且**只打异常类型与调用栈帧、不打 message**（下载器会把外部命令 stderr 拼进消息，里面可能带 URL）。
+- `SubtitleTaskService` 439 行、四个变化理由 → 拆成写用例 / `SubtitleTaskQueryService`（读）/ `SubtitleTaskFinder`（共用定位）。
+
+## 验证
+
+- `clean test-compile` 通过；全量测试 **555 / 0 失败 / 0 错误 / 1 skipped**。
+- 条数账（dev 基线 649）：678（步骤 4 后）→ 550（换血后）→ 549（修复批次）→ 555（拆分后）；下降部分全部可解释（随删类 −128、重写缩水 −20、新增 +20…）。
+- 真库冒烟（项目所有者选「甲：全量跑 AC1–AC11」）：手工 `DROP TABLE subtitle_keyword / task` → 清 `backend/data/works*` → 起服务。AC1–AC11 逐条过：同一视频不同跟踪参数收敛同一身份键、并发 1×202 + 7×409、无残留 RUNNING、kill 重启后残留 run 变 INTERRUPTED 且启动日志有「收掉 N 个任务」、SSE 三态（404 / RUNNING 开流首条是 DB 快照 / 终态 204）、契约形状、关键词换锚点首插两列同值、旧件零残留、三种 run 各跑通、产物落盘。
+
+## 欠账
+
+14 条按计划记账（产物不落 `subtitle_artifact` 表 → S3；fingerprint 仍现算 → S3；RECLEAN / TRANSLATE 换版 → S4/S5；中间产物登记 → S6；对账端点 → S7；网络超时 → S8；前端点不通 → 另开任务…）。
+本轮新增两条：**F3**（非 B 站 host 也会发一次跳转 GET，修法是把跟跳转限定 `b23.tv`；项目所有者裁定暂不做）与 **`SubtitlePipeline` 一个类扛三种 run**（未排期）。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ebd706d` | feat(task): 字幕模型重构 S2 步骤 1–4（身份键 + SSE 全套 + run 机制 + coordinator 收 workDir） |
+| `d13dd8d` | feat(task): 字幕模型重构 S2 换血（提交路径 + run 生命周期 + SSE + 新契约 + 包结构重排） |
+
+### Status
+
+[OK] **Completed**
