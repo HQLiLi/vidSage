@@ -1407,3 +1407,25 @@ SubtitleArtifactStore 新增 settleCleanedAndSupersedeDownstream：事务内「�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 51: 字幕模型重构 S5：翻译落表与复用判据
+<!-- trellis-session: v=2 fp=f20fafad3251b8d0 -->
+
+**Date**: 2026-10-19
+**Task**: 字幕模型重构 S5：翻译落表与复用判据
+**Branch**: `dev`
+
+### Summary
+
+S5 完成：TRANSLATE run 落 subtitle_artifact（成功后占位 / W4 事务化换版 / 复用判据只认 READY+应带文件位可读），TERMS 改为可选文件位并统一落定/可读/回收/清单四处，coordinator 文件断点复用整块删除。全量 633 tests 绿；真库手工验收 AC1–AC8 通过。既有缺陷记入欠账 #9：ArtifactFileUtils 写失败消息带工作区绝对路径，经 run.error_message 外露，另开小修。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f4590a7` | feat(task): 字幕模型重构 S5 翻译（TRANSLATE 落 artifact 表 + 复用判据 + W4 事务） |
+
+### Status
+
+[OK] **Completed**

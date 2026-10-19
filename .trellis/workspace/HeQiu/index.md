@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 50
+- **Total Sessions**: 51
 - **Last Active**: 2026-10-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1409 | Active |
+| `journal-1.md` | ~1431 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 51 | 2026-10-19 | 字幕模型重构 S5：翻译落表与复用判据 | `f4590a7` | `dev` |
 | 50 | 2026-10-19 | S4 重洗：RECLEAN 落 artifact 表 + W5 换版级联 | `d499c9e`, `ea2eeed` | `dev` |
 | 49 | 2026-10-19 | 字幕模型重构 S3：产物权威 | `57c4ebd`, `8a6b691` | `dev` |
 | 48 | 2026-10-18 | 字幕模型重构 S2：换血（提交路径 + run 生命周期 + SSE + 新契约） | `ebd706d`, `d13dd8d` | `dev` |
