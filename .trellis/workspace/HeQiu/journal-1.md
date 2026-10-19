@@ -1384,3 +1384,26 @@ S3 把产物事实源从文件系统换成 DB：主管线按 CREATING 占位到�
 
 - RECLEAN / TRANSLATE 不写 artifact 表（S4 / S5）；中间产物登记与复用判据改造（S6）；对账与哈希比对（S7）；网络超时（S8）；前端接接口（另开任务）。
 - 两条未裁口径：TaskRunSupervisor 的产物收口是否改走 store（现为直连端口）；SubtitleContext.degraded 是否改名。
+
+
+## Session 50: S4 重洗：RECLEAN 落 artifact 表 + W5 换版级联
+<!-- trellis-session: v=2 fp=c2904f6001e1d8f5 -->
+
+**Date**: 2026-10-19
+**Task**: S4 重洗：RECLEAN 落 artifact 表 + W5 换版级联
+**Branch**: `dev`
+
+### Summary
+
+SubtitleArtifactStore 新增 settleCleanedAndSupersedeDownstream：事务内「旧 CLEANED 降级清列 → 内容真变了才批量作废下游译文 → 新行 READY」，事务提交后按 DB 行删文件、删干净才标 DELETED；主管线与 RECLEAN 两条路共用。SubtitleCleanupCoordinator 摘掉目录扫描删文件，级联改用批量 markSupersededByTaskIdAndType。测试基线 610 → 623 全绿；手工验收 AC1–AC6 / AC9 / AC11 在真库真服务上通过。父 design.md 与 directory-structure / logging / quality 三份 spec 同步订正。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d499c9e` | feat(task): 字幕模型重构 S4 重洗（RECLEAN 落 artifact 表 + W5 换版级联 + 两种终态） |
+| `ea2eeed` | Merge branch 'feature/subtitle-reclean-run' into dev |
+
+### Status
+
+[OK] **Completed**
