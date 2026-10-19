@@ -9,7 +9,7 @@ import com.vidsage.domain.shared.model.StageProgress.State;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
-import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.fs.ArtifactFileUtils;
 import com.vidsage.shared.progress.StageEvents;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -127,7 +127,7 @@ public class AudioPreparationCoordinator {
             // 抽取目标按规格指纹命名（命名规则单源在 AudioStageOutput.fileName）：
             // 同一输入、不同规格的产物互不覆盖，断点复用不会错拿
             Path audioPath = workDir.resolve(AudioStageOutput.fileName(spec));
-            long existingSize = ArtifactFiles.sizeOrZero(audioPath);
+            long existingSize = ArtifactFileUtils.sizeOrZero(audioPath);
             // 断点判据语义单源在 CheckpointPolicy（非空 = 已完成、0 字节 = 未完成）：
             // 与三个字幕阶段的 JSON 检查点是同一条「产物非空才算完成」政策
             if (CheckpointPolicy.isCompleted(existingSize)) {

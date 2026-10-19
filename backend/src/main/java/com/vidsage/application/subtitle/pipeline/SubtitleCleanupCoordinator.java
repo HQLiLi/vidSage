@@ -15,7 +15,7 @@ import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
-import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.fs.ArtifactFileUtils;
 import com.vidsage.shared.progress.ProgressMapper;
 import com.vidsage.shared.progress.StageEvents;
 import com.vidsage.shared.subtitle.SrtRenderer;
@@ -39,6 +39,9 @@ import java.util.stream.Stream;
  * <p><b>断点复用靠关键词指纹</b>：{@code -clean.json} 存在、字节数 &gt; 0，且它记着的指纹与当前关键词
  * 一致，才跳过切分与纠错直接返回。摘要缓存的有效性由同一枚指纹决定——{@code -clean} 只在清洗成功后才
  * 落盘，所以「指纹一致」蕴含「当初写的上下文也是这一份」；判不一致就重新摘要，<b>安全方向永远是重跑</b>。
+ *
+ * <p><b>摘不出来时落盘带降级标记的空上下文</b>：这份标记表示「这次试过了」，读回时绝不算缓存命中，
+ * 下次仍会重试摘要。断点复用命中但上下文缺失或带降级标记时，也先补摘一次再返回。
  *
  * <p>检查点语义（为什么是 JSON 而不是 SRT）单源在 {@link CheckpointPolicy}，本类不另判。
  * 只读产字幕阶段的原始产物（{@code segments-<route>.json}，必须已存在），只写 {@code -clean}。
@@ -164,18 +167,21 @@ public class SubtitleCleanupCoordinator {
         Path originalSeg = workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
         Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));
+        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
         SubtitleTrack existing = readCheckpoint(cleanSeg);
         String fingerprint = keywords.computeFingerprint();
 
         // 「这份产物就是当前关键词生成的」——既管断点复用，也管摘要缓存能不能用
         boolean current = existing != null
-                && CheckpointPolicy.isCurrent(ArtifactFiles.sizeOrZero(cleanSeg), existing.keywordsFingerprint(), fingerprint);
+                && CheckpointPolicy.isCurrent(ArtifactFileUtils.sizeOrZero(cleanSeg), existing.keywordsFingerprint(), fingerprint);
 
         String cleanSubtitlesStageName = SubtitleStageName.CLEAN_SUBTITLES.getStageName();
         // 这里发的都是任务级进度（直接传 CLEAN_SUBTITLES 的区间端点）；批级进度不走这里，
         // 由 cleanser 经 ProgressMapper 换算后直接回调 listener
         if (current && !regenerate) {
             log.info("字幕清洗断点复用跳过: clean={}", cleanSeg.getFileName());
+            // 复用仍要保证上下文可用：缺失或上次降级时补摘一次（不重跑清洗）
+            ensureUsableContext(originalSeg, ctxFile, keywords);
             // 断点复用不重跑，本趟统计一律为 0（含术语指标），语义与 correctedCount 一致
 
             StageEvents.emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.end(), "已有清洗产物，跳过清洗",
@@ -186,25 +192,24 @@ public class SubtitleCleanupCoordinator {
         StageEvents.emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.start(),
                 regenerate ? "开始重新生成字幕" : "开始清洗", StageProgress.State.RUNNING);
 
-        if (!ArtifactFiles.isNonEmpty(originalSeg)) {
+        if (!ArtifactFileUtils.isNonEmpty(originalSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
                     + originalSeg.getFileName() + "）");
         }
         SubtitleTrack original = readOriginal(originalSeg);
         List<TranscriptionSegment> segments = original.segments();
         String radioContent = segments.stream().map(TranscriptionSegment::text).collect(Collectors.joining("\n"));
-        Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
         // 缓存只在「旧产物就是当前这份关键词生成的」时可用；否则那份上下文可能是别的关键词集下产的
         SubtitleContext cached = current
-                ? ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class)
+                ? ArtifactFileUtils.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class)
                 : null;
         CheckpointPolicy.ContextResolution contextResolution = CheckpointPolicy.resolveContext(cached,
                 () -> contextSummarizer.summarize(radioContent, keywords));
         SubtitleContext subtitleContext = contextResolution.context();
         switch (contextResolution.source()) {
-            // 摘要成功才落盘：空上下文落盘会被下次当成缓存命中，摘要永久丢失且不报错
+            // 摘要成功与降级都落盘；降级那份带标记，下次读回会重新摘要
             case FRESH_SUMMARY -> {
-                ArtifactFiles.writeJsonAtomically(subtitleContext, objectMapper, ctxFile);
+                ArtifactFileUtils.writeJsonAtomically(subtitleContext, objectMapper, ctxFile);
                 log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
             }
             case DEGRADED_EMPTY -> {
@@ -213,7 +218,8 @@ public class SubtitleCleanupCoordinator {
                     throw new IllegalStateException("字幕摘要失败，无法按当前关键词重新生成："
                             + "请检查摘要所用的模型配置与网络后重试；现有字幕与译文都未改动");
                 }
-                log.debug("字幕摘要失败，降级为空上下文（不落盘）");
+                ArtifactFileUtils.writeJsonAtomically(subtitleContext, objectMapper, ctxFile);
+                log.info("字幕摘要失败，已落盘降级标记（下次仍会重试摘要）: file={}", ctxFile.getFileName());
             }
             case CACHE_HIT -> log.debug("字幕上下文缓存命中: file={}", ctxFile.getFileName());
         }
@@ -272,12 +278,46 @@ public class SubtitleCleanupCoordinator {
     }
 
     /**
+     * 断点复用时保证上下文文件可用：文件在且不带降级标记就什么都不做；
+     * 缺失或带降级标记就读原始字幕重新摘要一次，并按结果落盘。
+     *
+     * <p>摘要成功写成功那份；失败写带降级标记的空上下文——下次读回会重新试，不会当成缓存命中。
+     *
+     * @param originalSeg 原始字幕 segments（摘要的输入）
+     * @param ctxFile     上下文文件
+     * @param keywords    用户手填的关键词（摘要器的入参）
+     * @throws IllegalStateException 原始字幕缺失或读不动（必须先跑产字幕）
+     */
+    private void ensureUsableContext(Path originalSeg, Path ctxFile, SubtitleKeywords keywords) {
+        SubtitleContext cached = ArtifactFileUtils.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
+        if (cached != null && !cached.degraded()) {
+            return;
+        }
+        if (!ArtifactFileUtils.isNonEmpty(originalSeg)) {
+            throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
+                    + originalSeg.getFileName() + "）");
+        }
+        String content = readOriginal(originalSeg).segments().stream()
+                .map(TranscriptionSegment::text)
+                .collect(Collectors.joining("\n"));
+        SubtitleContext context = contextSummarizer.summarize(content, keywords)
+                .orElse(SubtitleContext.degradedEmpty());
+        ArtifactFileUtils.writeJsonAtomically(context, objectMapper, ctxFile);
+        if (context.degraded()) {
+            log.info("字幕上下文缺失或已降级，重新摘要失败，已落盘降级标记（下次仍会重试摘要）: file={}",
+                    ctxFile.getFileName());
+        } else {
+            log.info("字幕上下文缺失或已降级，已重新摘要并落盘: file={}", ctxFile.getFileName());
+        }
+    }
+
+    /**
      * 读断点：{@code -clean.json} 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。
      * 解析失败当未完成重跑（同 {@link SubtitlePreparationCoordinator}）。
      * 判据语义（JSON 非空 = 完成、0 字节 = 未完成）单源在 {@link CheckpointPolicy}。
      */
     private SubtitleTrack readCheckpoint(Path cleanSeg) {
-        if (!CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(cleanSeg))) {
+        if (!CheckpointPolicy.isCompleted(ArtifactFileUtils.sizeOrZero(cleanSeg))) {
             return null;
         }
         try {
@@ -304,8 +344,8 @@ public class SubtitleCleanupCoordinator {
      * 写两个 -clean 产物：先 segments JSON（检查点），再 SRT（由 track 渲染）。都原子替换。
      */
     private void writeArtifacts(Path cleanSeg, Path cleanSrt, SubtitleTrack track) {
-        ArtifactFiles.writeJsonAtomically(track, objectMapper, cleanSeg);
-        ArtifactFiles.writeAtomically(
+        ArtifactFileUtils.writeJsonAtomically(track, objectMapper, cleanSeg);
+        ArtifactFileUtils.writeAtomically(
                 SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), cleanSrt);
     }
 
@@ -317,7 +357,7 @@ public class SubtitleCleanupCoordinator {
                                              int correctedCount, int retrySteps,
                                              int termHits, int termApplied) {
         return new CleanedSubtitle(cleanSrt, cleanSeg, track.language(),
-                track.segments().size(), ArtifactFiles.sizeOrZero(cleanSrt), correctedCount, retrySteps,
+                track.segments().size(), ArtifactFileUtils.sizeOrZero(cleanSrt), correctedCount, retrySteps,
                 termHits, termApplied);
     }
 }

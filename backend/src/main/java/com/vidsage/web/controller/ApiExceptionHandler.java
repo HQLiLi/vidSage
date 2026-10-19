@@ -1,5 +1,6 @@
 package com.vidsage.web.controller;
 
+import com.vidsage.application.subtitle.exception.ArtifactNotFoundException;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.domain.exception.UnsupportedLanguageException;
@@ -64,6 +65,21 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Map<String, String> handleTaskNotFound(TaskNotFoundException e) {
         log.warn("任务不存在: {}", errorMessage(e));
+        return Map.of("error", errorMessage(e));
+    }
+
+    /**
+     * 任务在、但这一版产物不可用（还没产出，或文件已被挪走）→ 404，记 WARN。
+     *
+     * <p>与「任务不存在」分开：错误文案说的是产物，不冒充任务号不命中。
+     *
+     * @param e 产物不可用异常（清单 / 下载抛出）
+     * @return 错误体 {@code { "error": message }}
+     */
+    @ExceptionHandler(ArtifactNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Map<String, String> handleArtifactNotFound(ArtifactNotFoundException e) {
+        log.warn("产物不可用: {}", errorMessage(e));
         return Map.of("error", errorMessage(e));
     }
 

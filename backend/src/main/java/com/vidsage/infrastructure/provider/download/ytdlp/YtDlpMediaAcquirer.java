@@ -5,7 +5,7 @@ import com.vidsage.domain.media.model.AcquiredMedia;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import com.vidsage.domain.media.port.MediaAcquirer;
-import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.fs.ArtifactFileUtils;
 import com.vidsage.shared.text.TextTail;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -152,7 +152,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
         long durationMs = Math.round(info.duration() * 1000);
         // 脱敏：只记产物文件名与度量，不记标题（用户内容）
         log.info("复用已下载产物（断点复用）: media={}, durationMs={}, sizeBytes={}",
-                media.getFileName(), durationMs, ArtifactFiles.sizeOrZero(media));
+                media.getFileName(), durationMs, ArtifactFileUtils.sizeOrZero(media));
         return Optional.of(new AcquiredMedia(media, info.title(), durationMs, Optional.of(infoJson)));
     }
 
@@ -254,7 +254,7 @@ public class YtDlpMediaAcquirer implements MediaAcquirer {
         long durationMs = durationMsOf(info);
         String title = requireTitle(info);
         log.info("yt-dlp 下载完成: exit=0, media={}, durationMs={}, sizeBytes={}, elapsedMs={}",
-                media.getFileName(), durationMs, ArtifactFiles.sizeOrZero(media), outcome.elapsedMs());
+                media.getFileName(), durationMs, ArtifactFileUtils.sizeOrZero(media), outcome.elapsedMs());
         return new AcquiredMedia(media, title, durationMs, Optional.of(infoJson));
     }
 

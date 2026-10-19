@@ -1,10 +1,13 @@
 package com.vidsage.application.subtitle.pipeline;
 
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
+import com.vidsage.application.subtitle.SubtitleArtifactStore;
 import com.vidsage.application.task.TaskRunSupervisor;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.subtitle.SubtitleArtifact;
+import com.vidsage.domain.subtitle.model.ArtifactType;
 import com.vidsage.domain.task.TaskRun;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
@@ -35,6 +38,7 @@ public class SubtitlePipeline {
     private final SubtitlePreparationCoordinator subtitlePreparationCoordinator;
     private final SubtitleCleanupCoordinator cleanupStage;
     private final SubtitleTranslationCoordinator translationStage;
+    private final SubtitleArtifactStore artifactStore;
     private final TaskRunSupervisor supervisor;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
@@ -43,6 +47,7 @@ public class SubtitlePipeline {
      * @param subtitlePreparationCoordinator 阶段 1：音频准备 + 转写 + 写原始字幕
      * @param cleanupStage                   阶段 2：字幕清洗，也是重新生成字幕的执行体
      * @param translationStage               翻译执行体
+     * @param artifactStore                  产物版本读写门面（占位与落定）
      * @param supervisor                     收口与广播的机制类
      * @param concurrencyGate                并行任务闸门
      * @param workspaceDirectoryManager      工作区目录管理器
@@ -51,6 +56,7 @@ public class SubtitlePipeline {
                             SubtitlePreparationCoordinator subtitlePreparationCoordinator,
                             SubtitleCleanupCoordinator cleanupStage,
                             SubtitleTranslationCoordinator translationStage,
+                            SubtitleArtifactStore artifactStore,
                             TaskRunSupervisor supervisor,
                             TaskConcurrencyGate concurrencyGate,
                             WorkspaceDirectoryManager workspaceDirectoryManager
@@ -59,6 +65,7 @@ public class SubtitlePipeline {
         this.subtitlePreparationCoordinator = subtitlePreparationCoordinator;
         this.cleanupStage = cleanupStage;
         this.translationStage = translationStage;
+        this.artifactStore = artifactStore;
         this.supervisor = supervisor;
         this.concurrencyGate = concurrencyGate;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
@@ -150,10 +157,17 @@ public class SubtitlePipeline {
             log.info("任务开始执行: taskNo={}, runNo={}, sourceType={}",
                     ref.taskNo().value(), ref.runNo(), workspace.getSourceType());
             ProgressListener listener = progressListener(ref, run);
-            // 阶段 1：prepare 准备字幕文件
+            // 阶段 1：先占位，再让 prepare 写文件，最后落定原始产物
+            SubtitleArtifact original = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
+                    ArtifactType.ORIGINAL, "", null, null);
             subtitlePreparationCoordinator.prepare(input, workDir, listener);
-            // 阶段 2：清洗字幕文件（关键词按任务读，跟产物同粒度）
-            cleanupStage.clean(input, workDir, keywordRepository.findByTaskId(run.getTaskId()), listener);
+            original = artifactStore.settleArtifact(original, workDir);
+            // 阶段 2：清洗字幕文件（关键词按任务读，跟产物同粒度），清洗产物继承自刚落定的原始产物
+            SubtitleKeywords keywords = keywordRepository.findByTaskId(run.getTaskId());
+            SubtitleArtifact cleaned = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
+                    ArtifactType.CLEANED, "", original.getId(), keywords.computeFingerprint());
+            cleanupStage.clean(input, workDir, keywords, listener);
+            artifactStore.settleArtifact(cleaned, workDir);
             supervisor.finish(ref, run, null);
             log.info("任务执行成功: taskNo={}, runNo={}", ref.taskNo().value(), ref.runNo());
         } catch (Throwable t) {

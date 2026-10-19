@@ -7,7 +7,7 @@ import com.vidsage.domain.media.port.MediaAcquirer;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
 import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
-import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.fs.ArtifactFileUtils;
 import com.vidsage.shared.text.TextTail;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -116,7 +116,7 @@ public class LocalFileMediaAcquirer implements MediaAcquirer {
         long durationMs = probeDurationMs(file);
         // 本地路线不拷贝，直接采用；workDir 留给后续阶段落字幕产物用
         log.info("采用本地媒体文件: file={}, durationMs={}, sizeBytes={}",
-                file.getFileName(), durationMs, ArtifactFiles.sizeOrZero(file));
+                file.getFileName(), durationMs, ArtifactFileUtils.sizeOrZero(file));
         return new AcquiredMedia(file, file.getFileName().toString(), durationMs, Optional.empty());
     }
 

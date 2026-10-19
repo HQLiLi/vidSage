@@ -8,7 +8,7 @@ import com.vidsage.domain.media.port.AudioExtractor;
 import com.vidsage.infrastructure.process.ExternalProcessRunner;
 import com.vidsage.infrastructure.process.ProcessToolDiagnostics;
 import com.vidsage.infrastructure.process.ExternalToolProperties;
-import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.fs.ArtifactFileUtils;
 import com.vidsage.shared.text.TextTail;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -103,7 +103,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         Path ffmpeg = tools.requireFfmpeg();
         Path part = partPath(output);
         // 清掉上一次失败/中断可能残留的半截临时文件，避免它被误当作本次产物
-        ArtifactFiles.deleteQuietly(part);
+        ArtifactFileUtils.deleteQuietly(part);
 
         List<String> command = buildCommand(ffmpeg, media, part, spec);
         // 脱敏红线：不整体打印 AudioSpec / ExternalToolProperties（record 的 toString 会带出配置），逐字段打
@@ -113,7 +113,7 @@ public class FfmpegAudioExtractor implements AudioExtractor {
         ProcessOutcome outcome = runner.run(command, null, Duration.ofSeconds(properties.defaultTimeoutSeconds()));
 
         if (outcome.timedOut()) {
-            ArtifactFiles.deleteQuietly(part);
+            ArtifactFileUtils.deleteQuietly(part);
             // 失败信息分层：面向用户的异常消息有界、可操作（不带 stderr 全文），
             // 完整 stderr 在此落 DEBUG 供深挖——否则完整内容既不在消息也不在日志里
             log.debug("ffmpeg 抽音频超时，完整 stderr: {}", outcome.stderr());
@@ -121,21 +121,21 @@ public class FfmpegAudioExtractor implements AudioExtractor {
                     + " 秒）：ffmpeg；可用 vidsage.tools.default-timeout-seconds 调整");
         }
         if (outcome.exitCode() != 0) {
-            ArtifactFiles.deleteQuietly(part);
+            ArtifactFileUtils.deleteQuietly(part);
             // 失败信息分层：异常消息只带 stderr 尾部 20 行（有界、可操作），
             // 完整 stderr 在此落 DEBUG 供深挖（执行器 WARN 也只打尾部）
             log.debug("ffmpeg 抽音频失败，完整 stderr: exit={}, stderr={}", outcome.exitCode(), outcome.stderr());
             throw new IllegalStateException(failureMessage(outcome.exitCode(), outcome.stderr(), spec));
         }
-        long sizeBytes = ArtifactFiles.sizeOrZero(part);
+        long sizeBytes = ArtifactFileUtils.sizeOrZero(part);
         if (sizeBytes <= 0) {
             // ffmpeg 声称成功却没产出：不能静默返回空文件
-            ArtifactFiles.deleteQuietly(part);
+            ArtifactFileUtils.deleteQuietly(part);
             throw new IllegalStateException("ffmpeg 声称成功但未产出音频（输出缺失或为空）：" + part
                     + "；请确认输入媒体含音频轨，或改用 AudioSpec.audioTrackIndex 指定其它音频轨");
         }
-        ArtifactFiles.moveAtomically(part, output);
-        long finalSize = ArtifactFiles.sizeOrZero(output);
+        ArtifactFileUtils.moveAtomically(part, output);
+        long finalSize = ArtifactFileUtils.sizeOrZero(output);
         log.info("音频抽取完成: exit=0, container={}, sizeBytes={}, elapsedMs={}",
                 spec.container(), finalSize, outcome.elapsedMs());
         return new AudioStageOutput(output, spec, finalSize);

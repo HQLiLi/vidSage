@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -16,9 +17,9 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * ArtifactFiles 的纯单元测试：直接读写临时目录里的真实文件，不起 Spring 容器。
+ * ArtifactFileUtils 的纯单元测试：直接读写临时目录里的真实文件，不起 Spring 容器。
  */
-class ArtifactFilesTest {
+class ArtifactFileUtilsTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -33,21 +34,21 @@ class ArtifactFilesTest {
 
     @Test
     void sizeOrZeroReturnsZeroForMissingFile() {
-        assertEquals(0L, ArtifactFiles.sizeOrZero(tempDir.resolve("nope.bin")));
+        assertEquals(0L, ArtifactFileUtils.sizeOrZero(tempDir.resolve("nope.bin")));
     }
 
     @Test
     void sizeOrZeroReturnsZeroForEmptyFile() throws IOException {
         Path file = Files.createFile(tempDir.resolve("empty.bin"));
 
-        assertEquals(0L, ArtifactFiles.sizeOrZero(file));
+        assertEquals(0L, ArtifactFileUtils.sizeOrZero(file));
     }
 
     @Test
     void sizeOrZeroReturnsByteCountForContent() throws IOException {
         Path file = Files.write(tempDir.resolve("data.bin"), new byte[7]);
 
-        assertEquals(7L, ArtifactFiles.sizeOrZero(file));
+        assertEquals(7L, ArtifactFileUtils.sizeOrZero(file));
     }
 
     @Test
@@ -56,22 +57,48 @@ class ArtifactFilesTest {
         // 否则目录会冒充成合法产物（这正是归一六份副本时修的那个 bug）
         Path dir = Files.createDirectory(tempDir.resolve("a-directory"));
 
-        assertEquals(0L, ArtifactFiles.sizeOrZero(dir));
+        assertEquals(0L, ArtifactFileUtils.sizeOrZero(dir));
     }
 
     @Test
     void isNonEmptyRejectsMissingAndEmptyFiles() throws IOException {
         Path empty = Files.createFile(tempDir.resolve("empty2.bin"));
 
-        assertFalse(ArtifactFiles.isNonEmpty(tempDir.resolve("nope.bin")));
-        assertFalse(ArtifactFiles.isNonEmpty(empty));
+        assertFalse(ArtifactFileUtils.isNonEmpty(tempDir.resolve("nope.bin")));
+        assertFalse(ArtifactFileUtils.isNonEmpty(empty));
     }
 
     @Test
     void isNonEmptyAcceptsFileWithContent() throws IOException {
         Path file = Files.write(tempDir.resolve("data2.bin"), new byte[] {1, 2, 3});
 
-        assertTrue(ArtifactFiles.isNonEmpty(file));
+        assertTrue(ArtifactFileUtils.isNonEmpty(file));
+    }
+
+    @Test
+    void isRegularFileTreatsEmptyFileAsPresent() throws IOException {
+        Path empty = Files.createFile(tempDir.resolve("empty.srt"));
+        Path directory = Files.createDirectory(tempDir.resolve("a-dir"));
+
+        assertTrue(ArtifactFileUtils.isRegularFile(empty), "0 字节 SRT 是合法产物，不能当成缺失");
+        assertFalse(ArtifactFileUtils.isRegularFile(directory));
+        assertFalse(ArtifactFileUtils.isRegularFile(tempDir.resolve("nope.srt")));
+    }
+
+    @Test
+    void sha256ReturnsLowercaseHexOfContent() throws IOException {
+        Path file = Files.writeString(tempDir.resolve("abc.txt"), "abc", StandardCharsets.UTF_8);
+
+        assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                ArtifactFileUtils.sha256(file));
+    }
+
+    @Test
+    void sha256ThrowsIllegalStateWhenFileCannotBeRead() {
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> ArtifactFileUtils.sha256(tempDir.resolve("missing.bin")));
+
+        assertTrue(e.getMessage().contains("missing.bin"), "消息要带文件名，便于定位");
     }
 
     @Test
@@ -79,7 +106,7 @@ class ArtifactFilesTest {
         Path target = tempDir.resolve("artifact.srt");
         byte[] content = "hello".getBytes(StandardCharsets.UTF_8);
 
-        ArtifactFiles.writeAtomically(content, target);
+        ArtifactFileUtils.writeAtomically(content, target);
 
         assertArrayEquals(content, Files.readAllBytes(target));
         assertFalse(Files.exists(tempDir.resolve("artifact.srt.tmp")));
@@ -90,7 +117,7 @@ class ArtifactFilesTest {
         Path target = Files.write(tempDir.resolve("artifact.json"), "old".getBytes(StandardCharsets.UTF_8));
         byte[] content = "new".getBytes(StandardCharsets.UTF_8);
 
-        ArtifactFiles.writeAtomically(content, target);
+        ArtifactFileUtils.writeAtomically(content, target);
 
         assertArrayEquals(content, Files.readAllBytes(target));
     }
@@ -100,7 +127,7 @@ class ArtifactFilesTest {
         Path from = Files.write(tempDir.resolve("audio.wav.part"), new byte[] {9});
         Path to = tempDir.resolve("audio.wav");
 
-        ArtifactFiles.moveAtomically(from, to);
+        ArtifactFileUtils.moveAtomically(from, to);
 
         assertFalse(Files.exists(from));
         assertTrue(Files.exists(to));
@@ -110,17 +137,17 @@ class ArtifactFilesTest {
     void deleteQuietlyRemovesFileAndIgnoresMissingOne() throws IOException {
         Path file = Files.write(tempDir.resolve("tmp.bin"), new byte[] {1});
 
-        ArtifactFiles.deleteQuietly(file);
+        ArtifactFileUtils.deleteQuietly(file);
         assertFalse(Files.exists(file));
         // 文件本就不存在时也不能抛
-        ArtifactFiles.deleteQuietly(tempDir.resolve("already-gone.bin"));
+        ArtifactFileUtils.deleteQuietly(tempDir.resolve("already-gone.bin"));
     }
 
     @Test
     void writeJsonAtomicallyWritesPrettyJsonAndLeavesNoTmpFile() throws IOException {
         Path target = tempDir.resolve("checkpoint.json");
 
-        ArtifactFiles.writeJsonAtomically(new Sample("米特号", 7), JSON, target);
+        ArtifactFileUtils.writeJsonAtomically(new Sample("米特号", 7), JSON, target);
 
         String json = Files.readString(target, StandardCharsets.UTF_8);
         assertTrue(json.contains("\"name\""), "该写出字段名");
@@ -132,9 +159,9 @@ class ArtifactFilesTest {
     @Test
     void readJsonOrNullRoundTripsWrittenObject() throws IOException {
         Path target = tempDir.resolve("checkpoint2.json");
-        ArtifactFiles.writeJsonAtomically(new Sample("剑术", 3), JSON, target);
+        ArtifactFileUtils.writeJsonAtomically(new Sample("剑术", 3), JSON, target);
 
-        Sample read = ArtifactFiles.readJsonOrNull(target, JSON, Sample.class);
+        Sample read = ArtifactFileUtils.readJsonOrNull(target, JSON, Sample.class);
 
         assertEquals("剑术", read.name());
         assertEquals(3, read.value());
@@ -142,14 +169,14 @@ class ArtifactFilesTest {
 
     @Test
     void readJsonOrNullReturnsNullForMissingEmptyAndBrokenFile() throws IOException {
-        assertNull(ArtifactFiles.readJsonOrNull(tempDir.resolve("nope.json"), JSON, Sample.class),
+        assertNull(ArtifactFileUtils.readJsonOrNull(tempDir.resolve("nope.json"), JSON, Sample.class),
                 "文件不存在当没有检查点");
 
         Path empty = Files.createFile(tempDir.resolve("empty.json"));
-        assertNull(ArtifactFiles.readJsonOrNull(empty, JSON, Sample.class), "空文件当没有检查点");
+        assertNull(ArtifactFileUtils.readJsonOrNull(empty, JSON, Sample.class), "空文件当没有检查点");
 
         Path broken = Files.writeString(tempDir.resolve("broken.json"), "这不是 JSON",
                 StandardCharsets.UTF_8);
-        assertNull(ArtifactFiles.readJsonOrNull(broken, JSON, Sample.class), "解析失败当没有检查点");
+        assertNull(ArtifactFileUtils.readJsonOrNull(broken, JSON, Sample.class), "解析失败当没有检查点");
     }
 }

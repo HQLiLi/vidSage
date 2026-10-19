@@ -22,8 +22,8 @@ public interface SubtitleContextSummarizer {
      *
      * @param content  全篇字幕拼接文本
      * @param keywords 用户手填的关键词；没有就传空清单，不要传 {@code null}
-     * @return 摘要结果；失败一律为空 {@link Optional} 而不抛异常。空结果绝不能当成功落盘
-     *         （见 {@link CheckpointPolicy} 的上下文政策）
+     * @return 摘要结果；失败一律为空 {@link Optional} 而不抛异常。调用方把空结果落盘时写成带降级标记的
+     *         空上下文，读回时不会当作缓存命中（见 {@link CheckpointPolicy} 的上下文政策）
      */
     Optional<SubtitleContext> summarize(String content, SubtitleKeywords keywords);
 }

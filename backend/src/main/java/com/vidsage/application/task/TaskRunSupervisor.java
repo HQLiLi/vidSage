@@ -84,6 +84,12 @@ public class TaskRunSupervisor {
      */
     public void finish(RunRef ref, TaskRun run, String errorMessageOrNull) {
         try {
+            // 本次run如果有创建产物的操作，判断产物状态是否还处于创建中，如果还处于就给他设为失败，防止影响相同任务的其他run
+            subtitleArtifactRepository.markCreatingAsFailedByRunId(run.getId());
+        } catch (RuntimeException e) {
+            log.error("run 占位产物收口失败（仍会落 run 终态）: runNo={}", run.getRunNo(), e);
+        }
+        try {
             if (errorMessageOrNull == null) {
                 run.succeed();
             } else {

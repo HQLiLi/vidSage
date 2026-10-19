@@ -45,16 +45,7 @@ private static void validateTaskNo(String taskNo) { ... }                       
 | `DashScopeAsrProvider.requirePublicUrl(url)` | `String` —— 校验通过就返回那个 URL |
 | `YtDlpMediaAcquirer.requireTitle(info)` | `String` —— 取不到就抛 |
 
-**存量待改清单（遗留，别在无关任务里顺手改）** —— 只列**不返回值**的四个：
-
-| 位置 | 旧名 | 目标名 |
-|---|---|---|
-| `domain/task/VideoTask` | `requireStatus` | `validateStatus` |
-| `domain/task/VideoTask` | `requireMainSucceededForPostLifecycle` | `validateMainSucceededForPostLifecycle` |
-| `application/task/subscribe/TaskSubscriptionRegistry` | `requireTaskNo` | `validateTaskNo` |
-| `web/sse/TaskSseConnectionManager` | `requireTaskNo` | `validateTaskNo` |
-
-> 本仓新代码（2026-10-17 起的 `domain/subtitle/` 三个状态机实体）已经用的是 `validateStatus` / `validateRunning`；上面四处是存量，等各自的文件被其它任务碰到时再改。
+**存量待改清单：已清空。** 全仓不再有不返回值的 `requireXxx`；状态机实体用的是 `validateStatus` / `validateRunning`。
 
 ## 异常类型选择
 
@@ -71,7 +62,7 @@ private static void validateTaskNo(String taskNo) { ... }                       
 上一张表回答「种类」，这条回答「**归属**」——同一个非法值，来源不同就该是不同的异常：
 
 - **调用方产生**（请求体 / URL / 路径）→ 在 **HTTP 边界卫语句**里拦下，抛 `IllegalArgumentException` → **400 + WARN**
-- **服务端自己算出** → 在 `domain/` 值对象的**紧凑构造器不变量**里拦下，抛 `IllegalStateException` → **500 + ERROR**（先例：`domain/task/model/TaskNo`、`domain/shared/model/WorkspaceKey` 的紧凑构造器对空白值抛 `IllegalStateException`）
+- **服务端自己算出** → 在 `domain/` 值对象的**紧凑构造器不变量**里拦下，抛 `IllegalStateException` → **500 + ERROR**（先例：`domain/task/model/TaskNo` 对空白 taskNo、`domain/media/model/AudioSpec` 对非正采样率 / 负音轨序号）
 
 **落地规则：任何「拿调用方的值构造 `domain/` 值对象」的代码，必须先有一个边界卫语句。** 构造器那层是**最后防线**——它触发即意味着边界漏了。
 
@@ -85,7 +76,7 @@ private static void validateTaskNo(String taskNo) { ... }                       
 
 源**可**获取时两者才同为 400。故守卫的**位置**（边界，早于任何服务调用）与守卫的**存在**同等重要：把卫语句「整理」进服务层，会让客户端错误重新变得**取决于环境是否就绪**。
 
-**同一个值被检查两次不是冗余**：「调用方给的合法吗？」（边界）与「我们内部造出来的符合不变量吗？」（构造器）是**两问两答**——同一谓词、不同失败含义，而**含义决定状态码**。本项目实例：`VideoTaskService.loadTask` 对入参 taskNo 先做 `StringUtils.hasText` 卫语句（IAE → 400），`TaskNo` 紧凑构造器再查一次空白（ISE → 500），同一谓词、异常类型随归属不同。
+**同一个值被检查两次不是冗余**：「调用方给的合法吗？」（边界）与「我们内部造出来的符合不变量吗？」（构造器）是**两问两答**——同一谓词、不同失败含义，而**含义决定状态码**。本项目实例：`SubtitleTaskFinder.require` 对入参 taskNo 先做 `StringUtils.hasText` 卫语句（IAE → 400），`TaskNo` 紧凑构造器再查一次空白（ISE → 500），同一谓词、异常类型随归属不同。
 
 **残留风险（有意接受）**：边界卫语句若漏写，客户端错误会被构造器报成 **500**。取舍理由是**失败方向反转**——旧形态是服务端 bug **伪装成 400 / WARN 静默存活**，新形态把服务端疏漏**喊成 500 / ERROR，可见**。宁可大声暴露服务端缺陷，也不要藏进「用户错误」里。
 
@@ -191,18 +182,8 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 模式由首个 Controller 确立（该类已于 2026-10-02 收编旧同步端点时移除）；第二个 Controller（`web/controller/MediaController.java`）落地时局部处理开始重复，**按原规范预告的条件提取成了全局处理器** `web/controller/ApiExceptionHandler`（`@RestControllerAdvice`）。后续 Controller **不必再写局部 `@ExceptionHandler`**。
 
 - **入参校验用卫语句**：Controller 层判空白/越界即抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
-- **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）；`TaskNotFoundException` → **404**；`TaskConflictException` → **409**（载荷额外附既有任务视图，见 `TaskConflictResponse`）
-- **409 现有两个场景**（2026-10-12 起并列，同一个异常类、同一条映射）：
-  1. **同 URL / 同内容已有进行中任务**——提交查重命中（`VideoTaskService.rejectIfActive`）；
-  2. **同工作区已有后置会话（重新生成字幕 **或** 翻译）在跑**——`TaskSessionRegistry.tryStart` 抢登记失败
-     （任务 `10-11-subtitle-keyword-regenerate` 起，`10-11-subtitle-multilang-translate` 2026-10-14 把翻译
-     也接进同一把锁）。判定在同步段、202 之前：抢不到就 409，不排队等锁。
-     **一把锁管两类后置会话**：两者都会动同一批产物（重新生成会删译文、翻译在读清洗产物），故互斥范围是
-     工作区级、不分类别；抢锁用各自阶段名（`clean-subtitles` / `translate-subtitles`）。
-     **文案必须区分场景**——场景 2 的冲突方手里就是那个任务号（主状态还是 SUCCEEDED），
-     套用场景 1 的「请勿重复提交」会让人以为提交写错了，故走 `TaskConflictException` 带 message 的构造器。
-     **已知缺口（未修）**：场景 2 只拦「后置会话 → 后置会话」；「后置会话在跑时**再提交一个新任务**」
-     不在守卫内——`rejectIfActive` 只查 DB 的 PENDING/RUNNING，而后置会话不落库。
+- **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）；`TaskNotFoundException` / `ArtifactNotFoundException` → **404**；`TaskConflictException` → **409**（载荷 `{taskNo, runNo}`，见 `TaskRunRefResponse`）
+- **409 只有一种语义：该任务已有一次执行在跑。** 抢互斥就是插一条 `RUNNING` 的 run —— `uk_task_run_task_id_active_flag` 只约束 `RUNNING` 行（其余行的生成列为 NULL、不参与唯一比较），撞键即 409，**不排队等锁**。提交 / 重新生成 / 翻译三条触发路径共用这一句 INSERT（`TaskRunSupervisor.start`），响应体 `{taskNo, runNo}` **与 202 同形状、不含文案**：调用方靠状态码判冲突，拿这对去订阅那条正在跑的 run。**「产物尚未就绪」是 400，不是 409。**
 - **日志级别按「谁之过」分**：调用方输入问题（400 / 404 / 409）记 **WARN**——不该触发 ERROR 告警；服务端或环境故障（500）记 **ERROR** 并**带上异常对象**（保留调用栈供定位）
 - **响应体形状只有一处定义**：`{ "error": message }` 由 `ApiExceptionHandler` 统一产出，接口文档也不逐接口重复声明
 
@@ -213,10 +194,10 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 
   | 异常 | 包 | 映射 | 场景 |
   |---|---|---|---|
-  | `TaskNotFoundException` | `application/task/exception/` | 404 | 按 taskNo 取资源的三个端点统一 |
-  | `TaskConflictException` | `application/task/exception/` | 409（载荷附既有任务快照） | 重复提交、同工作区后置会话互斥（重新生成 2026-10-12 / 翻译 2026-10-14） |
+  | `TaskNotFoundException` | `application/task/exception/` | 404 | 按 taskNo 取资源的端点统一（任务查询、SSE 订阅、产物清单与下载） |
+  | `ArtifactNotFoundException` | `application/subtitle/exception/` | 404（专用映射） | 任务在、但这一版产物不可用：该 `(type, lang)` 没有可读的当前版本，或文件已不在工作区（清单与下载端点） |
+  | `TaskConflictException` | `application/task/exception/` | 409（载荷 `{taskNo, runNo}`） | 该任务已有一次执行在跑（撞互斥唯一键） |
   | `UnsupportedLanguageException` | `domain/exception/` | 400（专用映射） | 目标语种不在支持列表（`SupportedLanguage.parse` 认不出） |
-  | `InvalidWorkDirectoryException` | `application/exception/` | 400（**继承 `IllegalArgumentException`**，由 IAE 那条接，没另写映射） | 工作区目录入参为空（2026-10-14） |
 
   **不再为别的场景提前造**：其余错误仍按 IAE / ISE 的语义表达。
 - **日志**：已落地，规范见 [logging-guidelines.md](./logging-guidelines.md)。
