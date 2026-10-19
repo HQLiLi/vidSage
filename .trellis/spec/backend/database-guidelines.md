@@ -188,6 +188,42 @@ curl -s --parallel --parallel-immediate --parallel-max 8 -o /dev/null -w '%{http
 ```
 判据：应当恰好一个 202、其余 409（且 409 带的是**正在跑那条**的 runNo）；出现 500 就是漏了锁定读。
 
+### 事务机制怎么选：注解优先，模板兜底
+
+**规则**：默认用 `@Transactional` —— 方法被别的 bean 调用（走 Spring 代理）、事务段就是一个完整方法、事务里不做慢 IO，三条都满足时注解更短也更好读。
+
+只有下面几种情况才用 `TransactionTemplate`：
+
+1. 事务段必须由**同类内部方法**调用 —— 自调用绕过 Spring 代理，注解**静默失效**；
+2. 要在事务外先做慢 IO（网络 / 大文件哈希），事务段拆出去又会踩第 1 条；
+3. 事务边界要在**不启 Spring 上下文的单测**里被观察到 —— 本仓的门面类单测直接 `new` 对象并注入事务管理器替身，注解在裸实例上是空转。
+
+> **别写成「本仓一律用模板」**：`src/main` 里当前没有 `@Transactional` 只是历史现状，不是禁用规则。能用注解的地方照用。
+
+**实例：`SubtitleArtifactStore#settleArtifact`** —— 算文件名与哈希是慢文件 IO，必须留在事务外；事务段（旧版降级 + 新行 READY）拆出去只能被同类内部调用；事务边界由 `SubtitleArtifactStoreTest` 的 `RecordingTransactionManager` 钉住。三条原因都踩到，所以用 `transactionTemplate.executeWithoutResult(...)`。
+
+#### Wrong vs Correct
+
+##### Wrong：对着带慢 IO 的方法直接加 `@Transactional`
+```java
+@Transactional   // ❌ 哈希也进了事务；若再拆成同类私有方法，注解还会静默失效
+public SubtitleArtifact settleArtifact(SubtitleArtifact creating, Path workDir) {
+    ArtifactFiles files = resolveArtifactFiles(...);   // 慢文件 IO
+    ...
+}
+```
+
+##### Correct：慢 IO 在事务外，事务段用模板显式圈
+```java
+public SubtitleArtifact settleArtifact(SubtitleArtifact creating, Path workDir) {
+    ArtifactFiles files = resolveArtifactFiles(...);   // ✅ 事务外
+    transactionTemplate.executeWithoutResult(status -> {
+        // ✅ 事务内：旧版降级 + 新行 READY
+    });
+    return creating;
+}
+```
+
 ## 测试策略
 
 - **单测不连真库**：各 `MybatisXxxRepositoryTest`（如 `MybatisSubtitleTaskRepositoryTest`）mock 全部 Mapper，

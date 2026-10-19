@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS subtitle_artifact
 |---|---|---|
 | `ORIGINAL` | `segments` + `subtitles` | 无语言维度 |
 | `CLEANED` | `segments` + `subtitles` + `context` | `context` 是清洗的副产物 |
-| `TRANSLATED(lang)` | `segments` + `subtitles` + `terms` | 术语表按语种 |
+| `TRANSLATED(lang)` | `segments` + `subtitles` + **可选** `terms` | 术语表按语种；查证未启用 / 无术语 / 全部查证失败 / 同语种时**不产出**，该列留 `NULL`，产物仍然可用 |
 
 3. **`uk_..._active_flag` 逼出落定顺序**（C41），3 与 4 不可换（换了当场撞重复键）：
 
@@ -594,11 +594,13 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 |---|---|---|---|---|
 | 1 | 校验 | **不写** | **不动** | 无 |
 | 2 | **抢互斥** | `INSERT task_run (TRANSLATE, RUNNING, target_language)` | **不动** | 无 |
-| 3 | **复用判据** | **只读**：`TRANSLATED(lang, status=READY)` 存在？**命中 → 直接跳到第 7 步** | **不动** | 无 |
+| 3 | **复用判据** | **只读**：该语种有一条 `READY` 行，**且该行应带的文件位可读**（C25）；命中 → 直接跳到第 7 步。不带 lineage、不比哈希 | **不动** | 无 |
 | 4 | **翻译** | 只推进 `current_stage` + 广播 | **不动** | ✅ **最常见的失败点**：旧译文和它的文件一点没动 |
 | 5 | 落新产物 | 插 `CREATING`（`revision+1`、`derived_from_artifact_id` = 当前 `CLEANED.id`）—— **只插行，不写文件列** | 写 3 个**临时文件** → **原子替换**（同名 → 旧译文被顶掉） | 同 §7.4 步骤 5 |
 | 6 | **换版（同一事务 = W4）** | ① 旧 `TRANSLATED(lang)` → `SUPERSEDED` + 清空文件列与哈希列<br>② 新行 → `READY` **+ 写 `*_file_name` 与 `*_sha256`** | **不动** | 同 §7.4 步骤 6 |
 | 7 | **收尾** | `task_run.status = SUCCEEDED` + `subtitle_task.updated_at = now()` | **不动** | —— |
+
+> **占位行的时机**（2026-10-19 S5 落地时写明）：翻译阶段在模型返回后才写文件，所以占位行在**翻译成功之后**插 —— LLM 失败时库里没有占位行，旧译文与文件一点没动。步骤 5 的「插行 → 写文件」是相对顺序的概括，实施以「先有成功产出，再插占位」为准。
 
 **跟 §7.4 的两个差别**：**没有级联**（译文下面没有别的产物）；**没有「删文件」这一步**（旧译文是**覆盖型**，同名被新译文顶掉，停在 `SUPERSEDED` 就到头）。
 

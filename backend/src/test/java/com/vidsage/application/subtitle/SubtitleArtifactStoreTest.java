@@ -140,6 +140,7 @@ class SubtitleArtifactStoreTest {
                 () -> store.settleArtifact(creating, workDir));
 
         assertTrue(e.getMessage().contains("subtitles.srt"), "消息要指出缺的是哪个文件位");
+        assertTrue(events.isEmpty(), "算哈希是事务外的事，失败时事务根本不该开");
         verify(repository, never()).markSupersededAndClearFiles(anyLong());
         verify(repository, never()).updateReady(any());
     }
@@ -157,6 +158,36 @@ class SubtitleArtifactStoreTest {
                 "库里的语种是 zh-Hans，盘上文件名是小写，落定要按盘上的名字");
         assertEquals("terms-zh-hans.json", creating.getTermsFileName());
         assertNull(creating.getContextFileName());
+    }
+
+    @Test
+    void settleTranslatedWithoutTermsRegistersOnlySegmentsAndSubtitles() throws IOException {
+        write("translated-segments-en.json", "segments");
+        write("translated-subtitles-en.srt", "srt");
+        SubtitleArtifact creating = creating(ArtifactType.TRANSLATED, "en");
+
+        store.settleArtifact(creating, workDir);
+
+        assertEquals(SubtitleArtifactStatus.READY, creating.getStatus());
+        assertEquals("translated-segments-en.json", creating.getSegmentsFileName());
+        assertEquals("translated-subtitles-en.srt", creating.getSubtitlesFileName());
+        assertNull(creating.getTermsFileName(), "术语查证没产出时 terms 列留空，不算失败");
+        assertNull(creating.getTermsSha256());
+        assertNotNull(creating.getSegmentsSha256());
+        assertNotNull(creating.getSubtitlesSha256());
+    }
+
+    @Test
+    void settleTranslatedStillRegistersTermsWhenPresent() throws IOException {
+        write("translated-segments-en.json", "segments");
+        write("translated-subtitles-en.srt", "srt");
+        write("terms-en.json", "terms");
+        SubtitleArtifact creating = creating(ArtifactType.TRANSLATED, "en");
+
+        store.settleArtifact(creating, workDir);
+
+        assertEquals("terms-en.json", creating.getTermsFileName());
+        assertNotNull(creating.getTermsSha256());
     }
 
     // ---------- settle：清洗（换版 + 下游级联）----------
@@ -273,6 +304,23 @@ class SubtitleArtifactStoreTest {
     }
 
     @Test
+    void settleCleanedReclaimsDownstreamTranslationWithoutTerms() throws IOException {
+        writeCleanedFiles();
+        write("translated-segments-en.json", "translated");
+        write("translated-subtitles-en.srt", "translated");
+        when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.CLEANED, ""))
+                .thenReturn(Optional.of(ready(5L, ArtifactType.CLEANED, "")));
+        when(repository.findReadyByTaskId(TASK_ID))
+                .thenReturn(List.of(translatedReadyWithoutTerms(6L, "en")));
+
+        store.settleCleanedAndSupersedeDownstream(creating(ArtifactType.CLEANED, ""), workDir);
+
+        assertFalse(Files.exists(workDir.resolve("translated-segments-en.json")));
+        assertFalse(Files.exists(workDir.resolve("translated-subtitles-en.srt")));
+        verify(repository).markDeleted(6L);
+    }
+
+    @Test
     void settleCleanedKeepsRunAliveWhenReclaimFailsAfterCommit() throws IOException {
         writeCleanedFiles();
         when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.CLEANED, ""))
@@ -323,6 +371,39 @@ class SubtitleArtifactStoreTest {
     }
 
     // ---------- 事务包裹 ----------
+
+    @Test
+    void settleWrapsSupersedeAndMarkReadyInOneTransaction() throws IOException {
+        write("original-segments.json", "segments");
+        write("original-subtitles.srt", "srt");
+        recordRepositoryWrites();
+        when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.ORIGINAL, ""))
+                .thenReturn(Optional.of(ready(5L, ArtifactType.ORIGINAL, "")));
+
+        store.settleArtifact(creating(ArtifactType.ORIGINAL, ""), workDir);
+
+        assertEquals(List.of("begin", "write:markSupersededAndClearFiles", "write:updateReady", "commit"),
+                events, "旧行降级与新行 READY 必须夹在 begin 与 commit 之间");
+    }
+
+    @Test
+    void settleRollsBackWhenMarkingNewOneReadyFails() throws IOException {
+        write("original-segments.json", "segments");
+        write("original-subtitles.srt", "srt");
+        recordRepositoryWrites();
+        when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.ORIGINAL, ""))
+                .thenReturn(Optional.of(ready(5L, ArtifactType.ORIGINAL, "")));
+        Mockito.doAnswer(invocation -> {
+            events.add("write:updateReady");
+            throw new IllegalStateException("落库失败");
+        }).when(repository).updateReady(any());
+
+        assertThrows(IllegalStateException.class,
+                () -> store.settleArtifact(creating(ArtifactType.ORIGINAL, ""), workDir));
+
+        assertEquals(List.of("begin", "write:markSupersededAndClearFiles", "write:updateReady", "rollback"),
+                events, "异常必须从方法里传出去，且触发回滚而不是提交");
+    }
 
     @Test
     void settleCleanedWrapsThreeWritesInOneTransaction() throws IOException {
@@ -414,6 +495,28 @@ class SubtitleArtifactStoreTest {
                 .thenReturn(Optional.of(broken));
 
         assertTrue(store.findReadableReady(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isEmpty());
+    }
+
+    @Test
+    void findReadableReadyAcceptsTranslatedWithoutTerms() throws IOException {
+        write("translated-segments-en.json", "segments");
+        write("translated-subtitles-en.srt", "srt");
+        when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.TRANSLATED, "en"))
+                .thenReturn(Optional.of(translatedReadyWithoutTerms(6L, "en")));
+
+        assertTrue(store.findReadableReady(TASK_ID, ArtifactType.TRANSLATED, "en", workDir).isPresent(),
+                "术语表是可选位：没有它整版仍然可读");
+    }
+
+    @Test
+    void findReadableReadyReturnsEmptyWhenRegisteredTermsFileIsGone() throws IOException {
+        write("translated-segments-en.json", "segments");
+        write("translated-subtitles-en.srt", "srt");
+        when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.TRANSLATED, "en"))
+                .thenReturn(Optional.of(ready(6L, ArtifactType.TRANSLATED, "en")));
+
+        assertTrue(store.findReadableReady(TASK_ID, ArtifactType.TRANSLATED, "en", workDir).isEmpty(),
+                "登记了但文件被删：整版不可用，等下一次翻译自愈");
     }
 
     @Test
@@ -521,6 +624,15 @@ class SubtitleArtifactStoreTest {
     private static SubtitleArtifact creating(ArtifactType type, String lang) {
         return SubtitleArtifact.restore(11L, TASK_ID, RUN_ID, type, lang, 1, SubtitleArtifactStatus.CREATING,
                 null, null, null, null, null, null, null, null, null, null, LocalDateTime.now());
+    }
+
+    /**
+     * 一版没有术语表的译文：terms 两列都为空（术语查证没产出的正常形态）。
+     */
+    private static SubtitleArtifact translatedReadyWithoutTerms(long id, String lang) {
+        return SubtitleArtifact.restore(id, TASK_ID, RUN_ID, ArtifactType.TRANSLATED, lang, 1,
+                SubtitleArtifactStatus.READY, null, null, "translated-segments-en.json",
+                "translated-subtitles-en.srt", null, null, "a", "b", null, null, LocalDateTime.now());
     }
 
     private static SubtitleArtifact ready(long id, ArtifactType type, String lang) {

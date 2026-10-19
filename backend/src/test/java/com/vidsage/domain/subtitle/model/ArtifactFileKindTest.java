@@ -55,6 +55,25 @@ class ArtifactFileKindTest {
     }
 
     @Test
+    void isRequiredForMarksEveryTypeAndKindCombination() {
+        assertTrue(ArtifactFileKind.SEGMENTS.isRequiredFor(ArtifactType.ORIGINAL));
+        assertTrue(ArtifactFileKind.SUBTITLES.isRequiredFor(ArtifactType.ORIGINAL));
+        assertFalse(ArtifactFileKind.CONTEXT.isRequiredFor(ArtifactType.ORIGINAL));
+        assertFalse(ArtifactFileKind.TERMS.isRequiredFor(ArtifactType.ORIGINAL));
+
+        assertTrue(ArtifactFileKind.SEGMENTS.isRequiredFor(ArtifactType.CLEANED));
+        assertTrue(ArtifactFileKind.SUBTITLES.isRequiredFor(ArtifactType.CLEANED));
+        assertTrue(ArtifactFileKind.CONTEXT.isRequiredFor(ArtifactType.CLEANED));
+        assertFalse(ArtifactFileKind.TERMS.isRequiredFor(ArtifactType.CLEANED));
+
+        assertTrue(ArtifactFileKind.SEGMENTS.isRequiredFor(ArtifactType.TRANSLATED));
+        assertTrue(ArtifactFileKind.SUBTITLES.isRequiredFor(ArtifactType.TRANSLATED));
+        assertFalse(ArtifactFileKind.CONTEXT.isRequiredFor(ArtifactType.TRANSLATED));
+        assertFalse(ArtifactFileKind.TERMS.isRequiredFor(ArtifactType.TRANSLATED),
+                "术语查证是增益不是前提：同语种 / 无术语 / 查证未启用 / 全部失败时都没有这个文件");
+    }
+
+    @Test
     void specForMapsEachTypeToItsOwnFileTemplate() {
         assertEquals(SubtitleArtifactSpec.ORIGINAL_SEGMENTS,
                 ArtifactFileKind.SEGMENTS.specFor(ArtifactType.ORIGINAL));

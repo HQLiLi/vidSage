@@ -47,9 +47,9 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * SubtitleTranslationCoordinator 的纯单元测试：<b>不起 Spring 容器</b>。
  *
- * <p>只测<b>编排</b>：定位产物 → 断点复用 → 上下文缓存 → 源语种跳过判定 → 术语查证（触发条件、
+ * <p>只测<b>编排</b>：定位产物 → 上下文缓存 → 源语种跳过判定 → 术语查证（触发条件、
  * 失败分流、产物落盘）→ 交给 {@link SubtitleTranslator} → 写 -translate 产物。摘要器、翻译器与
- * 查证 provider 都是 mock/桩。
+ * 查证 provider 都是 mock/桩。是否复用已有译文由调用方按产物表判，不归本类。
  *
  * <p><b>翻译算法本身（分批、校验、重试、回退原文）不在这里测</b>。
  */
@@ -69,7 +69,7 @@ class SubtitleTranslationCoordinatorTest {
     private final SubtitleContextSummarizer contextSummarizer = mock(SubtitleContextSummarizer.class);
     private final SubtitleTranslator subtitleTranslator = mock(SubtitleTranslator.class);
 
-    /** 翻译器被调了几次——「跳过 / 断点复用后不再跑」这类断言靠它。 */
+    /** 翻译器被调了几次——「同语种跳过时不再跑」这类断言靠它。 */
     private final AtomicInteger translatorCalls = new AtomicInteger();
 
     /** 每次真翻译时翻译器收到的官方译名表（按调用顺序）——「terms 产物有没有传下去」这类断言靠它。 */
@@ -199,7 +199,7 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     // ------------------------------------------------------------------
-    // 正常路径与断点复用
+    // 正常路径
     // ------------------------------------------------------------------
 
     @Test
@@ -218,26 +218,6 @@ class SubtitleTranslationCoordinatorTest {
         assertFalse(translated.skipped());
         // 整份清单一次交给翻译器——内部分几批是它自己的事，service 不该管
         assertEquals(1, translatorCalls.get(), "整份清单应只交给翻译器一次");
-    }
-
-    @Test
-    void translateReusesCheckpointSkipsTranslatorAndZeroesStats() throws Exception {
-        writeCleanTrack();
-        SubtitleTranslationCoordinator s = service();
-        // 首跑带非零统计，好钉住「断点复用把它们一律归零」
-        stubTranslator(2, 1);
-
-        TranslatedSubtitle first = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
-        assertEquals(2, first.retrySteps());
-        assertEquals(1, first.untranslatedCount());
-
-        // 二跑：-translate.json 已在，应断点复用，不再走翻译
-        TranslatedSubtitle second = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
-
-        assertEquals(1, translatorCalls.get(), "断点复用后不应再调翻译器");
-        assertEquals(2, second.segmentCount());
-        assertEquals(0, second.retrySteps(), "断点复用统计应归零");
-        assertEquals(0, second.untranslatedCount(), "断点复用统计应归零（含未翻译段数）");
     }
 
     @Test
@@ -341,21 +321,6 @@ class SubtitleTranslationCoordinatorTest {
         assertEquals("第 1/1 批", events.get(1).message(), "批级事件应原样透传");
         assertEquals(100, events.get(2).progress());
         assertEquals(StageProgress.State.SUCCEEDED, events.get(2).state());
-    }
-
-    @Test
-    void translateCheckpointHitEmitsSingleSkippedEvent() throws Exception {
-        writeCleanTrack();
-        SubtitleTranslationCoordinator s = service();
-        s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
-
-        List<StageProgress> events = new ArrayList<>();
-        s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET, events::add);
-
-        assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
-        assertEquals(StageProgress.State.SKIPPED, events.get(0).state());
-        assertEquals(100, events.get(0).progress());
-        assertEquals(SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), events.get(0).stage());
     }
 
     @Test

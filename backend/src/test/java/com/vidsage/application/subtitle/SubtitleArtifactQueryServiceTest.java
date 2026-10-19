@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.vidsage.application.subtitle.exception.ArtifactNotFoundException;
 import com.vidsage.application.subtitle.query.ArtifactDownload;
+import com.vidsage.application.subtitle.query.ArtifactFileSnapshot;
 import com.vidsage.application.subtitle.query.ArtifactSnapshot;
 import com.vidsage.application.task.SubtitleTaskFinder;
 import com.vidsage.application.task.exception.TaskNotFoundException;
@@ -215,6 +216,32 @@ class SubtitleArtifactQueryServiceTest {
                 "入参 zh 与 zh-Hans 等价，查库用规范码，落盘用小写名字");
     }
 
+    @Test
+    void listKeepsTranslatedVersionWithoutTerms() throws IOException {
+        writeAll();
+        when(artifactStore.listReadableReady(TASK_ID, workDir)).thenReturn(List.of(
+                translatedWithoutTerms(3L, "zh-Hans")));
+        stubFinder();
+
+        List<ArtifactSnapshot> snapshots = service.listArtifacts(TASK_NO);
+
+        assertEquals(1, snapshots.size());
+        assertEquals(List.of(ArtifactFileKind.SEGMENTS, ArtifactFileKind.SUBTITLES),
+                snapshots.get(0).files().stream().map(ArtifactFileSnapshot::kind).toList(),
+                "可选位没有文件只是少一项，整版仍然列出");
+    }
+
+    @Test
+    void openTermsReturnsNotFoundWhenVersionHasNoTerms() throws IOException {
+        writeAll();
+        stubFinder();
+        when(artifactStore.findReadableReady(TASK_ID, ArtifactType.TRANSLATED, "zh-Hans", workDir))
+                .thenReturn(Optional.of(translatedWithoutTerms(3L, "zh-Hans")));
+
+        assertThrows(ArtifactNotFoundException.class,
+                () -> service.openArtifact(TASK_NO, "TRANSLATED", "terms.json", "zh-Hans"));
+    }
+
     // ---------- 夹具 ----------
 
     private void stubFinder() {
@@ -234,6 +261,12 @@ class SubtitleArtifactQueryServiceTest {
                 "terms-zh-hans.json")) {
             Files.writeString(workDir.resolve(name), "content", StandardCharsets.UTF_8);
         }
+    }
+
+    private static SubtitleArtifact translatedWithoutTerms(long id, String lang) {
+        return SubtitleArtifact.restore(id, TASK_ID, 1L, ArtifactType.TRANSLATED, lang, 1,
+                SubtitleArtifactStatus.READY, null, null, "translated-segments-zh-hans.json",
+                "translated-subtitles-zh-hans.srt", null, null, "a", "b", null, null, LocalDateTime.now());
     }
 
     private static SubtitleArtifact ready(long id, ArtifactType type, String lang) {
