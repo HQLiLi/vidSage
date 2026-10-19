@@ -390,6 +390,7 @@ class SubtitleCleanupCoordinatorTest {
 
         assertEquals(0, cleanserCalls.get(), "摘不出上下文就不该硬着头皮清洗");
         assertFalse(Files.exists(cleanFile()), "整体失败时不该留下半成品");
+        assertFalse(Files.exists(contextFile()), "重新生成不落降级标记，失败就是失败");
     }
 
     @Test
@@ -434,17 +435,54 @@ class SubtitleCleanupCoordinatorTest {
     }
 
     @Test
-    void summarizeDegradeDoesNotWriteContextFile() throws Exception {
+    void summarizeDegradeWritesMarkedContextFile() throws Exception {
         writeRawTrack();
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
         SubtitleCleanupCoordinator s = service();
 
         CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
 
-        assertFalse(Files.exists(contextFile()),
-                "降级成空上下文绝不能落盘，否则下次会命中这份空缓存");
+        assertTrue(Files.isRegularFile(contextFile()), "降级也要落盘，留下「这次试过了」的痕迹");
+        SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
+        assertTrue(persisted.degraded(), "落盘的那份必须带降级标记，否则下次会被当成缓存命中");
         assertEquals(2, cleaned.segmentCount(), "摘要失败不该拦住清洗");
         assertEquals(1, cleanserCalls.get(), "清洗照常进行");
+    }
+
+    @Test
+    void reuseRewritesMissingContextWithoutRerunningCleanser() throws Exception {
+        writeRawTrack();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
+        writeCleanTrack(keywords.computeFingerprint());
+        when(contextSummarizer.summarize(any(), any()))
+                .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
+        SubtitleCleanupCoordinator s = service();
+
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords);
+
+        assertEquals(0, cleanserCalls.get(), "补上下文不是重跑清洗");
+        SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
+        assertEquals("de", persisted.sourceLanguage(), "复用分支应补摘并落盘成功那份");
+        assertFalse(persisted.degraded());
+        verify(contextSummarizer).summarize(any(), any());
+    }
+
+    @Test
+    void reuseResummarizesWhenCachedContextIsDegraded() throws Exception {
+        writeRawTrack();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
+        writeCleanTrack(keywords.computeFingerprint());
+        JSON.writeValue(contextFile().toFile(), SubtitleContext.degradedEmpty());
+        when(contextSummarizer.summarize(any(), any()))
+                .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
+        SubtitleCleanupCoordinator s = service();
+
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords);
+
+        verify(contextSummarizer).summarize(any(), any());
+        SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
+        assertFalse(persisted.degraded(), "上次的降级标记被这次成功摘要覆盖");
+        assertEquals(0, cleanserCalls.get(), "复用分支不重跑清洗");
     }
 
     @Test

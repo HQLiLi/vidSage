@@ -1,14 +1,15 @@
 package com.vidsage.application.task;
 
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
+import com.vidsage.application.subtitle.SubtitleArtifactStore;
 import com.vidsage.application.subtitle.pipeline.SubtitlePipeline;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.subtitle.model.ArtifactType;
 import com.vidsage.domain.task.SubtitleTask;
 import com.vidsage.domain.task.TaskRun;
 import com.vidsage.domain.task.model.TaskRunType;
-import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
@@ -81,6 +82,7 @@ public class SubtitleTaskService {
     private final SubtitlePipeline pipeline;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
     private final SubtitleTaskFinder finder;
+    private final SubtitleArtifactStore artifactStore;
     private final TransactionTemplate transactionTemplate;
 
     public SubtitleTaskService(WorkspaceRepository workspaceRepository,
@@ -92,6 +94,7 @@ public class SubtitleTaskService {
                                SubtitlePipeline pipeline,
                                WorkspaceDirectoryManager workspaceDirectoryManager,
                                SubtitleTaskFinder finder,
+                               SubtitleArtifactStore artifactStore,
                                PlatformTransactionManager transactionManager
     ) {
         this.workspaceRepository = workspaceRepository;
@@ -103,6 +106,7 @@ public class SubtitleTaskService {
         this.pipeline = pipeline;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
         this.finder = finder;
+        this.artifactStore = artifactStore;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -187,8 +191,7 @@ public class SubtitleTaskService {
         SubtitleKeywords validated = keywords == null ? null : new SubtitleKeywords(keywords);
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
-        validateArtifactPresent(workspace, SubtitleArtifactSpec.ORIGINAL_SEGMENTS,
-                "原始转写（" + SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null) + "）");
+        validateReadableArtifact(task, workspace, ArtifactType.ORIGINAL, "原始转写产物（ORIGINAL）");
         TaskRun run = supervisor.start(task, TaskRunType.RECLEAN, null).orElseThrow(() -> conflictFor(task));
         if (validated != null) {
             keywordRepository.replace(task.getId(), validated);
@@ -217,8 +220,7 @@ public class SubtitleTaskService {
         SupportedLanguage target = SupportedLanguage.parse(targetLanguage);
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
-        validateArtifactPresent(workspace, SubtitleArtifactSpec.CLEAN_SRT,
-                "清洗后的字幕（" + SubtitleArtifactSpec.CLEAN_SRT.getFileName(null) + "）");
+        validateReadableArtifact(task, workspace, ArtifactType.CLEANED, "清洗后的字幕产物（CLEANED）");
         TaskRun run = supervisor.start(task, TaskRunType.TRANSLATE, target.getCode())
                 .orElseThrow(() -> conflictFor(task));
         RunRef ref = RunRef.of(task.getTaskNo(), run);
@@ -306,14 +308,15 @@ public class SubtitleTaskService {
     }
 
     /**
-     * 前置守卫：该任务的产物文件必须已经在工作区里。
+     * 前置守卫：该任务必须有一版可读的当前产物（行是 READY，而且该带的文件都在盘上）。
      *
-     * <p>产物事实源目前还是文件系统（产物版本表要等产物读写那一段才接上），所以这里查文件在不在。
+     * <p>读路径只把缺文件的产物当没有，<b>不做自愈重跑</b>——重新生成由用户重新触发。
      */
-    private void validateArtifactPresent(Workspace workspace, SubtitleArtifactSpec spec, String description) {
-        Path file = finder.workspaceDir(workspace).resolve(spec.getFileName(null));
-        if (!Files.isRegularFile(file)) {
-            throw new IllegalArgumentException("字幕尚未就绪：工作区里没有 " + description
+    private void validateReadableArtifact(SubtitleTask task, Workspace workspace,
+                                          ArtifactType type, String description) {
+        Path workDir = finder.workspaceDir(workspace);
+        if (artifactStore.findReadableReady(task.getId(), type, "", workDir).isEmpty()) {
+            throw new IllegalArgumentException("字幕尚未就绪：该任务还没有可读的 " + description
                     + "；请先等主管线跑完（可查 GET /api/tasks/{taskNo} 或订阅其 SSE 事件）再试");
         }
     }

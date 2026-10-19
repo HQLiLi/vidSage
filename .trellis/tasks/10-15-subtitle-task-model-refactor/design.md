@@ -415,7 +415,7 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 |---|---|
 | **C53** | 端点路径不变（`/api/tasks/{taskNo}/...`）；`GET /api/tasks/{taskNo}` = **身份 + `lastRun`（单值）**；扁平的 `status` / `currentStage` / `errorMessage` / `startedAt` / `finishedAt` **五个字段全删**，`artifacts` 字段**也删**（产物清单归 `/artifacts`）（`subtitle_task` 没有状态列，任何扁平状态都是派生量；**压平是渲染层的事**） |
 | **C54** | 新增 `GET /api/tasks/{taskNo}/artifacts` = **当前有效产物**（只有 `READY`），按**版本行**给；**不给历史**（历史行是空壳 —— C24 作废时清空旧行文件列） |
-| **C55** | 下载端点从 `/{fileName}` 改成按 `type` + `file` + `?lang=` 定位 |
+| **C55** | 下载端点从 `/{fileName}` 改成按 `type` + `file` + `?lang=` 定位：`file` 取 `segments.json` / `subtitles.srt` / `context.json` / `terms.json`（必须与该 `type` 应带的文件位匹配）；`TRANSLATED` 必填 `lang`、其余类型不允许带（`lang` 按支持语种归一，`zh` 与 `zh-Hans` 等价）；参数不合法 → **400**，该版产物不可用或文件已不在 → **404** |
 | **C56** | 提交 / 翻译 / 重生成三个 POST 统一返回 **202 或 409 + `{ taskNo, runNo }`**，**409 响应体不含文案、与 202 同形状**（前端靠状态码判）；`TaskConflictResponse.existingTask` 删掉（202 里的 `lastRun` 四个字段全是常量、零信息、且可能已被异步体推进 → **不可依赖**；不可依赖的字段比没有更糟） |
 | **C57** | SSE = **一条 run 一条流**，run 终态即关；端点 `GET /api/tasks/{taskNo}/runs/{runNo}/events`，三种结果：runNo 不存在 → **404**；run 仍 `RUNNING` → **开流**（连接建立即推一条 DB 快照）；run 已终态 → **204 No Content**（不推终态快照，客户端改查 `GET /{taskNo}` 的 `lastRun`）。消息是 `TaskRunProgress` **sealed 三变体**（`Main` / `Reclean` / `Translate`，各带 `runType`），事件带 `runNo` / `runType` / `targetLanguage`（仅 `Translate`）/ `status` / `stage` / `terminal`；订阅键是 `RunRef`（`(taskNo, runNo)`）；`terminal` 语义从「流结束」**降为「这条 run 结束了」** |
 | **C58** | **不做 run 历史端点**（痛点已由落库本身解决；纯读端点将来加的成本≈0） |

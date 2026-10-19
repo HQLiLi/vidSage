@@ -5,19 +5,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.vidsage.application.subtitle.SubtitleArtifactStore;
 import com.vidsage.application.task.TaskRunSupervisor;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.config.WorkspaceProperties;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.subtitle.SubtitleArtifact;
+import com.vidsage.domain.subtitle.model.ArtifactType;
+import com.vidsage.domain.subtitle.model.SubtitleArtifactStatus;
 import com.vidsage.domain.task.TaskRun;
 import com.vidsage.domain.task.model.TaskRunStatus;
 import com.vidsage.domain.task.model.TaskRunType;
@@ -59,18 +65,30 @@ class SubtitlePipelineTest {
     private final SubtitleCleanupCoordinator cleanupStage = Mockito.mock(SubtitleCleanupCoordinator.class);
     private final SubtitleTranslationCoordinator translationStage =
             Mockito.mock(SubtitleTranslationCoordinator.class);
+    private final SubtitleArtifactStore artifactStore = Mockito.mock(SubtitleArtifactStore.class);
     private final TaskRunSupervisor supervisor = Mockito.mock(TaskRunSupervisor.class);
 
     private static final SupportedLanguage SOURCE_LANG = SupportedLanguage.JAPANESE;
     private static final SupportedLanguage TARGET_LANG = SupportedLanguage.SIMPLE_CHINESE;
     private static final long TASK_ID = 7L;
+    private static final long RUN_ID = 1L;
     private static final String TASK_NO = "3f2a9c1e3f2a9c1e3f2a9c1e3f2a9c1e";
 
     private SubtitlePipeline pipeline(TaskConcurrencyGate gate) {
         // 该任务没有存过关键词：读回空清单（不是 null），清洗照常按原样纠错
         when(keywordRepository.findByTaskId(anyLong())).thenReturn(new SubtitleKeywords(List.of()));
+        // 占位与落定只验接线顺序：占位给回带 id 的同类型产物，落定原样返回
+        when(artifactStore.createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any())).thenAnswer(invocation -> {
+            ArtifactType type = invocation.getArgument(2);
+            return SubtitleArtifact.restore(type == ArtifactType.ORIGINAL ? 11L : 12L,
+                    invocation.getArgument(0), invocation.getArgument(1), type, invocation.getArgument(3),
+                    1, SubtitleArtifactStatus.CREATING, invocation.getArgument(4), invocation.getArgument(5),
+                    null, null, null, null, null, null, null, null, LocalDateTime.now());
+        });
+        when(artifactStore.settleArtifact(any(SubtitleArtifact.class), any(Path.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         return new SubtitlePipeline(keywordRepository, subtitlePreparationCoordinator, cleanupStage,
-                translationStage, supervisor, gate,
+                translationStage, artifactStore, supervisor, gate,
                 new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())));
     }
 
@@ -99,6 +117,30 @@ class SubtitlePipelineTest {
                 any(ProgressListener.class));
         verify(supervisor).advance(eq(ref), eq(run), any(StageProgress.class));
         verify(supervisor).finish(ref, run, null);
+    }
+
+    @Test
+    void wrapsEachStageWithArtifactPlaceholderAndSettle() {
+        TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
+        RunRef ref = ref(run);
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
+        when(keywordRepository.findByTaskId(TASK_ID)).thenReturn(keywords);
+
+        pipeline(inlineGate()).runPipeline(run, ref, urlWorkspace("https://example.com/v"));
+
+        InOrder order = inOrder(artifactStore, subtitlePreparationCoordinator, cleanupStage);
+        order.verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID), eq(ArtifactType.ORIGINAL),
+                eq(""), isNull(), isNull());
+        order.verify(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(Path.class),
+                any(ProgressListener.class));
+        order.verify(artifactStore).settleArtifact(any(SubtitleArtifact.class), any(Path.class));
+        order.verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID), eq(ArtifactType.CLEANED),
+                eq(""), eq(11L), eq(keywords.computeFingerprint()));
+        order.verify(cleanupStage).clean(any(MediaInput.class), any(Path.class), any(SubtitleKeywords.class),
+                any(ProgressListener.class));
+        order.verify(artifactStore).settleArtifact(any(SubtitleArtifact.class), any(Path.class));
+        verify(supervisor).finish(ref, run, null);
+        verify(artifactStore, times(2)).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
     }
 
     @Test
@@ -137,6 +179,22 @@ class SubtitlePipelineTest {
         pipeline(inlineGate()).runPipeline(run, ref, urlWorkspace("https://example.com/v"));
 
         verify(supervisor).finish(ref, run, "ASR 转写任务失败：quota exceeded");
+        verify(cleanupStage, never()).clean(any(), any(), any(), any());
+        verify(artifactStore, never()).settleArtifact(any(), any());
+    }
+
+    @Test
+    void settleFailureFinishesRunAndSkipsClean() {
+        TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
+        RunRef ref = ref(run);
+        SubtitlePipeline pipeline = pipeline(inlineGate());
+        // 覆盖 helper 里的默认落定桩：这一趟要在落定处失败
+        when(artifactStore.settleArtifact(any(SubtitleArtifact.class), any(Path.class)))
+                .thenThrow(new IllegalStateException("产物文件读取失败：original-subtitles.srt"));
+
+        pipeline.runPipeline(run, ref, urlWorkspace("https://example.com/v"));
+
+        verify(supervisor).finish(ref, run, "产物文件读取失败：original-subtitles.srt");
         verify(cleanupStage, never()).clean(any(), any(), any(), any());
     }
 

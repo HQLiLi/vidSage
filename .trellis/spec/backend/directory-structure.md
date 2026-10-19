@@ -51,7 +51,7 @@ com.vidsage
 | `application/<上下文>/` | 应用服务层：用例编排 | `@Service` 编排类、**读模型**、**应用消息**、**应用异常**、**本层定义的出站端口**（业务无关者，判据见[端口归属判据](#端口归属判据)） | 实现类、SDK 类型、HTTP 类型、`infrastructure/` 的具体类 |
 | `infrastructure/persistence/` | 出站存储适配 | MyBatis-Plus 三件套：`XxxEntity` / `XxxMapper` / `XxxRepository`（`XxxRepository` 实现 domain 定义的存取端口，如 `MybatisSubtitleTaskRepository` 实现 `domain/task/port/SubtitleTaskRepository`、`MybatisSubtitleKeywordRepository` 实现 `domain/subtitle/port/SubtitleKeywordRepository`） | 业务编排、MP 类型外泄 |
 | `infrastructure/process/` | 调外部程序的**通用机制** | 进程执行器、外部工具路径解析与诊断等**不面向业务契约**的机制类 | 面向业务契约的 Provider 四件套（那属于 `infrastructure/provider/`）、业务编排 |
-| `infrastructure/fs/` | 本机文件系统的**读数与定位/创建**适配（2026-10-08 端口定案，2026-10-09 扩到目录定位/创建） | 文件系统端口实现：`NioFileStateReader`（只读 stat，实现 application 的 `FileStateReader`）、`NioWorkspaceDirectoryManager`（工作区目录定位与创建，实现 application 的 `WorkspaceDirectoryManager`） | 业务编排、产物**写入策略**（产物落盘在 `shared/fs/ArtifactFiles`，编排在应用层；**建目录归本包**——定位/创建不算写入策略） |
+| `infrastructure/fs/` | 本机文件系统的**读数与定位/创建**适配（2026-10-08 端口定案，2026-10-09 扩到目录定位/创建） | 文件系统端口实现：`NioFileStateReader`（只读 stat，实现 application 的 `FileStateReader`）、`NioWorkspaceDirectoryManager`（工作区目录定位与创建，实现 application 的 `WorkspaceDirectoryManager`） | 业务编排、产物**写入策略**（产物落盘在 `shared/fs/ArtifactFileUtils`，编排在应用层；**建目录归本包**——定位/创建不算写入策略） |
 | `infrastructure/concurrency/` | 进程内执行**机制**的通用类 | 任务并发闸这类**有状态、不面向业务契约**的机制类 | 出站端口适配（那属于 `provider/`）、业务编排 |
 | `infrastructure/provider/` | 出站实现（外部 API / 模型服务 / 端口适配器） | 端口适配器 + LLM worker 具体类 + 该实现专用的 `*Properties` | SDK 类型外泄到公开签名 |
 | `web/controller/` | HTTP 入站适配 | `@RestController`、局部 `@ExceptionHandler` | 业务逻辑、**main 源码**直接依赖 `infrastructure/` 或 `domain/`（跨层规则见[依赖规则](#依赖规则)）、**请求/响应契约的定义**（那是 `web/dto/` 的活） |
@@ -304,7 +304,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 **前置守卫（不返回值、不满足即抛的那种）另有专门口径：`validateXxx`**（2026-10-17 立；存量四处的旧名与目标名**记在 error-handling.md 的待改清单里**，不在下方这张）——
 细则、以及「取值即抛的访问器为何仍叫 `requireXxx`」见 [error-handling.md](./error-handling.md) 的「前置守卫的命名」。
 
-判定式前缀算动词，不用改：`isXxx` / `hasXxx` / `supports` / `matches` / `fail` —— `WorkspaceDir.isReservedName`、`ArtifactFiles.isNonEmpty` 都已合规。
+判定式前缀算动词，不用改：`isXxx` / `hasXxx` / `supports` / `matches` / `fail` —— `WorkspaceDir.isReservedName`、`ArtifactFileUtils.isNonEmpty` 都已合规。
 
 **造东西还是做判断，决定用 `of` 还是 `is`**（2026-10-12 立规当日追加）：
 
@@ -378,6 +378,22 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 >
 > **已知破例（诚实记录）**：本项目角色包的类名基本都带同名后缀——`web/controller/`→`*Controller`、`application/`→`*Service`、领域端口与适配器→`*Provider`；**`web/dto/` 会是唯一不同字的一个**。但 `web/controller/ApiExceptionHandler` 已是一例（它并非 Controller），**故该模式是倾向而非铁律**。破例不必回避，只需写明。
 
+### 方法名要见名知意：泛动词要补宾语（2026-10-19 立）
+
+**只看调用点，就要能一句话说出它干了什么。** 泛动词单独用（`begin` / `settle` / `handle` / `process` / `do`）不是被禁用，而是**必须补上宾语**（对什么做什么）；并且**优先用常见词汇**，不自造行话——`settle` 这种设计文档里的说法，单看调用点不指向「产物版本落定」，就是反例。
+
+**这不是禁短名。** `start` / `finish` / `clean` / `translate` 这类短动词，只要**所属类与参数已经把宾语交代清楚**，就是好名字。判断标准是「能不能一句话读出来」，不是名字长短。
+
+| 位置 | 原名 | 现名 | 判据 |
+|---|---|---|---|
+| `SubtitleArtifactStore` | `begin(taskId, runId, type, …)` | `createCreatingPlaceholder(...)` | `begin` 没说是对什么做；新名说清「建 CREATING 占位行」（与领域工厂 `SubtitleArtifact.createCreatingArtifact` 同族） |
+| `SubtitleArtifactStore` | `settle(creating, workDir)` | `settleArtifact(creating, workDir)` | `settle` 是设计行话，单看不指向「这一版产物落定」；补上宾语 |
+| `TaskRunSupervisor` | `start(task, type, targetLanguage)` | **保留** | 类名与参数已把「开一条 run」交代清楚，`start` 是常见词；调用点 `supervisor.start(...)` 读起来就是一句话 |
+
+**一句话判据：要么名字自带宾语，要么所属类已经把宾语说清楚了**；两条都不满足就该改。
+
+**只立规则，不做批量重命名**：存量里语义已由所属类交代清楚的短名（管线阶段的 `prepare` / `clean` / `translate` 等）不动；新写的方法按本条取。
+
 ## 契约类的位置
 
 **判据 1（请求与响应共用）：该类型的 JSON 形状是否就是要对外暴露的形状？**
@@ -414,7 +430,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 
 **准入判据**：纯静态工具、无状态、不发起网络 / 外部进程；可引用 spring-core 工具类与 Jackson / slf4j，去掉容器仍可编译；只依赖 JDK + Jackson + slf4j + domain 词汇；不含业务编排。（历史注：本包 2026-10-05 DDD 四层化前叫顶层 `utils/`，子包结构不变，仅改名。）
 
-**`shared/<领域>/` —— 领域化助手包（2026-09-27 以 `utils/` 立；2026-09-27 修订边界）**：`shared/` 是允许的顶层包，`shared/<领域>/` 装该领域的助手——**只收纯算法助手，以及仅使用 `java.nio.file` 的本地文件系统助手**；以领域名限定归属。服务编排、适配器实现、`*Properties`、契约模型一律不得进入。参照：`shared/subtitle/`（`SrtRenderer` 渲染器 / `SubtitleSegmentSplitter` 切分器 / `TermMatcher` 术语命中判定 / `TextSimilarity` 文本相似度——**没有「产物命名」**，命名规则单源在 `domain/subtitle/model/common/SubtitleArtifactSpec`）、`shared/fs/ArtifactFiles`（产物落盘、JSON 产物读写与大小判定）、`shared/text/TextTail`（文本尾部截取）、`shared/progress/ProgressMapper`（进度监听器重挂）。
+**`shared/<领域>/` —— 领域化助手包（2026-09-27 以 `utils/` 立；2026-09-27 修订边界）**：`shared/` 是允许的顶层包，`shared/<领域>/` 装该领域的助手——**只收纯算法助手，以及仅使用 `java.nio.file` 的本地文件系统助手**；以领域名限定归属。服务编排、适配器实现、`*Properties`、契约模型一律不得进入。参照：`shared/subtitle/`（`SrtRenderer` 渲染器 / `SubtitleSegmentSplitter` 切分器 / `TermMatcher` 术语命中判定 / `TextSimilarity` 文本相似度——**没有「产物命名」**，命名规则单源在 `domain/subtitle/model/common/SubtitleArtifactSpec`）、`shared/fs/ArtifactFileUtils`（产物落盘、JSON 产物读写与大小判定）、`shared/text/TextTail`（文本尾部截取）、`shared/progress/ProgressMapper`（进度监听器重挂）。
 
 **Spring 边界看容器，不看 jar**：判据是「**把 Spring 容器整个拿掉，这个包还能不能编译并通过测试**」——**能**才准进。故 `org.springframework.util.*` 这类纯静态工具**允许**；Spring 注解（`@Component` / `@Service` / `@Autowired` / `@Value` / `@ConfigurationProperties` 等）、`ApplicationContext`、`Environment`、HTTP 类型**禁止**。
 

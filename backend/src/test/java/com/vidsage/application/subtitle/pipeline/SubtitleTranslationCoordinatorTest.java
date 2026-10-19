@@ -412,6 +412,22 @@ class SubtitleTranslationCoordinatorTest {
     }
 
     @Test
+    void degradedCachedContextForcesResummarize() throws Exception {
+        // 清洗侧摘不出来时落的是带降级标记的空壳：翻译读回它必须重新摘要，不能当缓存命中
+        writeCleanTrack();
+        JSON.writeValue(contextFile().toFile(), SubtitleContext.degradedEmpty());
+        when(contextSummarizer.summarize(any(), any()))
+                .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
+        SubtitleTranslationCoordinator s = service();
+
+        s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
+
+        verify(contextSummarizer).summarize(any(), any());
+        SubtitleContext stillDegraded = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
+        assertTrue(stillDegraded.degraded(), "翻译侧仍不落盘，不覆盖清洗侧留下的那份标记");
+    }
+
+    @Test
     void summarizeDegradeDoesNotWriteContextFile() throws Exception {
         writeCleanTrack();
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
@@ -419,8 +435,7 @@ class SubtitleTranslationCoordinatorTest {
 
         TranslatedSubtitle translated = s.translate(new MediaInput.RemoteUrl("https://x"), workDir, SOURCE, TARGET);
 
-        assertFalse(Files.exists(contextFile()),
-                "降级成空上下文绝不能落盘，否则下次会命中这份空缓存");
+        assertFalse(Files.exists(contextFile()), "翻译侧摘要不落盘，不覆盖清洗侧那份上下文");
         assertEquals(2, translated.segmentCount(), "摘要失败不该拦住翻译");
         assertEquals(1, translatorCalls.get(), "翻译照常进行");
     }

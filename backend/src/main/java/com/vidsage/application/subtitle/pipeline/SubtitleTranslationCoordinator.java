@@ -22,7 +22,7 @@ import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
 import com.vidsage.domain.subtitle.port.SubtitleTranslator;
 import com.vidsage.domain.subtitle.port.TermLookupProvider;
 import com.vidsage.domain.transcription.model.TranscriptionSegment;
-import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.fs.ArtifactFileUtils;
 import com.vidsage.shared.progress.StageEvents;
 import com.vidsage.shared.subtitle.SrtRenderer;
 import lombok.extern.slf4j.Slf4j;
@@ -135,7 +135,7 @@ public class SubtitleTranslationCoordinator {
         }
 
         StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageProgress.State.RUNNING);
-        if (!ArtifactFiles.isNonEmpty(cleanSeg)) {
+        if (!ArtifactFileUtils.isNonEmpty(cleanSeg)) {
             throw new IllegalStateException("字幕尚未清洗：请先调用 POST /api/subtitles/clean 产出 -clean 字幕，再翻译（缺 "
                     + cleanSeg.getFileName() + "）");
         }
@@ -179,7 +179,7 @@ public class SubtitleTranslationCoordinator {
      * 断点复用：这个语种的译文检查点已经在、非空、能解析，就直接反序列化返回，本轮统计一律归零
      * （含 untranslatedCount）。
      *
-     * <p>「在不在、空不空、坏没坏」的判据单源在 {@link ArtifactFiles#readJsonOrNull} 与
+     * <p>「在不在、空不空、坏没坏」的判据单源在 {@link ArtifactFileUtils#readJsonOrNull} 与
      * {@link CheckpointPolicy}，本方法不另判。
      *
      * @param translateSeg 译文 segments 检查点
@@ -189,7 +189,7 @@ public class SubtitleTranslationCoordinator {
      */
     private Optional<TranslatedSubtitle> reuseCheckpointIfPresent(Path translateSeg, Path translateSrt,
                                                                   ProgressListener listener) {
-        TranslatedTrack existing = ArtifactFiles.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
+        TranslatedTrack existing = ArtifactFileUtils.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
         if (existing == null) {
             return Optional.empty();
         }
@@ -202,16 +202,18 @@ public class SubtitleTranslationCoordinator {
     /**
      * 取本次翻译要用的上下文：先读缓存，没有才摘要。用哪份的裁定单源在 {@link CheckpointPolicy#resolveContext}。
      *
+     * <p>缓存文件带降级标记时按未命中处理（那是清洗侧「上次没摘出来」留下的空壳），本次重新摘要。
+     *
      * <p><b>翻译侧摘要不带关键词，所以不落盘</b>：关键词是清洗那次调用的入参，翻译拿不到。清洗侧落的
      * 那份是带关键词摘要出来的，空关键词这份写下去会把它盖掉；而清洗命中断点复用后不会再来覆盖，
      * 这份残次品就常驻了。代价是缓存缺失时每次翻译都要重摘要一遍，换的是「不污染」。
      *
      * @param ctxFile  上下文文件
      * @param segments 清洗后的字幕（摘要用的原文）
-     * @return 本次要用的上下文（缓存那份 / 新摘要 / 降级出来的空上下文）
+     * @return 本次要用的上下文（缓存那份 / 新摘要 / 降级出来的带标记空上下文）
      */
     private SubtitleContext resolveContext(Path ctxFile, List<TranscriptionSegment> segments) {
-        SubtitleContext cached = ArtifactFiles.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
+        SubtitleContext cached = ArtifactFileUtils.readJsonOrNull(ctxFile, objectMapper, SubtitleContext.class);
         CheckpointPolicy.ContextResolution resolution = CheckpointPolicy.resolveContext(cached,
                 // 摘要请求惰性求值：缓存命中时连内容拼接与摘要调用都不发生
                 () -> contextSummarizer.summarize(segments.stream()
@@ -220,7 +222,7 @@ public class SubtitleTranslationCoordinator {
         switch (resolution.source()) {
             case FRESH_SUMMARY -> log.info("字幕上下文缓存缺失，本次现摘要（翻译侧不带关键词，不落盘）: file={}",
                     ctxFile.getFileName());
-            case DEGRADED_EMPTY -> log.debug("字幕摘要失败，降级为空上下文（不落盘）");
+            case DEGRADED_EMPTY -> log.debug("字幕摘要失败，降级为带标记的空上下文（翻译侧不落盘）");
             case CACHE_HIT -> log.debug("字幕上下文缓存命中: file={}", ctxFile.getFileName());
         }
         return resolution.context();
@@ -247,7 +249,7 @@ public class SubtitleTranslationCoordinator {
         TermLookupProvider provider = lookupProvider.getIfAvailable();
         TermVerification.Decision decision = TermVerification.decide(
                 sourceLanguage.isSameLanguage(targetLanguage),
-                CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(termsFile)),
+                CheckpointPolicy.isCompleted(ArtifactFileUtils.sizeOrZero(termsFile)),
                 provider != null,
                 !context.terms().isEmpty());
         switch (decision) {
@@ -282,7 +284,7 @@ public class SubtitleTranslationCoordinator {
                     context.terms().size(), outcome.failures().size());
             return;
         }
-        ArtifactFiles.writeJsonAtomically(new VerifiedTerms(outcome.verified()), objectMapper, termsFile);
+        ArtifactFileUtils.writeJsonAtomically(new VerifiedTerms(outcome.verified()), objectMapper, termsFile);
         log.info("术语译名查证完成: 共={}, 官方={}, 通用={}, 无={}, 失败={}, cost={}ms",
                 context.terms().size(), outcome.official(), outcome.common(), outcome.none(),
                 outcome.failures().size(), System.currentTimeMillis() - start);
@@ -297,7 +299,7 @@ public class SubtitleTranslationCoordinator {
      * 缺了翻译照常进行。
      */
     private List<VerifiedTerm> readOfficialTerms(Path termsFile) {
-        VerifiedTerms verified = ArtifactFiles.readJsonOrNull(termsFile, objectMapper, VerifiedTerms.class);
+        VerifiedTerms verified = ArtifactFileUtils.readJsonOrNull(termsFile, objectMapper, VerifiedTerms.class);
         if (verified == null) {
             log.debug("术语官方译名产物缺失，翻译按无官方译名进行: file={}", termsFile.getFileName());
             return List.of();
@@ -321,8 +323,8 @@ public class SubtitleTranslationCoordinator {
      * 写两个 -translate 产物：先 segments JSON（检查点），再双语 SRT（由 track 渲染）。都原子替换。
      */
     private void writeTranslatedArtifacts(Path translateSeg, Path translateSrt, TranslatedTrack track) {
-        ArtifactFiles.writeJsonAtomically(track, objectMapper, translateSeg);
-        ArtifactFiles.writeAtomically(
+        ArtifactFileUtils.writeJsonAtomically(track, objectMapper, translateSeg);
+        ArtifactFileUtils.writeAtomically(
                 SrtRenderer.toBilingualSrt(track.segments()).getBytes(StandardCharsets.UTF_8), translateSrt);
     }
 
@@ -333,6 +335,6 @@ public class SubtitleTranslationCoordinator {
                                                    int retrySteps, int untranslatedCount) {
         return new TranslatedSubtitle(translateSrt, translateSeg, track.sourceLanguage(),
                 track.targetLanguage(), track.skipped(), track.segments().size(),
-                ArtifactFiles.sizeOrZero(translateSrt), retrySteps, untranslatedCount);
+                ArtifactFileUtils.sizeOrZero(translateSrt), retrySteps, untranslatedCount);
     }
 }

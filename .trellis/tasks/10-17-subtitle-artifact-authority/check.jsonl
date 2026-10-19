@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/10-17-subtitle-artifact-authority/prd.md", "reason": "AC1–AC10 逐条核（落表两条 READY / 换版与八列清空 / 失败收口 / 清单契约 / 下载字节与状态码 / C25 自愈 / 前置判据 / 收口互不拖累 / 回归 / 产物端点只在 ArtifactController）"}
+{"file": ".trellis/tasks/10-17-subtitle-artifact-authority/implement.md", "reason": "对版依据：§0 十一条代码校准是否被遵守（不得重写仓储/SQL/状态机）、settle 五步顺序与「哈希先于降级」、收口两段 try、契约形状与错误映射、边界矩阵；并核 11 条欠账是否如实记账"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "对版依据：§1.4 的 CREATING 永远全 NULL / lang 空串 / 覆盖型只清列不删文件、§4.2 每个状态值恰好一条路径、§5 W4 判定、§7.3 与 §7.8 的写读路径 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核落位与命名：store 是 @Component 机制件、query service 是 @Service、读模型放 query/、异常放 application/subtitle/exception/、DTO 放 web/dto/ 且 @Schema 齐全、测试包与主包镜像 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "反向核验：没有绕过仓储直写 SQL、没有把 MP 类型泄到领域/应用层、枚举按名映射"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核异常类型与状态码：参数不合法 400、产物不可用 404、数据自相矛盾才 500；错误信息中文且含缺什么怎么补；守卫命名 require/validate 动词开头"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核注释（首行大白话、枚举与常量逐个有注释）、测试命名与断言风格、没有夹带范围外的风格改名"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "核代码注释里没有 C*/§/W*/段编号/日期/任务号 —— 这些只允许出现在任务文档里"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核脱敏红线：新增日志、异常消息、测试断言都不得打印 source_uri 或工作区绝对路径"}

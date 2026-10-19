@@ -1,6 +1,7 @@
 package com.vidsage.infrastructure.provider.llm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
@@ -54,6 +55,7 @@ class LlmSubtitleContextSummarizerTest {
         assertEquals("亮子纠缠", context.terms().getFirst().asr());
         assertEquals("量子纠缠", context.terms().getFirst().fixed());
         assertEquals("物理术语", context.terms().getFirst().note());
+        assertFalse(context.degraded(), "摘要模型不会回降级标记，缺失时按正常上下文处理");
     }
 
     @Test

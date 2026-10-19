@@ -1,9 +1,15 @@
 package com.vidsage.shared.fs;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -25,9 +31,9 @@ import tools.jackson.databind.ObjectMapper;
  * 两者机制不同，合成一个会丢掉 {@code ATOMIC_MOVE} 的语义。
  */
 @Slf4j
-public final class ArtifactFiles {
+public final class ArtifactFileUtils {
 
-    private ArtifactFiles() {
+    private ArtifactFileUtils() {
     }
 
     /**
@@ -50,6 +56,44 @@ public final class ArtifactFiles {
      */
     public static boolean isNonEmpty(Path path) {
         return sizeOrZero(path) > 0;
+    }
+
+    /**
+     * 路径是不是一个普通文件。
+     *
+     * <p>只看「在不在、是不是文件」，<b>不看大小</b>：空转写产出的 0 字节 SRT 是合法产物，
+     * 「0 字节算不算存在」由调用方按用途决定，这里不替它判。
+     *
+     * @param path 路径
+     * @return 是普通文件时为 {@code true}
+     */
+    public static boolean isRegularFile(Path path) {
+        return Files.isRegularFile(path);
+    }
+
+    /**
+     * 算文件的 sha256，返回 64 位小写十六进制。
+     *
+     * @param path 文件路径
+     * @return 内容摘要
+     * @throws IllegalStateException 文件读不到（不存在、不是文件或无权限），或运行环境不带 SHA-256
+     */
+    public static String sha256(Path path) {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            // 标准 JVM 必带 SHA-256；走到这里说明运行环境被裁剪过
+            throw new IllegalStateException("当前 JVM 不支持 SHA-256，无法计算产物哈希：请使用标准 JDK 运行本服务", e);
+        }
+        try (InputStream in = new DigestInputStream(Files.newInputStream(path), digest)) {
+            in.transferTo(OutputStream.nullOutputStream());
+        } catch (IOException e) {
+            // 只带文件名与异常类名，不带消息：IO 异常的消息就是完整路径，而目录名内嵌来源原文
+            throw new IllegalStateException("产物文件读取失败：" + path.getFileName() + "（"
+                    + e.getClass().getSimpleName() + "）；请检查文件是否还在工作区、是否有读权限", e);
+        }
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     /**

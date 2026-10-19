@@ -15,7 +15,7 @@ import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.transcription.model.AudioSource;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 import com.vidsage.domain.transcription.port.ASRProvider;
-import com.vidsage.shared.fs.ArtifactFiles;
+import com.vidsage.shared.fs.ArtifactFileUtils;
 import com.vidsage.shared.progress.StageEvents;
 import com.vidsage.shared.subtitle.SrtRenderer;
 import lombok.extern.slf4j.Slf4j;
@@ -130,7 +130,7 @@ public class SubtitlePreparationCoordinator {
      * <p>只读 JSON，不看 SRT——SRT 是 JSON 的派生视图，即使 SRT 在而 JSON 不在也必须重跑。
      */
     private SubtitleTrack readCheckpoint(Path segmentsPath) {
-        if (!CheckpointPolicy.isCompleted(ArtifactFiles.sizeOrZero(segmentsPath))) {
+        if (!CheckpointPolicy.isCompleted(ArtifactFileUtils.sizeOrZero(segmentsPath))) {
             return null;
         }
         try {
@@ -148,15 +148,15 @@ public class SubtitlePreparationCoordinator {
      * 写两个产物：先写 segments JSON（检查点），再写 SRT（由 track 渲染）。两者都原子替换。
      */
     private void writeArtifacts(Path segmentsPath, Path srtPath, SubtitleTrack track) {
-        ArtifactFiles.writeJsonAtomically(track, objectMapper, segmentsPath);
-        ArtifactFiles.writeAtomically(SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), srtPath);
+        ArtifactFileUtils.writeJsonAtomically(track, objectMapper, segmentsPath);
+        ArtifactFileUtils.writeAtomically(SrtRenderer.toSrt(track.segments()).getBytes(StandardCharsets.UTF_8), srtPath);
     }
 
     /**
      * 产物 → {@link SubtitleStageOutput}：从磁盘读 SRT 字节数（空转写时为 0）。
      */
     private static SubtitleStageOutput toArtifact(Path srtPath, Path segmentsPath, SubtitleTrack track) {
-        long srtSizeBytes = ArtifactFiles.sizeOrZero(srtPath);
+        long srtSizeBytes = ArtifactFileUtils.sizeOrZero(srtPath);
         return new SubtitleStageOutput(srtPath, segmentsPath, track.language(),
                 track.segments().size(), srtSizeBytes);
     }

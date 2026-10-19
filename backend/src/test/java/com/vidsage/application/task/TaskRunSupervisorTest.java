@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -117,6 +118,7 @@ class TaskRunSupervisorTest {
         supervisor.finish(ref, run, null);
 
         assertEquals(TaskRunStatus.SUCCEEDED, run.getStatus());
+        verify(subtitleArtifactRepository).markCreatingAsFailedByRunId(1L);
         verify(taskRunRepository).update(run);
         verify(subtitleTaskRepository).touchUpdatedAt(eq(List.of(TASK_ID)), any());
         ArgumentCaptor<TaskRunProgress> captor = ArgumentCaptor.forClass(TaskRunProgress.class);
@@ -150,9 +152,26 @@ class TaskRunSupervisorTest {
         supervisor.finish(ref, run, null);
 
         // 落库失败只记日志，广播终态与清流仍发生——订阅者不会挂到空闲超时
+        verify(subtitleArtifactRepository).markCreatingAsFailedByRunId(1L);
         verify(broadcaster).publish(eq(ref), any(TaskRunProgress.class));
         verify(broadcaster).complete(ref);
         verify(subtitleTaskRepository, never()).touchUpdatedAt(any(), any());
+    }
+
+    @Test
+    void finishStillPersistsTerminalStateWhenArtifactClosureThrows() {
+        TaskRun run = runningRun();
+        RunRef ref = RunRef.of(TASK_NO, run);
+        doThrow(new IllegalStateException("模拟占位行收口失败"))
+                .when(subtitleArtifactRepository).markCreatingAsFailedByRunId(anyLong());
+
+        supervisor.finish(ref, run, null);
+
+        assertEquals(TaskRunStatus.SUCCEEDED, run.getStatus(),
+                "占位行收口失败不能挡住 run 终态落库");
+        verify(taskRunRepository).update(run);
+        verify(subtitleTaskRepository).touchUpdatedAt(eq(List.of(TASK_ID)), any());
+        verify(broadcaster).complete(ref);
     }
 
     @Test

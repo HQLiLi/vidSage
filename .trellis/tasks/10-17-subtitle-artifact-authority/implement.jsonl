@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/10-17-subtitle-artifact-authority/prd.md", "reason": "本段范围、T1–T11 十一条取舍（含产物端点独立成 ArtifactController）、24 条需求、AC1–AC10 —— 写代码前先对齐交付什么、什么不做（范围外表逐条写明交给哪一段）"}
+{"file": ".trellis/tasks/10-17-subtitle-artifact-authority/implement.md", "reason": "段级技术落点 + 九步执行清单：§0 与 S1/S2 实际代码的十一条校准（仓储/SQL/状态机已就位，S3 只接线）、文件树、契约形状与错误映射、settle 五步、可读判定、产物端点独立成 ArtifactController、每步判据、手工验收命令、回滚点、11 条欠账"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "权威终态设计：§1.4 subtitle_artifact 的列与换版落定四步、§4.2 产物状态机、§5 W4 非必需事务、§6 C54/C55 契约、§7.3 主管线产物步骤、§7.8 C25 自愈、§8.2–8.4 写序纪律与哈希列三条纪律。S3 只落实 ORIGINAL/CLEANED 与读路径，RECLEAN/TRANSLATE/级联留给 S4/S5 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "四层结构、@Service 与 @Component 的分档（有 web 调用面 vs 机制/协作件）、读模型放 query/、具名异常放 application/<上下文>/exception/、测试包镜像主包、方法名动词开头 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "MyBatis-Plus 用法、值对象与 String 列的转换收敛在 Repository、单测不连真库的测试策略。本段不改表结构，但 settle / 可读判定要经仓储，不能绕过持久化三层"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "异常类型选择（参数错误 400 用 IllegalArgumentException、404 用自定义具名异常、状态机非法迁移抛 IllegalStateException）、错误信息中文且含缺什么怎么补、前置守卫命名"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "注释要求、测试写法与命名（行为描述式、throwsWhen... 异常路径、@TempDir(cleanup = NEVER)）、依赖原则、Java 21 写法"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "脱敏红线：source_uri（URL 原文 / 上传文件原始名）不得写日志 —— 本段新增的可读判定 WARN 与下载错误日志都不得打印路径或 source_uri"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "内容分流表 + pre-commit 钩子：代码注释里不写 C*/§/W*/段编号/日期/任务号 —— 那些只写在任务文档里"}

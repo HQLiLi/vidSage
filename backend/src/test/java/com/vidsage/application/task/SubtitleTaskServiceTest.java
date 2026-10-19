@@ -12,14 +12,17 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.vidsage.application.subtitle.SubtitleArtifactStore;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.subtitle.pipeline.SubtitlePipeline;
 import com.vidsage.config.WorkspaceProperties;
+import com.vidsage.domain.subtitle.SubtitleArtifact;
+import com.vidsage.domain.subtitle.model.ArtifactType;
+import com.vidsage.domain.subtitle.model.SubtitleArtifactStatus;
 import com.vidsage.domain.task.SubtitleTask;
 import com.vidsage.domain.task.TaskRun;
 import com.vidsage.domain.task.model.TaskRunStatus;
 import com.vidsage.domain.task.model.TaskRunType;
-import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
@@ -73,6 +76,7 @@ class SubtitleTaskServiceTest {
     private final MediaIdentityResolver mediaIdentityResolver = Mockito.mock(MediaIdentityResolver.class);
     private final TaskRunSupervisor supervisor = Mockito.mock(TaskRunSupervisor.class);
     private final SubtitlePipeline pipeline = Mockito.mock(SubtitlePipeline.class);
+    private final SubtitleArtifactStore artifactStore = Mockito.mock(SubtitleArtifactStore.class);
 
     private static final long TASK_ID = 1L;
     private static final String TASK_NO = "3f2a9c1e3f2a9c1e3f2a9c1e3f2a9c1e";
@@ -87,7 +91,7 @@ class SubtitleTaskServiceTest {
         return new SubtitleTaskService(workspaceRepository, subtitleTaskRepository, taskRunRepository,
                 keywordRepository, mediaIdentityResolver, supervisor, pipeline, directoryManager(),
                 new SubtitleTaskFinder(subtitleTaskRepository, workspaceRepository, directoryManager()),
-                transactionManager);
+                artifactStore, transactionManager);
     }
 
     private NioWorkspaceDirectoryManager directoryManager() {
@@ -257,21 +261,27 @@ class SubtitleTaskServiceTest {
     // ---------- 重新生成 / 翻译 ----------
 
     @Test
-    void regenerateRequiresOriginalSegmentsOnDisk() {
+    void regenerateRejectsWhenNoReadableOriginal() {
         when(subtitleTaskRepository.findByTaskNo(any())).thenReturn(Optional.of(task()));
         when(workspaceRepository.findById(TASK_ID)).thenReturn(Optional.of(urlWorkspace()));
+        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any()))
+                .thenReturn(Optional.empty());
 
-        assertThrows(IllegalArgumentException.class, () -> service().regenerate(TASK_NO, null),
-                "原始转写不在盘上 → 400，不是 409");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service().regenerate(TASK_NO, null),
+                "没有可读的原始产物 → 400，不是 409");
+
+        assertTrue(e.getMessage().contains("原始转写产物"));
         verify(supervisor, never()).start(any(), any(), any());
     }
 
     @Test
-    void regenerateDispatchesRecleanRunWhenOriginalSegmentsPresent() throws Exception {
-        writeWorkspaceFile(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
+    void regenerateDispatchesRecleanRunWhenReadableOriginalExists() {
         TaskRun run = runningRun(TaskRunType.RECLEAN, null, 2);
         when(subtitleTaskRepository.findByTaskNo(any())).thenReturn(Optional.of(task()));
         when(workspaceRepository.findById(TASK_ID)).thenReturn(Optional.of(urlWorkspace()));
+        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any()))
+                .thenReturn(Optional.of(readyArtifact(ArtifactType.ORIGINAL)));
         when(supervisor.start(any(), eq(TaskRunType.RECLEAN), isNull())).thenReturn(Optional.of(run));
         when(keywordRepository.findByTaskId(TASK_ID)).thenReturn(new SubtitleKeywords(List.of()));
 
@@ -283,22 +293,27 @@ class SubtitleTaskServiceTest {
     }
 
     @Test
-    void translateRequiresCleanSubtitlesOnDisk() {
+    void translateRejectsWhenNoReadableCleaned() {
         when(subtitleTaskRepository.findByTaskNo(any())).thenReturn(Optional.of(task()));
         when(workspaceRepository.findById(TASK_ID)).thenReturn(Optional.of(urlWorkspace()));
+        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.CLEANED), eq(""), any()))
+                .thenReturn(Optional.empty());
 
-        assertThrows(IllegalArgumentException.class,
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> service().translate(TASK_NO, "ja", "zh-Hans"),
-                "清洗字幕不在盘上 → 400，不是 409");
+                "没有可读的清洗产物 → 400，不是 409");
+
+        assertTrue(e.getMessage().contains("清洗后的字幕产物"));
         verify(supervisor, never()).start(any(), any(), any());
     }
 
     @Test
-    void translateDispatchesTranslateRunWhenCleanSubtitlesPresent() throws Exception {
-        writeWorkspaceFile(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));
+    void translateDispatchesTranslateRunWhenReadableCleanedExists() {
         TaskRun run = runningRun(TaskRunType.TRANSLATE, "zh-Hans", 3);
         when(subtitleTaskRepository.findByTaskNo(any())).thenReturn(Optional.of(task()));
         when(workspaceRepository.findById(TASK_ID)).thenReturn(Optional.of(urlWorkspace()));
+        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.CLEANED), eq(""), any()))
+                .thenReturn(Optional.of(readyArtifact(ArtifactType.CLEANED)));
         when(supervisor.start(any(), eq(TaskRunType.TRANSLATE), any())).thenReturn(Optional.of(run));
 
         TaskRunRef ref = service().translate(TASK_NO, "ja", "zh-Hans");
@@ -319,10 +334,19 @@ class SubtitleTaskServiceTest {
         when(supervisor.start(any(), eq(TaskRunType.MAIN), isNull())).thenReturn(Optional.of(run));
     }
 
-    private void writeWorkspaceFile(String fileName) throws Exception {
-        Path dir = tempDir.resolve("works").resolve("BV11QMd6WEJp_1");
-        Files.createDirectories(dir);
-        Files.writeString(dir.resolve(fileName), "{}");
+    private static SubtitleArtifact readyArtifact(ArtifactType type) {
+        return switch (type) {
+            case ORIGINAL -> SubtitleArtifact.restore(1L, TASK_ID, 1L, type, "", 1,
+                    SubtitleArtifactStatus.READY, null, null, "original-segments.json",
+                    "original-subtitles.srt", null, null, "a", "b", null, null, LocalDateTime.now());
+            case CLEANED -> SubtitleArtifact.restore(2L, TASK_ID, 1L, type, "", 1,
+                    SubtitleArtifactStatus.READY, null, "fp-1", "clean-segments.json",
+                    "clean-subtitles.srt", "context.json", null, "a", "b", "c", null, LocalDateTime.now());
+            case TRANSLATED -> SubtitleArtifact.restore(3L, TASK_ID, 1L, type, "zh-Hans", 1,
+                    SubtitleArtifactStatus.READY, null, null, "translated-segments-zh-hans.json",
+                    "translated-subtitles-zh-hans.srt", null, "terms-zh-hans.json", "a", "b", null, "c",
+                    LocalDateTime.now());
+        };
     }
 
     private static ResolvedMediaIdentity identity() {

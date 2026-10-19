@@ -1,5 +1,6 @@
 package com.vidsage.domain.subtitle;
 
+import com.vidsage.domain.subtitle.model.ArtifactFileKind;
 import com.vidsage.domain.subtitle.model.ArtifactType;
 import com.vidsage.domain.subtitle.model.SubtitleArtifactStatus;
 import java.time.LocalDateTime;
@@ -76,6 +77,21 @@ public class SubtitleArtifact {
 
     /** 创建时间。 */
     private final LocalDateTime createdAt;
+
+    /**
+     * 取某个文件位登记的文件名。
+     *
+     * @param kind 文件位
+     * @return 该文件位的文件名；这一版没有这个文件位时为 {@code null}
+     */
+    public String getFileName(ArtifactFileKind kind) {
+        return switch (kind) {
+            case SEGMENTS -> segmentsFileName;
+            case SUBTITLES -> subtitlesFileName;
+            case CONTEXT -> contextFileName;
+            case TERMS -> termsFileName;
+        };
+    }
 
     /** 私有构造：创建入口只有 {@link #createCreatingArtifact} 与 {@link #restore}。 */
     private SubtitleArtifact(Long id, long taskId, long derivedFromRunId, ArtifactType artifactType, String lang,
