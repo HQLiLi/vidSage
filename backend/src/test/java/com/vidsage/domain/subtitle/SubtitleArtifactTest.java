@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.vidsage.domain.subtitle.model.ArtifactFileKind;
 import com.vidsage.domain.subtitle.model.ArtifactType;
 import com.vidsage.domain.subtitle.model.SubtitleArtifactStatus;
 import java.time.LocalDateTime;
@@ -75,6 +76,20 @@ class SubtitleArtifactTest {
         assertEquals("bbb", artifact.getSubtitlesSha256());
         assertEquals("ccc", artifact.getContextSha256());
         assertNull(artifact.getTermsSha256());
+    }
+
+    @Test
+    void fileNameAndHashAccessorsMapEachFileKindToItsOwnColumn() {
+        SubtitleArtifact artifact = ready();
+
+        assertEquals("segments.json", artifact.getFileName(ArtifactFileKind.SEGMENTS));
+        assertEquals("subtitles.srt", artifact.getFileName(ArtifactFileKind.SUBTITLES));
+        assertEquals("context.json", artifact.getFileName(ArtifactFileKind.CONTEXT));
+        assertNull(artifact.getFileName(ArtifactFileKind.TERMS), "CLEANED 没有 terms 文件位");
+        assertEquals("aaa", artifact.getSha256(ArtifactFileKind.SEGMENTS));
+        assertEquals("bbb", artifact.getSha256(ArtifactFileKind.SUBTITLES));
+        assertEquals("ccc", artifact.getSha256(ArtifactFileKind.CONTEXT));
+        assertNull(artifact.getSha256(ArtifactFileKind.TERMS), "没有的文件位就没有哈希");
     }
 
     @Test

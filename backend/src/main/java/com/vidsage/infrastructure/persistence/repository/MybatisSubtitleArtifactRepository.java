@@ -93,13 +93,14 @@ public class MybatisSubtitleArtifactRepository implements SubtitleArtifactReposi
     }
 
     /**
-     * 孤儿型取代（级联）：只标状态，文件列留着。
+     * 孤儿型取代（级联）：某任务某类型当前有效的产物一次全标掉，文件列留着。
      *
-     * @param artifactId 被取代的产物行 id
+     * @param taskId 所属字幕任务
+     * @param type   产物类型
      * @return 受影响行数
      */
-    public int markSuperseded(long artifactId) {
-        return mapper.markSuperseded(artifactId);
+    public int markSupersededByTaskIdAndType(long taskId, ArtifactType type) {
+        return mapper.markSupersededByTaskIdAndType(taskId, type);
     }
 
     /**

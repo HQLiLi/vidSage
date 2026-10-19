@@ -56,13 +56,17 @@ public interface SubtitleArtifactRepository {
     int markSupersededAndClearFiles(long artifactId);
 
     /**
-     * <b>孤儿型</b>取代（级联）：下游译文被上游换版级联时，只标状态，
+     * <b>孤儿型</b>取代（级联）：某任务某类型当前有效的产物一次全标掉，只动状态，
      * <b>文件列留着</b>——路径是 DB 的列，删文件时要用它。
      *
-     * @param artifactId 被取代的产物行 id
+     * <p>级联的靶子按「任务 + 类型 + 当前有效」三件事定位，不靠派生关系：译文基于哪一版上游
+     * 不写进判据，由「上游换版时把它标掉」保证。
+     *
+     * @param taskId 所属字幕任务
+     * @param type   产物类型（级联只用于 {@code TRANSLATED}）
      * @return 受影响行数
      */
-    int markSuperseded(long artifactId);
+    int markSupersededByTaskIdAndType(long taskId, ArtifactType type);
 
     /**
      * 标已回收（两阶段第二步：文件确认回收之后）。

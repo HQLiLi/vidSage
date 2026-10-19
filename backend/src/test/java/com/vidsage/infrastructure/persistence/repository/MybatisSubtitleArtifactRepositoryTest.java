@@ -196,11 +196,11 @@ class MybatisSubtitleArtifactRepositoryTest {
     }
 
     @Test
-    void markSupersededDelegatesById() {
-        when(mapper.markSuperseded(11L)).thenReturn(1);
+    void markSupersededByTaskIdAndTypeDelegatesWithSameArguments() {
+        when(mapper.markSupersededByTaskIdAndType(7L, ArtifactType.TRANSLATED)).thenReturn(2);
 
-        assertEquals(1, repository.markSuperseded(11L));
-        verify(mapper).markSuperseded(11L);
+        assertEquals(2, repository.markSupersededByTaskIdAndType(7L, ArtifactType.TRANSLATED));
+        verify(mapper).markSupersededByTaskIdAndType(7L, ArtifactType.TRANSLATED);
     }
 
     @Test

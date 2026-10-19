@@ -6,6 +6,7 @@ import com.vidsage.application.subtitle.pipeline.SubtitlePipeline;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.ArtifactType;
 import com.vidsage.domain.task.SubtitleTask;
 import com.vidsage.domain.task.TaskRun;
@@ -191,16 +192,17 @@ public class SubtitleTaskService {
         SubtitleKeywords validated = keywords == null ? null : new SubtitleKeywords(keywords);
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
-        validateReadableArtifact(task, workspace, ArtifactType.ORIGINAL, "原始转写产物（ORIGINAL）");
+        SubtitleArtifact originalArtifact = requireReadableArtifact(task, workspace, ArtifactType.ORIGINAL,
+                "原始转写产物（ORIGINAL）");
         TaskRun run = supervisor.start(task, TaskRunType.RECLEAN, null).orElseThrow(() -> conflictFor(task));
         if (validated != null) {
             keywordRepository.replace(task.getId(), validated);
         }
-        SubtitleKeywords effective = validated != null ? validated : keywordRepository.findByTaskId(task.getId());
+        SubtitleKeywords effectiveKeywords = validated != null ? validated : keywordRepository.findByTaskId(task.getId());
         RunRef ref = RunRef.of(task.getTaskNo(), run);
         log.info("字幕重新生成已触发: taskNo={}, runNo={}, keywordsSupplied={}",
                 ref.taskNo().value(), ref.runNo(), validated != null);
-        pipeline.regenerate(run, ref, workspace, effective);
+        pipeline.regenerate(run, ref, workspace, effectiveKeywords, originalArtifact.getId());
         return new TaskRunRef(ref.taskNo().value(), ref.runNo());
     }
 
@@ -220,7 +222,7 @@ public class SubtitleTaskService {
         SupportedLanguage target = SupportedLanguage.parse(targetLanguage);
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
-        validateReadableArtifact(task, workspace, ArtifactType.CLEANED, "清洗后的字幕产物（CLEANED）");
+        requireReadableArtifact(task, workspace, ArtifactType.CLEANED, "清洗后的字幕产物（CLEANED）");
         TaskRun run = supervisor.start(task, TaskRunType.TRANSLATE, target.getCode())
                 .orElseThrow(() -> conflictFor(task));
         RunRef ref = RunRef.of(task.getTaskNo(), run);
@@ -308,17 +310,19 @@ public class SubtitleTaskService {
     }
 
     /**
-     * 前置守卫：该任务必须有一版可读的当前产物（行是 READY，而且该带的文件都在盘上）。
+     * 前置守卫：该任务必须有一版可读的当前产物（行是 READY，而且该带的文件都在盘上），并把它交出来。
+     *
+     * <p>返回的是<b>当下</b>那一版，调用方拿它的 id 填新产物的溯源字段；那个字段只用于审计，
+     * 不参与任何读取判据。
      *
      * <p>读路径只把缺文件的产物当没有，<b>不做自愈重跑</b>——重新生成由用户重新触发。
      */
-    private void validateReadableArtifact(SubtitleTask task, Workspace workspace,
-                                          ArtifactType type, String description) {
+    private SubtitleArtifact requireReadableArtifact(SubtitleTask task, Workspace workspace,
+                                                     ArtifactType type, String description) {
         Path workDir = finder.workspaceDir(workspace);
-        if (artifactStore.findReadableReady(task.getId(), type, "", workDir).isEmpty()) {
-            throw new IllegalArgumentException("字幕尚未就绪：该任务还没有可读的 " + description
-                    + "；请先等主管线跑完（可查 GET /api/tasks/{taskNo} 或订阅其 SSE 事件）再试");
-        }
+        return artifactStore.findReadableReady(task.getId(), type, "", workDir)
+                .orElseThrow(() -> new IllegalArgumentException("字幕尚未就绪：该任务还没有可读的 " + description
+                        + "；请先等主管线跑完（可查 GET /api/tasks/{taskNo} 或订阅其 SSE 事件）再试"));
     }
 
     /**

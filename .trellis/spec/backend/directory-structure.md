@@ -296,6 +296,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | Controller | 业务名 + `Controller`，平铺在 `web/controller/` | `MediaController`、`TaskController` |
 | 组件后缀登记 | 端口/适配器之外的新角色后缀**用前先登记**（不登记的后缀会变万能）；`-Manager`（2026-10-11 登记）：角色词答「管理一组资源」，落 `infrastructure/fs/`（`WorkspaceDirectoryManager` 是端口，登记在上方「端口接口」行并附「防 Manager 变万能后缀」警告——**该警告不解除**）；`-Notifier`（2026-10-10 曾用）随订阅机制整块退场，当前无成员 | `WorkspaceDirectoryManager` |
 | 方法 | **动词开头**（2026-10-12 立） | `prepare` / `clean` / `translate` / `acquire` / `saveCurrentStageAndBroadcast` |
+| 变量 | **自带名词**，不靠条件表达式交代装的是什么（2026-10-19 立，见下） | `effectiveKeywords` / `previousReady` / `translationsToReclaim` |
 
 ### 方法名动词开头（2026-10-12 立）
 
@@ -319,6 +320,15 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 按字面判「动词开头」很容易只盯前缀、不看返回值。`isXxx` 在本仓已经是布尔判定式的固定前缀，
 把一个返回对象的工厂叫 `isEmpty()` 会让调用点读成判定式——`return SubtitleContext.isEmpty();`
 在类型上就说不通。**凡是返回 `boolean` 的才配 `is`。**
+
+**最常见的违规形状是「过去式动词短语」**（2026-10-19 补）：`contentChanged` / `finished` / `deleted` 这类名字
+读起来像「做完了一件事」，实际是个判定 —— 调用点 `if (contentChanged(...))` 要读两遍才确认它是在问
+「变了没有」。写成 `isContentChanged(...)` 就没有歧义；先例 `SubtitleArtifactStore#isContentChanged`。
+
+**唯一不加 `is` / `has` 的布尔返回**：既是动作、又用返回值报告执行结果的命令式方法 —— 返回值答的是
+「干成没干成」，不是「是不是 X」。JDK 先例 `Files.deleteIfExists`；本仓同族
+`SubtitleArtifactStore#reclaimFilesOf`（删掉一版产物登记的文件，返回是否全部删干净）。给这种加上 `is`
+反而错，因为 `isReclaimable` 会被读成「能不能回收」，而它实际是「已经试过回收，成没成」。
 
 **`of` / `from` 及其派生名解禁**（2026-10-12 立规当日追加）：这两个是值类型的标准静态工厂前缀，调用点读出来
 就是「造一个 X」/「从 X 造一个 Y」，语义没有歧义，且是社区与 JDK（`List.of` / `Optional.of` / `Instant.ofEpochMilli`）
@@ -393,6 +403,30 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 **一句话判据：要么名字自带宾语，要么所属类已经把宾语说清楚了**；两条都不满足就该改。
 
 **只立规则，不做批量重命名**：存量里语义已由所属类交代清楚的短名（管线阶段的 `prepare` / `clean` / `translate` 等）不动；新写的方法按本条取。
+
+### 变量名要见名知意：不能靠读条件表达式才知道装的是什么（2026-10-19 立）
+
+**只看声明这一行，就要知道它装的是什么东西。** 最容易踩的是**中间变量**——它装的东西要靠后面的三元 / 条件语句才推得出来：
+
+| 位置 | 原名 | 现名 | 判据 |
+|---|---|---|---|
+| `SubtitleTaskService#regenerate` | `effective` | `effectiveKeywords` | `effective` 是形容词，没说有效的是**什么**；得读后面那行 `validated != null ? validated : keywordRepository.findByTaskId(...)` 才知道是关键词 |
+| `SubtitleArtifactStore#settleCleanedAndSupersedeDownstream` | `old` | `previousReady` | 没说旧的是哪一版（是上一版 READY 的产物） |
+| 同上 | `downstream` | `translationsToSupersede` | 没说下游的**什么**；而且和已有的私有方法 `downstreamTranslations(...)` 撞名 |
+| 同上 | `orphaned` | `translationsToReclaim` | 没说成了孤儿的是**什么**（是译文，不是产物行） |
+
+**判据**：把声明行单独拎出来（不看上下文），能不能说出「装的是什么」。以下四类单用时都过不了：
+
+- **形容词**（`effective` / `valid` / `final` / `raw`）—— 说的是性质，不是东西
+- **方位词**（`old` / `current` / `next` / `tmp`）—— 相对谁、旧的是什么，全靠上下文
+- **集合泛称**（`list` / `items` / `data` / `result`）—— 里面装的是什么，名字没说
+- **单字母 / 缩写**（`o` / `a` / `r`）—— 只在**一行 lambda** 里勉强可用，方法体里不许
+
+**与「方法名要见名知意」同源**：那条要求方法名自带宾语，这条要求变量名自带名词；两条的判据都是「单看这一处能不能一句话读出来」。
+
+**例外（真正的短命量）**：只活一行、右边就是它的全部含义的中间量，可以短 —— 比如 `repository.findReadyByTaskIdAndTypeAndLang(...).ifPresent(old -> repository.markSupersededAndClearFiles(old.getId()))` 里的 `old`：查询表达式就在紧邻的上一行，`old` 是这一版查询结果的别名。**但只限一行**；一旦它跨行传递、进了别的函数，就得按本条取名。
+
+**只立规则，不做批量重命名**：存量里语义已由所属类与紧邻代码交代清楚的短名（构造器里的 `repository`、循环里的 `artifact` 等）不动；新写的按本条取。
 
 ## 契约类的位置
 

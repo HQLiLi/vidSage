@@ -25,13 +25,10 @@ import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * 字幕清洗编排：把产字幕阶段产出的原始 segments，变成「切分 + LLM 纠错后的 -clean 产物」。
@@ -126,8 +123,8 @@ public class SubtitleCleanupCoordinator {
      *       重生成」，拿空上下文出一份没纠错的字幕等于没执行他的要求，而且他看不出来。</li>
      * </ol>
      *
-     * <p><b>删除顺序是「先成功、后删」</b>：清洗产物写成功之后才删 {@code -translate-*} 与 {@code terms-*}。
-     * 反过来先删，重跑失败时用户会同时失去字幕和译文，从「能用」掉到「什么都没有」。
+     * <p><b>本类只写文件，不管数据库</b>：新清洗产物让下游译文对不上了，那件事（作废、删文件）
+     * 由落定产物那一步负责，本类不参与。
      *
      * @param input    媒体输入；不可为空
      * @param workDir  这条输入的工作区目录（调用方已定位好）
@@ -148,7 +145,7 @@ public class SubtitleCleanupCoordinator {
      * @param workDir    这条输入的工作区目录（调用方已定位好）
      * @param keywords   用户手填的关键词；不可为 {@code null}
      * @param listener   进度监听；不可为 {@code null}
-     * @param regenerate {@code true} = 跳过 {@code -clean} 检查点、摘要失败即整体失败、成功后清理翻译与术语产物
+     * @param regenerate {@code true} = 跳过 {@code -clean} 检查点、摘要失败即整体失败
      * @return 清洗产物
      */
     private CleanedSubtitle doClean(MediaInput input, Path workDir, SubtitleKeywords keywords,
@@ -237,44 +234,8 @@ public class SubtitleCleanupCoordinator {
         log.info("字幕清洗完成: segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
                 result.segments().size(), result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());
-        if (regenerate) {
-            // 先成功、后删：走到这里说明新的 -clean 已经原子替换落盘了
-            deleteTranslatedArtifacts(workDir);
-        }
         return toCleaned(cleaned, cleanSeg, cleanSrt, result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());
-    }
-
-    /**
-     * 删掉翻译与术语查证产物：新的字幕出来之后，它们全都对不上当前内容了。
-     *
-     * <p>{@code terms-*} 一起删的理由：它是拿 {@code context.terms} 联网查出来的，重跑后术语可能变
-     * （关键词进了摘要器），留着就是一份对不上当前术语表的旧译名——错配的译名会被翻译照用，属于静默出错。
-     * 代价是上次查证的搜索费白花，下次触发翻译时重查一遍。
-     *
-     * <p>删不存在的文件就是「已经删过了」：{@code deleteIfExists} 不判存在、不额外处理。
-     * 删除本身失败只记 WARN：字幕已经生成好了，为几个派生产物把整趟重新生成判失败不值当。
-     */
-    private void deleteTranslatedArtifacts(Path workDir) {
-        int deleted = 0;
-        try (Stream<Path> entries = Files.list(workDir)) {
-            for (Path entry : entries.toList()) {
-                String name = entry.getFileName().toString();
-                if (SubtitleArtifactSpec.TRANSLATED_SEGMENTS.matches(name)
-                        || SubtitleArtifactSpec.TRANSLATED_SRT.matches(name)
-                        || SubtitleArtifactSpec.TERMS.matches(name)) {
-                    Files.deleteIfExists(entry);
-                    deleted++;
-                }
-            }
-        } catch (IOException e) {
-            // 不打目录名：它内嵌 URL / 原始文件名（用户资源，脱敏红线）
-            log.warn("重新生成成功后清理翻译与术语产物失败，产物可能仍留在工作区: reason={}", e.getMessage());
-            return;
-        }
-        if (deleted > 0) {
-            log.info("重新生成成功，已清理 {} 份翻译 / 术语产物（译文对不上新字幕了）", deleted);
-        }
     }
 
     /**

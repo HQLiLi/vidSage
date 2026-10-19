@@ -385,11 +385,15 @@ INDEX      idx_<表名>_<列名...> (...)
 | W2 | 插 `RUNNING` run | 一 task 至多一条 `RUNNING` | `uk_active_run`（一句 INSERT） | 必需（单语句即满足） |
 | W3 | artifact 占位（`CREATING`） | 占位先落 | 单语句 | 必需（单语句即满足） |
 | W4 | artifact 换版（同 `(type,lang)`） | 至多一条 `READY` + 旧降级与新升级同刻 | **按序两次 UPDATE**（索引逼出顺序） | **非必需**（R：重跑可恢复） |
-| **W5** | 换版 + 下游级联标记 | 新 `CLEANED` READY ⇒ 下游全部 `SUPERSEDED` | **显式事务**（N+2 行） | **必需**（R：不可恢复） |
+| **W5** | 换版 + 下游级联标记 | 新 `CLEANED` READY 且**内容变了** ⇒ 下游全部 `SUPERSEDED` | **显式事务**（1 条降级 UPDATE + 1 条批量级联 UPDATE + 1 条置 READY） | **必需**（R：不可恢复） |
 | **W5′** | 指纹级联（artifact + 中间产物全标）+ `workspace` 指纹写入 | 内容变了 ⇒ 旧产物全作废 | **显式事务** | **必需**（C47/C48） |
 | W6 | 文件删除 + 标 `DELETED` | 不删任何 `READY` 行指着的文件 | C22 两阶段（文件操作在事务外） | 无原子单位，是**协议** |
 | W7 | 启动收口 | 残留 `RUNNING` → `INTERRUPTED`；残留 `CREATING` → `FAILED`；被收掉的 task 更新 `updated_at` | 三条 UPDATE | 单语句 ×3 |
 | W8 | 关键词覆盖写 | 一 task 一份 | `uk_task_id` | 单语句 |
+
+> **W5 里的「内容变了」是判据，不是修饰语**（2026-10-19 订正）：清洗命中断点复用时不会真重跑、文件一个字节没动，但**照样会落一版新 revision** —— 落新版本 ≠ 内容变了。这时下游译文仍然是对的，作废它等于让用户白烧一次模型，S5 的「再翻同语种不发 LLM」也会被一次重新提交打掉。
+> 判据 = 新清洗的三个文件位哈希与旧 `READY` 行逐个比（哈希相同就是内容相同，SHA-256 下这不是启发式）；旧行不存在或哈希列为 `NULL` 时按「变了」处理（安全方向）。
+> **W5 挂在「清洗落定」这件事上，与 run 类型无关** —— `MAIN` 重新提交时带新关键词也会真重洗，那条路一样要级联。
 
 **边界 = `{W1, W5, W5′}`。** `TaskRun` / `SubtitleArtifact` / `Task` **都不是边界**，是带行为的领域实体 / 身份实体（C40 已作废，不用类级聚合标签）。
 
@@ -542,7 +546,7 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
    | **删文件 → `DELETED`** —— `TRANSLATED(*)` + **中间产物** | 新 MAIN run 不产出译文；中间产物**没有「文件列」可清空**（只有一个 `file_name`，还是唯一键的一部分），不删就会长期挂着「表说作废、文件还在」的行 |
 
 3. `ORIGINAL` 产物：插 `CREATING` → 写文件 → **换版落定**（写文件列 + 哈希列 + `READY`）
-4. `CLEANED` 产物：同上，并记 `keywords_fingerprint`
+4. `CLEANED` 产物：同上，并记 `keywords_fingerprint`。**落定走 W5**（不是 W4）—— 清洗是唯一有下游的产物类型，换版时要把基于旧清洗的译文一起作废（判据见 §5 W5 的注：**内容真变了才作废**）
 
    > **每一步产出之前都要先查表**（C62）—— **复用判据从「文件在不在」改成「表里 `READY` 且文件在」**。
    > 否则指纹级联只动 DB、盘上文件一个没动 → 主管线「重跑」全部跳过 → **产出旧内容而 DB 说是新的，静默交付**。
@@ -569,8 +573,8 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 | 3 | 关键词落库 | `subtitle_keyword` **覆盖写**（`uk_task_id`） | **不动** | 无 |
 | 4 | **重摘要 → 重洗** | 只推进 `current_stage` + 广播 SSE | **不动** | ✅ **最常见的失败点**（LLM 报错 / 超时）：旧 `CLEANED` 和它的文件**一点没动**，收口置 `FAILED` 就完了 |
 | 5 | 落新产物 | 插 `CREATING`（`revision+1`、`derived_from_artifact_id` = `ORIGINAL` 当前版、`keywords_fingerprint`）—— **只插行，不写文件列** | 写 3 个**临时文件** → **逐个原子替换**到正式路径（同名覆盖 → 旧 `CLEANED` 的文件此刻被顶掉） | 旧内容丢了但 DB 还说它是当前版 → **重跑收敛**。半成品不会留下（原子替换，C50）。残留的 `CREATING` 行由收口置 `FAILED`（C61） |
-| 6 | **换版（同一事务 = W5）** | ① 旧 `CLEANED` → `SUPERSEDED` + **清空它的文件列与哈希列**<br>② 所有下游 `TRANSLATED(*)` → `SUPERSEDED`（级联）<br>③ 新 `CLEANED` → `READY` **+ 写 `*_file_name` 与 `*_sha256`** | **不动**（文件在步骤 5 已就位，C51） | 事务回滚 → 状态全是旧的、盘上是新内容 → **重跑收敛** |
-| 7 | **删下游译文的文件**（事务外） | 删完再把那些行标 `DELETED` | 删 `translated-segments-*.json` / `translated-subtitles-*.srt` / `terms-*.json` | 只留孤儿文件（C22 明确接受） |
+| 6 | **换版（同一事务 = W5）** | ① 旧 `CLEANED` → `SUPERSEDED` + **清空它的文件列与哈希列**<br>② **内容真变了才**把所有下游 `TRANSLATED(*)` → `SUPERSEDED`（级联；判据见 §5 W5 的注）<br>③ 新 `CLEANED` → `READY` **+ 写 `*_file_name` 与 `*_sha256`** | **不动**（文件在步骤 5 已就位，C51） | 事务回滚 → 状态全是旧的、盘上是新内容 → **重跑收敛** |
+| 7 | **删下游译文的文件**（事务外） | 删完再把那些行标 `DELETED` | 删**步骤 6 被级联那几行的文件列**指着的那几个文件（`translated-segments-*.json` / `translated-subtitles-*.srt` / `terms-*.json`）；删不干净就不标 `DELETED` | 只留孤儿文件（C22 明确接受） |
 | 8 | **收尾** | `task_run.status = SUCCEEDED` + `subtitle_task.updated_at = now()` | **不动** | —— |
 
 **两种终态要分清**（C23）：
@@ -599,7 +603,7 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 **跟 §7.4 的两个差别**：**没有级联**（译文下面没有别的产物）；**没有「删文件」这一步**（旧译文是**覆盖型**，同名被新译文顶掉，停在 `SUPERSEDED` 就到头）。
 
 **第 3 步判据为什么只认 `status`：**
-- **「译文过时」不在这里比，是级联在写入时就标掉了**（§7.4 步骤 6）：新 `CLEANED` 落定那一刻，所有下游译文在**同一事务**里标 `SUPERSEDED`。所以 `READY` 就等于「基于当前版清洗」。
+- **「译文过时」不在这里比，是级联在写入时就标掉了**（§7.4 步骤 6）：新 `CLEANED` 落定那一刻，**内容真变了的话**所有下游译文在**同一事务**里标 `SUPERSEDED`。所以 `READY` 就等于「基于当前版清洗**的内容**」——注意是内容，不是那一行：清洗命中检查点跳过重跑时会落一版新 revision 但内容没变，那种情况下译文**不**被作废，因为它是对的。
 - 判据里**不带** `derived_from_artifact_id`：它只表达「派生自哪一版」，不表达「是不是当前版」。
 - **级联也不带它** —— 级联只需要 `WHERE task_id=? AND artifact_type='TRANSLATED' AND status='READY'`，**更简单也更健壮**（不依赖 lineage 被正确维护）。找「旧 `CLEANED`」也是 `status='READY'`（**不能**用 lineage：新 `CLEANED` 行的 `derived_from` 指向 `ORIGINAL`，不是旧 `CLEANED`）。
 

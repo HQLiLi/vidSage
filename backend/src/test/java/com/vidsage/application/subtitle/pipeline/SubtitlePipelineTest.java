@@ -87,6 +87,7 @@ class SubtitlePipelineTest {
         });
         when(artifactStore.settleArtifact(any(SubtitleArtifact.class), any(Path.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        // 清洗落定不返回值（void），mock 默认就是「什么都不做、不抛」
         return new SubtitlePipeline(keywordRepository, subtitlePreparationCoordinator, cleanupStage,
                 translationStage, artifactStore, supervisor, gate,
                 new NioWorkspaceDirectoryManager(new WorkspaceProperties(tempDir.resolve("works").toString())));
@@ -138,7 +139,7 @@ class SubtitlePipelineTest {
                 eq(""), eq(11L), eq(keywords.computeFingerprint()));
         order.verify(cleanupStage).clean(any(MediaInput.class), any(Path.class), any(SubtitleKeywords.class),
                 any(ProgressListener.class));
-        order.verify(artifactStore).settleArtifact(any(SubtitleArtifact.class), any(Path.class));
+        order.verify(artifactStore).settleCleanedAndSupersedeDownstream(any(SubtitleArtifact.class), any(Path.class));
         verify(supervisor).finish(ref, run, null);
         verify(artifactStore, times(2)).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
     }
@@ -229,10 +230,27 @@ class SubtitlePipelineTest {
         RunRef ref = ref(run);
         SubtitleKeywords keywords = new SubtitleKeywords(List.of("影视飓风"));
 
-        pipeline(inlineGate()).regenerate(run, ref, urlWorkspace("https://example.com/v"), keywords);
+        pipeline(inlineGate()).regenerate(run, ref, urlWorkspace("https://example.com/v"), keywords, 11L);
 
         verify(cleanupStage).regenerate(eq(new MediaInput.RemoteUrl("https://example.com/v")),
                 any(Path.class), eq(keywords), any(ProgressListener.class));
+        verify(supervisor).finish(ref, run, null);
+    }
+
+    @Test
+    void regenerateWrapsCleanupWithArtifactPlaceholderAndSettle() {
+        TaskRun run = runningRun(TaskRunType.RECLEAN, null, 2);
+        RunRef ref = ref(run);
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of("影视飓风"));
+
+        pipeline(inlineGate()).regenerate(run, ref, urlWorkspace("https://example.com/v"), keywords, 11L);
+
+        InOrder order = inOrder(artifactStore, cleanupStage);
+        order.verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID), eq(ArtifactType.CLEANED),
+                eq(""), eq(11L), eq(keywords.computeFingerprint()));
+        order.verify(cleanupStage).regenerate(any(MediaInput.class), any(Path.class), any(SubtitleKeywords.class),
+                any(ProgressListener.class));
+        order.verify(artifactStore).settleCleanedAndSupersedeDownstream(any(SubtitleArtifact.class), any(Path.class));
         verify(supervisor).finish(ref, run, null);
     }
 
@@ -244,9 +262,11 @@ class SubtitlePipelineTest {
                 .when(cleanupStage).regenerate(any(MediaInput.class), any(Path.class), any(SubtitleKeywords.class),
                         any(ProgressListener.class));
 
-        pipeline(inlineGate()).regenerate(run, ref, urlWorkspace("https://example.com/v"), new SubtitleKeywords(List.of()));
+        pipeline(inlineGate()).regenerate(run, ref, urlWorkspace("https://example.com/v"),
+                new SubtitleKeywords(List.of()), 11L);
 
         verify(supervisor).finish(ref, run, "字幕摘要失败");
+        verify(artifactStore, never()).settleCleanedAndSupersedeDownstream(any(), any());
     }
 
     @Test
@@ -255,7 +275,7 @@ class SubtitlePipelineTest {
         RunRef ref = ref(run);
 
         pipeline(interruptOnQueueGate()).regenerate(run, ref, urlWorkspace("https://example.com/v"),
-                new SubtitleKeywords(List.of()));
+                new SubtitleKeywords(List.of()), 11L);
 
         verify(supervisor).finish(ref, run, "重新生成在等待执行配额时被中断：请重新触发");
         verify(cleanupStage, never()).regenerate(any(), any(), any(), any());

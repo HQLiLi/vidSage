@@ -196,6 +196,25 @@ DDD 四层的依赖规则以 [directory-structure.md](./directory-structure.md) 
 
   命名模式：正常路径用陈述句（`mapsSentencesToSegments`），异常路径用 `throwsWhen...` / `requires...`。
 
+- **重装桩用 `doAnswer(...).when(mock).method(...)`，不用 `when(mock.method())`**：后者会**先执行已装的桩**，
+  于是「桩里带副作用」时（往事件表记一笔、改计数器、抛异常）会在装桩阶段凭空多出一次调用记录。
+
+  ```java
+  // 好：装桩本身不触发任何副作用
+  Mockito.doAnswer(invocation -> {
+      events.add("write:updateReady");
+      throw new IllegalStateException("落库失败");
+  }).when(repository).updateReady(any());
+
+  // 坏：when(...) 里这次调用会跑上一版 answer，事件表里多一条不属于本次的 "write:updateReady"
+  when(repository.updateReady(any())).thenAnswer(invocation -> {
+      events.add("write:updateReady");
+      throw new IllegalStateException("落库失败");
+  });
+  ```
+
+  先例：`SubtitleArtifactStoreTest#recordRepositoryWrites`（事务包裹用例靠「仓储写也记进同一张事件表」才钉得住顺序）。
+
 ### 会写文件的测试与 `@TempDir`
 
 Windows 上 `@TempDir` 的清理**偶发失败**：`JUnitException: Failed to delete temp directory`。已在 `FfmpegAudioExtractorTest` 与 `LocalFileMediaAcquirerTest` **两次独立复现**，都是**真写文件**的用例；不写文件的用例未观察到。成因是环境性句柄占用，**不是实现缺陷**——别为它去改实现。
@@ -290,6 +309,7 @@ var file = new DashScopeAsrProvider.TranscriptionFile(
 | 私有方法不写注释 | 「函数方法要写注释」要求 |
 | 纯逻辑测试起 `@SpringBootTest` | 纯逻辑 `new` 即可；`@SpringBootTest` 留给冒烟与跨层集成 |
 | 测试方法命名为 `testXxx` | 现有命名为行为描述式 |
+| 用 `when(mock.method())` 重装带副作用的桩 | 装桩阶段会跑上一版 answer，凭空多出一次调用记录 |
 | Provider 构造函数里 `new` 出依赖 | 必须构造函数注入，否则不可测 |
 | 引入依赖时不排除冲突的日志实现 | pom 已有先例注释 |
 | 用已停更的旧方案实现新功能 | 「实现方式选当前主流」要求 |
