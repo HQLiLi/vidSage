@@ -1341,3 +1341,46 @@ S2 换血全段落地：步骤 1–9 + 三面检查修复 + 四项收尾清理�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 49: 字幕模型重构 S3：产物权威
+<!-- trellis-session: v=2 fp=5338fce6296e35ae -->
+
+**Date**: 2026-10-19
+**Task**: 字幕模型重构 S3：产物权威
+**Branch**: `dev`
+
+### Summary
+
+S3 把产物事实源从文件系统换成 DB：主管线按 CREATING 占位到换版落定写入 subtitle_artifact，新增产物清单与下载端点，读路径按 C25 自愈，后置会话前置判据改认可读 READY；并给降级上下文加 degraded 标记，避免摘要失败反复卡死主管线。
+
+### Main Changes
+
+- 主管线接线：SubtitleArtifactStore.createCreatingPlaceholder / settleArtifact 包住 prepare 与 clean（ORIGINAL / CLEANED 各一版；revision 由 S1 的 MAX+1 回填，八列文件/哈希同生同灭）。
+- 读路径：新增 ArtifactController（GET /{taskNo}/artifacts 清单 + GET /{taskNo}/artifacts/{type}/{file}?lang= 下载），C25 整版自愈（缺文件只 WARN、不改状态）；TaskController 未改。
+- 前置判据：regenerate / translate 从查文件改成「有可读的 READY ORIGINAL / CLEANED」，不满足仍 400 且不插 run。
+- 收口：TaskRunSupervisor.finish 两段 try 分开——本次 run 的 CREATING 占位标 FAILED 与 run 终态落库互不阻断。
+- 摘要降级：SubtitleContext 加 degraded 组件，降级也落 context.json 但缓存政策视为未命中（下次重试）；断点复用分支补写缺失/降级的 context。
+- 命名：ArtifactFiles 改 ArtifactFileUtils；begin / settle 改 createCreatingPlaceholder / settleArtifact，并把「方法名要见名知意」立进 directory-structure.md。
+- spec：error-handling.md 按现状重写（ArtifactNotFound 到 404、409 只剩撞 uk_active_run、清掉 S2 后失实的旧类引用）；父 design.md 第 6 节补 C55 取值与 400/404 分工。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `57c4ebd` | feat(task): 字幕模型重构 S3 产物权威（artifact 表读写 + /artifacts 与下载端点 + 降级上下文标记） |
+| `8a6b691` | Merge branch 'feature/subtitle-artifact-authority' into dev |
+
+### Testing
+
+- [OK] clean test-compile 通过；全量 610 tests / 0 failures / 0 errors / 1 skipped（基线 555）。
+- [OK] 真库加起服务冒烟 AC1/AC2/AC4/AC5/AC6/AC7：两条 READY 落表无 CREATING；二次提交 rev 递增且旧行八列清空；下载逐字节 cmp 一致；400/404 矩阵；移走 context.json 整版消失且 DB 仍 READY；移走 clean-segments.json 后 translate 400 且 task_run 不增行。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- RECLEAN / TRANSLATE 不写 artifact 表（S4 / S5）；中间产物登记与复用判据改造（S6）；对账与哈希比对（S7）；网络超时（S8）；前端接接口（另开任务）。
+- 两条未裁口径：TaskRunSupervisor 的产物收口是否改走 store（现为直连端口）；SubtitleContext.degraded 是否改名。
