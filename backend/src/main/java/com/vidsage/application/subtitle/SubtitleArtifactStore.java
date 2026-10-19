@@ -26,14 +26,14 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p><b>落定有两个版本，按「有没有下游」分</b>：
  * <ul>
- *   <li>{@link #settleArtifact} —— 无下游的类型（原始转写、将来的译文）：换版不包事务，
- *       崩在中间只会让这个产物类型暂时没有当前版，占位行由收口标成失败，重跑一次即收敛。</li>
+ *   <li>{@link #settleArtifact} —— 无下游的类型（原始转写、译文）：旧版降级与新行生效包在同一个事务里，
+ *       崩在中间时旧版仍是当前版。</li>
  *   <li>{@link #settleCleanedAndSupersedeDownstream} —— 清洗产物：下面挂着译文，
- *       旧版降级、下游作废、新行生效必须一起对，所以圈在同一个事务里。</li>
+ *       旧版降级、下游作废、新行生效是同一个事务；下游文件在事务提交后再删。</li>
  * </ul>
  *
- * <p><b>可读判定只看「行是 READY 且文件是普通文件」</b>：文件不在了就记一条 WARN、按没有处理，
- * 不改任何状态；0 字节文件算存在（空转写是合法产物）。
+ * <p><b>可读判定只看「行是 READY 且该类型必需的文件位都在」</b>：文件不在了就记一条 WARN、按没有处理，
+ * 不改任何状态；0 字节文件算存在（空转写是合法产物）。可选位（译文的术语表）没有文件是正常形态。
  */
 @Slf4j
 @Component
@@ -69,6 +69,7 @@ public class SubtitleArtifactStore {
 
     /**
      * 落定一版<b>没有下游</b>的产物：算文件名与哈希 → 旧当前版降级并清空文件列 → 新版写文件列并置 READY。
+     * 后两步包在同一个事务里，崩在中间时旧版仍是当前版。
      *
      * <p>文件此刻必须已经由产出方原子替换落盘；这里算哈希失败就抛异常，让本次执行收口成失败，
      * 而且此时旧版还一点没动——调用方手里仍有上一版可用。
@@ -81,12 +82,17 @@ public class SubtitleArtifactStore {
     public SubtitleArtifact settleArtifact(SubtitleArtifact creating, Path workDir) {
         ArtifactFiles files = resolveArtifactFiles(creating.getArtifactType(), creating.getLang(), workDir);
 
-        // 降级旧版放在哈希之后：哈希失败时旧版还是可用的当前版
-        repository.findReadyByTaskIdAndTypeAndLang(creating.getTaskId(), creating.getArtifactType(),
-                        creating.getLang())
-                .ifPresent(old -> repository.markSupersededAndClearFiles(old.getId()));
+        // 降级旧版与新行 READY 必须同刻可见：崩在中间时旧版仍是 READY，用户不会看到「零当前版」。
+        // 这里用事务模板而不是注解：哈希要留在事务外，事务段只能是内部方法，同类内再调会绕过代理；
+        // 且事务边界要在不启 Spring 上下文的单测里可见。
+        transactionTemplate.executeWithoutResult(status -> {
+            // 降级旧版放在哈希之后：哈希失败时旧版还是可用的当前版
+            repository.findReadyByTaskIdAndTypeAndLang(creating.getTaskId(), creating.getArtifactType(),
+                            creating.getLang())
+                    .ifPresent(old -> repository.markSupersededAndClearFiles(old.getId()));
 
-        markReady(creating, files);
+            markReady(creating, files);
+        });
         return creating;
     }
 
@@ -148,7 +154,8 @@ public class SubtitleArtifactStore {
     }
 
     /**
-     * 查某一版「可读的当前版」：行是 READY，且该类型应带的每个文件都在。
+     * 查某一版「可读的当前版」：行是 READY，且该类型必需的每个文件位都在；
+     * 可选位登记了也要在，没登记不算缺。
      *
      * @param taskId  所属字幕任务
      * @param type    产物类型
@@ -166,7 +173,7 @@ public class SubtitleArtifactStore {
      *
      * @param taskId  所属字幕任务
      * @param workDir 工作区目录
-     * @return 文件齐全的当前版；一个都没有时是空列表
+     * @return 可读的当前版；一个都没有时是空列表
      */
     public List<SubtitleArtifact> listReadableReady(long taskId, Path workDir) {
         List<SubtitleArtifact> readable = new ArrayList<>();
@@ -187,7 +194,8 @@ public class SubtitleArtifactStore {
     /**
      * 按产物类型求出该带的文件位，逐个求文件名并算 sha256。
      *
-     * <p>文件此刻必须已经由产出方原子替换落盘；读不到就抛异常，这时调用方手里还什么都没动。
+     * <p>文件此刻必须已经由产出方原子替换落盘。必需位读不到就抛异常，这时调用方手里还什么都没动；
+     * 可选位没有文件就跳过（文件名与哈希都留空）。
      */
     private static ArtifactFiles resolveArtifactFiles(ArtifactType type, String lang, Path workDir) {
         Map<ArtifactFileKind, String> names = new EnumMap<>(ArtifactFileKind.class);
@@ -197,7 +205,12 @@ public class SubtitleArtifactStore {
                 continue;
             }
             String fileName = kind.specFor(type).getFileName(lang);
-            hashes.put(kind, ArtifactFileUtils.sha256(workDir.resolve(fileName)));
+            Path file = workDir.resolve(fileName);
+            if (!kind.isRequiredFor(type) && !ArtifactFileUtils.isRegularFile(file)) {
+                // 可选位没有这个文件：正常形态，不登记、不算哈希
+                continue;
+            }
+            hashes.put(kind, ArtifactFileUtils.sha256(file));
             names.put(kind, fileName);
         }
         return new ArtifactFiles(names, hashes);
@@ -250,8 +263,9 @@ public class SubtitleArtifactStore {
     /**
      * 删掉一版产物登记的全部文件位。
      *
-     * <p>全部删干净（或本来就不在）才返回 {@code true} —— 只有这样才能说「文件已确认回收」；
-     * 缺登记或删不动都返回 {@code false}，让那一行停在「待删」状态，留给对账报出来。
+     * <p>全部删干净（或本来就不在）才返回 {@code true} —— 只有这样才能说「文件已确认回收」。
+     * 可选位没登记是正常形态，跳过；必需位缺登记或删不动返回 {@code false}，让那一行停在
+     * 「待删」状态，留给对账报出来。
      */
     private boolean reclaimFilesOf(SubtitleArtifact artifact, Path workDir) {
         boolean allGone = true;
@@ -261,9 +275,12 @@ public class SubtitleArtifactStore {
             }
             String fileName = artifact.getFileName(kind);
             if (fileName == null) {
-                log.warn("产物缺少文件位登记，无法确认文件已回收: taskId={}, type={}, lang={}, file={}",
-                        artifact.getTaskId(), artifact.getArtifactType(), artifact.getLang(), kind.key());
-                allGone = false;
+                // 可选位本来就没有文件：不算「没回收干净」。必需位缺登记才是异常
+                if (kind.isRequiredFor(artifact.getArtifactType())) {
+                    log.warn("产物缺少必需文件位登记，无法确认文件已回收: taskId={}, type={}, lang={}, file={}",
+                            artifact.getTaskId(), artifact.getArtifactType(), artifact.getLang(), kind.key());
+                    allGone = false;
+                }
                 continue;
             }
             try {
@@ -281,7 +298,8 @@ public class SubtitleArtifactStore {
     }
 
     /**
-     * 一版产物能不能读：每个应带的文件位都登记了文件名，且工作区里确实有这个普通文件。
+     * 一版产物能不能读：必需位都登记了文件名，且工作区里确实有这个普通文件；
+     * 可选位登记了也要在，没登记不算缺。
      *
      * <p>缺文件只记 WARN、按没有处理，<b>不改数据库状态</b>——文件可能只是被手工挪走，
      * 放回去就该重新可见。
@@ -293,9 +311,13 @@ public class SubtitleArtifactStore {
             }
             String fileName = artifact.getFileName(kind);
             if (fileName == null) {
-                log.warn("产物缺少文件位登记，按没有处理: taskId={}, type={}, lang={}, file={}",
-                        artifact.getTaskId(), artifact.getArtifactType(), artifact.getLang(), kind.key());
-                return false;
+                if (kind.isRequiredFor(artifact.getArtifactType())) {
+                    log.warn("产物缺少必需文件位登记，按没有处理: taskId={}, type={}, lang={}, file={}",
+                            artifact.getTaskId(), artifact.getArtifactType(), artifact.getLang(), kind.key());
+                    return false;
+                }
+                // 可选位没有登记：这一版本来就没有这个文件，正常
+                continue;
             }
             if (!ArtifactFileUtils.isRegularFile(workDir.resolve(fileName))) {
                 log.warn("产物文件不在工作区，按没有处理: taskId={}, type={}, lang={}, file={}",

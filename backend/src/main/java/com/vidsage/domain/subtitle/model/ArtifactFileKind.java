@@ -71,6 +71,25 @@ public enum ArtifactFileKind {
     }
 
     /**
+     * 这种产物类型要求这个文件位必须存在吗？
+     *
+     * <p>必需位缺文件 = 这一版没产出完，落定要失败、可读判定要按没有处理；
+     * 可选位缺文件 = 正常形态（比如术语查证没产出就没有），只影响产物清单里少一项。
+     *
+     * <p>不属于该类型的文件位一律返回 {@code false} —— 调用方先判 {@link #belongsTo}。
+     *
+     * @param type 产物类型
+     * @return 该类型必须带此文件位时为 {@code true}
+     */
+    public boolean isRequiredFor(ArtifactType type) {
+        return switch (type) {
+            case ORIGINAL -> this == SEGMENTS || this == SUBTITLES;
+            case CLEANED -> this == SEGMENTS || this == SUBTITLES || this == CONTEXT;
+            case TRANSLATED -> this == SEGMENTS || this == SUBTITLES;
+        };
+    }
+
+    /**
      * 这种产物类型下，本文件位对应的文件名模板。
      *
      * @param type 产物类型

@@ -5,19 +5,23 @@ import com.vidsage.application.subtitle.SubtitleArtifactStore;
 import com.vidsage.application.task.TaskRunSupervisor;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.ArtifactType;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.task.TaskRun;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.task.model.RunRef;
 import com.vidsage.domain.workspace.Workspace;
+import com.vidsage.shared.progress.StageEvents;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * 媒体转字幕任务的主管线：一次执行经并发闸门排队后按顺序驱动各阶段，并收口终态。
@@ -32,6 +36,11 @@ import java.nio.file.Path;
 @Slf4j
 @Component
 public class SubtitlePipeline {
+
+    /**
+     * 翻译阶段的进度终点（0..100 区间自报口径）。
+     */
+    private static final int STAGE_DONE = 100;
 
     private final TaskConcurrencyGate concurrencyGate;
     private final SubtitleKeywordRepository keywordRepository;
@@ -122,21 +131,42 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 翻译（TRANSLATE run）：在已有清洗产物上产出译文。
+     * 翻译（TRANSLATE run）：在已有清洗产物上产出译文。当前目标语种已有可读的 READY 译文时直接收尾，
+     * 不调翻译模型、不落新版本。
      *
-     * @param run       本次执行（已落库、状态 RUNNING，带目标语种）
-     * @param ref       这条 run 的对外引用
-     * @param workspace 任务所属的媒体身份
-     * @param source    源语种
-     * @param target    目标语种
+     * @param run                本次执行（已落库、状态 RUNNING，带目标语种）
+     * @param ref                这条 run 的对外引用
+     * @param workspace          任务所属的媒体身份
+     * @param source             源语种
+     * @param target             目标语种
+     * @param cleanedArtifactId  当前有效的那一版清洗产物，记在新译文的溯源字段上
      */
     public void translate(TaskRun run, RunRef ref, Workspace workspace,
-                          SupportedLanguage source, SupportedLanguage target) {
+                          SupportedLanguage source, SupportedLanguage target, long cleanedArtifactId) {
         concurrencyGate.submit(() -> {
             try {
                 Path workDir = workDir(workspace);
-                translationStage.translate(toMediaInput(workspace, workDir), workDir, source, target,
-                        progressListener(ref, run));
+                ProgressListener listener = progressListener(ref, run);
+
+                // 当前语种已经有可读的 READY 译文：不调 LLM、不落新版本，文件一个字节不动
+                Optional<SubtitleArtifact> current = artifactStore.findReadableReady(
+                        run.getTaskId(), ArtifactType.TRANSLATED, target.getCode(), workDir);
+                if (current.isPresent()) {
+                    StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE,
+                            "已有当前译文，跳过翻译", StageProgress.State.SKIPPED);
+                    log.info("译文已是最新，跳过翻译: taskNo={}, runNo={}, lang={}",
+                            ref.taskNo().value(), ref.runNo(), target.getCode());
+                    supervisor.finish(ref, run, null);
+                    return;
+                }
+
+                translationStage.translate(toMediaInput(workspace, workDir), workDir, source, target, listener);
+
+                // 翻译成功之后才落占位：LLM 失败时库里不留垃圾行
+                SubtitleArtifact translated = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
+                        ArtifactType.TRANSLATED, target.getCode(), cleanedArtifactId, null);
+                artifactStore.settleArtifact(translated, workDir);
+
                 supervisor.finish(ref, run, null);
                 log.info("任务翻译完成: taskNo={}, runNo={}", ref.taskNo().value(), ref.runNo());
             } catch (Throwable t) {

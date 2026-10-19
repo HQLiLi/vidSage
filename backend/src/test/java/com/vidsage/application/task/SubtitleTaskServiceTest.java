@@ -321,7 +321,7 @@ class SubtitleTaskServiceTest {
 
         assertEquals(3, ref.runNo());
         verify(pipeline).translate(eq(run), any(), any(), any(SupportedLanguage.class),
-                any(SupportedLanguage.class));
+                any(SupportedLanguage.class), eq(readyArtifact(ArtifactType.CLEANED).getId()));
     }
 
     // ---------- 夹具 ----------

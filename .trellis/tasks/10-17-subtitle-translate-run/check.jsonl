@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/10-17-subtitle-translate-run/prd.md", "reason": "AC1–AC12 逐条核（首次翻译落表 / 同语种再翻不发 LLM / 换语种互不影响 / 文件缺失自愈 / 失败不破坏旧版 / terms 可选且级联能回收 / 级联回归用真译文行 / 前置与互斥 / W4 事务 / 可选位四处一致 / 旧判据退场 / 全量回归）"}
+{"file": ".trellis/tasks/10-17-subtitle-translate-run/implement.md", "reason": "对版依据：§0 十二条代码校准是否被遵守（不改仓储/SQL/端点/收口）、translate 的三段顺序（复用判据 → 阶段 → 占位+落定）、占位在成功后而非之前、coordinator 只删复用代码不改翻译语义、可选位四个读取方都改到、回滚点与 8 条欠账是否如实记账"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "对版依据：§1.4 文件组合与四个文件列（terms 可空）、§5 W4 的两次 UPDATE 顺序与 active_flag 约束、§7.5 翻译六步与「无级联、无删文件」、§7.8 文件不在按没有处理、§8.4 残留窗口三类全接受（别把窗口当 bug 修）—— 【注意】本文件超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文；本段对 §1.4 与 §7.5 步骤 3 的订正以 prd 为准。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核落位与命名：isRequiredFor 落在 ArtifactFileKind、可选位判定不经仓储、事务机制按 prd T4 的选型规则（不是一律模板）、测试包与主包镜像 —— 【注意】本文件可能超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "反向核验：没有绕过仓储直写 SQL、没有新增 Mapper 方法与 SQL、没有把 MP 类型泄到领域/应用层"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核异常类型与状态码：必需位缺文件抛 ISE 由收口兜、可选位缺文件不抛、400/404/409 语义不变、守卫命名 require 动词开头"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核注释（首行大白话、新方法逐个有注释）、测试命名与断言风格、没有夹带范围外的风格改名、switch 穷举不写 default"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "核代码注释里没有 C*/§/W*/段编号/日期/任务号 —— 这些只允许出现在任务文档里"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核脱敏红线：新增日志与异常消息都不得打印 source_uri 或工作区绝对路径"}

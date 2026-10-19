@@ -40,6 +40,7 @@ import com.vidsage.infrastructure.fs.NioWorkspaceDirectoryManager;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
@@ -72,6 +73,7 @@ class SubtitlePipelineTest {
     private static final SupportedLanguage TARGET_LANG = SupportedLanguage.SIMPLE_CHINESE;
     private static final long TASK_ID = 7L;
     private static final long RUN_ID = 1L;
+    private static final long CLEANED_ARTIFACT_ID = 12L;
     private static final String TASK_NO = "3f2a9c1e3f2a9c1e3f2a9c1e3f2a9c1e";
 
     private SubtitlePipeline pipeline(TaskConcurrencyGate gate) {
@@ -284,15 +286,56 @@ class SubtitlePipelineTest {
     // ---------- 翻译（TRANSLATE） ----------
 
     @Test
-    void translateRunsTranslationAndFinishesRun() {
+    void translateRunsTranslationThenCreatesPlaceholderAndSettles() {
         TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
         RunRef ref = ref(run);
 
-        pipeline(inlineGate()).translate(run, ref, urlWorkspace("https://example.com/v"), SOURCE_LANG, TARGET_LANG);
+        pipeline(inlineGate()).translate(run, ref, urlWorkspace("https://example.com/v"),
+                SOURCE_LANG, TARGET_LANG, CLEANED_ARTIFACT_ID);
 
-        verify(translationStage).translate(eq(new MediaInput.RemoteUrl("https://example.com/v")),
+        InOrder order = inOrder(translationStage, artifactStore);
+        order.verify(translationStage).translate(eq(new MediaInput.RemoteUrl("https://example.com/v")),
                 any(Path.class), eq(SOURCE_LANG), eq(TARGET_LANG), any(ProgressListener.class));
+        order.verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID),
+                eq(ArtifactType.TRANSLATED), eq(TARGET_LANG.getCode()), eq(CLEANED_ARTIFACT_ID), isNull());
+        order.verify(artifactStore).settleArtifact(any(SubtitleArtifact.class), any(Path.class));
         verify(supervisor).finish(ref, run, null);
+    }
+
+    @Test
+    void translateReusesCurrentReadableTranslationWithoutCallingStage() {
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        RunRef ref = ref(run);
+        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.TRANSLATED),
+                eq(TARGET_LANG.getCode()), any(Path.class)))
+                .thenReturn(Optional.of(Mockito.mock(SubtitleArtifact.class)));
+
+        pipeline(inlineGate()).translate(run, ref, urlWorkspace("https://example.com/v"),
+                SOURCE_LANG, TARGET_LANG, CLEANED_ARTIFACT_ID);
+
+        verify(translationStage, never()).translate(any(), any(), any(), any(), any());
+        verify(artifactStore, never()).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
+        verify(artifactStore, never()).settleArtifact(any(), any());
+        verify(supervisor).finish(ref, run, null);
+        ArgumentCaptor<StageProgress> stage = ArgumentCaptor.forClass(StageProgress.class);
+        verify(supervisor).advance(eq(ref), eq(run), stage.capture());
+        assertEquals(StageProgress.State.SKIPPED, stage.getValue().state(),
+                "复用命中要告诉订阅者这条 run 是跳过收尾的");
+    }
+
+    @Test
+    void translateFailureFinishesRunWithoutPlaceholder() {
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        RunRef ref = ref(run);
+        doThrow(new IllegalStateException("翻译失败"))
+                .when(translationStage).translate(any(), any(), any(), any(), any());
+
+        pipeline(inlineGate()).translate(run, ref, urlWorkspace("https://example.com/v"),
+                SOURCE_LANG, TARGET_LANG, CLEANED_ARTIFACT_ID);
+
+        verify(supervisor).finish(ref, run, "翻译失败");
+        verify(artifactStore, never()).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
+        verify(artifactStore, never()).settleArtifact(any(), any());
     }
 
     @Test
@@ -301,7 +344,7 @@ class SubtitlePipelineTest {
         RunRef ref = ref(run);
 
         pipeline(interruptOnQueueGate()).translate(run, ref, urlWorkspace("https://example.com/v"),
-                SOURCE_LANG, TARGET_LANG);
+                SOURCE_LANG, TARGET_LANG, CLEANED_ARTIFACT_ID);
 
         verify(supervisor).finish(ref, run, "翻译在等待执行配额时被中断：请重新触发翻译");
         verify(translationStage, never()).translate(any(), any(), any(), any(), any());

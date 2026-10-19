@@ -13,8 +13,8 @@ import java.nio.file.Path;
  * @param skipped           是否跳过翻译（源语种等于目标语种，未调用 LLM）
  * @param segmentCount      译文段落数，与输入逐条一致
  * @param srtSizeBytes      双语 SRT 文件字节数，可为 0
- * @param retrySteps        本趟翻译触发的校验重试轮数；断点复用时为 0
- * @param untranslatedCount 本趟用尽重试后回退成原文的段数；断点复用时为 0
+ * @param retrySteps        本趟翻译触发的校验重试轮数；同语种跳过、未调 LLM 时为 0
+ * @param untranslatedCount 本趟用尽重试后回退成原文的段数；同语种跳过、未调 LLM 时为 0
  */
 public record TranslatedSubtitle(Path srtPath, Path segmentsPath,
                                  String sourceLanguage, String targetLanguage, boolean skipped,

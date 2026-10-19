@@ -34,15 +34,14 @@ import tools.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
  * 字幕翻译编排：把清洗后的 -clean 字幕变成双语 -translate 产物；源语种与目标语种相同时不调 LLM，
  * 直接产出「译文 = 原文」的产物。
  *
- * <p><b>断点复用</b>：{@code translated-segments-<target>.json} 存在且非空即跳过翻译，直接反序列化返回。
- * 检查点语义（为什么是 JSON 而不是 SRT）单源在 {@link CheckpointPolicy}，本类不另判。
+ * <p><b>要不要复用不归本类判</b>：调用方先看产物表里当前语种有没有可读的 READY 版本，命中就直接跳过；
+ * 走到这里就是真翻译。检查点语义（为什么是 JSON 而不是 SRT）单源在 {@link CheckpointPolicy}，本类不另判。
  */
 @Slf4j
 @Component
@@ -128,12 +127,6 @@ public class SubtitleTranslationCoordinator {
         Path termsFile = workDir.resolve(SubtitleArtifactSpec.TERMS.getFileName(targetLangCode));
         Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
 
-        // 判断是否已经翻译过了，已翻译过了跳过
-        Optional<TranslatedSubtitle> isReused = reuseCheckpointIfPresent(translateSeg, translateSrt, listener);
-        if (isReused.isPresent()) {
-            return isReused.get();
-        }
-
         StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_BEGIN, "开始翻译", StageProgress.State.RUNNING);
         if (!ArtifactFileUtils.isNonEmpty(cleanSeg)) {
             throw new IllegalStateException("字幕尚未清洗：请先调用 POST /api/subtitles/clean 产出 -clean 字幕，再翻译（缺 "
@@ -173,30 +166,6 @@ public class SubtitleTranslationCoordinator {
                 sourceLanguage.getLabel(), targetLanguage.getLabel(), track.skipped(), track.segments().size(),
                 retrySteps, untranslated);
         return toTranslated(track, translateSeg, translateSrt, retrySteps, untranslated);
-    }
-
-    /**
-     * 断点复用：这个语种的译文检查点已经在、非空、能解析，就直接反序列化返回，本轮统计一律归零
-     * （含 untranslatedCount）。
-     *
-     * <p>「在不在、空不空、坏没坏」的判据单源在 {@link ArtifactFileUtils#readJsonOrNull} 与
-     * {@link CheckpointPolicy}，本方法不另判。
-     *
-     * @param translateSeg 译文 segments 检查点
-     * @param translateSrt 配套的双语 SRT（复用时一并带回，不重新渲染）
-     * @param listener     进度监听
-     * @return 复用到的产物；没有可用检查点时为空
-     */
-    private Optional<TranslatedSubtitle> reuseCheckpointIfPresent(Path translateSeg, Path translateSrt,
-                                                                  ProgressListener listener) {
-        TranslatedTrack existing = ArtifactFileUtils.readJsonOrNull(translateSeg, objectMapper, TranslatedTrack.class);
-        if (existing == null) {
-            return Optional.empty();
-        }
-        log.info("字幕翻译断点复用跳过: translate={}", translateSeg.getFileName());
-        StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE, "已有翻译产物，跳过翻译",
-                StageProgress.State.SKIPPED);
-        return Optional.of(toTranslated(existing, translateSeg, translateSrt, 0, 0));
     }
 
     /**

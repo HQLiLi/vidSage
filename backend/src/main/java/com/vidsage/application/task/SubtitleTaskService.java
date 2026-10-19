@@ -222,13 +222,14 @@ public class SubtitleTaskService {
         SupportedLanguage target = SupportedLanguage.parse(targetLanguage);
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
-        requireReadableArtifact(task, workspace, ArtifactType.CLEANED, "清洗后的字幕产物（CLEANED）");
+        SubtitleArtifact cleaned = requireReadableArtifact(task, workspace, ArtifactType.CLEANED,
+                "清洗后的字幕产物（CLEANED）");
         TaskRun run = supervisor.start(task, TaskRunType.TRANSLATE, target.getCode())
                 .orElseThrow(() -> conflictFor(task));
         RunRef ref = RunRef.of(task.getTaskNo(), run);
         log.info("字幕翻译已触发: taskNo={}, runNo={}, source={}, target={}",
                 ref.taskNo().value(), ref.runNo(), source.getCode(), target.getCode());
-        pipeline.translate(run, ref, workspace, source, target);
+        pipeline.translate(run, ref, workspace, source, target, cleaned.getId());
         return new TaskRunRef(ref.taskNo().value(), ref.runNo());
     }
 

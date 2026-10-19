@@ -107,7 +107,11 @@ public class SubtitleArtifactQueryService {
             }
             String fileName = artifact.getFileName(kind);
             if (fileName == null) {
-                return Optional.empty();
+                if (kind.isRequiredFor(artifact.getArtifactType())) {
+                    return Optional.empty();
+                }
+                // 可选位没有文件：清单里少一项，整版仍然可用
+                continue;
             }
             try {
                 files.add(new ArtifactFileSnapshot(kind, Files.size(workDir.resolve(fileName))));
