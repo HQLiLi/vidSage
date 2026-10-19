@@ -93,6 +93,21 @@ public class SubtitleArtifact {
         };
     }
 
+    /**
+     * 取某个文件位的哈希。与 {@link #getFileName} 对称，让「文件位 → 列」的映射只此一处。
+     *
+     * @param kind 文件位
+     * @return 该文件位的 sha256；这一版没有这个文件位时为 {@code null}
+     */
+    public String getSha256(ArtifactFileKind kind) {
+        return switch (kind) {
+            case SEGMENTS -> segmentsSha256;
+            case SUBTITLES -> subtitlesSha256;
+            case CONTEXT -> contextSha256;
+            case TERMS -> termsSha256;
+        };
+    }
+
     /** 私有构造：创建入口只有 {@link #createCreatingArtifact} 与 {@link #restore}。 */
     private SubtitleArtifact(Long id, long taskId, long derivedFromRunId, ArtifactType artifactType, String lang,
                              Integer revision, SubtitleArtifactStatus status, Long derivedFromArtifactId,

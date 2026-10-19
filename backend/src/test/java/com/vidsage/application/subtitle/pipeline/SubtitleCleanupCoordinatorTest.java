@@ -395,8 +395,8 @@ class SubtitleCleanupCoordinatorTest {
 
     @Test
     void regenerateFailureKeepsOldCleanAndTranslatedArtifacts() throws Exception {
-        // AC5 的失败形态之一（摘要失败）：旧字幕与旧译文必须一个都不少——
-        // 用户从「能用」掉到「什么都没有」正是「先删再跑」被否掉的原因
+        // 失败形态之一（摘要失败）：旧字幕与旧译文必须一个都不少——
+        // 用户从「能用」掉到「什么都没有」是这套流程最不能接受的后果
         writeRawTrack();
         writeCleanTrack("0000deadbeef");
         Files.writeString(translateSegFile(), "{}");
@@ -412,24 +412,25 @@ class SubtitleCleanupCoordinatorTest {
         assertTrue(Files.exists(cleanFile()), "旧 -clean 一个字节都不能少");
         assertTrue(Files.exists(translateSegFile()) && Files.exists(translateSrtFile()),
                 "失败路径不许删译文——删了用户就同时失去字幕和译文");
-        assertTrue(Files.exists(termsFile()), "terms 同样是成功之后才删的东西");
+        assertTrue(Files.exists(termsFile()), "terms 同样是派生产物，失败时谁都不许动");
         assertTrue(Files.exists(rawFile()), "原始转写是重跑的输入，任何路径都不许删");
     }
 
     @Test
-    void regenerateDeletesTranslatedAndTermsArtifactsAfterSuccess() throws Exception {
+    void regenerateLeavesTranslatedAndTermsArtifactsToTheStore() throws Exception {
+        // 本类只管写文件：译文对不上新字幕了该怎么处置（作废、删文件）归落定产物那一步
         writeRawTrack();
         Files.writeString(translateSegFile(), "{}");
         Files.writeString(translateSrtFile(), "1\n");
         Files.writeString(termsFile(), "{}");
-        Files.writeString(contextFile(), "{}");   // 不该被删
+        Files.writeString(contextFile(), "{}");
         SubtitleCleanupCoordinator s = service();
 
         s.regenerate(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), ProgressListener.noop());
 
-        assertFalse(Files.exists(translateSegFile()), "译文对不上新字幕了，该删");
-        assertFalse(Files.exists(translateSrtFile()));
-        assertFalse(Files.exists(termsFile()), "terms 是拿旧术语表查的，也该删");
+        assertTrue(Files.exists(translateSegFile()), "本类不删译文，交给落定产物那一步");
+        assertTrue(Files.exists(translateSrtFile()));
+        assertTrue(Files.exists(termsFile()));
         assertTrue(Files.exists(cleanFile()), "新 -clean 得留下");
         assertTrue(Files.exists(rawFile()), "原始转写是重跑的输入，谁都不许删");
     }

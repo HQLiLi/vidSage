@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/10-17-subtitle-reclean-run/prd.md", "reason": "本段范围、T1–T10 十条取舍（级联判据=内容真变了、两条路共用、删文件搬到 W5 之后按 DB 行删、W5 用 TransactionTemplate）、17 条需求、AC1–AC11 —— 写代码前先对齐交付什么、什么不做（范围外表逐条写明交给哪一段）"}
+{"file": ".trellis/tasks/10-17-subtitle-reclean-run/implement.md", "reason": "段级技术落点 + 六步执行清单：§0 与 S3 实际代码的十条校准（仓储/SQL/收口已就位，S4 只接线）、文件树、W5 的完整形状与内容判据与两阶段回收的伪代码、每步判据、手工验收命令（含造 TRANSLATED 行的 SQL）、边界矩阵、回滚点、11 条欠账"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "权威终态设计：§5 W5 写集（换版 + 下游级联，原子性必需）、§7.3 主管线 CLEANED 落定、§7.4 重洗八步与两种终态（覆盖型停 SUPERSEDED / 孤儿型走 DELETED）、§7.5 级联不带 lineage、§8.2 写序纪律（先标 DB 后删文件）、§8.4 残留窗口三类全接受 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文；且本段对 §5 W5 行与 §7.4 步骤 6 ② 有两处订正（见 prd），读到时按 prd 口径。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "四层结构、@Service 与 @Component 的分档（SubtitleArtifactStore 是机制件）、方法名动词开头、测试包镜像主包 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，实施与检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "MyBatis-Plus 用法、值对象与 String 列的转换收敛在 Repository、单测不连真库的测试策略。本段不改表结构、只新增一句批量 UPDATE，级联与换版一律经 SubtitleArtifactRepository"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "异常类型选择（算哈希失败 / 落定失败抛 IllegalStateException、前置守卫命名 require 动词开头、取不到抛 IllegalArgumentException → 400）、错误信息中文且含缺什么怎么补"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "注释要求、测试写法与命名（行为描述式、throwsWhen... 异常路径、@TempDir(cleanup = NEVER)）、依赖原则、Java 21 写法（switch 穷举不写 default）"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "脱敏红线：source_uri（URL 原文 / 上传文件原始名）不得写日志 —— 本段新增的「删文件失败」「文件列缺登记」WARN 与级联日志都不得打印工作区路径或 source_uri"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "内容分流表 + pre-commit 钩子：代码注释里不写 C*/§/W*/段编号/日期/任务号 —— 那些只写在任务文档里"}

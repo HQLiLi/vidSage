@@ -70,13 +70,18 @@ public interface SubtitleArtifactMapper extends BaseMapper<SubtitleArtifactEntit
     int markSupersededAndClearFiles(@Param("artifactId") long artifactId);
 
     /**
-     * 孤儿型取代（级联）：只标 {@code SUPERSEDED}，文件列留着。
+     * 孤儿型取代（级联）：某任务某类型当前有效的产物一次全标 {@code SUPERSEDED}，文件列留着。
      *
-     * @param artifactId 产物行 id
+     * @param taskId 所属字幕任务
+     * @param type   产物类型
      * @return 受影响行数
      */
-    @Update("UPDATE subtitle_artifact SET status = 'SUPERSEDED' WHERE id = #{artifactId}")
-    int markSuperseded(@Param("artifactId") long artifactId);
+    @Update("""
+            UPDATE subtitle_artifact
+            SET status = 'SUPERSEDED'
+            WHERE task_id = #{taskId} AND artifact_type = #{type} AND status = 'READY'
+            """)
+    int markSupersededByTaskIdAndType(@Param("taskId") long taskId, @Param("type") ArtifactType type);
 
     /**
      * 标已回收（两阶段第二步）。

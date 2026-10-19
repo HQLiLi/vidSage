@@ -289,7 +289,8 @@ class SubtitleTaskServiceTest {
 
         assertEquals(2, ref.runNo());
         verify(keywordRepository).replace(TASK_ID, new SubtitleKeywords(List.of("影视飓风")));
-        verify(pipeline).regenerate(eq(run), any(), any(), any(SubtitleKeywords.class));
+        verify(pipeline).regenerate(eq(run), any(), any(), any(SubtitleKeywords.class),
+                eq(readyArtifact(ArtifactType.ORIGINAL).getId()));
     }
 
     @Test

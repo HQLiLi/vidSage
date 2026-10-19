@@ -90,17 +90,23 @@ public class SubtitlePipeline {
      * 重新生成字幕（RECLEAN run）：按给定关键词只重跑清洗，不重跑转写、不重抽音频。
      * 同步段的判定（404 / 400 未就绪 / 409 互斥 / 关键词落库）在 {@code SubtitleTaskService} 完成。
      *
-     * @param run       本次执行（已落库、状态 RUNNING）
-     * @param ref       这条 run 的对外引用
-     * @param workspace 任务所属的媒体身份
-     * @param keywords  本次要用的关键词（调用方已落库或读回）
+     * @param run                本次执行（已落库、状态 RUNNING）
+     * @param ref                这条 run 的对外引用
+     * @param workspace          任务所属的媒体身份
+     * @param keywords           本次要用的关键词（调用方已落库或读回）
+     * @param originalArtifactId 当前有效的那一版原始产物，记在新清洗产物的溯源字段上
      */
-    public void regenerate(TaskRun run, RunRef ref, Workspace workspace, SubtitleKeywords keywords) {
+    public void regenerate(TaskRun run, RunRef ref, Workspace workspace, SubtitleKeywords keywords,
+                           long originalArtifactId) {
         concurrencyGate.submit(() -> {
             try {
                 Path workDir = workDir(workspace);
+                // 占位先落：这一版从这一刻起就存在了，写文件之前版本号已经定下来
+                SubtitleArtifact cleaned = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
+                        ArtifactType.CLEANED, "", originalArtifactId, keywords.computeFingerprint());
                 cleanupStage.regenerate(toMediaInput(workspace, workDir), workDir, keywords,
                         progressListener(ref, run));
+                artifactStore.settleCleanedAndSupersedeDownstream(cleaned, workDir);
                 supervisor.finish(ref, run, null);
                 log.info("字幕重新生成完成: taskNo={}, runNo={}", ref.taskNo().value(), ref.runNo());
             } catch (Throwable t) {
@@ -167,7 +173,8 @@ public class SubtitlePipeline {
             SubtitleArtifact cleaned = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
                     ArtifactType.CLEANED, "", original.getId(), keywords.computeFingerprint());
             cleanupStage.clean(input, workDir, keywords, listener);
-            artifactStore.settleArtifact(cleaned, workDir);
+            // 清洗是唯一有下游的产物：换版时要把基于旧清洗的译文一起作废
+            artifactStore.settleCleanedAndSupersedeDownstream(cleaned, workDir);
             supervisor.finish(ref, run, null);
             log.info("任务执行成功: taskNo={}, runNo={}", ref.taskNo().value(), ref.runNo());
         } catch (Throwable t) {
