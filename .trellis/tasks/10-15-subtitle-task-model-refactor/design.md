@@ -522,7 +522,14 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 > **第 3 步的并发分支（C63）** —— 为什么是**锁定读**且**两行都要**：RR 一致性快照在本次 `SELECT` 那一刻就建立了（早于对方提交），普通 `SELECT` 读不到对方刚提交的行；`subtitle_task` 若用普通 SELECT 读空，只能去 `INSERT` → 撞 `uk_workspace` → **再撞一次键**。
 > **为什么是 `FOR SHARE` 不是 `FOR UPDATE`**：我们只要「绕过快照看到最新已提交行」，不写 workspace 行，共享锁足够。而 duplicate-key 失败会在索引记录上**留下一个 S 锁** → `FOR UPDATE` 要 X 锁，就变成 **S→X 锁升级**：两个并发撞键者互相等 → 死锁。
 > **两条落地约束**：① 撞键的 INSERT 与捕获它的 catch 必须在**同一事务方法、同一类内直接调用**，中间**不隔任何 `@Transactional` 边界**（否则 Spring 在代理边界把事务标成 rollback-only，甲-2 静默退化成甲-1）；② **B 的事务里不许放慢操作**（网络 / 文件 IO）。
-> **待实测确认**：duplicate-key 失败留下 S 锁来自 MySQL 文档，**本项目尚未实测**。复现要 **3 个并发请求**打同一个全新 URL（2 个复现不出来，只测 2 个会误判 `FOR UPDATE` 安全）。
+> **已实测**（2026-10-20，父任务集成评审轮）：3 个并发请求打同一个全新 URL，`FOR SHARE` 这条路径**走通了，无死锁**。
+> 日志逐句为证：三个请求先各做一次普通 `SELECT`（均 `Total: 0`）→ 都 `INSERT workspace` → 一个胜出，
+> 另两个撞 `uk_source` → **同一事务内** `SELECT workspace … FOR SHARE`（`Total: 1`，看见对方刚提交的行）
+> → `SELECT subtitle_task`（普通，仍 `Total: 0`）→ `INSERT subtitle_task` 再撞 `uk_workspace`
+> → 再 `SELECT subtitle_task … FOR SHARE`（`Total: 1`）→ `INSERT task_run` 撞 `uk_active_run` → 409。
+> 即「撞键 → 锁定读重查」在 **workspace 与 subtitle_task 两层**都真实发生，与本节第 3 步逐字对上；
+> 三个请求均即刻返回（1×202 + 2×409），**未出现 S→X 锁升级死锁**。证据见
+> `evidence/2026-10-20/ac4-concurrency.txt`。
 
 ### 7.2 提交（上传）
 

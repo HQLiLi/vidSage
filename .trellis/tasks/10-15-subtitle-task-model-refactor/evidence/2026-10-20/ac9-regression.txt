@@ -1,0 +1,76 @@
+AC9 回归 —— 验收记录
+日期：2026-10-20（父任务集成评审轮）
+判据出处：prd.md AC9
+  「全量测试绿；后端能起服务；backend/data/works* 从零重建后能跑通一次完整流程」
+
+================================================================
+1. 全量测试
+================================================================
+
+  cd backend && rm -rf target/surefire-reports && JAVA_HOME=/f/java_soft/java21 mvn clean test
+
+  [INFO] Tests run: 700, Failures: 0, Errors: 0, Skipped: 1
+  [INFO] BUILD SUCCESS
+
+  对照评审开工前的基线：**700 / 0 failures / 0 errors / 1 skipped** —— 逐项相同。
+  条数「不变」是**正确**的：本轮是评审，没有改任何生产代码与测试代码（唯一的代码级动作是
+  把服务以 `--spring.ai.deepseek.base-url` 指向死地址做一次故障注入，不改仓库文件）。
+
+================================================================
+2. 后端能起服务
+================================================================
+
+  本轮共起服务 5 次（含一次带 `--spring.ai.deepseek.base-url` 覆盖的故障注入），每次
+  `Started VidSageApplication in ~3.3 seconds`，`Tomcat started on port 8080`。
+  收工一律 `taskkill //F //PID <pid>`（`TaskStop` 只杀 mvn 包装进程，子 JVM 继续占端口）。
+
+================================================================
+3. 「从零重建」—— 步骤 0 已满足
+================================================================
+
+  本轮开工第一步就做了全量重置（项目所有者裁定 A）：
+    · mysqldump 全库 → evidence/2026-10-20/vidsage-before.sql（37 KB，6 条 INSERT，中文注释未乱码）
+    · TRUNCATE 六张表 → 行数全 0
+    · `mv backend/data/works backend/data/works.bak-2026-10-20`（40 MB）→ 新建空 works/
+  所以后面每一条 AC 都是在**真正的零起点**上跑的。
+
+================================================================
+4. 从零跑通一次完整流程
+================================================================
+
+用一个**没传过的文件**（22.9 MB）走上传路线，让系统从零建 workspace 目录：
+
+  POST /api/tasks/upload
+    => 202 {"taskNo":"af13c9ff4bfb4b52811ec63dc1c8d8b3","runNo":1}
+
+  新目录从零建出：backend/data/works/b88f5c3710be5043614edce4c2239467200f909c93a65e8a946a1a1ffb517bf2/
+  （目录名 = sanitizeName(sha256)，与 design §8.1 一致）
+
+  [1] 提交 → 等完成
+      run 21  MAIN       SUCCEEDED
+  [2] GET /artifacts
+      [('ORIGINAL','',1), ('CLEANED','',1)]，文件 URL 与大小齐全
+  [3] 下载并逐字节比对
+      CLEANED/segments.json  vs 盘上 clean-segments.json   -> 相同
+      CLEANED/subtitles.srt  vs 盘上 clean-subtitles.srt   -> 相同
+  [4] 翻译
+      POST /{taskNo}/translate {"sourceLanguage":"zh","targetLanguage":"en"}
+        => 202 {"taskNo":"af13c9ff…","runNo":2}
+      run 22  TRANSLATE  SUCCEEDED
+  [5] 重新生成字幕（带关键词）
+      POST /{taskNo}/subtitles/regenerate {"keywords":["弹反","魂like"]}
+        => 202 {"taskNo":"af13c9ff…","runNo":3}
+      run 23  RECLEAN    SUCCEEDED
+  [6] 最终态
+      /artifacts => [('ORIGINAL','',1), ('CLEANED','',2)]
+      库内全行：
+        id=19  ORIGINAL   READY      rev1
+        id=20  CLEANED    SUPERSEDED rev1     ← RECLEAN 换版作废
+        id=21  TRANSLATED DELETED    rev1 en  ← 下游级联回收
+        id=22  CLEANED    READY      rev2
+      三条 run：MAIN → TRANSLATE → RECLEAN，全 SUCCEEDED
+
+  => 一次完整流程走通：**提交 → 完成 → /artifacts → 下载 → 翻译 → 重新生成**，
+     且三种 run_type 在同一个 task 上依次跑过、产物版本与下游级联全部正确。
+
+结论：AC9 PASS。

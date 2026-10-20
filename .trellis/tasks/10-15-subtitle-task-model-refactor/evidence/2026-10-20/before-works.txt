@@ -1,0 +1,37 @@
+backend/data/works/9466c90f283671b96028f981c39e70c8ab3b22a67911e83859581543278a8dfc/:
+total 8388
+drwxr-xr-x 1 14683 197609       0 Oct 19 13:42 .
+drwxr-xr-x 1 14683 197609       0 Oct 20 05:45 ..
+-rw-r--r-- 1 14683 197609  429142 Oct 19 13:42 audio-16k1ch48k-t0.m4a
+-rw-r--r-- 1 14683 197609    1681 Oct 19 13:42 clean-segments.json
+-rw-r--r-- 1 14683 197609    1056 Oct 19 13:42 clean-subtitles.srt
+-rw-r--r-- 1 14683 197609    1048 Oct 19 13:42 context.json
+-rw-r--r-- 1 14683 197609    1509 Oct 19 13:42 original-segments.json
+-rw-r--r-- 1 14683 197609     986 Oct 19 13:42 original-subtitles.srt
+-rw-r--r-- 1 14683 197609 8130874 Oct 19 13:42 source.mp4
+
+backend/data/works/BV11QMd6WEJp_1/:
+total 8405
+drwxr-xr-x 1 14683 197609       0 Oct 20 13:18 .
+drwxr-xr-x 1 14683 197609       0 Oct 20 05:45 ..
+-rw-r--r-- 1 14683 197609  429142 Oct 20 13:13 audio-16k1ch48k-t0.m4a
+-rw-r--r-- 1 14683 197609    1763 Oct 20 13:18 clean-segments.json
+-rw-r--r-- 1 14683 197609    1094 Oct 20 13:18 clean-subtitles.srt
+-rw-r--r-- 1 14683 197609     674 Oct 20 13:18 context.json
+-rw-r--r-- 1 14683 197609    1670 Oct 20 13:13 original-segments.json
+-rw-r--r-- 1 14683 197609    1059 Oct 20 13:13 original-subtitles.srt
+-rw-r--r-- 1 14683 197609   17204 Oct 20 13:13 source.info.json
+-rw-r--r-- 1 14683 197609 8130874 Oct 20 13:13 source.mp4
+
+backend/data/works/BV1Va7V66Ebp_1/:
+total 23328
+drwxr-xr-x 1 14683 197609        0 Oct 20 05:52 .
+drwxr-xr-x 1 14683 197609        0 Oct 20 05:45 ..
+-rw-r--r-- 1 14683 197609   840127 Oct 20 05:52 audio-16k1ch48k-t0.m4a
+-rw-r--r-- 1 14683 197609     4276 Oct 20 05:52 clean-segments.json
+-rw-r--r-- 1 14683 197609     2971 Oct 20 05:52 clean-subtitles.srt
+-rw-r--r-- 1 14683 197609      827 Oct 20 05:52 context.json
+-rw-r--r-- 1 14683 197609     3954 Oct 20 05:52 original-segments.json
+-rw-r--r-- 1 14683 197609     2839 Oct 20 05:52 original-subtitles.srt
+-rw-r--r-- 1 14683 197609    24482 Oct 20 05:52 source.info.json
+-rw-r--r-- 1 14683 197609 22990212 Oct 20 05:52 source.mp4

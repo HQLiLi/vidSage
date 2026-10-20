@@ -1,0 +1,111 @@
+AC4 并发 —— 验收记录
+日期：2026-10-20（父任务集成评审轮）
+判据出处：prd.md AC4
+  「同一 URL 并发提交收敛到同一条 subtitle_task；同一 task 并发触发 → 一方 409 且响应体带 taskNo；
+    互斥不泄漏（uk_active_run 无残留）」
+
+================================================================
+1. 同一全新 URL 3 并发提交
+================================================================
+
+命令：
+  for i in 1 2 3; do (curl -s -o /tmp/ac4-$i.json -w "req$i: %{http_code}\n" \
+    -X POST localhost:8080/api/tasks -H 'Content-Type: application/json' \
+    -d '{"url":"https://www.bilibili.com/video/BV11QMd6WEJp"}' &) ; done; wait
+
+结果：
+  req2: 202   {"taskNo":"a5a0b2ccd68a4e478736cf0ee9216b71","runNo":1}
+  req1: 409   {"taskNo":"a5a0b2ccd68a4e478736cf0ee9216b71","runNo":1}
+  req3: 409   {"taskNo":"a5a0b2ccd68a4e478736cf0ee9216b71","runNo":1}
+
+  => 三个响应**同一个 taskNo** —— 收敛成立。
+  => 1×202 + 2×409，202 与 409 **同形状** `{taskNo, runNo}`（C56）。
+  => 无重复键炸成 500。
+
+库状态（收敛判据）：
+  workspace  WHERE source_key='BV11QMd6WEJp|1'  =>  1 行   ✓
+  subtitle_task                                  =>  该 workspace 恰 1 行（id=3）  ✓
+
+================================================================
+2. ★ design §7.1「待实测确认」的收口：C63 路径被完整走到
+================================================================
+
+design §7.1 原文留了一条**尚未实测**的疑点：
+  「duplicate-key 失败留下 S 锁来自 MySQL 文档，本项目尚未实测。
+    复现要 **3 个并发请求**打同一个全新 URL（2 个复现不出来，只测 2 个会误判 FOR UPDATE 安全）。」
+
+本次正好是 3 并发打全新 URL，日志把整条路径逐句记下来了：
+
+【赢家 handler-3】
+  1  SELECT workspace（普通）            Total: 0
+  2  INSERT workspace                    Updates: 1      → workspace id=3
+  3  SELECT subtitle_task（普通）        Total: 0
+  4  INSERT subtitle_task                Updates: 1      → task id=3
+  5  SELECT MAX(run_no)                  Total: 1
+  6  INSERT task_run (MAIN, RUNNING)     Updates: 1      → run id=7
+  7  INFO 任务已创建: taskNo=a5a0b2cc…, runNo=1
+
+【输家 handler-2 / handler-4（两个都走了同样的路）】
+  1  SELECT workspace（普通）            Total: 0
+  2  INSERT workspace                    → 撞 uk_source（消耗掉 auto_increment 4、5）
+  3  SELECT workspace … FOR SHARE        Total: 1        ← C63 锁定读，看见赢家已提交的行
+  4  SELECT subtitle_task（普通）        Total: 0        ← 快照仍读不到
+  5  INSERT subtitle_task                → 撞 uk_workspace（消耗 task auto_increment 4、5）
+  6  SELECT subtitle_task … FOR SHARE    Total: 1        ← 第二次锁定读重查
+  7  SELECT MAX(run_no)                  Total: 1
+  8  INSERT task_run (MAIN, RUNNING)     → 撞 uk_active_run（消耗 run auto_increment 8、9）
+  9  SELECT task_run … FOR SHARE         Total: 1        ← 拿到那条 RUNNING run
+ 10  ApiExceptionHandler: 任务冲突被拒绝: 该任务已有一次执行在跑：
+       taskNo=a5a0b2ccd68a4e478736cf0ee9216b71，runNo=1；请等它跑完再触发…
+
+【结论】
+  · C63 的「撞键 → 同一事务内锁定读重查」在 **workspace 与 subtitle_task 两层**都真实走了一遍，
+    与 design §7.1 第 3 步「**两行都要**锁定读」逐字对上。
+  · 用的是 `FOR SHARE`（日志可见），**没有出现 S→X 锁升级死锁**，三个请求都即刻返回，
+    无卡顿、无 500。design §7.1 那条「待实测确认」**可以关掉**（建议按订正惯例回写）。
+  · 最终的 409 来自 `uk_active_run`（第 8 步），不是 uk_source —— 与 design §7.1 第 4 步一致。
+
+【顺带记一笔，免得被当异常】task_run 的 id 出现 8、9 空号，workspace/subtitle_task 出现 4、5 空号。
+  那是 InnoDB 对**失败的 INSERT 也消耗 auto_increment** 的正常行为，不是数据损坏。
+  注：information_schema.TABLES.AUTO_INCREMENT 一开始报 56/101，与 max(id) 差很远 —— 那是
+  I_S 的缓存失真，`ANALYZE TABLE` 后即回到正常值（workspace 6 / task_run 12）。别拿它当判据。
+
+================================================================
+3. 同一 task 并发触发
+================================================================
+
+命令：对 task 3 并发两个 regenerate
+  for i in 1 2; do (curl … /api/tasks/$T/subtitles/regenerate -d '{"keywords":["probe"]}' &) ; done; wait
+
+结果：
+  req1: 202   {"taskNo":"a5a0b2cc…","runNo":2}
+  req2: 409   {"taskNo":"a5a0b2cc…","runNo":2}     ← 一方 409，响应体带 taskNo  ✓
+
+  => PASS：202 / 409 同形状；409 带的是**已存在那条 run** 的 {taskNo, runNo}（C56 的「供订阅」）。
+
+================================================================
+4. 互斥不泄漏
+================================================================
+
+全部 run 终态后：
+  SELECT * FROM task_run WHERE active_flag IS NOT NULL   =>  0 行   ✓
+（active_flag 是生成列：只有 status='RUNNING' 的行非 NULL）
+
+================================================================
+5. 父 prd 的 AC4 措辞已过期（文档订正项，非代码缺陷）
+================================================================
+
+父 prd 需求 4 / AC4 写的是「并发提交同一个**新** URL 收敛到同一条 subtitle_task，**不报 409**」。
+本次实测 1×202 + 2×409。这**不是缺陷** —— 该措辞已在 S2 被订正并实测过：
+
+  S2 prd（10-17-subtitle-model-submit-cutover）AC2 原文：
+  「并发提交同一个**新** URL（3 个并发请求，2 个复现不出来）收敛到**同一条 subtitle_task**、
+    ~~不报 409~~（2026-10-18 订正：**这句与 design §7.1 第 5 步冲突** —— 三个请求收敛到同一个 task
+    之后各自都要插 run，`uk_active_run` 只放行一个，**另外两个必然 409**（响应体带同一个 taskNo 与 runNo）。
+    实测：**1×202 + 2×409**，库里恰好 1 行 workspace + 1 行 subtitle_task，无重复键炸成 500。
+    原意应是「不报**旧模型那种去重 409**」，那种 409 已随新模型消失）。」
+
+本次结果与 S2 的实测**逐项一致**，等于该订正的独立复现。
+=> 父 prd 的 AC4 与需求 4 应同步订正（按仓库惯例：删除线 + 日期）。
+
+结论：AC4 PASS（1×202 + 2×409 是设计行为），附带一条父 prd 措辞订正项。

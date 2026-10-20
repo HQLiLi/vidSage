@@ -190,7 +190,12 @@ https___www.bilibili.com_video_BV11QMd6WEJp__spm_id_from=333.1387.homepage.video
 1. 撞键的 INSERT 与捕获它的 catch，必须在**同一事务方法、同一类内直接调用**，中间**不隔任何 `@Transactional` 边界** —— 否则 Spring 在代理边界就把事务标成 rollback-only，甲-2 **静默退化成甲-1**（外层 catch 救不回来，commit 时抛 `UnexpectedRollbackException`）。现状 repository 是裸 `@Repository`、事务新加在 application 层，天然满足 —— **只要别给 repository 的 insert 加注解**。
 2. **B 的事务里不许放慢操作**（网络 / 文件 IO）：B 在事务结束前一直持有 workspace 行的 S 锁，而 A 的指纹写入（§7.3 步骤 2 ④ `UPDATE workspace`）要 X 锁，会等它。B 剩下的动作全是 DB、微秒级 → **接受**。
 
-**待实测确认**：上表第 4 步"duplicate-key 失败留下 S 锁"来自 MySQL 文档，**本项目尚未实测**。复现要 **3 个并发请求**打同一个**全新** URL（A 建行 + B、C 同时撞键）—— 2 个复现不出来（只有一个 S 持有者，升级 X 无人争），只测 2 个会误判 `FOR UPDATE` 安全。
+**~~待实测确认~~（2026-10-20 订正：已实测通过）**：上表第 4 步"duplicate-key 失败留下 S 锁"来自 MySQL 文档，~~**本项目尚未实测**~~。复现要 **3 个并发请求**打同一个**全新** URL（A 建行 + B、C 同时撞键）—— 2 个复现不出来（只有一个 S 持有者，升级 X 无人争），只测 2 个会误判 `FOR UPDATE` 安全。
+
+> **2026-10-20 订正**：父任务集成评审轮按上述方法实测（3 并发打全新 URL），**无死锁**。
+> 两个输家确实各撞了一次键（workspace 与 subtitle_task 两层），随后都走 `FOR SHARE` 锁定读重查成功，
+> 最后撞 `uk_active_run` 得 409。结论与设计一致，`FOR SHARE` 的选择被验证是对的。
+> 实测记录见 `evidence/2026-10-20/ac4-concurrency.txt`；`design.md` §7.1 已按现状重写。
 
 **已知成本（留档，不翻案）**：甲-1 天然没有这个快照坑 —— 新事务的第一读就是新快照，普通 SELECT 就够。代价是控制流不线性 + 多一次事务。本次选甲-2，并接受"多出来的锁定读要求"。
 

@@ -34,7 +34,7 @@
 1. 六张表齐备，口径一致（命名规则、枚举列类型、外键走逻辑外键）。
 2. 三条 run_type（`MAIN` / `RECLEAN` / `TRANSLATE`）都能跑通，各自的状态与失败原因互不干扰。
 3. 提交一个做过的 URL **不冲突**：命中 `workspace` → 拿它的 `subtitle_task` → 插新 `MAIN` run（可回退主状态）。
-4. 并发提交同一个**新** URL 收敛到同一条 `subtitle_task`，不报 409。
+4. 并发提交同一个**新** URL 收敛到同一条 `subtitle_task`，~~不报 409~~（2026-10-20 订正，见 AC4）。
 5. 互斥、`run_no`、`revision` 的并发正确性由 DB 唯一键兜住，不靠内存或重试。
 6. 产物读路径只认 `READY`；文件不在时**不改状态**、当没有并重新生成。
 7. 中间产物复用判据含表登记，内容变更后主管线**真的重跑**。
@@ -126,15 +126,32 @@ SELECT file_name, status FROM intermediate_file WHERE task_id = ?;
 
 ## 跨子验收标准（全部段做完后，父任务评审）
 
-- [ ] **AC1 表与口径**：六张表齐备；索引/约束名符合 `N4`；枚举列一律 `VARCHAR(32)`；无 DB 外键约束；`schema.sql` 头部写明存量迁移步骤（`subtitle_keyword` 必须手工 DROP 一次）。
-- [ ] **AC2 旧件零残留**：`VideoTask` / `TaskSessionRegistry` / 三个中文失败前缀常量与两个「按前缀认领」的清除方法 / `latest_*` 指针类字段 / `TaskConflictResponse.existingTask` / `WorkspaceKey` 全部退场；`TaskStatus` 已改名 `TaskRunStatus`（阿里 SDK 的同名枚举不受影响）。
-- [ ] **AC3 三种 run 跑通**：`MAIN` / `RECLEAN` / `TRANSLATE` 各跑一次，产物状态与失败原因互不串台。
-- [ ] **AC4 并发**：同一 URL 并发提交收敛到同一条 `subtitle_task`；同一 task 并发触发 → 一方 409 且响应体带 `taskNo`；互斥不泄漏（`uk_active_run` 无残留）。
-- [ ] **AC5 崩溃恢复**：kill 进程后重启 → 残留 run 变 `INTERRUPTED`、残留 artifact 变 `FAILED`、被收掉的 task `updated_at` 更新。
-- [ ] **AC6 内容变更**：改内容重提交 → 旧 artifact 与中间产物全 `SUPERSEDED`、指纹写入、主管线真的重跑（不再跳过转写）。
-- [ ] **AC7 对账**：手工造出四种不一致，端点各报出来；② 只报不修；重复调用结果不变（只读幂等）。
-- [ ] **AC8 契约**：`GET /api/tasks/{taskNo}` 只有身份 + `lastRun`（无扁平状态五字段）；`/artifacts` 只有 `READY`；三个 POST 统一 202/409 `{taskNo, runNo}`；SSE 一条 run 一条流、事件带 `runNo`/`runType`/`targetLanguage`。
-- [ ] **AC9 回归**：全量测试绿；后端能起服务；`backend/data/works*` 从零重建后能跑通一次完整流程。
+- [x] **AC1 表与口径**：六张表齐备；索引/约束名符合 `N4`；枚举列一律 `VARCHAR(32)`；无 DB 外键约束；`schema.sql` 头部写明存量迁移步骤（`subtitle_keyword` 必须手工 DROP 一次）。
+      实测（2026-10-20）：六张表齐；`uk_` 恰 9 条 + `idx_` 恰 1 条，全带表名段、无 `uq_` 残留；10 个枚举列全 `varchar(32)`（`lang` 是 `varchar(16)`，design §2.1 明确不动）；`FOREIGN KEY` 计数 0；`schema.sql` 头部第 5–8 行写明两条手工迁移。
+      **判据口径**：主键具名与「唯一约束用 `CONSTRAINT … UNIQUE`」只能看 `schema.sql` 原文——`SHOW CREATE TABLE` 会把两者归一成 `PRIMARY KEY` / `UNIQUE KEY`（MySQL 的规范化行为，PK 约束名恒为 `PRIMARY`，写了也被忽略）。证据 `evidence/2026-10-20/ac1-ac2.txt`
+- [x] **AC2 旧件零残留**：`VideoTask` / `TaskSessionRegistry` / 三个中文失败前缀常量与两个「按前缀认领」的清除方法 / `latest_*` 指针类字段 / `TaskConflictResponse.existingTask` / `WorkspaceKey` 全部退场；`TaskStatus` 已改名 `TaskRunStatus`（阿里 SDK 的同名枚举不受影响）。
+      实测（2026-10-20，范围限 `backend/src`）：22 个退场名逐个 grep **全 0 命中**（含 `*_FAILURE_PREFIX`、`latest_*` 任意形式、`VideoTaskRepository`）。`TaskStatus` 只剩 `com.alibaba.dashscope.common.TaskStatus`（SDK 同名枚举，符合预期），项目枚举已是 `TaskRunStatus`。`schema.sql` 无 `uq_` 索引、无旧 `task` 表。
+      余下同名命中均**非旧件**：`TEMP_FILE_PREFIX` / `AUDIO_PREFIX` / `SOURCE_FILE_PREFIX` / `PRODUCT_PREFIX` 是文件名前缀；`SubtitlePipeline` 的 `log.error("翻译失败: …")` 是**日志文案**，不是写进 `error_message` 再解析回来的前缀常量。证据 `evidence/2026-10-20/ac1-ac2.txt`
+- [x] **AC3 三种 run 跑通**：`MAIN` / `RECLEAN` / `TRANSLATE` 各跑一次，产物状态与失败原因互不串台。
+      实测（2026-10-20，真 yt-dlp + 真 DashScope ASR + 真 DeepSeek）：task 1 上 MAIN(run1) / RECLEAN(run2) / TRANSLATE(run3, en) 三条全 `SUCCEEDED`，各自独立的 status 与 `error_message`；产物按版本递进（ORIGINAL rev1 READY → CLEANED rev1 SUPERSEDED → CLEANED rev2 READY → TRANSLATED(en) rev1 READY）。
+      **互不串台**：造失败（提交不存在的 BV 号 → yt-dlp 404）得 task 2 的 MAIN `FAILED` + `error_message`，而 task 1 三条 run 仍全 `SUCCEEDED`；**同 task 粒度**由 task 6 补齐——run 12 `INTERRUPTED` 与 run 14 `SUCCEEDED` 并存、`error_message` 各自独立（旧模型三种生命周期共用一行 `error_message`、靠中文前缀区分，这个场景在新模型里不可能发生）。
+      证据 `evidence/2026-10-20/ac3-three-runs.txt`、`ac5-crash-recovery.txt` §4
+- [x] **AC4 并发**：同一 URL 并发提交收敛到同一条 `subtitle_task`；同一 task 并发触发 → 一方 409 且响应体带 `taskNo`；互斥不泄漏（`uk_active_run` 无残留）。
+      ~~「收敛……不报 409」~~（2026-10-20 订正：**该措辞失实**。三个请求收敛到同一个 task 之后各自都要插 run，`uk_active_run` 只放行一个，**另外两个必然 409**——原意应是「不报旧模型那种**去重** 409」，那种 409 已随新模型消失。S2 已于 2026-10-18 订正并实测，本轮独立复现：**1×202 + 2×409**，三个响应体同一个 `taskNo`，库里恰 1 行 `workspace` + 1 行 `subtitle_task`，无重复键炸 500。证据 `evidence/2026-10-20/ac4-concurrency.txt`）
+      实测量：3 并发打全新 URL → 1×202 + 2×409（同 taskNo）；同 task 并发触发 → 1×202 + 1×409（带 `taskNo`/`runNo`）；跑完后 `active_flag IS NOT NULL` 0 行。
+      **附带收口**：design §7.1 那条「duplicate-key 留 S 锁、尚未实测」——本轮 3 并发把 C63 的「撞键 → 锁定读重查」在 workspace 与 subtitle_task **两层**都走到，无死锁，已按现状回写 design。
+- [x] **AC5 崩溃恢复**：kill 进程后重启 → 残留 run 变 `INTERRUPTED`、残留 artifact 变 `FAILED`、被收掉的 task `updated_at` 更新。
+      实测（2026-10-20）：轮询到 `CREATING` 占位出现再 `taskkill`（不赌时间窗），残留现场为 run 12 `RUNNING` + artifact 11 `CREATING`；重启后启动收口三条 UPDATE **各恰好命中 1 行** → run `INTERRUPTED`（`finished_at` 补齐）、artifact `FAILED`、task `updated_at` 22:31:06 → 22:31:52。对照：同一实例首次启动（空库）时三条 SQL 全是 `Updates: 0`，不误伤。证据 `evidence/2026-10-20/ac5-crash-recovery.txt`
+- [x] **AC6 内容变更**：改内容重提交 → 旧 artifact 与中间产物全 `SUPERSEDED`、指纹写入、主管线真的重跑（不再跳过转写）。
+      实测（2026-10-20）：`UPDATE workspace SET duration_ms = duration_ms + 1000` 造内容变更 → 重提交（命中同 task、插新 MAIN run，即需求 3「做过的 URL 不冲突」）→ `probe-fingerprint` 报「内容已变化，旧产物已作废，将重新产出」；旧 ORIGINAL/CLEANED 落 `SUPERSEDED`、三条下游译文落 `DELETED`（比 AC 字面更进一步：已回收），新 ORIGINAL rev2 / CLEANED rev3 落 `READY`；指纹写回真值 134095。
+      主管线真重跑：`媒体复用检查: reused=false`，acquire/extract/transcribe/clean 四阶段全 `RUNNING`（**不是 SKIPPED**），盘上 7 个文件 mtime 全刷新。同日志里 task 6 的重传（内容没变）走复用、转写 `SKIPPED` —— 两条路径各自成立。证据 `evidence/2026-10-20/ac6-content-change.txt`
+- [x] **AC7 对账**：手工造出四种不一致，端点各报出来；② 只报不修；重复调用结果不变（只读幂等）。
+      实测（2026-10-20）：① 移走 `clean-subtitles.srt` → `danglingFiles` 带 `taskNo`+`fileName`；④ 改 `context.json` 内容 → `hashMismatch` 带 `taskNo`+`fileName`；③ 塞 `stray-orphan.bin` → `orphanFiles` 带 **`dirName`**（孤儿不在表里、没有 taskNo 可带，是 design 明写的唯一例外），而 `.tmp`/`.part`/`.ytdl` **三类都不报**；② 手工造 `SUPERSEDED` 与 `DELETED` 两种残留 → 都进 `reclaimPending`，且这两个文件**不被算成孤儿**（②③ 不重叠）。
+      **只报不修 + 只读幂等**：连调两次报告（除 `checkedAt`）逐字相同；四表逐行 dump diff 零变化；全盘文件 mtime diff 零变化。正常态四类全 0（4 目录 / 23 文件），复原后回到同一基线。证据 `evidence/2026-10-20/ac7-reconcile.txt`
+- [x] **AC8 契约**：`GET /api/tasks/{taskNo}` 只有身份 + `lastRun`（无扁平状态五字段）；`/artifacts` 只有 `READY`；三个 POST 统一 202/409 `{taskNo, runNo}`；SSE 一条 run 一条流、事件带 `runNo`/`runType`/`targetLanguage`。
+      实测（2026-10-20）：`GET /{taskNo}` 顶层键恰 `['createdAt','inputType','lastRun','sourceUri','taskNo']`，扁平五字段与 `artifacts` **一个都没有**；库里同 task 8 行 artifact 只暴露 2 行 `READY`，顺序 ORIGINAL → CLEANED → TRANSLATED，CLEANED 的 `keywordsFingerprint` == `/keywords` 的 `fingerprint`；三个 POST 全 202/409 同形状 `{taskNo, runNo}`、**无 `existingTask`**；下载端点 5 种 400 + 2 种 404 全中、正常下载与盘上文件逐字节相同、Content-Type 正确；SSE 未知 runNo→404 / 已终态→204 / RUNNING→开流并推 DB 快照，事件带 `runNo`/`runType`/`targetLanguage`（MAIN 无 `targetLanguage`，TRANSLATE 有）。证据 `evidence/2026-10-20/ac8-contract.txt`
+- [x] **AC9 回归**：全量测试绿；后端能起服务；`backend/data/works*` 从零重建后能跑通一次完整流程。
+      实测（2026-10-20）：`mvn clean test` → **700 / 0 failures / 0 errors / 1 skipped / BUILD SUCCESS**，与开工前基线逐项相同（本轮是评审，未改生产代码与测试代码，条数不变正是对的）；服务本轮共起 5 次全部正常；「从零」由步骤 0 的全量重置满足，另用一个**没传过的文件**走上传路线让系统从零建出 workspace 目录（`b88f5c37…` = sha256），跑通「提交 → 完成 → /artifacts → 下载（逐字节比对）→ 翻译 → 重新生成」全程，三条 run 依次 SUCCEEDED、产物版本与下游级联全对。证据 `evidence/2026-10-20/ac9-regression.txt`
 
 ## Notes
 
