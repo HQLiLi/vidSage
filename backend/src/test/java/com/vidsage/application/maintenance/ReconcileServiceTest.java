@@ -14,6 +14,7 @@ import com.vidsage.application.maintenance.query.ReconcileIssueGroup;
 import com.vidsage.application.maintenance.query.ReconcileReport;
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.domain.intermediate.IntermediateFile;
+import com.vidsage.domain.intermediate.model.IntermediateFileStatus;
 import com.vidsage.domain.intermediate.model.IntermediateFileType;
 import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.ArtifactType;
@@ -100,9 +101,9 @@ class ReconcileServiceTest {
         writeFile(DIR, "clean-segments.json", "a");
         writeFile(DIR, "clean.srt", "b");
         writeFile(DIR, "context.json", "c");
-        SubtitleArtifact artifact = readyArtifact(ArtifactType.CLEANED, null,
-                "clean-segments.json", "clean.srt", "context.json", null, null, null, null, null);
-        artifact.supersede();
+        SubtitleArtifact artifact = artifactIn(readyArtifact(ArtifactType.CLEANED, null,
+                "clean-segments.json", "clean.srt", "context.json", null, null, null, null, null),
+                SubtitleArtifactStatus.SUPERSEDED);
 
         ReconcileReport report = reconcile(List.of(scoped(artifact)), List.of());
 
@@ -113,10 +114,9 @@ class ReconcileServiceTest {
     @Test
     void reportsReclaimPendingForDeletedArtifactWithFilesStillOnDisk() throws IOException {
         writeFile(DIR, "clean-segments.json", "a");
-        SubtitleArtifact artifact = readyArtifact(ArtifactType.ORIGINAL, null,
-                "clean-segments.json", null, null, null, null, null, null, null);
-        artifact.supersede();
-        artifact.confirmDeletion();
+        SubtitleArtifact artifact = artifactIn(readyArtifact(ArtifactType.ORIGINAL, null,
+                "clean-segments.json", null, null, null, null, null, null, null),
+                SubtitleArtifactStatus.DELETED);
 
         ReconcileReport report = reconcile(List.of(scoped(artifact)), List.of());
 
@@ -141,9 +141,9 @@ class ReconcileServiceTest {
         // 撞车：文件名不带版本号，盘上每个 (类型, 语言) 只有一份——旧行登记的名字和新版是同一个，
         // 盘上那份归新版本，不是待回收残留（照着报告去删会删掉当前版本）
         writeFile(DIR, "clean-segments.json", "a");
-        SubtitleArtifact stale = readyArtifact(ArtifactType.CLEANED, null,
-                "clean-segments.json", null, null, null, null, null, null, null);
-        stale.supersede();
+        SubtitleArtifact stale = artifactIn(readyArtifact(ArtifactType.CLEANED, null,
+                "clean-segments.json", null, null, null, null, null, null, null),
+                SubtitleArtifactStatus.SUPERSEDED);
         SubtitleArtifact current = readyArtifact(ArtifactType.CLEANED, null,
                 "clean-segments.json", null, null, null, null, null, null, null);
 
@@ -156,8 +156,8 @@ class ReconcileServiceTest {
     @Test
     void reportsReclaimPendingForSupersededIntermediateFileOnDisk() throws IOException {
         writeFile(DIR, "source.mp4", "media");
-        IntermediateFile file = intermediateFile("source.mp4", IntermediateFileType.SOURCE_MEDIA);
-        file.supersede();
+        IntermediateFile file = fileIn(intermediateFile("source.mp4", IntermediateFileType.SOURCE_MEDIA),
+                IntermediateFileStatus.SUPERSEDED);
 
         ReconcileReport report = reconcile(List.of(), List.of(scoped(file)));
 
@@ -168,9 +168,8 @@ class ReconcileServiceTest {
 
     @Test
     void doesNotReportReclaimPendingForIntermediateFileAlreadyGone() {
-        IntermediateFile file = intermediateFile("source.mp4", IntermediateFileType.SOURCE_MEDIA);
-        file.supersede();
-        file.confirmDeletion();
+        IntermediateFile file = fileIn(intermediateFile("source.mp4", IntermediateFileType.SOURCE_MEDIA),
+                IntermediateFileStatus.DELETED);
 
         ReconcileReport report = reconcile(List.of(), List.of(scoped(file)));
 
@@ -355,5 +354,27 @@ class ReconcileServiceTest {
 
     private static IntermediateFile intermediateFile(String fileName, IntermediateFileType type) {
         return IntermediateFile.ofReady(1L, fileName, type, 1L);
+    }
+
+    /**
+     * 造一条指定状态的产物行。走 {@code restore} 而不是"迁过去"——生产里 {@code SUPERSEDED}
+     * 往后没有迁移入口，那些状态由仓储的批量 UPDATE 写出来。
+     */
+    private static SubtitleArtifact artifactIn(SubtitleArtifact artifact, SubtitleArtifactStatus status) {
+        return SubtitleArtifact.restore(artifact.getId(), artifact.getTaskId(), artifact.getDerivedFromRunId(),
+                artifact.getArtifactType(), artifact.getLang(), artifact.getRevision(), status,
+                artifact.getDerivedFromArtifactId(), artifact.getKeywordsFingerprint(),
+                artifact.getSegmentsFileName(), artifact.getSubtitlesFileName(),
+                artifact.getContextFileName(), artifact.getTermsFileName(),
+                artifact.getSegmentsSha256(), artifact.getSubtitlesSha256(),
+                artifact.getContextSha256(), artifact.getTermsSha256(), LocalDateTime.now());
+    }
+
+    /**
+     * 同上，中间产物版。
+     */
+    private static IntermediateFile fileIn(IntermediateFile file, IntermediateFileStatus status) {
+        return IntermediateFile.restore(file.getId(), file.getTaskId(), file.getFileName(), file.getFileType(),
+                status, file.getDerivedFromRunId(), file.getCreatedAt(), file.getUpdatedAt());
     }
 }
