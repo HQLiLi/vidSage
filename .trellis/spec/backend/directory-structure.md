@@ -21,7 +21,7 @@ com.vidsage
 │   ├── shared/                    # 共享内核：跨上下文领域词汇
 │   └── exception/                 # 跨上下文具名异常
 ├── application/                   # 应用服务层：用例编排、读模型、应用消息与异常、本层定义的出站端口
-│   ├── task/ subtitle/ media/ transcription/ diagnostics/ exception/
+│   ├── task/ subtitle/ media/ transcription/ diagnostics/ maintenance/ exception/
 ├── infrastructure/                # 基础设施层：出站适配
 │   ├── persistence/               # entity / mapper / repository（MyBatis-Plus 三件套）
 │   ├── process/                   # 外部进程执行能力
@@ -190,6 +190,11 @@ com.vidsage
 - 例（2026-10-09）：`WorkspaceDirectoryManager` → application 端口。判据：技术词汇（本机文件系统的
   目录定位与创建），且兜底问「删掉它业务规则还成立吗」→ 成立（目录名公式在 domain 的 `WorkspaceDir`，
   本端口只管把算出的名字挂到配置根下并把目录建出来）。
+- 例（2026-10-20）：`ReconcileReader` → application 端口。判据：契约里**有**领域词汇（`taskNo` /
+  `fileName`），但只服务「只读对账」这个运维动作、不承载任何业务规则，兜底问「删掉它业务规则还成立吗」→
+  成立。这是判据表第二行「领域词汇 + 仅编排/集成需要」的**首例**——**别拿 `ToolDiagnostics` 那条更窄的
+  「契约里没有领域词汇」把它挡回去**（`application/maintenance/` 与 `application/diagnostics/` 是两种理由
+  下的同一结论）。
 
 **端口实现规则**：端口实现落 `infrastructure/`；**唯一例外是签名里带 HTTP 类型（如 `SseEmitter`）的端口，落 `web/<构件桶>/`**——地基「HTTP 类型只在 `web/`」优先，统一性「端口实现落点」让一步。本仓第一例是 `web/sse/SseTaskProgressBroadcaster`（实现 `application/task/port/TaskProgressBroadcaster`）。application 只调用端口，不实现出站端口；domain 聚合根不调端口，domain service 可调 domain 端口（本仓当前尚无 domain service）。
 
@@ -199,7 +204,7 @@ com.vidsage
 
 三条轴各管各的，**不要互相推导**：
 
-- **`domain/`、`application/` 按限界上下文分**：`task/`、`subtitle/`、`media/`、`transcription/`（`domain/` 另有 `intermediate/`、`workspace/`，application 另有 `diagnostics/`）。`domain/X` 与 `application/X` 同名的上下文**一一对应**；上下文是领域概念的家；跨上下文词汇进 `domain/shared/` 共享内核，跨上下文的具名异常进各层的 `exception/`。
+- **`domain/`、`application/` 按限界上下文分**：`task/`、`subtitle/`、`media/`、`transcription/`（`domain/` 另有 `intermediate/`、`workspace/`，application 另有 `diagnostics/`、`maintenance/`）。`domain/X` 与 `application/X` 同名的上下文**一一对应**；上下文是领域概念的家；跨上下文词汇进 `domain/shared/` 共享内核，跨上下文的具名异常进各层的 `exception/`。
 - **上下文包内按「角色」拆桶，桶名用该层已有的角色词**（2026-10-06 包结构整理定，取代旧的「1–3 类平铺即可」阈值）：判据不看包有多大，只看**这个类在所属层的角色**——角色决定桶路径，新增类据此机械落位。**根留该包的门面**，该上下文没有门面时根只剩 `package-info.java`（合法）；**有成员才建桶**，不建空目录：
 
 | 层 | 桶 | 根留什么 |
@@ -443,6 +448,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 | 类型 | 位置 | 为什么 |
 |---|---|---|
 | `ToolDiagnosticReport` | `application/diagnostics/`（根） | 字段全是 `String` / `boolean`，形状可直接对外 → `MediaController` 诊断端点直接返回；其端口 `ToolDiagnostics` 进 `port/` 子包（2026-10-06 端口倒置，原 `infrastructure/process/ExternalToolReport`；端口归属见[判据](#端口归属判据)） |
+| `ReconcileResponse`（+ 内嵌 `ReconcileIssueGroupResponse` / `ReconcileIssueResponse` / `ReconcileSummaryResponse`） | `web/dto/` | 只读对账端点的对外响应（2026-10-20）——**判据 2 下「新增端点」的头一例**：读模型 `application/maintenance/query/ReconcileReport`（零注解）→ `ReconcileResponse.from(...)` 纯映射。报告里带工作区目录名是**有意的例外**（③ 类孤儿不在表里、没有 `taskNo` 可带），只对外、**不进日志**——见 [logging-guidelines.md](./logging-guidelines.md) 脱敏红线。其端口 `ReconcileReader` 进 `application/maintenance/port/`（端口归属见[判据](#端口归属判据)） |
 | `TranscriptionResult` | `domain/transcription/model/` | 字段为 `List<TranscriptionSegment>` + `String`，形状可直接对外 → 直接充当对外契约，补 `@Schema` |
 | `TaskSnapshot` / `RunSummary` | `application/task/query/` | 任务查询的应用层读模型（身份 + 最近一次执行）→ **零 web 注解**（判据 2）；对外 @Schema 在 `web/dto/TaskResponse` 与元素级 `web/dto/RunResponse` |
 | `TaskResponse` / `RunResponse` | `web/dto/` | 任务查询端点的对外响应（判据 2）：@Schema 齐全，静态工厂 `from(读模型)` 纯映射 |
@@ -465,7 +471,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 
 **准入判据**：纯静态工具、无状态、不发起网络 / 外部进程；可引用 spring-core 工具类与 Jackson / slf4j，去掉容器仍可编译；只依赖 JDK + Jackson + slf4j + domain 词汇；不含业务编排。（历史注：本包 2026-10-05 DDD 四层化前叫顶层 `utils/`，子包结构不变，仅改名。）
 
-**`shared/<领域>/` —— 领域化助手包（2026-09-27 以 `utils/` 立；2026-09-27 修订边界）**：`shared/` 是允许的顶层包，`shared/<领域>/` 装该领域的助手——**只收纯算法助手，以及仅使用 `java.nio.file` 的本地文件系统助手**；以领域名限定归属。服务编排、适配器实现、`*Properties`、契约模型一律不得进入。参照：`shared/subtitle/`（`SrtRenderer` 渲染器 / `SubtitleSegmentSplitter` 切分器 / `TermMatcher` 术语命中判定 / `TextSimilarity` 文本相似度——**没有「产物命名」**，命名规则单源在 `domain/subtitle/model/common/SubtitleArtifactSpec`）、`shared/fs/ArtifactFileUtils`（产物落盘、JSON 产物读写与大小判定）、`shared/text/TextTail`（文本尾部截取）、`shared/progress/ProgressMapper`（进度监听器重挂）。
+**`shared/<领域>/` —— 领域化助手包（2026-09-27 以 `utils/` 立；2026-09-27 修订边界）**：`shared/` 是允许的顶层包，`shared/<领域>/` 装该领域的助手——**只收纯算法助手，以及仅使用 `java.nio.file` 的本地文件系统助手**；以领域名限定归属。服务编排、适配器实现、`*Properties`、契约模型一律不得进入。参照：`shared/subtitle/`（`SrtRenderer` 渲染器 / `SubtitleSegmentSplitter` 切分器 / `TermMatcher` 术语命中判定 / `TextSimilarity` 文本相似度——**没有「产物命名」**，命名规则单源在 `domain/subtitle/model/common/SubtitleArtifactSpec`）、`shared/fs/ArtifactFileUtils`（产物落盘、JSON 产物读写与大小判定）、`shared/fs/TransientFiles`（过渡态文件后缀判定：`.tmp` / `.part` / `.ytdl`；2026-10-20 由 yt-dlp 兜底扫描与只读对账 ③ 两处共用而提取——「同一判据只有一份」的又一例）、`shared/text/TextTail`（文本尾部截取）、`shared/progress/ProgressMapper`（进度监听器重挂）。
 
 **Spring 边界看容器，不看 jar**：判据是「**把 Spring 容器整个拿掉，这个包还能不能编译并通过测试**」——**能**才准进。故 `org.springframework.util.*` 这类纯静态工具**允许**；Spring 注解（`@Component` / `@Service` / `@Autowired` / `@Value` / `@ConfigurationProperties` 等）、`ApplicationContext`、`Environment`、HTTP 类型**禁止**。
 
