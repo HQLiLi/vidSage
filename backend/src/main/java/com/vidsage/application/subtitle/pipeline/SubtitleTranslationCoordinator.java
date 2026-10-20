@@ -199,7 +199,7 @@ public class SubtitleTranslationCoordinator {
 
     /**
      * 术语官方译名查证：把上下文里的术语逐条交给 {@link TermLookupProvider} 联网查证，
-     * 结论（官方 / 通用译名或弃权）落独立的 {@code terms-<target>.json}。文件 I/O 留在本层。
+     * 结论（官方 / 通用译名或弃权）落独立的 {@code terms-<lang>.json}。文件 I/O 留在本层。
      *
      * <p><b>为什么挂在翻译流程</b>：查证只为译文服务，翻译不发生就不烧搜索费（目标语种默认 zh 的
      * 中文素材走不到查证）。它是翻译的前置增益、不是独立环节，故内联在本类而不另建 bean；
