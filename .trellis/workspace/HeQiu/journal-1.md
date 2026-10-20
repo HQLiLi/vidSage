@@ -1478,3 +1478,28 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 54: S7 只读对账端点（哈希检测 + 过渡态白名单收口）
+<!-- trellis-session: v=2 fp=d0b72b913e916e8a -->
+
+**Date**: 2026-10-20
+**Task**: S7 只读对账端点（哈希检测 + 过渡态白名单收口）
+**Branch**: `dev`
+
+### Summary
+
+字幕模型重构 7/8：新增 POST /api/maintenance/reconcile 只读对账端点，四类不一致全报（条数+明细）、只报不修、不加鉴权，并成为四列 sha256 的首个读取方；yt-dlp 的过渡态后缀白名单提到 shared/fs（补 .tmp、拆 .info.json，scanProducts 保留本地排除）。真库验收发现 ② 在 C24 下会误报「文件名撞车」（旧行与新版登记同名文件，照报去删会删掉当前版本），加判据排除后 ② 由 7 条归零。测试基线 683 → 708。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `998526a` | refactor(ytdlp): 过渡态后缀白名单提到 shared/fs |
+| `464078a` | feat(maintenance): 只读对账端点 POST /api/maintenance/reconcile |
+| `4ec0fd3` | docs(spec): 新增 maintenance 上下文与对账端点的落位/脱敏口径 |
+| `e23c7d8` | chore(task): 10-17 对账端点任务工件 |
+
+### Status
+
+[OK] **Completed**
