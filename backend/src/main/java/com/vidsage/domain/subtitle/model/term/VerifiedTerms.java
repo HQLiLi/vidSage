@@ -3,7 +3,7 @@ package com.vidsage.domain.subtitle.model.term;
 import java.util.List;
 
 /**
- * 术语查证产物的容器：{@code terms-<route>-<target>.json} 文件的读写形状
+ * 术语查证产物的容器：{@code terms-<lang>.json} 文件的读写形状
  *
  * @param terms 查证后的术语表（见 {@link VerifiedTerm}）；可为 {@code null}，紧凑构造器收敛为空表
  */

@@ -24,14 +24,18 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * 字幕准备编排：从媒体音频中提取文本，落盘为字幕产物。
  *
- * <p><b>断点复用要过两道门</b>：调用方先回答「当前有没有完好的原始产物」（产物表那一侧），
- * 本类再回答「盘上的 segments JSON 在不在、能不能解析」。只看文件会把已经作废的原始产物当成
- * 有效检查点——内容变更级联只动数据库，不会去删干净盘上文件。调用方说不能复用，
- * 本类就完全忽略文件检查点，老老实实重跑。
+ * <p><b>复用判据与真跑分成两个方法</b>：{@link #reuseIfAvailable} 先回答「能不能复用」——
+ * 产物表说这一版完好（调用方算好布尔值传进来），且盘上的 segments JSON 在、能解析；命中就交出
+ * 那份产出。调用方拿到答案才决定要不要建占位，所以这条判据必须先于建占位拿到。
+ * {@link #prepare} 只管真跑：要音频 → 转写 → 写盘，不再自己回头读检查点。
+ *
+ * <p><b>只看文件会把已经作废的原始产物当成有效检查点</b>——内容变更级联只动数据库，
+ * 不会去删干净盘上文件。所以产物表那一半由调用方回答，说不能复用就完全忽略文件检查点。
  */
 @Slf4j
 @Component
@@ -60,40 +64,63 @@ public class SubtitlePreparationCoordinator {
     }
 
     /**
-     * 产出一份字幕，不报告进度。
+     * 能不能复用原始转写：产物表说完好（{@code artifactIntact}），且盘上 segments 检查点解析得出来。
+     * 命中时交出那份产出（含 SRT 字节数），并广播两条 SKIPPED（转写 / 写盘）。
+     * 调用方据此决定插不插占位 —— 所以这条判据必须先于建占位拿到。
      *
-     * @param input                  媒体输入（URL 或本地文件）
-     * @param workDir                这条输入的工作区目录（调用方已定位好）
-     * @param reuseCompletedOriginal 产物表里有没有完好的原始产物；没有就不许走文件检查点
-     * @param owner                  中间产物归属（哪个任务、哪条 run）
-     * @return 两个产物路径与元信息
+     * @param workDir        这条输入的工作区目录（调用方已定位好）；不可为空
+     * @param artifactIntact 产物表里有没有完好的原始产物；{@code false} 时完全不读文件
+     * @param listener       阶段进度监听；不可为 {@code null}
+     * @return 命中的那份字幕产物；不能复用时为空
+     * @throws IllegalArgumentException 工作区目录或监听为空
      */
-    public SubtitleStageOutput prepare(MediaInput input, Path workDir, boolean reuseCompletedOriginal,
-                                       IntermediateFileOwner owner) {
-        return prepare(input, workDir, ProgressListener.noop(), reuseCompletedOriginal, owner);
+    public Optional<SubtitleStageOutput> reuseIfAvailable(Path workDir, boolean artifactIntact,
+                                                          ProgressListener listener) {
+        if (workDir == null) {
+            throw new IllegalArgumentException("工作区目录不能为空：调用方应先定位好这条输入的工作区");
+        }
+        if (listener == null) {
+            throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener");
+        }
+        if (!artifactIntact) {
+            return Optional.empty();
+        }
+        Path segmentsPath = workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
+        // 只读 segments JSON，不看 SRT——SRT 是派生视图，即使 SRT 在而 JSON 不在也必须重跑
+        SubtitleTrack existing = ArtifactFileUtils.readJsonOrNull(segmentsPath, objectMapper,
+                SubtitleTrack.class, "segments");
+        if (existing == null) {
+            return Optional.empty();
+        }
+        Path srtPath = workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SRT.getFileName(null));
+        log.info("字幕断点复用跳过: segments={}", segmentsPath.getFileName());
+        StageEvents.emit(listener, SubtitleStageName.TRANSCRIBE_AUDIO.getStageName(),
+                SubtitleStageName.TRANSCRIBE_AUDIO.end(), "已有 segments 产物，跳过转写", StageProgress.State.SKIPPED);
+        StageEvents.emit(listener, SubtitleStageName.WRITE_SUBTITLES.getStageName(),
+                SubtitleStageName.WRITE_SUBTITLES.end(), "已有字幕产物，跳过写盘", StageProgress.State.SKIPPED);
+        return Optional.of(toArtifact(srtPath, segmentsPath, existing));
     }
 
     /**
-     * 产出一份字幕：要音频 → 转写 → 写两个产物；产物表说可复用、且已有非空 segments JSON 才整段跳过。
+     * 真的产出一份字幕：要音频 → 转写 → 写两个产物。
+     * 只在 {@link #reuseIfAvailable} 没命中时调用；不再自带复用判据，也不再回头读文件检查点。
      *
-     * @param input                  媒体输入；不可为空
-     * @param workDir                这条输入的工作区目录（调用方已定位好）；不可为空
-     * @param listener               阶段进度监听；不可为 {@code null}——不关心进度用不带 listener 的重载
-     * @param reuseCompletedOriginal 产物表里有没有完好的原始产物；{@code false} 时完全忽略文件检查点
-     * @param owner                  中间产物归属；不可为空
-     * @return 字幕产物（SRT 路径 + segments 路径 + 路线 + 语种 + 句数 + SRT 字节数）
+     * @param input    媒体输入；不可为空
+     * @param workDir  这条输入的工作区目录（调用方已定位好）
+     * @param listener 阶段进度监听；不可为 {@code null}
+     * @param owner    中间产物归属；不可为空
+     * @return 字幕产物（SRT 路径 + segments 路径 + 语种 + 句数 + SRT 字节数）
      * @throws IllegalArgumentException 输入 / 监听 / 归属为空
      * @throws IllegalStateException    媒体获取 / 抽音频 / 转写 / 产物写入失败（由底层原样上抛或包装）
      */
     public SubtitleStageOutput prepare(MediaInput input, Path workDir, ProgressListener listener,
-                                       boolean reuseCompletedOriginal, IntermediateFileOwner owner) {
+                                       IntermediateFileOwner owner) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
         }
         if (listener == null) {
-            throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
-                    + "或改用不带 listener 的 prepare(input, workDir, reuseCompletedOriginal, owner) 重载");
+            throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener");
         }
         if (owner == null) {
             throw new IllegalArgumentException("中间产物归属不能为空：请传 IntermediateFileOwner(taskId, runId)");
@@ -104,18 +131,6 @@ public class SubtitlePreparationCoordinator {
 
         String transcribeAudioStageName = SubtitleStageName.TRANSCRIBE_AUDIO.getStageName();
         String writeSubtitlesStageName = SubtitleStageName.WRITE_SUBTITLES.getStageName();
-        // 产物表说不能复用就完全别看文件：盘上的 JSON 可能是上一次内容留下的，解析得出来也不该用。
-        // 只读 segments JSON，不看 SRT——SRT 是派生视图，即使 SRT 在而 JSON 不在也必须重跑
-        SubtitleTrack existing = reuseCompletedOriginal
-                ? ArtifactFileUtils.readJsonOrNull(segmentsPath, objectMapper, SubtitleTrack.class, "segments")
-                : null;
-        if (existing != null) {
-            log.info("字幕断点复用跳过: segments={}", segmentsPath.getFileName());
-            StageEvents.emit(listener, transcribeAudioStageName, SubtitleStageName.TRANSCRIBE_AUDIO.end(), "已有 segments 产物，跳过转写", StageProgress.State.SKIPPED);
-            StageEvents.emit(listener, writeSubtitlesStageName, SubtitleStageName.WRITE_SUBTITLES.end(), "已有字幕产物，跳过写盘", StageProgress.State.SKIPPED);
-            return toArtifact(srtPath, segmentsPath, existing);
-        }
-
         AudioSpec spec = asrProvider.requiredAudioSpec();
         log.debug("开始准备字幕: workDir={}, audioSpec={}",
                 workDir.getFileName(), spec.container());

@@ -1,5 +1,6 @@
 package com.vidsage.application.subtitle.pipeline;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -118,27 +119,33 @@ class SubtitleCleanupCoordinatorTest {
     @Test
     void cleanReusesCheckpointSkipsCleanser() throws Exception {
         writeRawTrack();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
         SubtitleCleanupCoordinator s = service();
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
+        assertEquals(1, cleanserCalls.get());
 
-        // 二跑：-clean.json 已在，应断点复用，不再走切分与清洗
-        CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
+        // 二跑：-clean.json 已在且指纹一致 → reuseIfAvailable 命中，不再走切分与清洗
+        Optional<CleanedSubtitle> reused = s.reuseIfAvailable(workDir, keywords, true, ProgressListener.noop());
 
-        assertEquals(1, cleanserCalls.get(), "断点复用后不应再调 cleanser");
-        assertEquals(2, second.segmentCount());
+        assertTrue(reused.isPresent(), "检查点在且指纹一致就该命中");
+        assertEquals(2, reused.get().segmentCount());
+        assertEquals(1, cleanserCalls.get(), "复用命中后不应再调 cleanser");
     }
 
     @Test
     void cleanRerunsWhenArtifactGateSaysNotReusable() throws Exception {
         writeRawTrack();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
         SubtitleCleanupCoordinator s = service();
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
         assertEquals(1, cleanserCalls.get());
 
-        // 盘上 -clean 完好、关键词也没变，但产物表说这一版已作废 → 必须重跑，不许断点复用
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), false);
+        // 盘上 -clean 完好、关键词也没变，但产物表说这一版已作废 → 不能拿盘上旧检查点当命中
+        assertTrue(s.reuseIfAvailable(workDir, keywords, false, ProgressListener.noop()).isEmpty(),
+                "门禁关掉时不许拿盘上旧检查点当命中");
 
-        assertEquals(2, cleanserCalls.get(), "门禁关掉时必须重跑清洗，不能拿盘上旧检查点当命中");
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, false);
+        assertEquals(2, cleanserCalls.get(), "门禁关掉时必须重跑清洗");
     }
 
     @Test
@@ -146,9 +153,10 @@ class SubtitleCleanupCoordinatorTest {
         // 空转写是合法产出（纯音乐 / 无语音）：raw segments=[]
         SubtitleTrack empty = new SubtitleTrack("zh", List.of(), null);
         JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null)).toFile(), empty);
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
         SubtitleCleanupCoordinator s = service();
 
-        CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
+        CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
 
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
         Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));
@@ -159,8 +167,9 @@ class SubtitleCleanupCoordinatorTest {
         assertEquals(0L, Files.size(cleanSrt), "空转写产出 0 字节 SRT");
 
         // 二跑：断点命中直接返回，不重跑（空转写不死循环）
-        CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
-        assertEquals(0, second.segmentCount());
+        Optional<CleanedSubtitle> reused = s.reuseIfAvailable(workDir, keywords, true, ProgressListener.noop());
+        assertTrue(reused.isPresent(), "0 字节 SRT 但检查点 JSON 非空，仍能命中");
+        assertEquals(0, reused.get().segmentCount());
         assertEquals(1, cleanserCalls.get(), "空转写二跑应走断点复用，不再调 cleanser");
     }
 
@@ -237,11 +246,12 @@ class SubtitleCleanupCoordinatorTest {
     @Test
     void cleanCheckpointHitEmitsSingleSkippedEvent() throws Exception {
         writeRawTrack();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
         SubtitleCleanupCoordinator s = service();
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
 
         List<StageProgress> events = new ArrayList<>();
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), events::add, true);
+        s.reuseIfAvailable(workDir, keywords, true, events::add);
 
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
         assertEquals(StageProgress.State.SKIPPED, events.get(0).state());
@@ -348,9 +358,9 @@ class SubtitleCleanupCoordinatorTest {
         writeCleanTrack(keywords.computeFingerprint());
         SubtitleCleanupCoordinator s = service();
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
-
-        assertEquals(0, cleanserCalls.get(), "指纹一致就该复用现成产物，一次 LLM 都不发");
+        assertTrue(s.reuseIfAvailable(workDir, keywords, true, ProgressListener.noop()).isPresent(),
+                "指纹一致就该复用现成产物，一次 LLM 都不发");
+        assertEquals(0, cleanserCalls.get());
     }
 
     @Test
@@ -358,10 +368,13 @@ class SubtitleCleanupCoordinatorTest {
         writeRawTrack();
         writeCleanTrack("0000deadbeef");
         SubtitleCleanupCoordinator s = service();
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of("影视飓风"));
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of("影视飓风")), true);
+        assertTrue(s.reuseIfAvailable(workDir, keywords, true, ProgressListener.noop()).isEmpty(),
+                "关键词变了，旧字幕对不上，不能复用");
 
-        assertEquals(1, cleanserCalls.get(), "关键词变了，旧字幕对不上，必须重跑");
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
+        assertEquals(1, cleanserCalls.get(), "关键词变了，必须重跑");
     }
 
     @Test
@@ -464,39 +477,21 @@ class SubtitleCleanupCoordinatorTest {
     }
 
     @Test
-    void reuseRewritesMissingContextWithoutRerunningCleanser() throws Exception {
+    void reuseHitLeavesContextFileUntouched() throws Exception {
         writeRawTrack();
         SubtitleKeywords keywords = new SubtitleKeywords(List.of());
         writeCleanTrack(keywords.computeFingerprint());
-        when(contextSummarizer.summarize(any(), any()))
-                .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
-        SubtitleCleanupCoordinator s = service();
-
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
-
-        assertEquals(0, cleanserCalls.get(), "补上下文不是重跑清洗");
-        SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
-        assertEquals("de", persisted.sourceLanguage(), "复用分支应补摘并落盘成功那份");
-        assertFalse(persisted.degraded());
-        verify(contextSummarizer).summarize(any(), any());
-    }
-
-    @Test
-    void reuseResummarizesWhenCachedContextIsDegraded() throws Exception {
-        writeRawTrack();
-        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
-        writeCleanTrack(keywords.computeFingerprint());
+        // 上次摘要降级留下的标记：复用命中时不许补摘、不许改写它
         JSON.writeValue(contextFile().toFile(), SubtitleContext.degradedEmpty());
-        when(contextSummarizer.summarize(any(), any()))
-                .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
+        byte[] before = Files.readAllBytes(contextFile());
         SubtitleCleanupCoordinator s = service();
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
+        assertTrue(s.reuseIfAvailable(workDir, keywords, true, ProgressListener.noop()).isPresent());
 
-        verify(contextSummarizer).summarize(any(), any());
-        SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
-        assertFalse(persisted.degraded(), "上次的降级标记被这次成功摘要覆盖");
-        assertEquals(0, cleanserCalls.get(), "复用分支不重跑清洗");
+        verify(contextSummarizer, never()).summarize(any(), any());
+        assertArrayEquals(before, Files.readAllBytes(contextFile()),
+                "复用命中时 context.json 一个字节都不许动");
+        assertEquals(0, cleanserCalls.get());
     }
 
     @Test

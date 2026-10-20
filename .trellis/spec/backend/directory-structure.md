@@ -296,7 +296,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | Controller | 业务名 + `Controller`，平铺在 `web/controller/` | `MediaController`、`TaskController` |
 | 组件后缀登记 | 端口/适配器之外的新角色后缀**用前先登记**（不登记的后缀会变万能）；`-Manager`（2026-10-11 登记）：角色词答「管理一组资源」，落 `infrastructure/fs/`（`WorkspaceDirectoryManager` 是端口，登记在上方「端口接口」行并附「防 Manager 变万能后缀」警告——**该警告不解除**）；`-Store`（2026-10-19 登记）：角色词答「一类持久化事实的读写门面」，住在 `application/`、是 `@Component`，成员 `SubtitleArtifactStore` / `IntermediateFileStore` / `WorkspaceFingerprintStore`；`-Notifier`（2026-10-10 曾用）随订阅机制整块退场，当前无成员 | `WorkspaceDirectoryManager`、`SubtitleArtifactStore` |
 | 方法 | **动词开头**（2026-10-12 立） | `prepare` / `clean` / `translate` / `acquire` / `saveCurrentStageAndBroadcast` |
-| 变量 | **自带名词**，不靠条件表达式交代装的是什么（2026-10-19 立，见下） | `effectiveKeywords` / `previousReady` / `translationsToReclaim` |
+| 变量 | **自带名词**，不靠条件表达式交代装的是什么（2026-10-19 立，见下） | `effectiveKeywords` / `translationsToSupersede` / `translationsToReclaim` |
 
 ### 方法名动词开头（2026-10-12 立）
 
@@ -323,7 +323,8 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 
 **最常见的违规形状是「过去式动词短语」**（2026-10-19 补）：`contentChanged` / `finished` / `deleted` 这类名字
 读起来像「做完了一件事」，实际是个判定 —— 调用点 `if (contentChanged(...))` 要读两遍才确认它是在问
-「变了没有」。写成 `isContentChanged(...)` 就没有歧义；先例 `SubtitleArtifactStore#isContentChanged`。
+「变了没有」。写成 `isContentChanged(...)` 就没有歧义。**本条立规时点的先例 `SubtitleArtifactStore#isContentChanged`
+已随换版判据一起删掉（2026-10-20），规则本身不变** —— 这条说的是名字的形状，不是某个存量方法。
 
 **唯一不加 `is` / `has` 的布尔返回**：既是动作、又用返回值报告执行结果的命令式方法 —— 返回值答的是
 「干成没干成」，不是「是不是 X」。JDK 先例 `Files.deleteIfExists`；本仓同族
@@ -411,7 +412,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 | 位置 | 原名 | 现名 | 判据 |
 |---|---|---|---|
 | `SubtitleTaskService#regenerate` | `effective` | `effectiveKeywords` | `effective` 是形容词，没说有效的是**什么**；得读后面那行 `validated != null ? validated : keywordRepository.findByTaskId(...)` 才知道是关键词 |
-| `SubtitleArtifactStore#settleCleanedAndSupersedeDownstream` | `old` | `previousReady` | 没说旧的是哪一版（是上一版 READY 的产物） |
+| `SubtitleArtifactStore#settleCleanedAndSupersedeDownstream` | `old` | `previousReady` → **现为 `previous`**（2026-10-20：那个跨行的中间变量没了，只剩一行 lambda 的参数，按下面「例外」可短） | 没说旧的是哪一版（是上一版 READY 的产物） |
 | 同上 | `downstream` | `translationsToSupersede` | 没说下游的**什么**；而且和已有的私有方法 `downstreamTranslations(...)` 撞名 |
 | 同上 | `orphaned` | `translationsToReclaim` | 没说成了孤儿的是**什么**（是译文，不是产物行） |
 

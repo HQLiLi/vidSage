@@ -26,6 +26,8 @@ import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.ArtifactType;
 import com.vidsage.domain.subtitle.model.SubtitleArtifactStatus;
+import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageOutput;
 import com.vidsage.domain.task.TaskRun;
 import com.vidsage.domain.task.model.TaskRunStatus;
 import com.vidsage.domain.task.model.TaskRunType;
@@ -119,8 +121,8 @@ class SubtitlePipelineTest {
 
         MediaInput input = new MediaInput.RemoteUrl("https://example.com/v");
         InOrder order = inOrder(subtitlePreparationCoordinator, cleanupStage);
-        order.verify(subtitlePreparationCoordinator).prepare(eq(input), any(Path.class), any(ProgressListener.class),
-                anyBoolean(), any(IntermediateFileOwner.class));
+        order.verify(subtitlePreparationCoordinator).prepare(eq(input), any(Path.class),
+                any(ProgressListener.class), any(IntermediateFileOwner.class));
         order.verify(cleanupStage).clean(eq(input), any(Path.class), any(SubtitleKeywords.class),
                 any(ProgressListener.class), anyBoolean());
         verify(supervisor).advance(eq(ref), eq(run), any(StageProgress.class));
@@ -140,7 +142,7 @@ class SubtitlePipelineTest {
         order.verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID), eq(ArtifactType.ORIGINAL),
                 eq(""), isNull(), isNull());
         order.verify(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(Path.class),
-                any(ProgressListener.class), anyBoolean(), any(IntermediateFileOwner.class));
+                any(ProgressListener.class), any(IntermediateFileOwner.class));
         order.verify(artifactStore).settleArtifact(any(SubtitleArtifact.class), any(Path.class));
         order.verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID), eq(ArtifactType.CLEANED),
                 eq(""), eq(11L), eq(keywords.computeFingerprint()));
@@ -154,7 +156,7 @@ class SubtitlePipelineTest {
     @Test
     void passesArtifactReadabilityToPreparationAndCleanup() {
         TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
-        // 产物表说两版都完好 → 两个门禁都要开
+        // 产物表说两版都完好 → 两个门禁都要拿到 true
         when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any(Path.class)))
                 .thenReturn(Optional.of(Mockito.mock(SubtitleArtifact.class)));
         when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.CLEANED), eq(""), any(Path.class)))
@@ -162,10 +164,10 @@ class SubtitlePipelineTest {
 
         pipeline(inlineGate()).runPipeline(run, ref(run), urlWorkspace("https://example.com/v"));
 
-        verify(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(Path.class),
-                any(ProgressListener.class), eq(true), any(IntermediateFileOwner.class));
-        verify(cleanupStage).clean(any(MediaInput.class), any(Path.class), any(SubtitleKeywords.class),
-                any(ProgressListener.class), eq(true));
+        verify(subtitlePreparationCoordinator).reuseIfAvailable(any(Path.class), eq(true),
+                any(ProgressListener.class));
+        verify(cleanupStage).reuseIfAvailable(any(Path.class), any(SubtitleKeywords.class), eq(true),
+                any(ProgressListener.class));
     }
 
     @Test
@@ -179,7 +181,79 @@ class SubtitlePipelineTest {
         order.verify(fingerprintCoordinator).detectContentChange(eq(TASK_ID), any(Workspace.class),
                 any(MediaInput.class), any(Path.class), any(ProgressListener.class));
         order.verify(subtitlePreparationCoordinator).prepare(any(MediaInput.class), any(Path.class),
-                any(ProgressListener.class), anyBoolean(), any(IntermediateFileOwner.class));
+                any(ProgressListener.class), any(IntermediateFileOwner.class));
+    }
+
+    @Test
+    void reuseHitOnOriginalSkipsPlaceholderAndSettle() {
+        TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any(Path.class)))
+                .thenReturn(Optional.of(originalReady(21L)));
+        when(subtitlePreparationCoordinator.reuseIfAvailable(any(Path.class), eq(true), any(ProgressListener.class)))
+                .thenReturn(Optional.of(Mockito.mock(SubtitleStageOutput.class)));
+
+        pipeline(inlineGate()).runPipeline(run, ref(run), urlWorkspace("https://example.com/v"));
+
+        // 复用命中：原始产物那一版不插占位、不落定、不真跑
+        verify(artifactStore, never()).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID),
+                eq(ArtifactType.ORIGINAL), any(), any(), any());
+        verify(artifactStore, never()).settleArtifact(any(), any());
+        verify(subtitlePreparationCoordinator, never()).prepare(any(), any(), any(), any());
+    }
+
+    @Test
+    void reuseHitOnCleanedSkipsPlaceholderAndSettleAndCascade() {
+        TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
+        RunRef ref = ref(run);
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.CLEANED), eq(""), any(Path.class)))
+                .thenReturn(Optional.of(Mockito.mock(SubtitleArtifact.class)));
+        when(cleanupStage.reuseIfAvailable(any(Path.class), any(SubtitleKeywords.class), eq(true),
+                any(ProgressListener.class)))
+                .thenReturn(Optional.of(Mockito.mock(CleanedSubtitle.class)));
+
+        pipeline(inlineGate()).runPipeline(run, ref, urlWorkspace("https://example.com/v"));
+
+        // 复用命中：清洗那一版不插占位、不落定，下游译文与它们的文件一个字节不动
+        verify(artifactStore, never()).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID),
+                eq(ArtifactType.CLEANED), any(), any(), any());
+        verify(cleanupStage, never()).clean(any(), any(), any(), any(), anyBoolean());
+        verify(artifactStore, never()).settleCleanedAndSupersedeDownstream(any(), any());
+        verify(supervisor).finish(ref, run, null);
+    }
+
+    @Test
+    void cleanedMissPointsToStillReadyOriginalWhenOriginalIsReused() {
+        TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
+        SubtitleKeywords keywords = new SubtitleKeywords(List.of());
+        when(keywordRepository.findByTaskId(TASK_ID)).thenReturn(keywords);
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any(Path.class)))
+                .thenReturn(Optional.of(originalReady(21L)));
+        when(subtitlePreparationCoordinator.reuseIfAvailable(any(Path.class), eq(true), any(ProgressListener.class)))
+                .thenReturn(Optional.of(Mockito.mock(SubtitleStageOutput.class)));
+
+        pipeline(inlineGate()).runPipeline(run, ref(run), urlWorkspace("https://example.com/v"));
+
+        verify(artifactStore, never()).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID),
+                eq(ArtifactType.ORIGINAL), any(), any(), any());
+        // 新清洗产物的溯源要指向那条仍 READY 的旧原始产物，而不是一个凭空的新行
+        verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID), eq(ArtifactType.CLEANED),
+                eq(""), eq(21L), eq(keywords.computeFingerprint()));
+    }
+
+    @Test
+    void throwsWhenArtifactTableSaysNoIntactOriginalButPreparationReportsReuse() {
+        TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
+        RunRef ref = ref(run);
+        // findIntactArtifact 默认返回空（表说没有完好的原始产物），但协调器报告可复用 → 判据不一致
+        when(subtitlePreparationCoordinator.reuseIfAvailable(any(Path.class), eq(false), any(ProgressListener.class)))
+                .thenReturn(Optional.of(Mockito.mock(SubtitleStageOutput.class)));
+
+        pipeline(inlineGate()).runPipeline(run, ref, urlWorkspace("https://example.com/v"));
+
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(supervisor).finish(eq(ref), eq(run), reason.capture());
+        assertTrue(reason.getValue().contains("判据不一致"), () -> "应把判据不一致的原因报出来：" + reason.getValue());
+        verify(artifactStore, never()).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
     }
 
     @Test
@@ -200,8 +274,8 @@ class SubtitlePipelineTest {
         pipeline(inlineGate()).runPipeline(run, ref(run), workspace);
 
         ArgumentCaptor<MediaInput> captor = ArgumentCaptor.forClass(MediaInput.class);
-        verify(subtitlePreparationCoordinator).prepare(captor.capture(), any(Path.class), any(ProgressListener.class),
-                anyBoolean(), any(IntermediateFileOwner.class));
+        verify(subtitlePreparationCoordinator).prepare(captor.capture(), any(Path.class),
+                any(ProgressListener.class), any(IntermediateFileOwner.class));
         MediaInput input = captor.getValue();
         assertTrue(input instanceof MediaInput.InWorkspace, () -> "上传任务应还原为 InWorkspace：" + input);
         Path expectedDir = tempDir.resolve("works").resolve(sha256);
@@ -214,7 +288,7 @@ class SubtitlePipelineTest {
         TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
         RunRef ref = ref(run);
         when(subtitlePreparationCoordinator.prepare(any(MediaInput.class), any(Path.class),
-                any(ProgressListener.class), anyBoolean(), any(IntermediateFileOwner.class)))
+                any(ProgressListener.class), any(IntermediateFileOwner.class)))
                 .thenThrow(new IllegalStateException("ASR 转写任务失败：quota exceeded"));
 
         pipeline(inlineGate()).runPipeline(run, ref, urlWorkspace("https://example.com/v"));
@@ -244,7 +318,7 @@ class SubtitlePipelineTest {
         TaskRun run = runningRun(TaskRunType.MAIN, null, 1);
         RunRef ref = ref(run);
         when(subtitlePreparationCoordinator.prepare(any(MediaInput.class), any(Path.class),
-                any(ProgressListener.class), anyBoolean(), any(IntermediateFileOwner.class)))
+                any(ProgressListener.class), any(IntermediateFileOwner.class)))
                 .thenThrow(new NullPointerException());
 
         pipeline(inlineGate()).runPipeline(run, ref, urlWorkspace("https://example.com/v"));
@@ -260,7 +334,7 @@ class SubtitlePipelineTest {
         pipeline(interruptOnQueueGate()).run(run, ref, urlWorkspace("https://example.com/v"));
 
         verify(supervisor).finish(ref, run, "任务在等待执行配额时被中断：请重新提交");
-        verify(subtitlePreparationCoordinator, never()).prepare(any(), any(), any(), anyBoolean(), any());
+        verify(subtitlePreparationCoordinator, never()).prepare(any(), any(), any(), any());
     }
 
     // ---------- 重新生成字幕（RECLEAN） ----------
@@ -415,5 +489,12 @@ class SubtitlePipelineTest {
 
     private static Workspace urlWorkspace(String url) {
         return Workspace.of(SourceType.URL, new SourceKey("BV11QMd6WEJp|1"), url, url);
+    }
+
+    /** 一版完好的原始产物：用来当「产物表说这一版还在」的那条行，id 是断言溯源时的依据。 */
+    private static SubtitleArtifact originalReady(long id) {
+        return SubtitleArtifact.restore(id, TASK_ID, RUN_ID, ArtifactType.ORIGINAL, "", 3,
+                SubtitleArtifactStatus.READY, null, null, "original-segments.json",
+                "original-subtitles.srt", null, null, "a", "b", null, null, LocalDateTime.now());
     }
 }

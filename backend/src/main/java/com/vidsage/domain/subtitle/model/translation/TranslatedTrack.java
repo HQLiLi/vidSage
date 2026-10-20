@@ -6,8 +6,8 @@ import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import java.util.List;
 
 /**
- * 一份翻译产物的全部内容：路线 + 源/目标语种 + 是否跳过 + 逐条双语段落。
- * 它序列化出的 JSON 就是落盘的 {@code segments-<route>-translate-<target>.json} 的形状，也是翻译阶段
+ * 一份翻译产物的全部内容：源/目标语种 + 是否跳过 + 逐条双语段落。
+ * 它序列化出的 JSON 就是落盘的 {@code translated-segments-<lang>.json} 的形状，也是翻译阶段
  * 的检查点（对照 {@link SubtitleTrack}）。
  *
  * @param sourceLanguage 判定跳过时实际采用的源语种（BCP-47 短码）：优先取
