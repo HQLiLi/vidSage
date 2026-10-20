@@ -1503,3 +1503,30 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 55: S8 收尾（网络超时 + 状态机规范 + 旧件清查）
+<!-- trellis-session: v=2 fp=881a08e22cbeb5a1 -->
+
+**Date**: 2026-10-20
+**Task**: S8 收尾（网络超时 + 状态机规范 + 旧件清查）
+**Branch**: `dev`
+
+### Summary
+
+字幕模型重构 8/8 收尾。给网络调用补超时（C46）：LLM / 术语查证 / ASR 结果下载走全局 spring.http.clients（连 10s / 读 120s），重试从 10 收到 3；实测钉死语义——3 次是重试数、每次调用最多 4 次尝试，单次最坏约 9 分钟（默认 10 次时约 44 分钟）。ASR 主等待才是真缺口：SDK 的 transcription.wait 循环没有出口、且吞掉 InterruptedException，配置与外部打断都治不了，改成自建带 deadline 的 fetch 轮询（15 分钟可配）。实测查出「网络调用没有超时」只对 DeepSeek 路线成立——Mimo 自带 60s、短链 2s、外部进程 300s，父设计 C46 据此订正。规范侧新增 state-machine-guidelines.md（三张状态列的值语义 / 全部写入路径 / 守卫落在哪），订正 backend/index.md 把 database-guidelines 只在「待重建」列表里出现的失实，清掉 spec 里的已删类名（口径：只写现在是什么，不写什么已经退场）。审查轮又删掉零生产调用点的领域迁移方法（supersede / confirmDeletion / revive），并给三条状态变更 UPDATE 补 status 守卫，真库跑指纹级联 + 翻译 + 重新生成验证各自命中 Updates: 1。基线 708 → 711 → 700。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `664b8bb` | feat(asr): 转写轮询改有界 + 网络调用补超时与重试收窄 |
+| `1a28fdf` | refactor(domain): 删掉零生产调用点的状态迁移方法 |
+| `97bb051` | fix(persistence): 状态变更 UPDATE 补 status 守卫 |
+| `349bd30` | docs(spec): 状态机规范落笔 + 索引订正 + 已删类名清理 |
+| `56b52fd` | chore(task): S8 任务工件 + 父文档 C46 订正 |
+| `658be66` | Merge branch 'feature/subtitle-hardening-wrapup' into dev |
+
+### Status
+
+[OK] **Completed**
