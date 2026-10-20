@@ -1429,3 +1429,25 @@ S5 完成：TRANSLATE run 落 subtitle_artifact（成功后占位 / W4 事务化
 ### Status
 
 [OK] **Completed**
+
+
+## Session 52: 字幕模型重构 S6：内容指纹与中间产物登记（含审查轮）
+<!-- trellis-session: v=2 fp=9ef6ceda969f101f -->
+
+**Date**: 2026-10-20
+**Task**: 字幕模型重构 S6：内容指纹与中间产物登记（含审查轮）
+**Branch**: `dev`
+
+### Summary
+
+S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件在」+ PROBE_FINGERPRINT 探测阶段（权重 5）+ W5′ 同事务级联作废 + 上传路线跳过。基线 633→681。审查轮又改：探测按路线分叉（远程无探测器记 WARN，不再假装是上传路线）、命名收口（applyContentChange→supersedeOnSourceMediaChange、readable→intact）、两个 readCheckpoint 合并进 ArtifactFileUtils.readJsonOrNull（加 role 参数保住日志文案）、CheckpointPolicy 口径订正为「不是唯一落点」。另立待办：跳过也落版是设计债，S7 之前先开修复任务（输入在 workspace/HeQiu/handoff-reuse-versioning.md）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `72bf12b` | feat(task): 字幕模型重构 S6 内容指纹与中间产物登记（复用判据换表 + 指纹探测 + W5′ 级联） |
+
+### Status
+
+[OK] **Completed**
