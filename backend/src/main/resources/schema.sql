@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS subtitle_artifact
 (
     id                       BIGINT       NOT NULL AUTO_INCREMENT COMMENT '内部自增行 id，不对外',
     task_id                  BIGINT       NOT NULL COMMENT '逻辑外键 → subtitle_task.id',
-    derived_from_run_id      BIGINT       NOT NULL COMMENT '哪一次执行产出的（审计；收口靠它定位）',
+    derived_from_run_id      BIGINT       NOT NULL COMMENT '最后一条真正产出它的执行（审计；收口靠它定位）。跳过复用不刷新',
     artifact_type            VARCHAR(32)  NOT NULL COMMENT 'ORIGINAL / CLEANED / TRANSLATED',
     lang                     VARCHAR(16)  NOT NULL DEFAULT '' COMMENT 'TRANSLATED 才填；空串 = 无语言维度',
     revision                 INT          NOT NULL COMMENT '同 (task,type,lang) 递增（MAX+1）',

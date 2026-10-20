@@ -139,12 +139,12 @@ public class SubtitlePipeline {
      * 翻译（TRANSLATE run）：在已有清洗产物上产出译文。当前目标语种已有完好的 READY 译文时直接收尾，
      * 不调翻译模型、不落新版本。
      *
-     * @param run                本次执行（已落库、状态 RUNNING，带目标语种）
-     * @param ref                这条 run 的对外引用
-     * @param workspace          任务所属的媒体身份
-     * @param source             源语种
-     * @param target             目标语种
-     * @param cleanedArtifactId  当前有效的那一版清洗产物，记在新译文的溯源字段上
+     * @param run               本次执行（已落库、状态 RUNNING，带目标语种）
+     * @param ref               这条 run 的对外引用
+     * @param workspace         任务所属的媒体身份
+     * @param source            源语种
+     * @param target            目标语种
+     * @param cleanedArtifactId 当前有效的那一版清洗产物，记在新译文的溯源字段上
      */
     public void translate(TaskRun run, RunRef ref, Workspace workspace,
                           SupportedLanguage source, SupportedLanguage target, long cleanedArtifactId) {
@@ -203,24 +203,34 @@ public class SubtitlePipeline {
             fingerprintCoordinator.detectContentChange(run.getTaskId(), workspace, input, workDir, listener);
             IntermediateFileOwner owner = new IntermediateFileOwner(run.getTaskId(), run.getId());
 
-            // 阶段 1：先占位，再让 prepare 写文件，最后落定原始产物。
-            // 「产物表里有没有完好的原始产物」先算出来：没有就不许走盘上的文件检查点
-            boolean originalIntact = artifactStore
-                    .findIntactArtifact(run.getTaskId(), ArtifactType.ORIGINAL, "", workDir).isPresent();
-            SubtitleArtifact original = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
-                    ArtifactType.ORIGINAL, "", null, null);
-            subtitlePreparationCoordinator.prepare(input, workDir, listener, originalIntact, owner);
-            original = artifactStore.settleArtifact(original, workDir);
+            // 阶段 1：先问能不能复用，命中就整条链不动；不复用才建占位、真跑、落定
+            Optional<SubtitleArtifact> intactOriginal = artifactStore
+                    .findIntactArtifact(run.getTaskId(), ArtifactType.ORIGINAL, "", workDir);
+            SubtitleArtifact original;
+            if (subtitlePreparationCoordinator.reuseIfAvailable(workDir, intactOriginal.isPresent(), listener).isPresent()) {
+                // 复用命中：产物表那一侧必然有这条完好行（判据要求它先成立），整条链一个字节不动
+                original = intactOriginal.orElseThrow(() -> new IllegalStateException(
+                        "产物表说没有完好的原始产物，准备阶段却报告可复用：判据不一致"));
+            } else {
+                original = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
+                        ArtifactType.ORIGINAL, "", null, null);
+                subtitlePreparationCoordinator.prepare(input, workDir, listener, owner);
+                original = artifactStore.settleArtifact(original, workDir);
+            }
 
-            // 阶段 2：清洗字幕文件（关键词按任务读，跟产物同粒度），清洗产物继承自刚落定的原始产物
+            // 阶段 2：清洗字幕文件（关键词按任务读，跟产物同粒度）。同样先问复用，命中就什么都不做
             SubtitleKeywords keywords = keywordRepository.findByTaskId(run.getTaskId());
-            boolean cleanedIntact = artifactStore
-                    .findIntactArtifact(run.getTaskId(), ArtifactType.CLEANED, "", workDir).isPresent();
-            SubtitleArtifact cleaned = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
-                    ArtifactType.CLEANED, "", original.getId(), keywords.computeFingerprint());
-            cleanupStage.clean(input, workDir, keywords, listener, cleanedIntact);
-            // 清洗是唯一有下游的产物：换版时要把基于旧清洗的译文一起作废
-            artifactStore.settleCleanedAndSupersedeDownstream(cleaned, workDir);
+            Optional<SubtitleArtifact> intactCleaned = artifactStore
+                    .findIntactArtifact(run.getTaskId(), ArtifactType.CLEANED, "", workDir);
+            boolean isCleanReusable = cleanupStage.reuseIfAvailable(workDir, keywords, intactCleaned.isPresent(), listener).isPresent();
+            if (!isCleanReusable) {
+                SubtitleArtifact cleaned = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
+                        ArtifactType.CLEANED, "", original.getId(), keywords.computeFingerprint());
+                cleanupStage.clean(input, workDir, keywords, listener, intactCleaned.isPresent());
+                // 清洗是唯一有下游的产物：换版时要把基于旧清洗的译文一起作废
+                artifactStore.settleCleanedAndSupersedeDownstream(cleaned, workDir);
+            }
+
             supervisor.finish(ref, run, null);
             log.info("任务执行成功: taskNo={}, runNo={}", ref.taskNo().value(), ref.runNo());
         } catch (Throwable t) {

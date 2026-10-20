@@ -27,6 +27,7 @@ import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,7 +52,7 @@ class SubtitlePreparationCoordinatorTest {
         var service = serviceWith(
                 tempDir, AudioSpec.M4A_AAC_48K_MONO, List.of(), "zh", mapper);
 
-        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop(), true, OWNER);
+        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop(), OWNER);
 
         assertEquals(0, artifact.segmentCount());
         assertEquals(0, artifact.srtSizeBytes());
@@ -65,7 +66,7 @@ class SubtitlePreparationCoordinatorTest {
     void checkpointHitsWhenSegmentsJsonExists(
             @TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        // 预置非空 segments JSON → prepare 应跳过音频准备与转写
+        // 预置非空 segments JSON → reuseIfAvailable 应命中，真跑入口一次都不进
         var track = new SubtitleTrack("zh",
                 List.of(new TranscriptionSegment(0, 1440, "已有内容。")), null);
         Path segmentsPath = tempDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
@@ -77,19 +78,21 @@ class SubtitlePreparationCoordinatorTest {
         var service = new SubtitlePreparationCoordinator(audioPrep, transcribe,
                 mockAsr(tempDir, AudioSpec.M4A_AAC_48K_MONO), mapper);
 
-        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop(), true, OWNER);
+        Optional<SubtitleStageOutput> reused = service.reuseIfAvailable(tempDir, true, ProgressListener.noop());
 
+        assertTrue(reused.isPresent(), "产物表说完好且盘上检查点能解析，就该命中");
+        assertEquals(1, reused.get().segmentCount());
+        assertEquals("zh", reused.get().language());
+        // 命中的证据：真跑入口的依赖一次都没被碰（prepare 没被调用）
         verify(audioPrep, never()).prepare(any(), any(), any(), any(), any());
         verify(transcribe, never()).transcribe(any(), anyString());
-        assertEquals(1, artifact.segmentCount());
-        assertEquals("zh", artifact.language());
     }
 
     @Test
     void ignoresFileCheckpointWhenArtifactIsNotReusable(
             @TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        // 盘上有完好的 segments JSON，但产物表说它已作废 → 必须真重跑，不许拿旧文件当检查点
+        // 盘上有完好的 segments JSON，但产物表说它已作废 → 不许拿旧文件当检查点，必须真重跑
         var track = new SubtitleTrack("zh",
                 List.of(new TranscriptionSegment(0, 1440, "旧内容。")), null);
         Path segmentsPath = tempDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null));
@@ -105,7 +108,10 @@ class SubtitlePreparationCoordinatorTest {
         var service = new SubtitlePreparationCoordinator(audioPrep, transcribe,
                 mockAsr(tempDir, AudioSpec.M4A_AAC_48K_MONO), mapper);
 
-        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop(), false, OWNER);
+        assertTrue(service.reuseIfAvailable(tempDir, false, ProgressListener.noop()).isEmpty(),
+                "产物表说不可复用就必须忽略盘上检查点");
+
+        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop(), OWNER);
 
         verify(audioPrep).prepare(any(), any(), any(), any(), any());
         verify(transcribe).transcribe(any(), any());
@@ -118,7 +124,7 @@ class SubtitlePreparationCoordinatorTest {
     void srtAloneDoesNotCountAsCheckpoint(
             @TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        // 只有 SRT 在、segments JSON 不在 → 必须重新跑，不能跳过（决策 4 的回归测试）
+        // 只有 SRT 在、segments JSON 不在 → 不能算检查点（SRT 是派生视图），必须重新跑
         Files.writeString(tempDir.resolve(SubtitleArtifactSpec.ORIGINAL_SRT.getFileName(null)),
                 SrtRenderer.toSrt(List.of(new TranscriptionSegment(0, 1440, "陈旧 SRT。"))));
 
@@ -132,7 +138,10 @@ class SubtitlePreparationCoordinatorTest {
         var service = new SubtitlePreparationCoordinator(audioPrep, transcribe,
                 mockAsr(tempDir, audioSpec), mapper);
 
-        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop(), true, OWNER);
+        assertTrue(service.reuseIfAvailable(tempDir, true, ProgressListener.noop()).isEmpty(),
+                "SRT 在而 segments JSON 不在时不能算检查点命中");
+
+        SubtitleStageOutput artifact = service.prepare(input(tempDir), tempDir, ProgressListener.noop(), OWNER);
 
         verify(transcribe).transcribe(any(), any());
         assertEquals(1, artifact.segmentCount(), "SRT 在而 segments JSON 不在时必须重新转写");

@@ -40,7 +40,7 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
  * {@link SubtitleArtifactStore} 的单元测试：仓储全部 mock，工作区用临时目录放真实文件。
  *
  * <p>重点钉四件事：占位行全空、落定先降级旧版再置新版 READY、完好判定按整版产物算、
- * 清洗落定只在内容真变了时作废下游并把它们的文件收掉。
+ * 清洗落定无条件作废下游并把它们的文件收掉。
  */
 class SubtitleArtifactStoreTest {
 
@@ -227,8 +227,10 @@ class SubtitleArtifactStoreTest {
     }
 
     @Test
-    void settleCleanedKeepsDownstreamWhenContentIsUnchanged() throws IOException {
+    void settleCleanedSupersedesDownstreamEvenWhenHashesAreIdentical() throws IOException {
         writeCleanedFiles();
+        // 旧行的三个文件位哈希与这次产出的完全一样：走到落定就意味着清洗真重跑过，
+        // 下游照样作废——不再有「内容没变就不作废」那条判据。
         SubtitleArtifact unchangedCleaned = cleanedReadyWithCurrentHashes(5L);
         when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.CLEANED, ""))
                 .thenReturn(Optional.of(unchangedCleaned));
@@ -237,23 +239,7 @@ class SubtitleArtifactStoreTest {
 
         store.settleCleanedAndSupersedeDownstream(creating(ArtifactType.CLEANED, ""), workDir);
 
-        verify(repository).markSupersededAndClearFiles(5L);   // 换版照做
-        verify(repository, never()).markSupersededByTaskIdAndType(anyLong(), any()); // 内容没变，下游一个都不动
-    }
-
-    @Test
-    void settleCleanedTreatsMissingOldHashesAsChangedContent() throws IOException {
-        writeCleanedFiles();
-        SubtitleArtifact cleanedWithoutHashes = SubtitleArtifact.restore(5L, TASK_ID, RUN_ID, ArtifactType.CLEANED, "",
-                1, SubtitleArtifactStatus.READY, null, "fp-1", "clean-segments.json", "clean-subtitles.srt",
-                "context.json", null, null, null, null, null, LocalDateTime.now());
-        when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.CLEANED, ""))
-                .thenReturn(Optional.of(cleanedWithoutHashes));
-        when(repository.findReadyByTaskId(TASK_ID))
-                .thenReturn(List.of(ready(6L, ArtifactType.TRANSLATED, "en")));
-
-        store.settleCleanedAndSupersedeDownstream(creating(ArtifactType.CLEANED, ""), workDir);
-
+        verify(repository).markSupersededAndClearFiles(5L);
         verify(repository).markSupersededByTaskIdAndType(TASK_ID, ArtifactType.TRANSLATED);
     }
 

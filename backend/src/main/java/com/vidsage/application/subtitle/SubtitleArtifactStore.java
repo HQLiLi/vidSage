@@ -71,6 +71,9 @@ public class SubtitleArtifactStore {
      * 落定一版<b>没有下游</b>的产物：算文件名与哈希 → 旧当前版降级并清空文件列 → 新版写文件列并置 READY。
      * 后两步包在同一个事务里，崩在中间时旧版仍是当前版。
      *
+     * <p><b>只在真产出之后调用</b>：跳过复用的一趟（{@code SubtitlePipeline} 命中检查点）压根不落版，
+     * 也就不调本方法，整条链一个字节不动。
+     *
      * <p>文件此刻必须已经由产出方原子替换落盘；这里算哈希失败就抛异常，让本次执行收口成失败，
      * 而且此时旧版还一点没动——调用方手里仍有上一版可用。
      *
@@ -102,9 +105,9 @@ public class SubtitleArtifactStore {
      * <p>为什么单独一个方法：清洗是唯一有下游的产物类型，这一步会连带把译文作废，调用点应当一眼看出来。
      * 它和 {@link #settleArtifact} 的差别只在「下游」这一件事，前两步（算文件、降级旧版）完全同款。
      *
-     * <p><b>只有内容真的变了才作废下游</b>：清洗命中检查点时会跳过重跑、文件一个字节没动，这时照样会落
-     * 一版新版本号，但下游译文仍然是对的——白作废等于让用户重新烧一遍模型。判据是三个文件位的哈希与旧行
-     * 逐个比：哈希相同就是内容相同。
+     * <p><b>走到这里就意味着清洗真重跑过，下游一律作废</b>：跳过复用的那一趟压根不调本方法
+     * （{@code SubtitlePipeline} 先问复用、命中就整条链不动）。所以不再比哈希决定要不要作废——
+     * 那个判据随「跳过也落版」一起退场，留下只会让「真重跑但产出逐字节相同」这一个罕见情形白留旧译文。
      *
      * <p>下游的文件删除在事务之外：先标数据库（上面那个事务做完了），再删文件，删干净才说「已回收」。
      *
@@ -119,15 +122,13 @@ public class SubtitleArtifactStore {
         ArtifactFiles files = resolveArtifactFiles(creating.getArtifactType(), creating.getLang(), workDir);
 
         List<SubtitleArtifact> translationsToReclaim = transactionTemplate.execute(status -> {
-            // 旧行必须在清列之前读：清完文件列与哈希列，就再也比不出「内容变了没有」
-            Optional<SubtitleArtifact> previousReady = repository.findReadyByTaskIdAndTypeAndLang(
-                    creating.getTaskId(), creating.getArtifactType(), creating.getLang());
-            previousReady.ifPresent(previous -> repository.markSupersededAndClearFiles(previous.getId()));
+            // 旧行要在清列之前读出来：markSupersededAndClearFiles 要它的 id
+            repository.findReadyByTaskIdAndTypeAndLang(creating.getTaskId(), creating.getArtifactType(),
+                            creating.getLang())
+                    .ifPresent(previous -> repository.markSupersededAndClearFiles(previous.getId()));
 
             // 先读出来：事务提交后要按它们的文件列删文件。改状态另走一句批量，不逐行。
-            List<SubtitleArtifact> translationsToSupersede = isContentChanged(previousReady.orElse(null), files)
-                    ? findDownstreamTranslations(creating.getTaskId())
-                    : List.of();
+            List<SubtitleArtifact> translationsToSupersede = findDownstreamTranslations(creating.getTaskId());
             if (!translationsToSupersede.isEmpty()) {
                 // 只标状态，文件列留着：删文件时要用它的路径
                 repository.markSupersededByTaskIdAndType(creating.getTaskId(), ArtifactType.TRANSLATED);
@@ -239,27 +240,6 @@ public class SubtitleArtifactStore {
                 files.hashes().get(ArtifactFileKind.SEGMENTS), files.hashes().get(ArtifactFileKind.SUBTITLES),
                 files.hashes().get(ArtifactFileKind.CONTEXT), files.hashes().get(ArtifactFileKind.TERMS));
         repository.updateReady(creating);
-    }
-
-    /**
-     * 这一版清洗的内容与旧版比变了没有：该带的文件位逐个比哈希，任一不同、或旧行没记，就算变了。
-     *
-     * <p>旧行不存在时也返回「变了」——首跑时下游必然为空，这么写等于空操作，方向往安全靠。
-     */
-    private static boolean isContentChanged(SubtitleArtifact previousReady, ArtifactFiles files) {
-        if (previousReady == null) {
-            return true;
-        }
-        for (ArtifactFileKind kind : ArtifactFileKind.values()) {
-            if (!kind.belongsTo(previousReady.getArtifactType())) {
-                continue;
-            }
-            String before = previousReady.getSha256(kind);
-            if (before == null || !before.equals(files.hashes().get(kind))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
