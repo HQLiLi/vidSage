@@ -2,7 +2,7 @@
  * 字幕应用层：根包留服务门面与产物读写门面，管线构件都住在 {@code pipeline/}，读模型住在 {@code query/}。
  *
  * <p>根包的三个构件：{@code SubtitleLanguageService}（语种清单供给，有 web 调用面）、
- * {@code SubtitleArtifactStore}（产物版本的写路径与「可读的当前版」读路径，被管线、任务服务与
+ * {@code SubtitleArtifactStore}（产物版本的写路径与「完好的当前版」读路径，被管线、任务服务与
  * 产物查询共用）、{@code SubtitleArtifactQueryService}（产物清单与下载解析，有 web 调用面）。
  *
  * <p>{@code pipeline/} 装字幕管线本体 {@code SubtitlePipeline}（按 run 类型分派三条执行体）

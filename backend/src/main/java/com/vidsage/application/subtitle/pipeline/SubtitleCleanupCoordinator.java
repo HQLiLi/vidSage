@@ -40,7 +40,13 @@ import java.util.stream.Collectors;
  * <p><b>摘不出来时落盘带降级标记的空上下文</b>：这份标记表示「这次试过了」，读回时绝不算缓存命中，
  * 下次仍会重试摘要。断点复用命中但上下文缺失或带降级标记时，也先补摘一次再返回。
  *
- * <p>检查点语义（为什么是 JSON 而不是 SRT）单源在 {@link CheckpointPolicy}，本类不另判。
+ * <p><b>断点复用要过两道门</b>：调用方先回答「当前有没有完好的清洗产物」（产物表那一侧），
+ * 本类再回答「盘上的 {@code -clean} 在不在、关键词指纹对不对」。只看文件会把已经作废的清洗
+ * 当成有效检查点——内容变更级联只动数据库，不会去删干净盘上文件。调用方说不能复用，
+ * 本类连上下文缓存都不读（那份摘要也是旧内容算出来的）。
+ *
+ * <p>检查点语义（为什么是 JSON 而不是 SRT）单源在 {@link CheckpointPolicy}；但「JSON 在不在、读不读得动」
+ * 这一步走 {@code ArtifactFileUtils.readJsonOrNull}，本类不另判。
  * 只读产字幕阶段的原始产物（{@code segments-<route>.json}，必须已存在），只写 {@code -clean}。
  */
 @Slf4j
@@ -71,45 +77,38 @@ public class SubtitleCleanupCoordinator {
     }
 
     /**
-     * 清洗一份字幕（不带关键词、不报告进度）。
+     * 清洗一份字幕，不报告进度。
      *
-     * @param input   媒体输入（与产字幕同源，用于定位工作目录）；不可为空
-     * @param workDir 这条输入的工作区目录（调用方已定位好）
-     * @return 清洗产物（-clean SRT + segments 路径 + 统计）
-     * @throws IllegalArgumentException input 为空
-     * @throws IllegalStateException    原始字幕缺失 / 解析或写入失败
-     */
-    public CleanedSubtitle clean(MediaInput input, Path workDir) {
-        return clean(input, workDir, new SubtitleKeywords(List.of()));
-    }
-
-    /**
-     * 清洗一份字幕（不报告进度）。
-     *
-     * @param input    媒体输入；不可为空
-     * @param workDir  这条输入的工作区目录（调用方已定位好）
-     * @param keywords 用户手填的关键词（专有名词正确写法，纠正同音误写）；空清单就是「不纠这一类」
+     * @param input                媒体输入；不可为空
+     * @param workDir              这条输入的工作区目录（调用方已定位好）
+     * @param keywords             用户手填的关键词；不可为 {@code null}
+     * @param allowCheckpointReuse 产物表里有没有完好的清洗产物；没有就不许走文件检查点
      * @return 清洗产物（路径 + 语种 + 句数 + 修正/重试统计）
-     * @throws IllegalArgumentException input 为空
-     * @throws IllegalStateException    原始 segments 缺失（先跑产字幕）、解析或写入失败
      */
-    public CleanedSubtitle clean(MediaInput input, Path workDir, SubtitleKeywords keywords) {
-        return clean(input, workDir, keywords, ProgressListener.noop());
+    public CleanedSubtitle clean(MediaInput input, Path workDir, SubtitleKeywords keywords,
+                                 boolean allowCheckpointReuse) {
+        return clean(input, workDir, keywords, ProgressListener.noop(), allowCheckpointReuse);
     }
 
     /**
      * 清洗一份字幕。
      *
-     * @param input    媒体输入；不可为空
-     * @param workDir  这条输入的工作区目录（调用方已定位好）
-     * @param keywords 用户手填的关键词（专有名词正确写法）；不可为 {@code null}
-     * @param listener 进度监听；不可为 {@code null}——不关心进度用不带 listener 的重载
+     * <p>{@code allowCheckpointReuse=false} 时<b>完全忽略</b>盘上的 {@code -clean} 检查点：
+     * 内容变更级联只把产物行标成作废，不会去删干净盘上文件，光看文件会把旧内容当成检查点命中。
+     * 忽略检查点同时意味着不读它的上下文缓存——那份摘要也是旧内容算出来的。
+     *
+     * @param input                媒体输入；不可为空
+     * @param workDir              这条输入的工作区目录（调用方已定位好）
+     * @param keywords             用户手填的关键词（专有名词正确写法）；不可为 {@code null}
+     * @param listener             进度监听；不可为 {@code null}——不关心进度用不带 listener 的重载
+     * @param allowCheckpointReuse 产物表里有没有完好的清洗产物
      * @return 清洗产物（路径 + 语种 + 句数 + 修正/重试统计）
-     * @throws IllegalArgumentException input 或 listener 为空
+     * @throws IllegalArgumentException input / listener / keywords 为空
      * @throws IllegalStateException    原始 segments 缺失（先跑产字幕）、解析或写入失败
      */
-    public CleanedSubtitle clean(MediaInput input, Path workDir, SubtitleKeywords keywords, ProgressListener listener) {
-        return doClean(input, workDir, keywords, listener, false);
+    public CleanedSubtitle clean(MediaInput input, Path workDir, SubtitleKeywords keywords,
+                                 ProgressListener listener, boolean allowCheckpointReuse) {
+        return doClean(input, workDir, keywords, listener, allowCheckpointReuse, false, false);
     }
 
     /**
@@ -135,28 +134,31 @@ public class SubtitleCleanupCoordinator {
      * @throws IllegalStateException    原始 segments 缺失、摘要降级为空上下文、解析或写入失败
      */
     public CleanedSubtitle regenerate(MediaInput input, Path workDir, SubtitleKeywords keywords, ProgressListener listener) {
-        return doClean(input, workDir, keywords, listener, true);
+        return doClean(input, workDir, keywords, listener, true, true, true);
     }
 
     /**
-     * 清洗一条路径：两条入口（首次跑 / 重新生成）在这里汇合，只有 {@code regenerate} 这一个布尔不同。
+     * 清洗一条路径：三条入口（首次跑 / 调用方说不能复用 / 重新生成）在这里汇合。
      *
-     * @param input      媒体输入；不可为空
-     * @param workDir    这条输入的工作区目录（调用方已定位好）
-     * @param keywords   用户手填的关键词；不可为 {@code null}
-     * @param listener   进度监听；不可为 {@code null}
-     * @param regenerate {@code true} = 跳过 {@code -clean} 检查点、摘要失败即整体失败
+     * @param input                 媒体输入；不可为空
+     * @param workDir               这条输入的工作区目录（调用方已定位好）
+     * @param keywords              用户手填的关键词；不可为 {@code null}
+     * @param listener              进度监听；不可为 {@code null}
+     * @param allowCheckpointReuse  {@code false} = 完全忽略 {@code -clean} 检查点（也不读它的上下文缓存）
+     * @param forceReClean          {@code true} = 即使检查点可用也重跑清洗（重新生成的语义）
+     * @param requireContextSummary {@code true} = 摘要失败即整体失败（重新生成的语义）
      * @return 清洗产物
      */
     private CleanedSubtitle doClean(MediaInput input, Path workDir, SubtitleKeywords keywords,
-                                    ProgressListener listener, boolean regenerate) {
+                                    ProgressListener listener, boolean allowCheckpointReuse,
+                                    boolean forceReClean, boolean requireContextSummary) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
         }
         if (listener == null) {
             throw new IllegalArgumentException("进度监听不能为 null：请传一个 ProgressListener，"
-                    + "或改用不带 listener 的 clean(input, workDir, keywords) 重载");
+                    + "或改用不带 listener 的 clean(input, workDir, keywords, allowCheckpointReuse) 重载");
         }
         if (keywords == null) {
             throw new IllegalArgumentException("关键词不能为 null：请传 new SubtitleKeywords(List.of()) 表示不纠这一类");
@@ -165,7 +167,10 @@ public class SubtitleCleanupCoordinator {
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
         Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));
         Path ctxFile = workDir.resolve(SubtitleArtifactSpec.CONTEXT.getFileName(null));
-        SubtitleTrack existing = readCheckpoint(cleanSeg);
+        // 表说不能复用就完全别看文件：盘上的 -clean 与上下文都可能是上一次内容留下的
+        SubtitleTrack existing = allowCheckpointReuse
+                ? ArtifactFileUtils.readJsonOrNull(cleanSeg, objectMapper, SubtitleTrack.class, "clean")
+                : null;
         String fingerprint = keywords.computeFingerprint();
 
         // 「这份产物就是当前关键词生成的」——既管断点复用，也管摘要缓存能不能用
@@ -175,7 +180,7 @@ public class SubtitleCleanupCoordinator {
         String cleanSubtitlesStageName = SubtitleStageName.CLEAN_SUBTITLES.getStageName();
         // 这里发的都是任务级进度（直接传 CLEAN_SUBTITLES 的区间端点）；批级进度不走这里，
         // 由 cleanser 经 ProgressMapper 换算后直接回调 listener
-        if (current && !regenerate) {
+        if (current && !forceReClean) {
             log.info("字幕清洗断点复用跳过: clean={}", cleanSeg.getFileName());
             // 复用仍要保证上下文可用：缺失或上次降级时补摘一次（不重跑清洗）
             ensureUsableContext(originalSeg, ctxFile, keywords);
@@ -187,7 +192,7 @@ public class SubtitleCleanupCoordinator {
         }
         // 开始事件先于「原始字幕缺失」卫语句发出——失败任务的用户消息里能带上所在阶段
         StageEvents.emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.start(),
-                regenerate ? "开始重新生成字幕" : "开始清洗", StageProgress.State.RUNNING);
+                forceReClean ? "开始重新生成字幕" : "开始清洗", StageProgress.State.RUNNING);
 
         if (!ArtifactFileUtils.isNonEmpty(originalSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
@@ -210,8 +215,8 @@ public class SubtitleCleanupCoordinator {
                 log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
             }
             case DEGRADED_EMPTY -> {
-                if (regenerate) {
-                    // 重新生成的语义不允许空上下文（见方法注释第 2 条）
+                if (requireContextSummary) {
+                    // 重新生成的语义不允许空上下文（见 regenerate 的注释）
                     throw new IllegalStateException("字幕摘要失败，无法按当前关键词重新生成："
                             + "请检查摘要所用的模型配置与网络后重试；现有字幕与译文都未改动");
                 }
@@ -269,23 +274,6 @@ public class SubtitleCleanupCoordinator {
                     ctxFile.getFileName());
         } else {
             log.info("字幕上下文缺失或已降级，已重新摘要并落盘: file={}", ctxFile.getFileName());
-        }
-    }
-
-    /**
-     * 读断点：{@code -clean.json} 存在且非空则反序列化为 {@link SubtitleTrack}，否则返回 {@code null}。
-     * 解析失败当未完成重跑（同 {@link SubtitlePreparationCoordinator}）。
-     * 判据语义（JSON 非空 = 完成、0 字节 = 未完成）单源在 {@link CheckpointPolicy}。
-     */
-    private SubtitleTrack readCheckpoint(Path cleanSeg) {
-        if (!CheckpointPolicy.isCompleted(ArtifactFileUtils.sizeOrZero(cleanSeg))) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(cleanSeg.toFile(), SubtitleTrack.class);
-        } catch (JacksonException e) {
-            log.warn("-clean 断点解析失败，按未完成重跑: file={}, reason={}", cleanSeg.getFileName(), e.getMessage());
-            return null;
         }
     }
 

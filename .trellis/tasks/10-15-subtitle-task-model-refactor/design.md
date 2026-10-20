@@ -219,6 +219,8 @@ CREATE TABLE IF NOT EXISTS intermediate_file
 | `INFO_JSON` | `source.info.json` | `MediaInput.SOURCE_INFO_JSON_NAME` |
 | `AUDIO` | `audio-<规格>-t<n>.<ext>` | `AudioArtifact.AUDIO_PREFIX` |
 
+4. **`derived_from_run_id` 跟着「最近一次产出」走**（2026-10-19 S6 落地时写明）：重新产出复用同一行时，类型、产出 run、`updated_at` 一起刷新；留着首次产出的旧 run 会让这列说假话。
+
 **没有 `ASR_RAW`** —— ASR 结果直接写成 `original-segments.json`，中间没有落盘环节（C50 订正）。
 
 ---
@@ -537,6 +539,7 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
    - **3 与 4 在同一事务**（W5′，C47）。事务内先后自由 —— 那些行是 `READY → SUPERSEDED`，`active_flag` 都变 NULL，不参与唯一比较
    - 一致 → 3、4 都不做；首跑（两列 `NULL`）→ 只做 4（C48）
    - **取不到指纹 → 跳过比对**，回落「有产物就复用」，记 WARN（C49）。**这是降级路径，不是失败路径** —— 不能把「取不到」当异常抛出去，否则一次元数据风控会把整条 run 判死
+   - **探测怎么取**（2026-10-19 S6 落地时写明）：`yt-dlp --skip-download --quiet --print "%(duration)s|%(timestamp)s"`，只读两个标量、**不落文件**；两列都取到才算成功，缺一个（`NA`）按取不到处理，时间戳按 **UTC** 转墙钟。**UPLOAD 路线整个阶段跳过**——上传没有绝对发布时间，内容身份由 sha256 回答（探测阶段发一条 `SKIPPED`）
 
    **③ 之后「删文件」删哪些**：
 
@@ -550,6 +553,10 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 
    > **每一步产出之前都要先查表**（C62）—— **复用判据从「文件在不在」改成「表里 `READY` 且文件在」**。
    > 否则指纹级联只动 DB、盘上文件一个没动 → 主管线「重跑」全部跳过 → **产出旧内容而 DB 说是新的，静默交付**。
+   >
+   > 表分两种：中间产物查 `intermediate_file`；`ORIGINAL` / `CLEANED` 查 `subtitle_artifact` 的 `READY` 行
+   > （`findIntactArtifact`）。分工是**两道门**：管线先回答「产物表里有没有完好的当前版」，阶段类再回答
+   > 「盘上检查点在不在、能不能解析」；前者说不能复用，后者就完全忽略文件检查点（也不读上下文缓存）。
 
 5. 成功 → `task_run.status = SUCCEEDED`
 6. 失败 → **收口统一置 `FAILED`**（C43）；流程内的 catch 只负责丰富 `error_message` / `current_stage`（**不再有中文前缀**）
@@ -594,7 +601,7 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 |---|---|---|---|---|
 | 1 | 校验 | **不写** | **不动** | 无 |
 | 2 | **抢互斥** | `INSERT task_run (TRANSLATE, RUNNING, target_language)` | **不动** | 无 |
-| 3 | **复用判据** | **只读**：该语种有一条 `READY` 行，**且该行应带的文件位可读**（C25）；命中 → 直接跳到第 7 步。不带 lineage、不比哈希 | **不动** | 无 |
+| 3 | **复用判据** | **只读**：该语种有一条 `READY` 行，**且该行应带的文件位都在**（C25）；命中 → 直接跳到第 7 步。不带 lineage、不比哈希 | **不动** | 无 |
 | 4 | **翻译** | 只推进 `current_stage` + 广播 | **不动** | ✅ **最常见的失败点**：旧译文和它的文件一点没动 |
 | 5 | 落新产物 | 插 `CREATING`（`revision+1`、`derived_from_artifact_id` = 当前 `CLEANED.id`）—— **只插行，不写文件列** | 写 3 个**临时文件** → **原子替换**（同名 → 旧译文被顶掉） | 同 §7.4 步骤 5 |
 | 6 | **换版（同一事务 = W4）** | ① 旧 `TRANSLATED(lang)` → `SUPERSEDED` + 清空文件列与哈希列<br>② 新行 → `READY` **+ 写 `*_file_name` 与 `*_sha256`** | **不动** | 同 §7.4 步骤 6 |

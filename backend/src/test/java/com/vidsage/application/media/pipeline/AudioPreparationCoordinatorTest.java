@@ -2,15 +2,22 @@ package com.vidsage.application.media.pipeline;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.vidsage.application.media.IntermediateFileOwner;
+import com.vidsage.application.media.IntermediateFileStore;
+import com.vidsage.domain.intermediate.model.IntermediateFileType;
 import com.vidsage.domain.media.model.AcquiredMedia;
 import com.vidsage.domain.media.model.AudioStageOutput;
 import com.vidsage.domain.media.model.AudioSpec;
@@ -18,21 +25,27 @@ import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.media.port.AudioExtractor;
+import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * AudioPreparationCoordinator 的纯单元测试：<b>不起 Spring 容器</b>，Mockito 替掉输入获取 /
- * 音频抽取，只验证阶段编排、断点复用判定、事件序列与失败路径。
+ * 音频抽取 / 中间产物表，只验证阶段编排、复用判据（表 READY + 文件在）、事件序列与失败路径。
  */
 class AudioPreparationCoordinatorTest {
+
+    private static final long TASK_ID = 7L;
+    private static final long RUN_ID = 3L;
+    private static final IntermediateFileOwner OWNER = new IntermediateFileOwner(TASK_ID, RUN_ID);
 
     // 本类会真的写音频产物文件，沿用 implement.md 记录的环境性清理规避：不清理临时目录。
     @TempDir(cleanup = CleanupMode.NEVER)
@@ -40,12 +53,19 @@ class AudioPreparationCoordinatorTest {
 
     private final MediaAcquirerDispatcher acquisitionStage = mock(MediaAcquirerDispatcher.class);
     private final AudioExtractor audioExtractor = mock(AudioExtractor.class);
+    private final IntermediateFileStore intermediateFileStore = mock(IntermediateFileStore.class);
     private final RecordingListener listener = new RecordingListener();
 
     private final MediaInput.RemoteUrl input = new MediaInput.RemoteUrl("https://example.com/video/1");
 
+    @BeforeEach
+    void defaultToReusableRows() {
+        // 默认「表里 READY + 文件在」；需要验门禁的用例再对具体文件名改回 false
+        when(intermediateFileStore.isReusable(anyLong(), anyString(), any())).thenReturn(true);
+    }
+
     private AudioPreparationCoordinator service() {
-        return new AudioPreparationCoordinator(acquisitionStage, audioExtractor);
+        return new AudioPreparationCoordinator(acquisitionStage, audioExtractor, intermediateFileStore);
     }
 
     private AcquiredMedia acquiredMedia() {
@@ -63,14 +83,20 @@ class AudioPreparationCoordinatorTest {
         when(acquisitionStage.acquire(input, workDir)).thenReturn(media);
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO)).thenReturn(artifact);
 
-        AudioStageOutput result = service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
+        AudioStageOutput result = service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER);
 
         assertSame(artifact, result);
         verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO);
+        verify(intermediateFileStore).recordProduced(eq(TASK_ID), eq(RUN_ID), eq(IntermediateFileType.SOURCE_MEDIA),
+                eq(workDir), eq(media.mediaPath()));
+        verify(intermediateFileStore).recordProduced(eq(TASK_ID), eq(RUN_ID), eq(IntermediateFileType.AUDIO),
+                eq(workDir), eq(audioPath));
         assertEquals(List.of(
                 "acquire-media/RUNNING", "acquire-media/SUCCEEDED",
                 "extract-audio/RUNNING", "extract-audio/SUCCEEDED"), states());
-        assertEquals(List.of(0, 21, 21, 42), progresses(), "进度取任务级区间端点：acquire [0,21) / extract [21,42)");
+        assertEquals(List.of(SubtitleStageName.ACQUIRE_MEDIA.start(), SubtitleStageName.ACQUIRE_MEDIA.end(),
+                        SubtitleStageName.EXTRACT_AUDIO.start(), SubtitleStageName.EXTRACT_AUDIO.end()),
+                progresses(), "进度取任务级区间端点（区间随阶段权重表变化，断言跟着枚举走）");
     }
 
     @Test
@@ -81,7 +107,7 @@ class AudioPreparationCoordinatorTest {
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.M4A_AAC_48K_MONO))
                 .thenReturn(new AudioStageOutput(audioPath, AudioSpec.M4A_AAC_48K_MONO, 9));
 
-        service().prepare(input, workDir, AudioSpec.M4A_AAC_48K_MONO, listener);
+        service().prepare(input, workDir, AudioSpec.M4A_AAC_48K_MONO, listener, OWNER);
 
         verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.M4A_AAC_48K_MONO);
     }
@@ -98,12 +124,13 @@ class AudioPreparationCoordinatorTest {
         when(audioExtractor.extract(any(), any(), any()))
                 .thenReturn(new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 8));
 
-        service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
+        service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER);
 
         verify(acquisitionStage, never()).acquire(any(), any());
         assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/RUNNING", "extract-audio/SUCCEEDED"),
                 states());
-        assertEquals(21, listener.events().getFirst().progress(), "跳过的 acquire 进度取该阶段终点值");
+        assertEquals(SubtitleStageName.ACQUIRE_MEDIA.end(), listener.events().getFirst().progress(),
+                "跳过的 acquire 进度取该阶段终点值");
     }
 
     @Test
@@ -112,13 +139,46 @@ class AudioPreparationCoordinatorTest {
         Files.write(workDir.resolve("audio-16k1ch-t0.wav"), new byte[5]);
         when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
 
-        AudioStageOutput result = service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
+        AudioStageOutput result = service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER);
 
         verify(audioExtractor, never()).extract(any(), any(), any());
         assertEquals(workDir.resolve("audio-16k1ch-t0.wav"), result.audioPath());
         assertEquals(5, result.sizeBytes());
         assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/SKIPPED"), states());
-        assertEquals(42, listener.events().getLast().progress(), "跳过的 extract 进度取该阶段终点值");
+        assertEquals(SubtitleStageName.EXTRACT_AUDIO.end(), listener.events().getLast().progress(),
+                "跳过的 extract 进度取该阶段终点值");
+    }
+
+    @Test
+    void reacquiresWhenTableSaysMediaNotReusable() throws IOException {
+        AcquiredMedia media = acquiredMedia();
+        Files.write(media.mediaPath(), new byte[16]);
+        Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
+        when(intermediateFileStore.isReusable(TASK_ID, "source.mp4", workDir)).thenReturn(false);
+        when(acquisitionStage.acquire(input, workDir)).thenReturn(media);
+        when(audioExtractor.extract(any(), any(), any()))
+                .thenReturn(new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 8));
+
+        service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER);
+
+        verify(acquisitionStage).acquire(input, workDir);
+        assertFalse(Files.exists(media.mediaPath()), "表拒绝复用时要先清掉盘上旧文件，别让下载器以为已下载");
+    }
+
+    @Test
+    void reextractsWhenTableSaysAudioNotReusable() throws IOException {
+        AcquiredMedia media = acquiredMedia();
+        Path audioPath = workDir.resolve("audio-16k1ch-t0.wav");
+        Files.write(audioPath, new byte[5]);
+        when(acquisitionStage.reuseExisting(input, workDir)).thenReturn(Optional.of(media));
+        when(intermediateFileStore.isReusable(TASK_ID, "audio-16k1ch-t0.wav", workDir)).thenReturn(false);
+        when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO))
+                .thenReturn(new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 7));
+
+        service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER);
+
+        verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO);
     }
 
     @Test
@@ -130,7 +190,7 @@ class AudioPreparationCoordinatorTest {
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO))
                 .thenReturn(new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 7));
 
-        service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener);
+        service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER);
 
         verify(audioExtractor).extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO);
         assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/RUNNING", "extract-audio/SUCCEEDED"),
@@ -147,7 +207,7 @@ class AudioPreparationCoordinatorTest {
                 .thenThrow(new IllegalStateException("ffmpeg 抽音频失败（exit=1）：boom"));
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener));
+                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER));
 
         assertTrue(error.getMessage().contains("boom"));
         assertEquals(List.of("acquire-media/SKIPPED", "extract-audio/RUNNING", "extract-audio/FAILED"), states());
@@ -162,7 +222,7 @@ class AudioPreparationCoordinatorTest {
                 .thenThrow(new IllegalArgumentException("本地媒体文件不存在或不可读：F:/x.mp4"));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener));
+                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER));
 
         assertTrue(error.getMessage().contains("本地媒体文件不存在"));
         assertEquals(List.of("acquire-media/RUNNING", "acquire-media/FAILED"), states());
@@ -176,7 +236,7 @@ class AudioPreparationCoordinatorTest {
                 .thenThrow(new IllegalStateException("扫描下载工作目录失败"));
 
         var error = assertThrows(IllegalStateException.class,
-                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener));
+                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, OWNER));
 
         assertTrue(error.getMessage().contains("扫描下载工作目录失败"));
         assertEquals(List.of("acquire-media/FAILED"), states());
@@ -192,17 +252,23 @@ class AudioPreparationCoordinatorTest {
         when(audioExtractor.extract(media.mediaPath(), audioPath, AudioSpec.WAV_PCM_16K_MONO))
                 .thenReturn(new AudioStageOutput(audioPath, AudioSpec.WAV_PCM_16K_MONO, 3));
 
-        assertDoesNotThrow(() -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO));
+        assertDoesNotThrow(() -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, OWNER));
     }
 
     @Test
     void rejectsNullListener() {
         // 改 3：显式传 null 不再被静默当成 noop()——那会让「忘了传 listener」变成进度无声消失
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, null));
+                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, null, OWNER));
 
-        assertTrue(error.getMessage().contains("prepare(input, workDir, spec)"),
+        assertTrue(error.getMessage().contains("prepare(input, workDir, spec, owner)"),
                 () -> "消息应指出不带 listener 重载的替代做法：" + error.getMessage());
+    }
+
+    @Test
+    void rejectsNullOwner() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service().prepare(input, workDir, AudioSpec.WAV_PCM_16K_MONO, listener, null));
     }
 
     // 原 rejectsInvalidSpecEvenWhenAudioFileExists 已删除（刻意，非遗漏）。
@@ -220,8 +286,9 @@ class AudioPreparationCoordinatorTest {
     void rejectsNullInputAndNullSpec() {
         var service = service();
 
-        assertThrows(IllegalArgumentException.class, () -> service.prepare(null, workDir, AudioSpec.WAV_PCM_16K_MONO));
-        assertThrows(IllegalArgumentException.class, () -> service.prepare(input, workDir, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.prepare(null, workDir, AudioSpec.WAV_PCM_16K_MONO, OWNER));
+        assertThrows(IllegalArgumentException.class, () -> service.prepare(input, workDir, null, OWNER));
     }
 
     // ---------- 辅助 ----------

@@ -294,7 +294,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | 契约子结构 | 语义名，不叫 `DTO` / `VO` | `TranscriptionSegment` |
 | Spring 组件 | **按包选 stereotype**：`web/controller/`→`@RestController`、`application/` **用例服务与横切服务**→`@Service`、`application/` **管线构件**（`XxxPipeline` / `XxxCoordinator` / `XxxStage`）与机制类→`@Component`、`infrastructure/`→`@Component`、`infrastructure/persistence/`→`@Repository`、`web/sse/`→`@Component` | `TaskController`、`SubtitleTaskService`、`SubtitlePipeline`、`SubtitlePreparationCoordinator`、`DashScopeAsrProvider` |
 | Controller | 业务名 + `Controller`，平铺在 `web/controller/` | `MediaController`、`TaskController` |
-| 组件后缀登记 | 端口/适配器之外的新角色后缀**用前先登记**（不登记的后缀会变万能）；`-Manager`（2026-10-11 登记）：角色词答「管理一组资源」，落 `infrastructure/fs/`（`WorkspaceDirectoryManager` 是端口，登记在上方「端口接口」行并附「防 Manager 变万能后缀」警告——**该警告不解除**）；`-Notifier`（2026-10-10 曾用）随订阅机制整块退场，当前无成员 | `WorkspaceDirectoryManager` |
+| 组件后缀登记 | 端口/适配器之外的新角色后缀**用前先登记**（不登记的后缀会变万能）；`-Manager`（2026-10-11 登记）：角色词答「管理一组资源」，落 `infrastructure/fs/`（`WorkspaceDirectoryManager` 是端口，登记在上方「端口接口」行并附「防 Manager 变万能后缀」警告——**该警告不解除**）；`-Store`（2026-10-19 登记）：角色词答「一类持久化事实的读写门面」，住在 `application/`、是 `@Component`，成员 `SubtitleArtifactStore` / `IntermediateFileStore` / `WorkspaceFingerprintStore`；`-Notifier`（2026-10-10 曾用）随订阅机制整块退场，当前无成员 | `WorkspaceDirectoryManager`、`SubtitleArtifactStore` |
 | 方法 | **动词开头**（2026-10-12 立） | `prepare` / `clean` / `translate` / `acquire` / `saveCurrentStageAndBroadcast` |
 | 变量 | **自带名词**，不靠条件表达式交代装的是什么（2026-10-19 立，见下） | `effectiveKeywords` / `previousReady` / `translationsToReclaim` |
 

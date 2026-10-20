@@ -1,5 +1,6 @@
 package com.vidsage.application.subtitle.pipeline;
 
+import com.vidsage.application.media.IntermediateFileOwner;
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.application.subtitle.SubtitleArtifactStore;
 import com.vidsage.application.task.TaskRunSupervisor;
@@ -48,6 +49,7 @@ public class SubtitlePipeline {
     private final SubtitleCleanupCoordinator cleanupStage;
     private final SubtitleTranslationCoordinator translationStage;
     private final SubtitleArtifactStore artifactStore;
+    private final SubtitleFingerprintCoordinator fingerprintCoordinator;
     private final TaskRunSupervisor supervisor;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
@@ -57,6 +59,7 @@ public class SubtitlePipeline {
      * @param cleanupStage                   阶段 2：字幕清洗，也是重新生成字幕的执行体
      * @param translationStage               翻译执行体
      * @param artifactStore                  产物版本读写门面（占位与落定）
+     * @param fingerprintCoordinator         内容指纹探测阶段（媒体获取之前）
      * @param supervisor                     收口与广播的机制类
      * @param concurrencyGate                并行任务闸门
      * @param workspaceDirectoryManager      工作区目录管理器
@@ -66,6 +69,7 @@ public class SubtitlePipeline {
                             SubtitleCleanupCoordinator cleanupStage,
                             SubtitleTranslationCoordinator translationStage,
                             SubtitleArtifactStore artifactStore,
+                            SubtitleFingerprintCoordinator fingerprintCoordinator,
                             TaskRunSupervisor supervisor,
                             TaskConcurrencyGate concurrencyGate,
                             WorkspaceDirectoryManager workspaceDirectoryManager
@@ -75,6 +79,7 @@ public class SubtitlePipeline {
         this.cleanupStage = cleanupStage;
         this.translationStage = translationStage;
         this.artifactStore = artifactStore;
+        this.fingerprintCoordinator = fingerprintCoordinator;
         this.supervisor = supervisor;
         this.concurrencyGate = concurrencyGate;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
@@ -131,7 +136,7 @@ public class SubtitlePipeline {
     }
 
     /**
-     * 翻译（TRANSLATE run）：在已有清洗产物上产出译文。当前目标语种已有可读的 READY 译文时直接收尾，
+     * 翻译（TRANSLATE run）：在已有清洗产物上产出译文。当前目标语种已有完好的 READY 译文时直接收尾，
      * 不调翻译模型、不落新版本。
      *
      * @param run                本次执行（已落库、状态 RUNNING，带目标语种）
@@ -148,8 +153,8 @@ public class SubtitlePipeline {
                 Path workDir = workDir(workspace);
                 ProgressListener listener = progressListener(ref, run);
 
-                // 当前语种已经有可读的 READY 译文：不调 LLM、不落新版本，文件一个字节不动
-                Optional<SubtitleArtifact> current = artifactStore.findReadableReady(
+                // 当前语种已经有完好的 READY 译文：不调 LLM、不落新版本，文件一个字节不动
+                Optional<SubtitleArtifact> current = artifactStore.findIntactArtifact(
                         run.getTaskId(), ArtifactType.TRANSLATED, target.getCode(), workDir);
                 if (current.isPresent()) {
                     StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE,
@@ -193,16 +198,27 @@ public class SubtitlePipeline {
             log.info("任务开始执行: taskNo={}, runNo={}, sourceType={}",
                     ref.taskNo().value(), ref.runNo(), workspace.getSourceType());
             ProgressListener listener = progressListener(ref, run);
-            // 阶段 1：先占位，再让 prepare 写文件，最后落定原始产物
+
+            // 指纹探测在媒体获取之前：内容变了就先把旧产物作废，后面每一步都不会再拿旧文件复用
+            fingerprintCoordinator.detectContentChange(run.getTaskId(), workspace, input, workDir, listener);
+            IntermediateFileOwner owner = new IntermediateFileOwner(run.getTaskId(), run.getId());
+
+            // 阶段 1：先占位，再让 prepare 写文件，最后落定原始产物。
+            // 「产物表里有没有完好的原始产物」先算出来：没有就不许走盘上的文件检查点
+            boolean originalIntact = artifactStore
+                    .findIntactArtifact(run.getTaskId(), ArtifactType.ORIGINAL, "", workDir).isPresent();
             SubtitleArtifact original = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
                     ArtifactType.ORIGINAL, "", null, null);
-            subtitlePreparationCoordinator.prepare(input, workDir, listener);
+            subtitlePreparationCoordinator.prepare(input, workDir, listener, originalIntact, owner);
             original = artifactStore.settleArtifact(original, workDir);
+
             // 阶段 2：清洗字幕文件（关键词按任务读，跟产物同粒度），清洗产物继承自刚落定的原始产物
             SubtitleKeywords keywords = keywordRepository.findByTaskId(run.getTaskId());
+            boolean cleanedIntact = artifactStore
+                    .findIntactArtifact(run.getTaskId(), ArtifactType.CLEANED, "", workDir).isPresent();
             SubtitleArtifact cleaned = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
                     ArtifactType.CLEANED, "", original.getId(), keywords.computeFingerprint());
-            cleanupStage.clean(input, workDir, keywords, listener);
+            cleanupStage.clean(input, workDir, keywords, listener, cleanedIntact);
             // 清洗是唯一有下游的产物：换版时要把基于旧清洗的译文一起作废
             artifactStore.settleCleanedAndSupersedeDownstream(cleaned, workDir);
             supervisor.finish(ref, run, null);

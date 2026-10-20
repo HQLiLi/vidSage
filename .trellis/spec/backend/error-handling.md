@@ -195,7 +195,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
   | 异常 | 包 | 映射 | 场景 |
   |---|---|---|---|
   | `TaskNotFoundException` | `application/task/exception/` | 404 | 按 taskNo 取资源的端点统一（任务查询、SSE 订阅、产物清单与下载） |
-  | `ArtifactNotFoundException` | `application/subtitle/exception/` | 404（专用映射） | 任务在、但这一版产物不可用：该 `(type, lang)` 没有可读的当前版本，或文件已不在工作区（清单与下载端点） |
+  | `ArtifactNotFoundException` | `application/subtitle/exception/` | 404（专用映射） | 任务在、但这一版产物不可用：该 `(type, lang)` 没有完好的当前版本，或文件已不在工作区（清单与下载端点） |
   | `TaskConflictException` | `application/task/exception/` | 409（载荷 `{taskNo, runNo}`） | 该任务已有一次执行在跑（撞互斥唯一键） |
   | `UnsupportedLanguageException` | `domain/exception/` | 400（专用映射） | 目标语种不在支持列表（`SupportedLanguage.parse` 认不出） |
 

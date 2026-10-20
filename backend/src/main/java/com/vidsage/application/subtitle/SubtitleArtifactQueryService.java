@@ -45,7 +45,7 @@ public class SubtitleArtifactQueryService {
     }
 
     /**
-     * 列该任务当前可读的全部产物版本。
+     * 列该任务当前完好的全部产物版本。
      *
      * @param taskNo 对外任务号
      * @return 按类型（原始 → 清洗 → 翻译）再按语种排序的清单；文件不齐的版本不出现
@@ -55,7 +55,7 @@ public class SubtitleArtifactQueryService {
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
         Path workDir = finder.workspaceDir(workspace);
-        return artifactStore.listReadableReady(task.getId(), workDir).stream()
+        return artifactStore.listIntactArtifacts(task.getId(), workDir).stream()
                 .sorted(Comparator.comparingInt((SubtitleArtifact artifact) -> artifact.getArtifactType().ordinal())
                         .thenComparing(SubtitleArtifact::getLang))
                 .map(artifact -> snapshotOf(artifact, workDir))
@@ -64,7 +64,7 @@ public class SubtitleArtifactQueryService {
     }
 
     /**
-     * 解析一次下载：参数合法性在入口判，产物可用性交给可读判定。
+     * 解析一次下载：参数合法性在入口判，产物可用性交给完好判定。
      *
      * @param taskNo    对外任务号
      * @param typeToken 产物类型（不区分大小写）
@@ -86,11 +86,11 @@ public class SubtitleArtifactQueryService {
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
         Path workDir = finder.workspaceDir(workspace);
-        SubtitleArtifact artifact = artifactStore.findReadableReady(task.getId(), type, lang, workDir)
+        SubtitleArtifact artifact = artifactStore.findIntactArtifact(task.getId(), type, lang, workDir)
                 .orElseThrow(() -> new ArtifactNotFoundException(taskNo, type.name(), fileToken));
         String fileName = artifact.getFileName(kind);
         if (fileName == null) {
-            // 可读判定本应已挡住，这里只是防御：文件列空 = 这版其实不可用
+            // 完好判定本应已挡住，这里只是防御：文件列空 = 这版其实不可用
             throw new ArtifactNotFoundException(taskNo, type.name(), fileToken);
         }
         return new ArtifactDownload(workDir.resolve(fileName), kind);

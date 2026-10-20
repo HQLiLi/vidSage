@@ -123,7 +123,7 @@ class ArtifactControllerTest {
     }
 
     @Test
-    void listReturnsEmptyArrayWhenNoVersionIsReadable() throws Exception {
+    void listReturnsEmptyArrayWhenNoVersionIsIntact() throws Exception {
         when(artifactQueryService.listArtifacts(TASK_NO)).thenReturn(List.of());
 
         mockMvc.perform(get(ARTIFACTS_URL, TASK_NO))

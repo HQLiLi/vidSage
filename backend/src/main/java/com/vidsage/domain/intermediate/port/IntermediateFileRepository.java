@@ -1,6 +1,7 @@
 package com.vidsage.domain.intermediate.port;
 
 import com.vidsage.domain.intermediate.IntermediateFile;
+import com.vidsage.domain.intermediate.model.IntermediateFileType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -36,14 +37,29 @@ public interface IntermediateFileRepository {
     Optional<IntermediateFile> findReadyByTaskIdAndFileName(long taskId, String fileName);
 
     /**
-     * 重新产出：{@code SUPERSEDED} / {@code DELETED} → {@code READY}，复用同一行
-     * （{@code uk(task_id, file_name)} 唯一），并同句刷 {@code updated_at}。
+     * 按文件名取该 task 的中间产物，<b>不限状态</b>。重新产出时用它决定「插新行还是复活旧行」：
+     * {@code uk(task_id, file_name)} 决定一个文件只有一行。
      *
-     * @param id 中间产物行 id
-     * @param at 本次变更时刻（由调用方传入，以便与同一次收尾的其它写入对齐）
+     * @param taskId   所属字幕任务
+     * @param fileName 工作区内文件名
+     * @return 那一行（任意状态）；没有时为空
+     */
+    Optional<IntermediateFile> findByTaskIdAndFileName(long taskId, String fileName);
+
+    /**
+     * 重新产出：{@code SUPERSEDED} / {@code DELETED} → {@code READY}，复用同一行
+     * （{@code uk(task_id, file_name)} 唯一），并同句刷 {@code file_type}、
+     * {@code derived_from_run_id} 与 {@code updated_at}。
+     *
+     * <p>审计列一起更新：重产出之后「产出它的那条 run」就是本次 run，留着旧值会让这列撒谎。
+     *
+     * @param id                中间产物行 id
+     * @param fileType          中间产物类型（文件名决定类型，复活时一并纠正）
+     * @param derivedFromRunId  本次产出它的 run；无则传 {@code null}
+     * @param at                本次变更时刻（由调用方传入，以便与同一次收尾的其它写入对齐）
      * @return 受影响行数
      */
-    int markReady(long id, LocalDateTime at);
+    int markReady(long id, IntermediateFileType fileType, Long derivedFromRunId, LocalDateTime at);
 
     /**
      * 内容变更级联：指纹变了 → 该 task 的中间产物全标 {@code SUPERSEDED}

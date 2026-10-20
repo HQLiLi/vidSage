@@ -19,7 +19,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 产物版本的读写门面：开始一版（占位）、落定一版（换版）、按「可读的当前版」查。
+ * 产物版本的读写门面：开始一版（占位）、落定一版（换版）、按「完好的当前版」查。
  *
  * <p>写与读共用同一套文件位解析（{@link ArtifactFileKind}），所以「该类型带哪几个文件」
  * 只有一处定义；仓储只负责落库，版本交替的顺序收在这里。
@@ -32,7 +32,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       旧版降级、下游作废、新行生效是同一个事务；下游文件在事务提交后再删。</li>
  * </ul>
  *
- * <p><b>可读判定只看「行是 READY 且该类型必需的文件位都在」</b>：文件不在了就记一条 WARN、按没有处理，
+ * <p><b>完好判定只看「行是 READY 且该类型必需的文件位都在」</b>：文件不在了就记一条 WARN、按没有处理，
  * 不改任何状态；0 字节文件算存在（空转写是合法产物）。可选位（译文的术语表）没有文件是正常形态。
  */
 @Slf4j
@@ -139,50 +139,63 @@ public class SubtitleArtifactStore {
 
         for (SubtitleArtifact translation : translationsToReclaim == null
                 ? List.<SubtitleArtifact>of() : translationsToReclaim) {
-            try {
-                if (reclaimFilesOf(translation, workDir)) {
-                    repository.markDeleted(translation.getId());
-                }
-            } catch (RuntimeException e) {
-                // 新版已经 READY、事务也提交了，回收失败不该把这一趟判成失败；留下的「已作废但文件还在」
-                // 正是对账会报出来的那一类。不传异常对象：它的消息就是完整路径
-                log.warn("下游译文回收失败，该行留在待回收状态: taskId={}, type={}, lang={}, reason={}",
-                        translation.getTaskId(), translation.getArtifactType(), translation.getLang(),
-                        e.getClass().getSimpleName());
-            }
+            reclaimSuperseded(translation, workDir);
         }
     }
 
     /**
-     * 查某一版「可读的当前版」：行是 READY，且该类型必需的每个文件位都在；
+     * 两阶段回收一版已作废的产物：删掉它登记的文件位，全删干净才标 {@code DELETED}。
+     *
+     * <p>删不动（文件被占用、权限不足、必需位缺登记）只记 WARN，那一行停在 {@code SUPERSEDED}
+     * 留给对账——新版已经生效、事务也提交了，回收没做完不该让用户看到失败。
+     * 内容变更级联（指纹变了要作废整批旧产物）也用这个方法回收译文。
+     *
+     * @param artifact 已作废（{@code SUPERSEDED}）的产物行
+     * @param workDir  工作区目录
+     */
+    public void reclaimSuperseded(SubtitleArtifact artifact, Path workDir) {
+        try {
+            if (reclaimFilesOf(artifact, workDir)) {
+                repository.markDeleted(artifact.getId());
+            }
+        } catch (RuntimeException e) {
+            // 不传异常对象：它的消息就是完整路径，而目录名内嵌身份键（脱敏红线）
+            log.warn("产物回收失败，该行留在待回收状态: taskId={}, type={}, lang={}, reason={}",
+                    artifact.getTaskId(), artifact.getArtifactType(), artifact.getLang(),
+                    e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * 查某一版「完好的当前版」：行是 READY，且该类型必需的每个文件位都在；
      * 可选位登记了也要在，没登记不算缺。
      *
      * @param taskId  所属字幕任务
      * @param type    产物类型
      * @param lang    语种；没有语言维度传空串
      * @param workDir 工作区目录
-     * @return 可读的当前版；没有或文件不齐时为空
+     * @return 完好的当前版；没有或文件不齐时为空
      */
-    public Optional<SubtitleArtifact> findReadableReady(long taskId, ArtifactType type, String lang, Path workDir) {
+    public Optional<SubtitleArtifact> findIntactArtifact(long taskId, ArtifactType type, String lang, Path workDir) {
         return repository.findReadyByTaskIdAndTypeAndLang(taskId, type, lang)
-                .filter(artifact -> isReadable(artifact, workDir));
+                .filter(artifact -> isIntact(artifact, workDir));
     }
 
     /**
-     * 列该任务全部「可读的当前版」，不对产物类型与语种排序。
+     * 列该任务全部「完好的当前版」，不对产物类型与语种排序。
      *
      * @param taskId  所属字幕任务
      * @param workDir 工作区目录
-     * @return 可读的当前版；一个都没有时是空列表
+     * @return 完好的当前版；一个都没有时是空列表
      */
-    public List<SubtitleArtifact> listReadableReady(long taskId, Path workDir) {
-        List<SubtitleArtifact> readable = new ArrayList<>();
+    public List<SubtitleArtifact> listIntactArtifacts(long taskId, Path workDir) {
+        List<SubtitleArtifact> intact = new ArrayList<>();
         for (SubtitleArtifact artifact : repository.findReadyByTaskId(taskId)) {
-            if (isReadable(artifact, workDir)) {
-                readable.add(artifact);
+            if (isIntact(artifact, workDir)) {
+                intact.add(artifact);
             }
         }
-        return List.copyOf(readable);
+        return List.copyOf(intact);
     }
 
     /**
@@ -298,13 +311,13 @@ public class SubtitleArtifactStore {
     }
 
     /**
-     * 一版产物能不能读：必需位都登记了文件名，且工作区里确实有这个普通文件；
+     * 一版产物完不完好：必需位都登记了文件名，且工作区里确实有这个普通文件；
      * 可选位登记了也要在，没登记不算缺。
      *
      * <p>缺文件只记 WARN、按没有处理，<b>不改数据库状态</b>——文件可能只是被手工挪走，
      * 放回去就该重新可见。
      */
-    private boolean isReadable(SubtitleArtifact artifact, Path workDir) {
+    private boolean isIntact(SubtitleArtifact artifact, Path workDir) {
         for (ArtifactFileKind kind : ArtifactFileKind.values()) {
             if (!kind.belongsTo(artifact.getArtifactType())) {
                 continue;

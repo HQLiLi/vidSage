@@ -103,7 +103,7 @@ class SubtitleCleanupCoordinatorTest {
         writeRawTrack();
         SubtitleCleanupCoordinator s = service();
 
-        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
 
         // 两条 -clean 产物都在且非空
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
@@ -119,13 +119,26 @@ class SubtitleCleanupCoordinatorTest {
     void cleanReusesCheckpointSkipsCleanser() throws Exception {
         writeRawTrack();
         SubtitleCleanupCoordinator s = service();
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
 
         // 二跑：-clean.json 已在，应断点复用，不再走切分与清洗
-        CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
 
         assertEquals(1, cleanserCalls.get(), "断点复用后不应再调 cleanser");
         assertEquals(2, second.segmentCount());
+    }
+
+    @Test
+    void cleanRerunsWhenArtifactGateSaysNotReusable() throws Exception {
+        writeRawTrack();
+        SubtitleCleanupCoordinator s = service();
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
+        assertEquals(1, cleanserCalls.get());
+
+        // 盘上 -clean 完好、关键词也没变，但产物表说这一版已作废 → 必须重跑，不许断点复用
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), false);
+
+        assertEquals(2, cleanserCalls.get(), "门禁关掉时必须重跑清洗，不能拿盘上旧检查点当命中");
     }
 
     @Test
@@ -135,7 +148,7 @@ class SubtitleCleanupCoordinatorTest {
         JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null)).toFile(), empty);
         SubtitleCleanupCoordinator s = service();
 
-        CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        CleanedSubtitle first = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
 
         Path cleanSeg = workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null));
         Path cleanSrt = workDir.resolve(SubtitleArtifactSpec.CLEAN_SRT.getFileName(null));
@@ -146,7 +159,7 @@ class SubtitleCleanupCoordinatorTest {
         assertEquals(0L, Files.size(cleanSrt), "空转写产出 0 字节 SRT");
 
         // 二跑：断点命中直接返回，不重跑（空转写不死循环）
-        CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        CleanedSubtitle second = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
         assertEquals(0, second.segmentCount());
         assertEquals(1, cleanserCalls.get(), "空转写二跑应走断点复用，不再调 cleanser");
     }
@@ -154,20 +167,20 @@ class SubtitleCleanupCoordinatorTest {
     @Test
     void cleanMissingRawThrows() {
         SubtitleCleanupCoordinator s = service();
-        assertThrows(IllegalStateException.class, () -> s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of())));
+        assertThrows(IllegalStateException.class, () -> s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true));
     }
 
     @Test
     void cleanNullInputThrows() {
         SubtitleCleanupCoordinator s = service();
-        assertThrows(IllegalArgumentException.class, () -> s.clean(null, workDir, new SubtitleKeywords(List.of())));
+        assertThrows(IllegalArgumentException.class, () -> s.clean(null, workDir, new SubtitleKeywords(List.of()), true));
     }
 
     @Test
     void cleanRejectsNullListener() {
         SubtitleCleanupCoordinator s = service();
         assertThrows(IllegalArgumentException.class,
-                () -> s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), null));
+                () -> s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), null, true));
     }
 
     // ------------------------------------------------------------------
@@ -187,7 +200,7 @@ class SubtitleCleanupCoordinatorTest {
                         + "\"text\":\"我防关这边露出\"}],\"keywordsFingerprint\":null}");
         SubtitleCleanupCoordinator s = service();
 
-        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
 
         assertEquals(1, cleaned.segmentCount(), "带 route 键的旧检查点应被正常读出来");
     }
@@ -209,7 +222,7 @@ class SubtitleCleanupCoordinatorTest {
         }).when(subtitleCleanser).clean(any(), any(), any(), any());
         List<StageProgress> events = new ArrayList<>();
 
-        service().clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), events::add);
+        service().clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), events::add, true);
 
         assertEquals(3, events.size(), () -> "应发「开始 → 批 → 完成」三条：" + events);
         assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
@@ -225,10 +238,10 @@ class SubtitleCleanupCoordinatorTest {
     void cleanCheckpointHitEmitsSingleSkippedEvent() throws Exception {
         writeRawTrack();
         SubtitleCleanupCoordinator s = service();
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
 
         List<StageProgress> events = new ArrayList<>();
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), events::add);
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), events::add, true);
 
         assertEquals(1, events.size(), () -> "断点复用只发一条 SKIPPED：" + events);
         assertEquals(StageProgress.State.SKIPPED, events.get(0).state());
@@ -242,7 +255,7 @@ class SubtitleCleanupCoordinatorTest {
         List<StageProgress> events = new ArrayList<>();
 
         assertThrows(IllegalStateException.class,
-                () -> service().clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), events::add));
+                () -> service().clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), events::add, true));
 
         assertEquals(1, events.size(), () -> "失败前应已发「开始清洗」：" + events);
         assertEquals(SubtitleStageName.CLEAN_SUBTITLES.getStageName(), events.get(0).stage());
@@ -287,7 +300,7 @@ class SubtitleCleanupCoordinatorTest {
                 .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
         SubtitleCleanupCoordinator s = service();
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
 
         assertTrue(Files.isRegularFile(contextFile()) && Files.size(contextFile()) > 0,
                 "摘要成功应把上下文落盘");
@@ -335,7 +348,7 @@ class SubtitleCleanupCoordinatorTest {
         writeCleanTrack(keywords.computeFingerprint());
         SubtitleCleanupCoordinator s = service();
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords);
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
 
         assertEquals(0, cleanserCalls.get(), "指纹一致就该复用现成产物，一次 LLM 都不发");
     }
@@ -346,7 +359,7 @@ class SubtitleCleanupCoordinatorTest {
         writeCleanTrack("0000deadbeef");
         SubtitleCleanupCoordinator s = service();
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of("影视飓风")));
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of("影视飓风")), true);
 
         assertEquals(1, cleanserCalls.get(), "关键词变了，旧字幕对不上，必须重跑");
     }
@@ -441,7 +454,7 @@ class SubtitleCleanupCoordinatorTest {
         when(contextSummarizer.summarize(any(), any())).thenReturn(Optional.empty());
         SubtitleCleanupCoordinator s = service();
 
-        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()));
+        CleanedSubtitle cleaned = s.clean(new MediaInput.RemoteUrl("https://x"), workDir, new SubtitleKeywords(List.of()), true);
 
         assertTrue(Files.isRegularFile(contextFile()), "降级也要落盘，留下「这次试过了」的痕迹");
         SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
@@ -459,7 +472,7 @@ class SubtitleCleanupCoordinatorTest {
                 .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
         SubtitleCleanupCoordinator s = service();
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords);
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
 
         assertEquals(0, cleanserCalls.get(), "补上下文不是重跑清洗");
         SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
@@ -478,7 +491,7 @@ class SubtitleCleanupCoordinatorTest {
                 .thenReturn(Optional.of(new SubtitleContext("中世纪剑术", "de", List.of())));
         SubtitleCleanupCoordinator s = service();
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords);
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, true);
 
         verify(contextSummarizer).summarize(any(), any());
         SubtitleContext persisted = JSON.readValue(contextFile().toFile(), SubtitleContext.class);
@@ -495,7 +508,7 @@ class SubtitleCleanupCoordinatorTest {
         SubtitleKeywords keywords = new SubtitleKeywords(List.of("影视飓风"));
         SubtitleCleanupCoordinator s = service();
 
-        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, ProgressListener.noop());
+        s.clean(new MediaInput.RemoteUrl("https://x"), workDir, keywords, ProgressListener.noop(), true);
 
         ArgumentCaptor<SubtitleKeywords> captor = ArgumentCaptor.forClass(SubtitleKeywords.class);
         verify(subtitleCleanser).clean(any(), any(), captor.capture(), any());

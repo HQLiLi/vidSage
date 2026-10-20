@@ -158,6 +158,22 @@ public final class ArtifactFileUtils {
     /**
      * 读一份 JSON 检查点；读不出来就返回 {@code null}，不抛异常。
      *
+     * <p>日志里的角色名固定为 {@code "JSON"}；要区分坏的是哪一环，用
+     * {@link #readJsonOrNull(Path, ObjectMapper, Class, String)}。
+     *
+     * @param path   文件路径
+     * @param mapper Jackson 反序列化器
+     * @param type   目标类型
+     * @param <T>    目标类型
+     * @return 反序列化结果；文件缺失 / 为空 / 解析失败时为 {@code null}
+     */
+    public static <T> T readJsonOrNull(Path path, ObjectMapper mapper, Class<T> type) {
+        return readJsonOrNull(path, mapper, type, "JSON");
+    }
+
+    /**
+     * 读一份 JSON 检查点；读不出来就返回 {@code null}，不抛异常。
+     *
      * <p><b>语义边界：只服务「断点形状的读」</b>——文件不存在、为空、解析失败，一律当「没有检查点」
      * 返回 {@code null}，让调用方照未完成重跑。
      *
@@ -167,17 +183,19 @@ public final class ArtifactFileUtils {
      * @param path   文件路径
      * @param mapper Jackson 反序列化器
      * @param type   目标类型
+     * @param role   这份检查点的角色名，只进日志（如 {@code "segments"} / {@code "clean"}）。文件名本身
+     *               已能定位，这个标签只为让日志一眼看出坏的是哪一环
      * @param <T>    目标类型
      * @return 反序列化结果；文件缺失 / 为空 / 解析失败时为 {@code null}
      */
-    public static <T> T readJsonOrNull(Path path, ObjectMapper mapper, Class<T> type) {
+    public static <T> T readJsonOrNull(Path path, ObjectMapper mapper, Class<T> type, String role) {
         if (!isNonEmpty(path)) {
             return null;
         }
         try {
             return mapper.readValue(path.toFile(), type);
         } catch (JacksonException e) {
-            log.warn("JSON 检查点解析失败，按未完成处理: file={}, reason={}", path.getFileName(), e.getMessage());
+            log.warn("{} 检查点解析失败，按未完成重跑: file={}, reason={}", role, path.getFileName(), e.getMessage());
             return null;
         }
     }

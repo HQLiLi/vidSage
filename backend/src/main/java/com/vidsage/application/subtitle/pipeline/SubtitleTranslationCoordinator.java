@@ -40,7 +40,7 @@ import java.util.stream.Collectors;
  * 字幕翻译编排：把清洗后的 -clean 字幕变成双语 -translate 产物；源语种与目标语种相同时不调 LLM，
  * 直接产出「译文 = 原文」的产物。
  *
- * <p><b>要不要复用不归本类判</b>：调用方先看产物表里当前语种有没有可读的 READY 版本，命中就直接跳过；
+ * <p><b>要不要复用不归本类判</b>：调用方先看产物表里当前语种有没有完好的 READY 版本，命中就直接跳过；
  * 走到这里就是真翻译。检查点语义（为什么是 JSON 而不是 SRT）单源在 {@link CheckpointPolicy}，本类不另判。
  */
 @Slf4j

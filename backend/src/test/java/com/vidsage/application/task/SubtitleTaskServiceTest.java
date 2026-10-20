@@ -261,26 +261,26 @@ class SubtitleTaskServiceTest {
     // ---------- 重新生成 / 翻译 ----------
 
     @Test
-    void regenerateRejectsWhenNoReadableOriginal() {
+    void regenerateRejectsWhenNoIntactOriginal() {
         when(subtitleTaskRepository.findByTaskNo(any())).thenReturn(Optional.of(task()));
         when(workspaceRepository.findById(TASK_ID)).thenReturn(Optional.of(urlWorkspace()));
-        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any()))
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any()))
                 .thenReturn(Optional.empty());
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> service().regenerate(TASK_NO, null),
-                "没有可读的原始产物 → 400，不是 409");
+                "没有完好的原始产物 → 400，不是 409");
 
         assertTrue(e.getMessage().contains("原始转写产物"));
         verify(supervisor, never()).start(any(), any(), any());
     }
 
     @Test
-    void regenerateDispatchesRecleanRunWhenReadableOriginalExists() {
+    void regenerateDispatchesRecleanRunWhenIntactOriginalExists() {
         TaskRun run = runningRun(TaskRunType.RECLEAN, null, 2);
         when(subtitleTaskRepository.findByTaskNo(any())).thenReturn(Optional.of(task()));
         when(workspaceRepository.findById(TASK_ID)).thenReturn(Optional.of(urlWorkspace()));
-        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any()))
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.ORIGINAL), eq(""), any()))
                 .thenReturn(Optional.of(readyArtifact(ArtifactType.ORIGINAL)));
         when(supervisor.start(any(), eq(TaskRunType.RECLEAN), isNull())).thenReturn(Optional.of(run));
         when(keywordRepository.findByTaskId(TASK_ID)).thenReturn(new SubtitleKeywords(List.of()));
@@ -294,26 +294,26 @@ class SubtitleTaskServiceTest {
     }
 
     @Test
-    void translateRejectsWhenNoReadableCleaned() {
+    void translateRejectsWhenNoIntactCleaned() {
         when(subtitleTaskRepository.findByTaskNo(any())).thenReturn(Optional.of(task()));
         when(workspaceRepository.findById(TASK_ID)).thenReturn(Optional.of(urlWorkspace()));
-        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.CLEANED), eq(""), any()))
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.CLEANED), eq(""), any()))
                 .thenReturn(Optional.empty());
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> service().translate(TASK_NO, "ja", "zh-Hans"),
-                "没有可读的清洗产物 → 400，不是 409");
+                "没有完好的清洗产物 → 400，不是 409");
 
         assertTrue(e.getMessage().contains("清洗后的字幕产物"));
         verify(supervisor, never()).start(any(), any(), any());
     }
 
     @Test
-    void translateDispatchesTranslateRunWhenReadableCleanedExists() {
+    void translateDispatchesTranslateRunWhenIntactCleanedExists() {
         TaskRun run = runningRun(TaskRunType.TRANSLATE, "zh-Hans", 3);
         when(subtitleTaskRepository.findByTaskNo(any())).thenReturn(Optional.of(task()));
         when(workspaceRepository.findById(TASK_ID)).thenReturn(Optional.of(urlWorkspace()));
-        when(artifactStore.findReadableReady(eq(TASK_ID), eq(ArtifactType.CLEANED), eq(""), any()))
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.CLEANED), eq(""), any()))
                 .thenReturn(Optional.of(readyArtifact(ArtifactType.CLEANED)));
         when(supervisor.start(any(), eq(TaskRunType.TRANSLATE), any())).thenReturn(Optional.of(run));
 

@@ -39,7 +39,7 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 /**
  * {@link SubtitleArtifactStore} 的单元测试：仓储全部 mock，工作区用临时目录放真实文件。
  *
- * <p>重点钉四件事：占位行全空、落定先降级旧版再置新版 READY、可读判定按整版产物算、
+ * <p>重点钉四件事：占位行全空、落定先降级旧版再置新版 READY、完好判定按整版产物算、
  * 清洗落定只在内容真变了时作废下游并把它们的文件收掉。
  */
 class SubtitleArtifactStoreTest {
@@ -450,42 +450,42 @@ class SubtitleArtifactStoreTest {
                 events, "异常必须从方法里传出去，且触发回滚而不是提交");
     }
 
-    // ---------- 可读判定 ----------
+    // ---------- 完好判定 ----------
 
     @Test
-    void findReadableReadyReturnsArtifactWhenAllFilesArePresent() throws IOException {
+    void findIntactArtifactReturnsArtifactWhenAllFilesArePresent() throws IOException {
         write("original-segments.json", "segments");
         write("original-subtitles.srt", "srt");
         SubtitleArtifact ready = ready(5L, ArtifactType.ORIGINAL, "");
         when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.ORIGINAL, ""))
                 .thenReturn(Optional.of(ready));
 
-        assertTrue(store.findReadableReady(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isPresent());
+        assertTrue(store.findIntactArtifact(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isPresent());
     }
 
     @Test
-    void findReadableReadyTreatsZeroByteFileAsPresent() throws IOException {
+    void findIntactArtifactTreatsZeroByteFileAsPresent() throws IOException {
         write("original-segments.json", "segments");
         write("original-subtitles.srt", "");
         when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.ORIGINAL, ""))
                 .thenReturn(Optional.of(ready(5L, ArtifactType.ORIGINAL, "")));
 
-        assertTrue(store.findReadableReady(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isPresent(),
+        assertTrue(store.findIntactArtifact(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isPresent(),
                 "空转写产出的 0 字节 SRT 是合法产物");
     }
 
     @Test
-    void findReadableReadyReturnsEmptyWhenOneFileIsMissing() throws IOException {
+    void findIntactArtifactReturnsEmptyWhenOneFileIsMissing() throws IOException {
         write("original-segments.json", "segments");
         when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.ORIGINAL, ""))
                 .thenReturn(Optional.of(ready(5L, ArtifactType.ORIGINAL, "")));
 
-        assertTrue(store.findReadableReady(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isEmpty(),
+        assertTrue(store.findIntactArtifact(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isEmpty(),
                 "缺一个文件就整版当没有");
     }
 
     @Test
-    void findReadableReadyReturnsEmptyWhenFileColumnIsNull() throws IOException {
+    void findIntactArtifactReturnsEmptyWhenFileColumnIsNull() throws IOException {
         write("original-segments.json", "segments");
         write("original-subtitles.srt", "srt");
         SubtitleArtifact broken = SubtitleArtifact.restore(5L, TASK_ID, RUN_ID, ArtifactType.ORIGINAL, "",
@@ -494,33 +494,33 @@ class SubtitleArtifactStoreTest {
         when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.ORIGINAL, ""))
                 .thenReturn(Optional.of(broken));
 
-        assertTrue(store.findReadableReady(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isEmpty());
+        assertTrue(store.findIntactArtifact(TASK_ID, ArtifactType.ORIGINAL, "", workDir).isEmpty());
     }
 
     @Test
-    void findReadableReadyAcceptsTranslatedWithoutTerms() throws IOException {
+    void findIntactArtifactAcceptsTranslatedWithoutTerms() throws IOException {
         write("translated-segments-en.json", "segments");
         write("translated-subtitles-en.srt", "srt");
         when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.TRANSLATED, "en"))
                 .thenReturn(Optional.of(translatedReadyWithoutTerms(6L, "en")));
 
-        assertTrue(store.findReadableReady(TASK_ID, ArtifactType.TRANSLATED, "en", workDir).isPresent(),
-                "术语表是可选位：没有它整版仍然可读");
+        assertTrue(store.findIntactArtifact(TASK_ID, ArtifactType.TRANSLATED, "en", workDir).isPresent(),
+                "术语表是可选位：没有它整版仍然完好");
     }
 
     @Test
-    void findReadableReadyReturnsEmptyWhenRegisteredTermsFileIsGone() throws IOException {
+    void findIntactArtifactReturnsEmptyWhenRegisteredTermsFileIsGone() throws IOException {
         write("translated-segments-en.json", "segments");
         write("translated-subtitles-en.srt", "srt");
         when(repository.findReadyByTaskIdAndTypeAndLang(TASK_ID, ArtifactType.TRANSLATED, "en"))
                 .thenReturn(Optional.of(ready(6L, ArtifactType.TRANSLATED, "en")));
 
-        assertTrue(store.findReadableReady(TASK_ID, ArtifactType.TRANSLATED, "en", workDir).isEmpty(),
+        assertTrue(store.findIntactArtifact(TASK_ID, ArtifactType.TRANSLATED, "en", workDir).isEmpty(),
                 "登记了但文件被删：整版不可用，等下一次翻译自愈");
     }
 
     @Test
-    void listReadableReadyFiltersOutWholeVersionsWithMissingFiles() throws IOException {
+    void listIntactArtifactsFiltersOutWholeVersionsWithMissingFiles() throws IOException {
         write("original-segments.json", "segments");
         write("original-subtitles.srt", "srt");
         write("clean-segments.json", "segments");
@@ -528,10 +528,10 @@ class SubtitleArtifactStoreTest {
                 ready(5L, ArtifactType.ORIGINAL, ""),
                 ready(6L, ArtifactType.CLEANED, "")));
 
-        List<SubtitleArtifact> readable = store.listReadableReady(TASK_ID, workDir);
+        List<SubtitleArtifact> intact = store.listIntactArtifacts(TASK_ID, workDir);
 
-        assertEquals(1, readable.size());
-        assertEquals(ArtifactType.ORIGINAL, readable.get(0).getArtifactType());
+        assertEquals(1, intact.size());
+        assertEquals(ArtifactType.ORIGINAL, intact.get(0).getArtifactType());
     }
 
     // ---------- 夹具 ----------

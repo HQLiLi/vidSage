@@ -192,7 +192,7 @@ public class SubtitleTaskService {
         SubtitleKeywords validated = keywords == null ? null : new SubtitleKeywords(keywords);
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
-        SubtitleArtifact originalArtifact = requireReadableArtifact(task, workspace, ArtifactType.ORIGINAL,
+        SubtitleArtifact originalArtifact = requireIntactArtifact(task, workspace, ArtifactType.ORIGINAL,
                 "原始转写产物（ORIGINAL）");
         TaskRun run = supervisor.start(task, TaskRunType.RECLEAN, null).orElseThrow(() -> conflictFor(task));
         if (validated != null) {
@@ -222,7 +222,7 @@ public class SubtitleTaskService {
         SupportedLanguage target = SupportedLanguage.parse(targetLanguage);
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
-        SubtitleArtifact cleaned = requireReadableArtifact(task, workspace, ArtifactType.CLEANED,
+        SubtitleArtifact cleaned = requireIntactArtifact(task, workspace, ArtifactType.CLEANED,
                 "清洗后的字幕产物（CLEANED）");
         TaskRun run = supervisor.start(task, TaskRunType.TRANSLATE, target.getCode())
                 .orElseThrow(() -> conflictFor(task));
@@ -240,6 +240,7 @@ public class SubtitleTaskService {
     private TaskRunRef handleSubmit(SourceType sourceType, SourceKey sourceKey, String sourceUri,
                                     String canonicalUrl, SubtitleKeywords keywords) {
         Submission submission = transactionTemplate.execute(status -> {
+            // 数据库创建记录
             Workspace workspace = findOrCreateWorkspace(sourceType, sourceKey, sourceUri, canonicalUrl);
             SubtitleTask task = findOrCreateTask(workspace);
             TaskRun run = supervisor.start(task, TaskRunType.MAIN, null).orElseThrow(() -> conflictFor(task));
@@ -311,18 +312,18 @@ public class SubtitleTaskService {
     }
 
     /**
-     * 前置守卫：该任务必须有一版可读的当前产物（行是 READY，而且该带的文件都在盘上），并把它交出来。
+     * 前置守卫：该任务必须有一版完好的当前产物（行是 READY，而且该带的文件都在盘上），并把它交出来。
      *
      * <p>返回的是<b>当下</b>那一版，调用方拿它的 id 填新产物的溯源字段；那个字段只用于审计，
      * 不参与任何读取判据。
      *
      * <p>读路径只把缺文件的产物当没有，<b>不做自愈重跑</b>——重新生成由用户重新触发。
      */
-    private SubtitleArtifact requireReadableArtifact(SubtitleTask task, Workspace workspace,
+    private SubtitleArtifact requireIntactArtifact(SubtitleTask task, Workspace workspace,
                                                      ArtifactType type, String description) {
         Path workDir = finder.workspaceDir(workspace);
-        return artifactStore.findReadableReady(task.getId(), type, "", workDir)
-                .orElseThrow(() -> new IllegalArgumentException("字幕尚未就绪：该任务还没有可读的 " + description
+        return artifactStore.findIntactArtifact(task.getId(), type, "", workDir)
+                .orElseThrow(() -> new IllegalArgumentException("字幕尚未就绪：该任务还没有完好的 " + description
                         + "；请先等主管线跑完（可查 GET /api/tasks/{taskNo} 或订阅其 SSE 事件）再试"));
     }
 

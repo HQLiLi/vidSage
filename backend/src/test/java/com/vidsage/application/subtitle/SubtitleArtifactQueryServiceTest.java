@@ -55,7 +55,7 @@ class SubtitleArtifactQueryServiceTest {
     @Test
     void listSortsByTypeOrderThenLanguage() throws IOException {
         writeAll();
-        when(artifactStore.listReadableReady(TASK_ID, workDir)).thenReturn(List.of(
+        when(artifactStore.listIntactArtifacts(TASK_ID, workDir)).thenReturn(List.of(
                 ready(3L, ArtifactType.TRANSLATED, "zh-Hans"),
                 ready(2L, ArtifactType.CLEANED, ""),
                 ready(1L, ArtifactType.ORIGINAL, "")));
@@ -72,7 +72,7 @@ class SubtitleArtifactQueryServiceTest {
     @Test
     void listCarriesKeywordsFingerprintOnlyOnCleaned() throws IOException {
         writeAll();
-        when(artifactStore.listReadableReady(TASK_ID, workDir)).thenReturn(List.of(
+        when(artifactStore.listIntactArtifacts(TASK_ID, workDir)).thenReturn(List.of(
                 ready(1L, ArtifactType.ORIGINAL, ""),
                 ready(2L, ArtifactType.CLEANED, "")));
         stubFinder();
@@ -86,7 +86,7 @@ class SubtitleArtifactQueryServiceTest {
     @Test
     void listReportsFileKindsInDeclarationOrder() throws IOException {
         writeAll();
-        when(artifactStore.listReadableReady(TASK_ID, workDir)).thenReturn(List.of(
+        when(artifactStore.listIntactArtifacts(TASK_ID, workDir)).thenReturn(List.of(
                 ready(2L, ArtifactType.CLEANED, "")));
         stubFinder();
 
@@ -98,8 +98,8 @@ class SubtitleArtifactQueryServiceTest {
 
     @Test
     void listDropsVersionWhoseFileDisappearsBeforeSizeRead() {
-        // 可读判定时文件还在、取大小时已被删：整版去掉，不抛 500
-        when(artifactStore.listReadableReady(TASK_ID, workDir)).thenReturn(List.of(
+        // 完好判定时文件还在、取大小时已被删：整版去掉，不抛 500
+        when(artifactStore.listIntactArtifacts(TASK_ID, workDir)).thenReturn(List.of(
                 ready(1L, ArtifactType.ORIGINAL, "")));
         stubFinder();
 
@@ -157,7 +157,7 @@ class SubtitleArtifactQueryServiceTest {
     void openAcceptsTypeTokenInAnyCase() throws IOException {
         writeAll();
         stubFinder();
-        when(artifactStore.findReadableReady(TASK_ID, ArtifactType.ORIGINAL, "", workDir))
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.ORIGINAL, "", workDir))
                 .thenReturn(Optional.of(ready(1L, ArtifactType.ORIGINAL, "")));
 
         ArtifactDownload download = service.openArtifact(TASK_NO, "original", "segments.json", null);
@@ -169,9 +169,9 @@ class SubtitleArtifactQueryServiceTest {
     // ---------- 下载：产物不可用（404） ----------
 
     @Test
-    void openThrowsNotFoundWhenThereIsNoReadableReady() {
+    void openThrowsNotFoundWhenThereIsNoIntactArtifact() {
         stubFinder();
-        when(artifactStore.findReadableReady(TASK_ID, ArtifactType.CLEANED, "", workDir))
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.CLEANED, "", workDir))
                 .thenReturn(Optional.empty());
 
         ArtifactNotFoundException e = assertThrows(ArtifactNotFoundException.class,
@@ -186,7 +186,7 @@ class SubtitleArtifactQueryServiceTest {
         SubtitleArtifact broken = SubtitleArtifact.restore(2L, TASK_ID, 1L, ArtifactType.CLEANED, "", 1,
                 SubtitleArtifactStatus.READY, null, "fp-1", "clean-segments.json", null, "context.json",
                 null, "a", null, "c", null, LocalDateTime.now());
-        when(artifactStore.findReadableReady(TASK_ID, ArtifactType.CLEANED, "", workDir))
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.CLEANED, "", workDir))
                 .thenReturn(Optional.of(broken));
 
         assertThrows(ArtifactNotFoundException.class,
@@ -207,7 +207,7 @@ class SubtitleArtifactQueryServiceTest {
     void openNormalizesLanguageAliasBeforeLookup() throws IOException {
         writeAll();
         stubFinder();
-        when(artifactStore.findReadableReady(TASK_ID, ArtifactType.TRANSLATED, "zh-Hans", workDir))
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.TRANSLATED, "zh-Hans", workDir))
                 .thenReturn(Optional.of(ready(3L, ArtifactType.TRANSLATED, "zh-Hans")));
 
         ArtifactDownload download = service.openArtifact(TASK_NO, "TRANSLATED", "segments.json", "zh");
@@ -219,7 +219,7 @@ class SubtitleArtifactQueryServiceTest {
     @Test
     void listKeepsTranslatedVersionWithoutTerms() throws IOException {
         writeAll();
-        when(artifactStore.listReadableReady(TASK_ID, workDir)).thenReturn(List.of(
+        when(artifactStore.listIntactArtifacts(TASK_ID, workDir)).thenReturn(List.of(
                 translatedWithoutTerms(3L, "zh-Hans")));
         stubFinder();
 
@@ -235,7 +235,7 @@ class SubtitleArtifactQueryServiceTest {
     void openTermsReturnsNotFoundWhenVersionHasNoTerms() throws IOException {
         writeAll();
         stubFinder();
-        when(artifactStore.findReadableReady(TASK_ID, ArtifactType.TRANSLATED, "zh-Hans", workDir))
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.TRANSLATED, "zh-Hans", workDir))
                 .thenReturn(Optional.of(translatedWithoutTerms(3L, "zh-Hans")));
 
         assertThrows(ArtifactNotFoundException.class,

@@ -27,7 +27,7 @@ import org.mockito.Mockito;
  * {@link MybatisIntermediateFileRepository} 的纯单元测试：Mapper 用 Mockito mock，<b>不连真库</b>。
  *
  * <p>覆盖「实体 ↔ 领域对象逐字段双向转换」「insertReady 回填自增 id」「READY 查询条件」
- * 「三条定向 UPDATE 的委派并同句带上 updated_at 的时刻」。
+ * 「按文件名取任意状态」「三条定向 UPDATE 的委派并同句带上 updated_at 的时刻」。
  */
 class MybatisIntermediateFileRepositoryTest {
 
@@ -115,15 +115,32 @@ class MybatisIntermediateFileRepositoryTest {
         assertTrue(repository.findReadyByTaskIdAndFileName(7L, "nope.mp4").isEmpty());
     }
 
+    @Test
+    void findByTaskIdAndFileNameDoesNotFilterByStatus() {
+        when(mapper.selectOne(any())).thenReturn(entity());
+
+        assertTrue(repository.findByTaskIdAndFileName(7L, "source.mp4").isPresent());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<AbstractWrapper<IntermediateFileEntity, ?, ?>> captor =
+                ArgumentCaptor.forClass(AbstractWrapper.class);
+        verify(mapper).selectOne(captor.capture());
+        String segment = captor.getValue().getSqlSegment().toLowerCase(java.util.Locale.ROOT);
+        assertTrue(segment.contains("task_id") && segment.contains("file_name"),
+                () -> "按文件名取任意状态必须只按 task_id / file_name 过滤：" + segment);
+        assertTrue(!segment.contains("status"),
+                () -> "重新产出的判据要看任意状态，不能把 status 带进条件：" + segment);
+    }
+
     // ---------- 定向 UPDATE ----------
 
     @Test
-    void markReadyDelegatesWithGivenTimestamp() {
+    void markReadyDelegatesWithTypeRunAndTimestamp() {
         LocalDateTime at = LocalDateTime.of(2026, 10, 17, 12, 0);
-        when(mapper.markReady(11L, at)).thenReturn(1);
+        when(mapper.markReady(11L, IntermediateFileType.AUDIO, 5L, at)).thenReturn(1);
 
-        assertEquals(1, repository.markReady(11L, at));
-        verify(mapper).markReady(11L, at);
+        assertEquals(1, repository.markReady(11L, IntermediateFileType.AUDIO, 5L, at));
+        verify(mapper).markReady(11L, IntermediateFileType.AUDIO, 5L, at);
     }
 
     @Test

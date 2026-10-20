@@ -1,5 +1,6 @@
 package com.vidsage.domain.workspace;
 
+import com.vidsage.domain.workspace.model.ContentFingerprint;
 import com.vidsage.domain.workspace.model.SourceKey;
 import com.vidsage.domain.workspace.model.SourceType;
 import java.time.LocalDateTime;
@@ -98,5 +99,31 @@ public class Workspace {
         this.durationMs = durationMs;
         this.publishedAt = publishedAt;
         this.updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 两列都空 = 首次探测：只写指纹、不作废旧产物。
+     *
+     * <p>首跑没有旧产物可作废；如果只空一列，说明库里的指纹状态不完整，那不算首跑
+     * （由 {@link #matchesFingerprint} 判成「变了」，方向往安全靠）。
+     *
+     * @return 两列都为 {@code null} 时返回 {@code true}
+     */
+    public boolean hasUnknownFingerprint() {
+        return durationMs == null && publishedAt == null;
+    }
+
+    /**
+     * 两列都非空、且与新探测的指纹逐列相等，才算「内容没变」。
+     *
+     * <p>只空一列时返回 {@code false}——比不全就当变了，安全方向是宁可多作废一次。
+     *
+     * @param fingerprint 新探测到的内容指纹；不可为 {@code null}
+     * @return 两列都有值且都相等时返回 {@code true}
+     */
+    public boolean matchesFingerprint(ContentFingerprint fingerprint) {
+        return durationMs != null && publishedAt != null
+                && durationMs == fingerprint.durationMs()
+                && publishedAt.equals(fingerprint.publishedAt());
     }
 }

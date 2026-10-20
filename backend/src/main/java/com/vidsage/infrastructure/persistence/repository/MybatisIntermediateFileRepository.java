@@ -3,6 +3,7 @@ package com.vidsage.infrastructure.persistence.repository;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.vidsage.domain.intermediate.IntermediateFile;
 import com.vidsage.domain.intermediate.model.IntermediateFileStatus;
+import com.vidsage.domain.intermediate.model.IntermediateFileType;
 import com.vidsage.domain.intermediate.port.IntermediateFileRepository;
 import com.vidsage.infrastructure.persistence.entity.IntermediateFileEntity;
 import com.vidsage.infrastructure.persistence.mapper.IntermediateFileMapper;
@@ -69,14 +70,31 @@ public class MybatisIntermediateFileRepository implements IntermediateFileReposi
     }
 
     /**
-     * 重新产出：{@code SUPERSEDED} / {@code DELETED} → {@code READY}，复用同一行。
+     * 按文件名取该 task 的中间产物，不限状态。
      *
-     * @param id 中间产物行 id
-     * @param at 本次变更时刻（同句刷 updated_at）
+     * @param taskId   所属字幕任务
+     * @param fileName 工作区内文件名
+     * @return 那一行（任意状态）；没有时为空
+     */
+    public Optional<IntermediateFile> findByTaskIdAndFileName(long taskId, String fileName) {
+        IntermediateFileEntity entity = mapper.selectOne(Wrappers.<IntermediateFileEntity>lambdaQuery()
+                .eq(IntermediateFileEntity::getTaskId, taskId)
+                .eq(IntermediateFileEntity::getFileName, fileName));
+        return entity == null ? Optional.empty() : Optional.of(toDomain(entity));
+    }
+
+    /**
+     * 重新产出：{@code SUPERSEDED} / {@code DELETED} → {@code READY}，复用同一行，
+     * 同句刷类型、产出 run 与 {@code updated_at}。
+     *
+     * @param id               中间产物行 id
+     * @param fileType         中间产物类型
+     * @param derivedFromRunId 本次产出它的 run；无则传 {@code null}
+     * @param at               本次变更时刻（同句刷 updated_at）
      * @return 受影响行数
      */
-    public int markReady(long id, LocalDateTime at) {
-        return mapper.markReady(id, at);
+    public int markReady(long id, IntermediateFileType fileType, Long derivedFromRunId, LocalDateTime at) {
+        return mapper.markReady(id, fileType, derivedFromRunId, at);
     }
 
     /**
