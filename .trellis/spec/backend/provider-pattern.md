@@ -27,7 +27,7 @@
 | 配置属性 | 该实现专用的配置，`record` + `@DefaultValue`，与实现类同包 | `infrastructure/provider/asr/dashscope/DashScopeProperties.java` |
 | 契约 | 入参 `Command` / 出参 `Result`，全部 `record`，与端口接口同一上下文 | `domain/transcription/model/Transcription*` |
 
-已落地的端口接口及其位置：`ASRProvider` → `domain/transcription/port/`，`MediaAcquirer` / `AudioExtractor` → `domain/media/port/`，`TermLookupProvider` / `SubtitleCleanser` / `SubtitleTranslator` / `SubtitleContextSummarizer` → `domain/subtitle/port/`，`VideoTaskRepository` → `domain/task/port/`；**`ToolDiagnostics` → `application/diagnostics/port/`**（业务无关的运维能力，端口归 application——见 [directory-structure.md](./directory-structure.md) 的[端口归属判据](./directory-structure.md#端口归属判据)）。（2026-10-05 DDD 四层化前，接口与实现同居顶层 `provider/`；端口上移进领域层、适配器移入 `infrastructure/provider/` 即本次落地的结构变更。2026-10-06 端口倒置补齐了其余四类被上层直接引用的具体类。）
+已落地的端口接口及其位置：`ASRProvider` → `domain/transcription/port/`，`MediaAcquirer` / `AudioExtractor` → `domain/media/port/`，`TermLookupProvider` / `SubtitleCleanser` / `SubtitleTranslator` / `SubtitleContextSummarizer` → `domain/subtitle/port/`，`SubtitleTaskRepository` → `domain/task/port/`；**`ToolDiagnostics` → `application/diagnostics/port/`**（业务无关的运维能力，端口归 application——见 [directory-structure.md](./directory-structure.md) 的[端口归属判据](./directory-structure.md#端口归属判据)）。（2026-10-05 DDD 四层化前，接口与实现同居顶层 `provider/`；端口上移进领域层、适配器移入 `infrastructure/provider/` 即本次落地的结构变更。2026-10-06 端口倒置补齐了其余四类被上层直接引用的具体类。）
 
 ### 1. 接口保持纯净
 
