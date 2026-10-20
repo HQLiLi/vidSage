@@ -1451,3 +1451,30 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 53: 字幕模型重构 6.5：复用不落版（跳过即不换版）
+<!-- trellis-session: v=2 fp=549cfc9e95d9a160 -->
+
+**Date**: 2026-10-20
+**Task**: 字幕模型重构 6.5：复用不落版（跳过即不换版）
+**Branch**: `dev`
+
+### Summary
+
+把主管线的「跳过也落一版新产物」改成「不复用才落版」。过审门先定两条口径：reuseIfAvailable 收 ProgressListener（否则命中时那几条 SKIPPED 发不出去，而 listener 是每 run 一份、阶段类拿不到）；开始事件文案挂 requireContextSummary（forceReClean 消失后的代理，不为此造新参数，等管线拆分时改挂管线身份）。实现：两个阶段类把复用判据提到公开面并收窄真跑签名、删 ensureUsableContext；runPipeline 两个占位改条件创建、命中取已有 READY 行；SubtitleArtifactStore 删 isContentChanged、下游作废改无条件。步骤 1+2 必须一次进（判据失去输入不能单独存在），五笔提交。trellis-check 三读面全 PASS 未自修，683/0/0/1 绿（基线 681，删 4 改 14 加 6）。真库端到端 AC1–AC10 全 PASS：复用那趟 2 秒跑完、subtitle_artifact 逐行 diff 无输出、文件 mtime（含 context.json）不变、只有 subtitle_task.updated_at 变；AC4 实测到 design §5 记的已知窗口（ORIGINAL 真重跑 + CLEANED 仍复用），确认不是缺陷。清单外一并做：去路线化漏扫的 15 处 <route> 占位注释改真名（9 文件）、spec 命名先例改用现存名字（3 处）。schema.sql 的 derived_from_run_id 列注释改准并 ALTER 本机库跟上。已 --no-ff 合回 dev 推送、删本地与远端特性分支、归档。欠账 #1（S7 的 prd 要补写本段是它的前置）与 #4（管线拆分时那条文案代理）需主动交接。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cad61f6` | feat(task): 字幕模型重构 6.5 复用不落版（跳过即不换版） |
+| `a461efb` | docs(comment): 去路线化补扫 —— <route> 占位改成真名 |
+| `305f3f7` | docs(task): 父设计同步「复用不落版」口径 |
+| `012accc` | docs(spec): 命名先例改用现存名字 |
+| `8e0608c` | chore(task): 10-20 复用不落版任务工件 |
+| `547de3c` | Merge branch 'feature/subtitle-reuse-versioning' into dev |
+
+### Status
+
+[OK] **Completed**

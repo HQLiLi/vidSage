@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 52
+- **Total Sessions**: 53
 - **Last Active**: 2026-10-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1453 | Active |
+| `journal-1.md` | ~1480 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 53 | 2026-10-20 | 字幕模型重构 6.5：复用不落版（跳过即不换版） | `cad61f6`, `a461efb`, `305f3f7`, `012accc`, `8e0608c`, `547de3c` | `dev` |
 | 52 | 2026-10-20 | 字幕模型重构 S6：内容指纹与中间产物登记（含审查轮） | `72bf12b` | `dev` |
 | 51 | 2026-10-19 | 字幕模型重构 S5：翻译落表与复用判据 | `f4590a7` | `dev` |
 | 50 | 2026-10-19 | S4 重洗：RECLEAN 落 artifact 表 + W5 换版级联 | `d499c9e`, `ea2eeed` | `dev` |
