@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/10-17-subtitle-reconcile-endpoint/prd.md", "reason": "AC1–AC12 逐条核：端点只读（调用前后四张表逐行不变 + 工作区 mtime 不变）、① 报得出且复原后消失、② 覆盖 SUPERSEDED 与 DELETED、③ 报得出且不误报白名单后缀、②③ 不重叠、④ 报得出、正常态四类全 0、scanProducts 回归、全量测试绿、文档一致"}
+{"file": ".trellis/tasks/10-17-subtitle-reconcile-endpoint/design.md", "reason": "对版依据：§2 四类判据是否逐条落地（尤其 ② 的两个状态、③ 的参照集含全部状态、④ 只比两列都非 NULL 的位）、§2.5 互斥关系是否成立、§1.2 响应体形状（四类恒在、count 与 items 相等）、§4.2 scanProducts 的本地排除、§7 D1–D10 是否被遵守"}
+{"file": ".trellis/tasks/10-17-subtitle-reconcile-endpoint/implement.md", "reason": "对版依据：§0 三条开工纪律是否执行（测试基线是否重量、是否用 clean test-compile、是否删了陈旧 surefire-reports）、步骤 1 与 2 是否按序、步骤 3 的五条边界单测是否都造了、步骤 6 的构造是否全部复原（不能留下被改脏的库或盘）、回滚点是否成立"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "反向核验：§7.9 的 ② 是否已按 D2 回写（扩到 DELETED）、§8.4 的四条哈希列纪律是否仍成立（本段只是读取方，不改写入点）、§5 W6 的两阶段协议是否被动过（不该动）—— 【注意】本文件 61KB 超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核落位与命名：application/maintenance 与 port/ 子包是否符合端口归属判据、infrastructure → application 的依赖是否只此一处（与 diagnostics 同款）、shared/fs 新增类的定位、没有新增不该有的跨层依赖 —— 【注意】本文件 67KB 超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核注释口径与测试质量：新增类的 Javadoc 是否按白话口径、单测是否真的钉住行为而不是复述实现（尤其「②③ 不重叠」「可选位 NULL 不误报」这两条）、是否有连真库的测试"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核脱敏红线：对账服务的日志里不得出现目录名、文件名、完整路径；只许记四类条数与耗时 —— 这是本段最容易踩的一条"}

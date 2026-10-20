@@ -670,11 +670,13 @@ UPDATE subtitle_task     SET updated_at=now()  WHERE id IN (被上面第一条�
 
 | 类 | 报告行带什么 |
 |---|---|
-| ① 表 `READY` 但文件不在 | **`task_no`** + `file_name` + 问题类别 |
-| ② 表 `SUPERSEDED` 但文件还在 | 同上 |
-| ③ 盘上有文件、表里没有、且后缀不在 `{.tmp, .part, .ytdl}` | **目录名**（`sanitizeName(source_key)`）+ `file_name` + 问题类别 |
-| ④ 表 `READY` 但文件哈希对不上（C64） | **`task_no`** + `file_name` + 问题类别 |
+| ① 表 `READY` 但文件不在 | **`task_no`** + `file_name` |
+| ② 表 `SUPERSEDED` / `DELETED` 但文件还在 | **`task_no`** + `file_name` |
+| ③ 盘上有文件、表里没有、且后缀不在 `{.tmp, .part, .ytdl}` | **目录名**（`sanitizeName(source_key)`）+ `file_name` |
+| ④ 表 `READY` 但文件哈希对不上（C64） | **`task_no`** + `file_name` |
 
+- **② 覆盖 `DELETED`**（S7 D2，2026-10-20 回写）：代码保证「全删干净才标 `DELETED`」，但手工放回文件 / 备份还原会破坏它；「表说已回收、盘上还有」是货真价实的矛盾态，零成本兜底。换版的旧 `ORIGINAL` / `CLEANED` 文件列已清空，天然不报。
+- **问题类别由所属数组表达**（S7 D4）：四类直接当顶层字段（`danglingFiles` / `reclaimPending` / `orphanFiles` / `hashMismatch`），每类 `{count, items[]}`，**不再冗余一个 `category` 字段**。
 - 用 `task_no` 不用 `task_id` —— 内部自增 id **不出境**。③ 必须带**目录名**（孤儿不在表里，没有 `task_no` 可带）—— **有意的例外**。
 - 四类各给**条数 + 明细列表**，不能只回「成功」。
 - **幂等**：只读，天然幂等。

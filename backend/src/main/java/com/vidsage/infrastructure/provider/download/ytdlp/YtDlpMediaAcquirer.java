@@ -8,6 +8,7 @@ import com.vidsage.domain.media.port.MediaAcquirer;
 import com.vidsage.domain.workspace.model.ContentFingerprint;
 import com.vidsage.domain.workspace.port.ContentFingerprintProbe;
 import com.vidsage.shared.fs.ArtifactFileUtils;
+import com.vidsage.shared.fs.TransientFiles;
 import com.vidsage.shared.text.TextTail;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,7 +18,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -61,9 +61,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer, ContentFingerprintProb
 
     /** 失败消息里附带的 stderr 行数上限。 */
     private static final int STDERR_TAIL_LINES = 20;
-
-    /** 扫描兜底时要排除的非产物后缀（info json / 未完成的 .part / yt-dlp 的 .ytdl 标记）。 */
-    private static final Set<String> NON_PRODUCT_SUFFIXES = Set.of(".info.json", ".part", ".ytdl");
 
     /**
      * bot 检测拦截的稳定子串（实测原文含 {@code Sign in to confirm you're not a bot}）。
@@ -389,13 +386,20 @@ public class YtDlpMediaAcquirer implements MediaAcquirer, ContentFingerprintProb
     }
 
     /**
-     * 扫描目录里匹配 {@code source.*} 且不属于 info json / 未完成标记的普通文件。
+     * 扫描目录里匹配 {@code source.*} 且不是 info json / 未完成标记的普通文件。
+     *
+     * <p>排除条件分两半，缺一不可：{@link TransientFiles#isTransient}（{@code .part} / {@code .ytdl} /
+     * {@code .tmp}）与文件名等于 {@link #INFO_JSON_NAME}。{@code source.info.json} 也以 {@code source.}
+     * 开头，只靠前者挡不住它——它会变成候选，把「应恰有 1 个 source.*」的兜底路径弄坏。
      */
     static List<Path> scanProducts(Path workDir) {
         try (Stream<Path> stream = Files.list(workDir)) {
             return stream.filter(Files::isRegularFile)
                     .filter(path -> path.getFileName().toString().startsWith(PRODUCT_PREFIX))
-                    .filter(path -> !isNonProduct(path.getFileName().toString()))
+                    .filter(path -> {
+                        String fileName = path.getFileName().toString();
+                        return !TransientFiles.isTransient(fileName) && !fileName.endsWith(INFO_JSON_NAME);
+                    })
                     .sorted()
                     .toList();
         } catch (IOException e) {
@@ -498,13 +502,6 @@ public class YtDlpMediaAcquirer implements MediaAcquirer, ContentFingerprintProb
         } catch (IOException e) {
             return "<无法读取目录：" + e.getMessage() + ">";
         }
-    }
-
-    /**
-     * 是否非产物文件（info json / {@code .part} / {@code .ytdl}）。
-     */
-    private static boolean isNonProduct(String fileName) {
-        return NON_PRODUCT_SUFFIXES.stream().anyMatch(fileName::endsWith);
     }
 
     /**

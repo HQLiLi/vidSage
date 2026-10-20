@@ -58,6 +58,7 @@
 | Controller 请求体原值 | URL/路径指向用户资源 | 只打 sourceType 等「请求形态」 |
 | **文件系统异常的 `getMessage()`** | `FileSystemException` 的子类（`NoSuchFileException` / `AccessDeniedException` / `DirectoryNotEmptyException` …）**消息就是完整路径**，而工作区目录名内嵌 `source_key`（用户资源） | 只打 `e.getClass().getSimpleName()` + `path.getFileName()`；先例：`ArtifactFileUtils#sha256` |
 | 异常对象本身（`log.warn(msg, e)`） | 日志框架会打出异常的 `toString()`，其中含 `getMessage()` —— 同样会把路径带出来 | 只打异常类名；真要堆栈就另想办法（如只记本项目的调用栈帧） |
+| **工作区目录名 / 产物文件名**（只读对账场景） | 目录名内嵌 `source_key`（同第 6 行）。**但这条要分清两个边界**：只读对账的**响应体里必须带**目录名（③ 类孤儿不在表里、没有 `taskNo` 可带，2026-10-20），那是**对外响应**的边界；**日志仍然不许带** | 响应里带 `dirName`；日志只记四类条数 + 扫到的目录/文件数 + 耗时；先例：`ReconcileService` / `MaintenanceController` |
 
 ### 例外：开发期专用的校验失败详情（2026-09-28）
 
