@@ -45,10 +45,14 @@ public interface IntermediateFileMapper extends BaseMapper<IntermediateFileEntit
     /**
      * 标已回收（两阶段：删文件之后），同句刷 {@code updated_at}。
      *
+     * <p>{@code AND status = 'SUPERSEDED'} 是**状态守卫**：只有「已作废、文件待删」的行才谈得上
+     * 「已回收」。少了它，一个还 {@code READY} 的有效缓存行会被标成 {@code DELETED}。
+     *
      * @param id 中间产物行 id
      * @param at 本次变更时刻
      * @return 受影响行数
      */
-    @Update("UPDATE intermediate_file SET status = 'DELETED', updated_at = #{at} WHERE id = #{id}")
+    @Update("UPDATE intermediate_file SET status = 'DELETED', updated_at = #{at} "
+            + "WHERE id = #{id} AND status = 'SUPERSEDED'")
     int markDeleted(@Param("id") long id, @Param("at") LocalDateTime at);
 }

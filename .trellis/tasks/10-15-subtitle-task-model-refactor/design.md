@@ -644,7 +644,7 @@ UPDATE subtitle_task     SET updated_at=now()  WHERE id IN (被上面第一条�
 | 执行体退出（正常 / 异常 / `Error` / 早退） | **无条件收口**（C43） | 没到终态 → `FAILED` |
 | 真有人在跑 | `uk_active_run` 撞键 | 409，响应体带既有 run 的 taskNo 供订阅 |
 | 进程整体没了（被 kill / 掉电） | **启动收口**（C15） | run → `INTERRUPTED`，残留 artifact → `FAILED` |
-| 线程卡死（挂住不动） | **靠网络调用超时收敛**（C46） | 超时 → `FAILED` → 重跑 |
+| 线程卡死（挂住不动） | **靠网络调用超时收敛**（C46，2026-10-20 S8 落地） | 两条缺口两套修法：**LLM / 术语查证 / ASR 结果下载**走全局 `spring.http.clients.read-timeout` 并把重试收到 3 次（最坏约 9 分钟）；**ASR 主等待**是另一回事 —— SDK 的 `transcription.wait(...)` 是**循环没有出口**（不是"没设超时"，且它吞掉中断），已改成自建的有界轮询 |
 
 > **注意 `INTERRUPTED` 不是崩溃时写的** —— 崩溃时什么代码都跑不了，是下次启动由新进程补记的。
 > **残余风险（留档）**：非网络的挂住（如 `destroyForcibly` 后仍不退出的进程）仍没人兜。

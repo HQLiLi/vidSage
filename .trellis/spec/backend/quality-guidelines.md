@@ -156,7 +156,7 @@ double best = Math.max(
 
 **上层需要不依赖某个具体实现类时，就为它抽端口**——多实现是抽端口的常见理由，不是必要条件。端口落在哪一层、叫什么名字，判据见 [directory-structure.md](./directory-structure.md) 的[依赖规则](./directory-structure.md#依赖规则)与[端口归属判据](./directory-structure.md#端口归属判据)。
 
-> **2026-10-06 改判**。原表述是「只有对着真实的可替换缝才引入；现有四个端口各自有明确的多实现或替身需求」——这句对 `domain/media/port/AudioExtractor` 是**失实的**：它一直只有一个实现（`FfmpegAudioExtractor`），其 Javadoc 明写「接口保留是为了让上层不依赖实现类」。新判据只是把一直隐含的规则写成明文，并把 `VideoTaskRepository` 与 `infrastructure/provider/llm/` 的三个 LLM worker 一并纳入（端口在 `domain/`，实现在 `infrastructure/`；详见任务 `10-06-port-inversion`）。
+> **2026-10-06 改判**。原表述是「只有对着真实的可替换缝才引入；现有四个端口各自有明确的多实现或替身需求」——这句对 `domain/media/port/AudioExtractor` 是**失实的**：它一直只有一个实现（`FfmpegAudioExtractor`），其 Javadoc 明写「接口保留是为了让上层不依赖实现类」。新判据只是把一直隐含的规则写成明文，并把 `SubtitleTaskRepository` 与 `infrastructure/provider/llm/` 的三个 LLM worker 一并纳入（端口在 `domain/`，实现在 `infrastructure/`；详见任务 `10-06-port-inversion`）。
 >
 > **它仍然反对的是**「为以后可能用到」而造的抽象：抽端口要有**当下的上层可见性需求**做依据，不是「将来可能有第二个实现」。
 

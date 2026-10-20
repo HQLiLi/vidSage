@@ -58,6 +58,8 @@ INDEX      idx_<表名>_<列名...> (...)
 宽度取 32 而不是贴着最长值取 16，换「加值不用先改列宽」，而 `VARCHAR` 按实际长度存、成本为 0。
 `CHECK` 同样别用：加值一样要 `ALTER`，好处立刻没了。
 适用范围：`source_type` / `run_type` / 各表的 `status` / `artifact_type` / `file_type` 与两个 `active_flag`。
+**状态值本身怎么定、谁能写它，见 [state-machine-guidelines.md](./state-machine-guidelines.md)** ——
+本文只管列类型，不管状态语义。
 
 **4. 「部分唯一」用生成列 + 唯一索引，不靠应用层判重。**
 

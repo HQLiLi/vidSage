@@ -3,7 +3,6 @@ package com.vidsage.domain.subtitle;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.domain.subtitle.model.ArtifactFileKind;
 import com.vidsage.domain.subtitle.model.ArtifactType;
@@ -12,11 +11,12 @@ import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link SubtitleArtifact} 状态机的纯单元测试：不起容器。
+ * {@link SubtitleArtifact} 的纯单元测试：不起容器。
  *
- * <p>逐值覆盖：{@code CREATING}（全 NULL 占位）→ {@code READY}（写文件列 + 哈希列）
- * → {@code SUPERSEDED}（文件列留着）→ {@code DELETED}；非法迁移抛 {@link IllegalStateException}。
- * {@code FAILED} 只有收口 / 启动收口两条盲批量 UPDATE 路径，实体没有对应方法——用 {@code restore} 验证。
+ * <p>本类只承载两件事：{@code CREATING}（全 NULL 占位）出生、{@code CREATING} → {@code READY}
+ * 换版落定（写文件列 + 哈希列），非法迁移抛 {@link IllegalStateException}。
+ * {@code SUPERSEDED} 往后与 {@code FAILED} 一样是仓储上盲批量 UPDATE 的活，实体没有对应方法——
+ * 需要那些状态的行时用 {@code restore} 造。
  */
 class SubtitleArtifactTest {
 
@@ -92,35 +92,12 @@ class SubtitleArtifactTest {
         assertNull(artifact.getSha256(ArtifactFileKind.TERMS), "没有的文件位就没有哈希");
     }
 
-    @Test
-    void supersedeTransitionsReadyAndKeepsFileColumns() {
-        SubtitleArtifact artifact = ready();
-
-        artifact.supersede();
-
-        assertEquals(SubtitleArtifactStatus.SUPERSEDED, artifact.getStatus());
-        assertEquals("segments.json", artifact.getSegmentsFileName(),
-                "SUPERSEDED 时文件列留着——下游译文是孤儿型，删文件时要用它的路径");
-        assertEquals("aaa", artifact.getSegmentsSha256());
-    }
-
-    @Test
-    void confirmDeletionTransitionsSupersededToDeleted() {
-        SubtitleArtifact artifact = ready();
-        artifact.supersede();
-
-        artifact.confirmDeletion();
-
-        assertEquals(SubtitleArtifactStatus.DELETED, artifact.getStatus());
-    }
-
     // ---------- 非法迁移拒绝 ----------
 
     @Test
     void throwsWhenCompletingCreationFromNonCreatingStates() {
         SubtitleArtifact ready = ready();
-        SubtitleArtifact superseded = ready();
-        superseded.supersede();
+        SubtitleArtifact superseded = superseded();
 
         assertThrows(IllegalStateException.class,
                 () -> ready.completeCreation("a", "b", null, null, "1", "2", null, null));
@@ -128,34 +105,21 @@ class SubtitleArtifactTest {
                 () -> superseded.completeCreation("a", "b", null, null, "1", "2", null, null));
     }
 
-    @Test
-    void throwsWhenSupersedingFromNonReadyStates() {
-        SubtitleArtifact creating = creating();
-        SubtitleArtifact superseded = ready();
-        superseded.supersede();
-
-        IllegalStateException e = assertThrows(IllegalStateException.class, creating::supersede);
-        assertTrue(e.getMessage().contains("非法状态迁移"), e.getMessage());
-        assertThrows(IllegalStateException.class, superseded::supersede);
-    }
-
-    @Test
-    void throwsWhenConfirmingDeletionFromNonSupersededStates() {
-        SubtitleArtifact creating = creating();
-        SubtitleArtifact ready = ready();
-        SubtitleArtifact deleted = ready();
-        deleted.supersede();
-        deleted.confirmDeletion();
-
-        assertThrows(IllegalStateException.class, creating::confirmDeletion);
-        assertThrows(IllegalStateException.class, ready::confirmDeletion);
-        assertThrows(IllegalStateException.class, deleted::confirmDeletion);
-    }
-
     // ---------- 工厂 ----------
 
     private static SubtitleArtifact creating() {
         return SubtitleArtifact.createCreatingArtifact(7L, 3L, ArtifactType.CLEANED, "", 5L, "fp-1");
+    }
+
+    /**
+     * 造一条 SUPERSEDED 的行。走 {@code restore} 而不是"迁过去"——生产里没有迁移入口，
+     * 这条状态由仓储的批量 UPDATE 写出来。
+     */
+    private static SubtitleArtifact superseded() {
+        return SubtitleArtifact.restore(null, 7L, 3L, ArtifactType.CLEANED, "", 1,
+                SubtitleArtifactStatus.SUPERSEDED, 5L, "fp-1",
+                "segments.json", "subtitles.srt", "context.json", null,
+                "aaa", "bbb", "ccc", null, LocalDateTime.of(2026, 10, 20, 10, 0));
     }
 
     private static SubtitleArtifact ready() {

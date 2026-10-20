@@ -11,8 +11,9 @@ import lombok.Getter;
  *
  * <p>状态机每个值恰好一条路径：{@code CREATING}（工厂出生，<b>该行永远全 NULL</b>）→
  * {@code READY}（{@link #completeCreation}，写文件列 + 哈希列 + 置 READY 是同一条 UPDATE）→
- * {@code SUPERSEDED}（{@link #supersede}）→ {@code DELETED}（{@link #confirmDeletion}，文件确认回收之后）。
- * {@code FAILED} 只有收口 / 启动收口两条盲批量 UPDATE 路径，<b>实体不承载</b>。
+ * {@code SUPERSEDED} → {@code DELETED}（文件确认回收之后）。
+ * {@code SUPERSEDED} 往后与 {@code FAILED} 一样是**盲批量 UPDATE** 的活（换版降级、下游级联、
+ * 收口置位、启动收口）—— 那些路径按集合改行，<b>实体不承载</b>，只负责出生与换版落定两件事。
  *
  * <p>三代文件组合：{@code ORIGINAL} = segments + subtitles；{@code CLEANED} = 上面两个 + context；
  * {@code TRANSLATED(lang)} = segments + subtitles + terms。
@@ -199,28 +200,6 @@ public class SubtitleArtifact {
         this.contextSha256 = contextSha256;
         this.termsSha256 = termsSha256;
         status = SubtitleArtifactStatus.READY;
-    }
-
-    /**
-     * READY → SUPERSEDED：不再是当前版（同 (task,type,lang) 换版，或上游 CLEANED 换版的下游级联）。
-     * <b>文件列留着</b>——下游译文是孤儿型，删文件时要用它的路径；覆盖型在换版时清空文件列
-     * 是 DB 侧的事（{@code markSupersededAndClearFiles}），不在此建模。
-     *
-     * @throws IllegalStateException 当前不是 READY
-     */
-    public void supersede() {
-        validateStatus(SubtitleArtifactStatus.READY, "SUPERSEDED（只有 READY 的产物会被取代）");
-        status = SubtitleArtifactStatus.SUPERSEDED;
-    }
-
-    /**
-     * SUPERSEDED → DELETED：文件已确认回收之后标（两阶段第二步）。
-     *
-     * @throws IllegalStateException 当前不是 SUPERSEDED
-     */
-    public void confirmDeletion() {
-        validateStatus(SubtitleArtifactStatus.SUPERSEDED, "DELETED（只有 SUPERSEDED 的产物可以标记已回收）");
-        status = SubtitleArtifactStatus.DELETED;
     }
 
     /** 状态守卫：当前状态与迁移目标不符即拒绝，消息给出「当前状态 → 目标状态」与合法前提。 */

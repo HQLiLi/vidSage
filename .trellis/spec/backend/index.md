@@ -14,6 +14,8 @@
 | [error-handling.md](./error-handling.md) | 卫语句、异常类型选择、错误信息写法与语言 | 写任何校验与失败路径时 |
 | [quality-guidelines.md](./quality-guidelines.md) | 契约设计、注释要求、测试写法、依赖原则、主流选型 | 写任何代码前 |
 | [logging-guidelines.md](./logging-guidelines.md) | 日志选型、级别分层、脱敏红线 | 写任何日志语句前 |
+| [database-guidelines.md](./database-guidelines.md) | 建表契约（六张表、索引与约束命名、枚举列类型）、MyBatis-Plus 用法、事务与并发读 | 改表、写 SQL / 仓储、碰事务时 |
+| [state-machine-guidelines.md](./state-machine-guidelines.md) | 三张状态列（`task_run` / `subtitle_artifact` / `intermediate_file`）的值语义、**全部**写入路径、守卫落在哪 | 加/改状态值、加一条写状态的新路径时 |
 
 ---
 
@@ -22,9 +24,9 @@
 模板文件会因代码库中还没有对应实现而先删除，相应功能落地后再重建：
 
 - `logging-guidelines.md` —— 2026-09-24 随首个日志实现落地重建。
-- `database-guidelines.md` —— 2026-09-30 随任务持久化（MyBatis-Plus + entity / mapper / repository，现居 `infrastructure/persistence/`）落库，规范重建提交落在 2026-10-02；Redis / pgvector 尚未动工，待落地后再扩写。
 
 > 不要在功能落地前凭空补这些规范。子 agent 会照着规范写代码，写了不存在的模式比不写更糟。
+> **重建完成的条目从本节删掉、并进上面的「规范索引」** —— 留在"待重建"列表里会读成还没做。
 
 ---
 

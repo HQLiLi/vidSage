@@ -55,6 +55,10 @@ public interface SubtitleArtifactMapper extends BaseMapper<SubtitleArtifactEntit
     /**
      * 覆盖型取代：{@code SUPERSEDED} + 清空四列文件列与四列哈希列。
      *
+     * <p>{@code AND status = 'READY'} 是**状态守卫**，不是冗余条件：只有当前版会被取代。
+     * 少了它，一个传错的 id（比如已经作废过的行）会被再清一次列，而清列是不可逆的
+     * ——下游译文是孤儿型，文件列是回收时定位文件的唯一线索。
+     *
      * @param artifactId 产物行 id
      * @return 受影响行数
      */
@@ -65,7 +69,7 @@ public interface SubtitleArtifactMapper extends BaseMapper<SubtitleArtifactEntit
                 context_file_name = NULL, terms_file_name = NULL,
                 segments_sha256 = NULL, subtitles_sha256 = NULL,
                 context_sha256 = NULL, terms_sha256 = NULL
-            WHERE id = #{artifactId}
+            WHERE id = #{artifactId} AND status = 'READY'
             """)
     int markSupersededAndClearFiles(@Param("artifactId") long artifactId);
 
@@ -86,10 +90,14 @@ public interface SubtitleArtifactMapper extends BaseMapper<SubtitleArtifactEntit
     /**
      * 标已回收（两阶段第二步）。
      *
+     * <p>{@code AND status = 'SUPERSEDED'} 是**状态守卫**：只有「已作废、文件待删」的行才谈得上
+     * 「已回收」。少了它，一个还 {@code READY} 的行会被标成 {@code DELETED}，而它登记的文件
+     * 可能刚被当成当前版发出去。
+     *
      * @param artifactId 产物行 id
      * @return 受影响行数
      */
-    @Update("UPDATE subtitle_artifact SET status = 'DELETED' WHERE id = #{artifactId}")
+    @Update("UPDATE subtitle_artifact SET status = 'DELETED' WHERE id = #{artifactId} AND status = 'SUPERSEDED'")
     int markDeleted(@Param("artifactId") long artifactId);
 
     /**
