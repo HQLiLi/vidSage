@@ -27,14 +27,18 @@ import org.springframework.web.client.RestClient;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 阿里云 DashScope 异步转写供应商（qwen-audio-3.1-asr-flash-filetrans）。
  *
- * <p>「提交任务 -> 轮询状态」由官方 dashscope-sdk-java 的 Transcription
- * 类完成；任务成功后 SDK 返回结果 JSON 的下载地址（24 小时有效），
+ * <p>提交与单次状态查询走官方 dashscope-sdk-java 的 {@code Transcription} 类，
+ * 但**轮询循环由本类自己写**（见 {@link #awaitTranscription}）—— SDK 的
+ * {@code wait(...)} 没有出口，任务卡在排队中会把线程永久挂住。
+ * 任务成功后 SDK 返回结果 JSON 的下载地址（24 小时有效），
  * 本类再下载该 JSON 并映射为统一的转写结果契约（句级毫秒时间戳）。
  *
  * <p>音频来源两种都支持：
@@ -53,6 +57,9 @@ import java.util.Map;
 @EnableConfigurationProperties(DashScopeProperties.class)
 public class DashScopeAsrProvider implements ASRProvider {
 
+    /** 两次状态查询之间的间隔。转写是分钟级操作，5 秒粒度足够，不必做退避。 */
+    private static final Duration POLL_INTERVAL = Duration.ofSeconds(5);
+
     private final RestClient restClient;
     private final DashScopeProperties properties;
     private final Transcription transcription;
@@ -60,14 +67,19 @@ public class DashScopeAsrProvider implements ASRProvider {
 
     @Autowired
     public DashScopeAsrProvider(RestClient.Builder restClientBuilder, DashScopeProperties properties) {
-        this(restClientBuilder, properties, OSSUtils::upload);
+        this(restClientBuilder, properties, OSSUtils::upload, new Transcription());
     }
 
     DashScopeAsrProvider(RestClient.Builder restClientBuilder, DashScopeProperties properties,
             TemporaryFileUploader pathUploader) {
+        this(restClientBuilder, properties, pathUploader, new Transcription());
+    }
+
+    DashScopeAsrProvider(RestClient.Builder restClientBuilder, DashScopeProperties properties,
+            TemporaryFileUploader pathUploader, Transcription transcription) {
         this.restClient = restClientBuilder.build();
         this.properties = properties;
-        this.transcription = new Transcription();
+        this.transcription = transcription;
         this.pathUploader = pathUploader;
     }
 
@@ -96,8 +108,9 @@ public class DashScopeAsrProvider implements ASRProvider {
         }
         // taskId 是外部系统侧的排障锚点，凭它可在百炼控制台核对任务，必须 INFO 落日志
         log.info("DashScope 转写任务已提交: taskId={}, model={}", submitted.getTaskId(), properties.model());
-        var finished = transcription.wait(
-                TranscriptionQueryParam.FromTranscriptionParam(param, submitted.getTaskId()));
+        var finished = awaitTranscription(
+                TranscriptionQueryParam.FromTranscriptionParam(param, submitted.getTaskId()),
+                submitted.getTaskId());
         log.info("DashScope 转写任务已结束: taskId={}, status={}, cost={}ms",
                 submitted.getTaskId(), finished.getTaskStatus(), System.currentTimeMillis() - start);
 
@@ -136,6 +149,97 @@ public class DashScopeAsrProvider implements ASRProvider {
                 .retrieve()
                 .body(TranscriptionFile.class);
         return toResult(file);
+    }
+
+    /**
+     * 轮询等待转写任务结束，带总时长上限。
+     *
+     * <p>**不用 SDK 的 {@code Transcription.wait(...)}**：它内部是个没有出口的循环——
+     * 只在任务结束时返回，否则每 1～5 秒查一次、无限查下去。任务卡在排队中就会把线程永久挂住：
+     * 那条 RUNNING 行一直占着互斥键，并发闸门的许可也释放不掉（finally 根本跑不到），
+     * 攒够上限后整个队列堵死。也不能靠从外面打断——它把 {@code InterruptedException}
+     * 捕获后吞掉继续循环。
+     *
+     * <p>出口集合与 SDK 的 {@code wait} 逐字一致（SUCCEEDED / FAILED / CANCELED / UNKNOWN），
+     * 所以调用方那套「无语音降级」「任务失败」的分支不用改。
+     *
+     * <p>返回类型写全限定名：SDK 与本项目各有一个 {@code TranscriptionResult}，
+     * 本文件已经 import 了项目那个，不能再 import SDK 那个。
+     *
+     * <p>包级可见是给单测留的缝——本类的 {@code buildParam} / {@code toResult} /
+     * {@code isNoWordsFailure} 同此口径，测试才能不起 Spring 容器、不碰网络。
+     *
+     * @param taskId 只用于超时信息与日志；它是百炼控制台侧的排障锚点
+     * @throws IllegalStateException 超过 {@code vidsage.asr.dashscope.transcription-timeout} 仍未结束
+     */
+    com.alibaba.dashscope.audio.asr.transcription.TranscriptionResult awaitTranscription(
+            TranscriptionQueryParam query, String taskId) {
+        Instant deadline = Instant.now().plus(properties.transcriptionTimeout());
+        while (true) {
+            var result = fetchOnce(query);
+            if (result != null && isTerminal(result.getTaskStatus())) {
+                return result;
+            }
+            if (!Instant.now().isBefore(deadline)) {
+                throw new IllegalStateException("DashScope 转写任务等待超过 "
+                        + properties.transcriptionTimeout() + " 仍未结束：taskId=" + taskId
+                        + "；任务可能仍在服务端排队，可稍后重试");
+            }
+            sleepBeforeNextPoll();
+        }
+    }
+
+    /**
+     * 查一次任务状态。503 / 504 是服务端瞬时不可用，按「这一轮没问成」处理、让调用方继续轮询
+     * （与 SDK 的 wait 同口径）；其余异常直接抛——鉴权错、参数错，再问多少次都一样。
+     *
+     * @return 本次查询结果；遇到可重试错误时返回 {@code null}
+     */
+    private com.alibaba.dashscope.audio.asr.transcription.TranscriptionResult fetchOnce(
+            TranscriptionQueryParam query) {
+        try {
+            return transcription.fetch(query);
+        } catch (ApiException e) {
+            if (isTransientServerError(e)) {
+                log.debug("查询 DashScope 任务状态遇到瞬时错误，稍后重试: {}", e.getMessage());
+                return null;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 判断这个任务状态是否已经是终态（可以停止轮询）。
+     */
+    private static boolean isTerminal(TaskStatus status) {
+        return TaskStatus.SUCCEEDED.equals(status)
+                || TaskStatus.FAILED.equals(status)
+                || TaskStatus.CANCELED.equals(status)
+                || TaskStatus.UNKNOWN.equals(status);
+    }
+
+    /**
+     * 503 / 504 之外都算确定性失败。
+     */
+    private static boolean isTransientServerError(ApiException e) {
+        if (e.getStatus() == null) {
+            return false;
+        }
+        int code = e.getStatus().getStatusCode();
+        return code == 503 || code == 504;
+    }
+
+    /**
+     * 两次查询之间歇一下。被中断时**恢复中断位**再抛——吞掉它会重演 SDK 那个坑：
+     * 线程以为没事、继续转下去。
+     */
+    private static void sleepBeforeNextPoll() {
+        try {
+            Thread.sleep(POLL_INTERVAL.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待 DashScope 转写结果时被中断", e);
+        }
     }
 
     /**

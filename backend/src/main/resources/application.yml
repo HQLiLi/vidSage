@@ -6,6 +6,16 @@ spring:
   threads:
     virtual:
       enabled: true
+  http:
+    clients:
+      # 建连失败（DNS / TCP 握手）要快速暴露，不该耗着
+      connect-timeout: 10s
+      # 读超时。LLM 清洗/翻译/摘要、术语查证、ASR 结果下载四处共用——它们都从 Boot 自动配置的
+      # RestClient.Builder 建客户端。取 120s 是比 Spring AI 给 OpenAI 的默认 60s 宽一档
+      # （长 prompt 长输出，高峰期首字延迟几十秒），又比 DashScope SDK 的 300s 紧。
+      # 是 clients（复数）：单数 spring.http.client.* 在 Boot 4.0.0 起已废弃，
+      # 两者配置描述一模一样，抄错了不报错、只是不生效。
+      read-timeout: 120s
   servlet:
     multipart:
       # 用户上传本地视频 / 音频文件：给足上限。超限被容器拒绝，
@@ -13,6 +23,10 @@ spring:
       max-file-size: 2GB
       max-request-size: 2GB
   ai:
+    # 读超时抛的 ResourceAccessException 在重试白名单里，默认 10 次会把 120s 放大成
+    # 约 44 分钟才收敛（那条 run 一直占着互斥与并发闸门）。收到 3 次后最坏约 6-9 分钟。
+    retry:
+      max-attempts: 3
     # LLM 供应商单开关：deepseek | openai。没有 mimo 这个值——mimo 兼容 OpenAI 协议，
     # 走 openai 自动配置，供应商由 base-url 决定。高峰期切 mimo 改成 openai，低谷期改回 deepseek。
     model:
@@ -45,6 +59,10 @@ vidsage:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY}
       model: qwen-audio-3.1-asr-flash-filetrans
+      # 单次转写操作的总时长上限——管的是「整个转写最多等多久」，不是「单次 HTTP 请求等多久」
+      # （后者走 spring.http.clients.read-timeout）。DashScope 是异步批处理，2 小时音频大致
+      # 5-10 分钟，15 分钟留一档余量；素材普遍更长时调大即可。
+      transcription-timeout: 15m
   tools:
     # 外部工具（yt-dlp / ffmpeg / ffprobe）；留空则从 PATH 解析。
     # 容器里 ffmpeg 未必在 PATH，交付时必须显式配置，不要把本机绝对路径写进仓库
