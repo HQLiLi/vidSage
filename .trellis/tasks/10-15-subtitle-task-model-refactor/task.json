@@ -26,7 +26,8 @@
     "10-17-subtitle-translate-run",
     "10-17-subtitle-content-change",
     "10-17-subtitle-reconcile-endpoint",
-    "10-17-subtitle-hardening-wrapup"
+    "10-17-subtitle-hardening-wrapup",
+    "10-20-subtitle-reuse-versioning"
   ],
   "parent": null,
   "relatedFiles": [],
