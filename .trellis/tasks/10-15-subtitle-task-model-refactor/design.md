@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS subtitle_artifact
 (
     id                       BIGINT       NOT NULL AUTO_INCREMENT COMMENT '内部自增行 id，不对外',
     task_id                  BIGINT       NOT NULL COMMENT '逻辑外键 → subtitle_task.id',
-    derived_from_run_id      BIGINT       NOT NULL COMMENT '哪一次执行产出的（审计；C61 收口靠它定位）',
+    derived_from_run_id      BIGINT       NOT NULL COMMENT '最后一条真正产出它的执行（审计；C61 收口靠它定位）。跳过复用不刷新',
     artifact_type            VARCHAR(32)  NOT NULL COMMENT 'ORIGINAL / CLEANED / TRANSLATED',
     lang                     VARCHAR(16)  NOT NULL DEFAULT '' COMMENT 'TRANSLATED 才填；空串 = 无语言维度',
     revision                 INT          NOT NULL COMMENT '同 (task,type,lang) 递增（MAX+1）',
@@ -387,14 +387,15 @@ INDEX      idx_<表名>_<列名...> (...)
 | W2 | 插 `RUNNING` run | 一 task 至多一条 `RUNNING` | `uk_active_run`（一句 INSERT） | 必需（单语句即满足） |
 | W3 | artifact 占位（`CREATING`） | 占位先落 | 单语句 | 必需（单语句即满足） |
 | W4 | artifact 换版（同 `(type,lang)`） | 至多一条 `READY` + 旧降级与新升级同刻 | **按序两次 UPDATE**（索引逼出顺序） | **非必需**（R：重跑可恢复） |
-| **W5** | 换版 + 下游级联标记 | 新 `CLEANED` READY 且**内容变了** ⇒ 下游全部 `SUPERSEDED` | **显式事务**（1 条降级 UPDATE + 1 条批量级联 UPDATE + 1 条置 READY） | **必需**（R：不可恢复） |
+| **W5** | 换版 + 下游级联标记 | 新 `CLEANED` READY ⇒ 下游全部 `SUPERSEDED`（走到这里就意味着清洗真重跑过） | **显式事务**（1 条降级 UPDATE + 1 条批量级联 UPDATE + 1 条置 READY） | **必需**（R：不可恢复） |
 | **W5′** | 指纹级联（artifact + 中间产物全标）+ `workspace` 指纹写入 | 内容变了 ⇒ 旧产物全作废 | **显式事务** | **必需**（C47/C48） |
 | W6 | 文件删除 + 标 `DELETED` | 不删任何 `READY` 行指着的文件 | C22 两阶段（文件操作在事务外） | 无原子单位，是**协议** |
 | W7 | 启动收口 | 残留 `RUNNING` → `INTERRUPTED`；残留 `CREATING` → `FAILED`；被收掉的 task 更新 `updated_at` | 三条 UPDATE | 单语句 ×3 |
 | W8 | 关键词覆盖写 | 一 task 一份 | `uk_task_id` | 单语句 |
 
-> **W5 里的「内容变了」是判据，不是修饰语**（2026-10-19 订正）：清洗命中断点复用时不会真重跑、文件一个字节没动，但**照样会落一版新 revision** —— 落新版本 ≠ 内容变了。这时下游译文仍然是对的，作废它等于让用户白烧一次模型，S5 的「再翻同语种不发 LLM」也会被一次重新提交打掉。
-> 判据 = 新清洗的三个文件位哈希与旧 `READY` 行逐个比（哈希相同就是内容相同，SHA-256 下这不是启发式）；旧行不存在或哈希列为 `NULL` 时按「变了」处理（安全方向）。
+> **级联是无条件的**（2026-10-20 S6.5 起）：复用命中**根本不落版**，压根走不到这一步；能走到 W5 的只有「清洗真重跑」。
+> 所以不再比哈希决定要不要作废下游 —— 那个判据随「跳过也落版」一起退场，留下只会让「真重跑但产出逐字节相同」这一个罕见情形白留旧译文。
+> **四个 `sha256` 列照旧写**：那是 §8.4 ② 的对账检测用的，与「比哈希决定要不要作废下游」是两件事。
 > **W5 挂在「清洗落定」这件事上，与 run 类型无关** —— `MAIN` 重新提交时带新关键词也会真重洗，那条路一样要级联。
 
 **边界 = `{W1, W5, W5′}`。** `TaskRun` / `SubtitleArtifact` / `Task` **都不是边界**，是带行为的领域实体 / 身份实体（C40 已作废，不用类级聚合标签）。
@@ -548,15 +549,21 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
    | **清空文件列、不删文件** —— `ORIGINAL` / `CLEANED` | 停在 `SUPERSEDED`。理由：新 MAIN run 会重写同名文件；且它们**有「文件列」这个开关**来表达「我不再管这个文件」（C24） |
    | **删文件 → `DELETED`** —— `TRANSLATED(*)` + **中间产物** | 新 MAIN run 不产出译文；中间产物**没有「文件列」可清空**（只有一个 `file_name`，还是唯一键的一部分），不删就会长期挂着「表说作废、文件还在」的行 |
 
-3. `ORIGINAL` 产物：插 `CREATING` → 写文件 → **换版落定**（写文件列 + 哈希列 + `READY`）
-4. `CLEANED` 产物：同上，并记 `keywords_fingerprint`。**落定走 W5**（不是 W4）—— 清洗是唯一有下游的产物类型，换版时要把基于旧清洗的译文一起作废（判据见 §5 W5 的注：**内容真变了才作废**）
+3. `ORIGINAL` 产物：**先问能不能复用**（见下面那条注）。命中就整条链一个字节不动；不复用才插 `CREATING` → 写文件 → **换版落定**（写文件列 + 哈希列 + `READY`）
+4. `CLEANED` 产物：同上，并记 `keywords_fingerprint`。**落定走 W5**（不是 W4）—— 清洗是唯一有下游的产物类型，换版时要把基于旧清洗的译文一起作废（**无条件**，见 §5 W5 的注）
 
-   > **每一步产出之前都要先查表**（C62）—— **复用判据从「文件在不在」改成「表里 `READY` 且文件在」**。
+   > **每一步产出之前都要先问复用**（C62）—— **复用判据从「文件在不在」改成「表里 `READY` 且文件在」**。
    > 否则指纹级联只动 DB、盘上文件一个没动 → 主管线「重跑」全部跳过 → **产出旧内容而 DB 说是新的，静默交付**。
    >
    > 表分两种：中间产物查 `intermediate_file`；`ORIGINAL` / `CLEANED` 查 `subtitle_artifact` 的 `READY` 行
-   > （`findIntactArtifact`）。分工是**两道门**：管线先回答「产物表里有没有完好的当前版」，阶段类再回答
-   > 「盘上检查点在不在、能不能解析」；前者说不能复用，后者就完全忽略文件检查点（也不读上下文缓存）。
+   > （`findIntactArtifact`）。分工是**两道门**：管线先回答「产物表里有没有完好的当前版」，阶段类的
+   > `reuseIfAvailable` 再回答「盘上检查点在不在、能不能解析」（清洗那扇门还要加「关键词指纹一致」）；
+   > 前者说不能复用，后者就完全忽略文件检查点（也不读上下文缓存）。
+   >
+   > **判据要先于建占位拿到**（2026-10-20 S6.5 起）：命中就**不插行、不落定**，整条链一个字节不动，
+   > 该趟 run 在 `subtitle_artifact` 里零痕迹。所以阶段类把判据提到公开面（`reuseIfAvailable`），
+   > 管线先问 → 再决定插不插 → 再让它干活。**两个门禁各自独立**：关键词改了时 `ORIGINAL` 复用而
+   > `CLEANED` 重跑是正常路径，此时新 `CLEANED` 的 `derived_from_artifact_id` 指向**那条仍 `READY` 的旧 `ORIGINAL`**。
 
 5. 成功 → `task_run.status = SUCCEEDED`
 6. 失败 → **收口统一置 `FAILED`**（C43）；流程内的 catch 只负责丰富 `error_message` / `current_stage`（**不再有中文前缀**）
@@ -580,7 +587,7 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 | 3 | 关键词落库 | `subtitle_keyword` **覆盖写**（`uk_task_id`） | **不动** | 无 |
 | 4 | **重摘要 → 重洗** | 只推进 `current_stage` + 广播 SSE | **不动** | ✅ **最常见的失败点**（LLM 报错 / 超时）：旧 `CLEANED` 和它的文件**一点没动**，收口置 `FAILED` 就完了 |
 | 5 | 落新产物 | 插 `CREATING`（`revision+1`、`derived_from_artifact_id` = `ORIGINAL` 当前版、`keywords_fingerprint`）—— **只插行，不写文件列** | 写 3 个**临时文件** → **逐个原子替换**到正式路径（同名覆盖 → 旧 `CLEANED` 的文件此刻被顶掉） | 旧内容丢了但 DB 还说它是当前版 → **重跑收敛**。半成品不会留下（原子替换，C50）。残留的 `CREATING` 行由收口置 `FAILED`（C61） |
-| 6 | **换版（同一事务 = W5）** | ① 旧 `CLEANED` → `SUPERSEDED` + **清空它的文件列与哈希列**<br>② **内容真变了才**把所有下游 `TRANSLATED(*)` → `SUPERSEDED`（级联；判据见 §5 W5 的注）<br>③ 新 `CLEANED` → `READY` **+ 写 `*_file_name` 与 `*_sha256`** | **不动**（文件在步骤 5 已就位，C51） | 事务回滚 → 状态全是旧的、盘上是新内容 → **重跑收敛** |
+| 6 | **换版（同一事务 = W5）** | ① 旧 `CLEANED` → `SUPERSEDED` + **清空它的文件列与哈希列**<br>② 把所有下游 `TRANSLATED(*)` → `SUPERSEDED`（级联，**无条件** —— 走到这一步就意味着清洗真重跑过，见 §5 W5 的注）<br>③ 新 `CLEANED` → `READY` **+ 写 `*_file_name` 与 `*_sha256`** | **不动**（文件在步骤 5 已就位，C51） | 事务回滚 → 状态全是旧的、盘上是新内容 → **重跑收敛** |
 | 7 | **删下游译文的文件**（事务外） | 删完再把那些行标 `DELETED` | 删**步骤 6 被级联那几行的文件列**指着的那几个文件（`translated-segments-*.json` / `translated-subtitles-*.srt` / `terms-*.json`）；删不干净就不标 `DELETED` | 只留孤儿文件（C22 明确接受） |
 | 8 | **收尾** | `task_run.status = SUCCEEDED` + `subtitle_task.updated_at = now()` | **不动** | —— |
 
@@ -612,7 +619,7 @@ Spring 代理、`@Transactional` **静默失效**，比显式模板危险。**�
 **跟 §7.4 的两个差别**：**没有级联**（译文下面没有别的产物）；**没有「删文件」这一步**（旧译文是**覆盖型**，同名被新译文顶掉，停在 `SUPERSEDED` 就到头）。
 
 **第 3 步判据为什么只认 `status`：**
-- **「译文过时」不在这里比，是级联在写入时就标掉了**（§7.4 步骤 6）：新 `CLEANED` 落定那一刻，**内容真变了的话**所有下游译文在**同一事务**里标 `SUPERSEDED`。所以 `READY` 就等于「基于当前版清洗**的内容**」——注意是内容，不是那一行：清洗命中检查点跳过重跑时会落一版新 revision 但内容没变，那种情况下译文**不**被作废，因为它是对的。
+- **「译文过时」不在这里比，是级联在写入时就标掉了**（§7.4 步骤 6）：新 `CLEANED` 落定那一刻，所有下游译文在**同一事务**里标 `SUPERSEDED`。所以 `READY` 就等于「基于当前版清洗的内容」——清洗复用命中时**根本不落版**（§7.3 步骤 3/4），译文也不会被动到。
 - 判据里**不带** `derived_from_artifact_id`：它只表达「派生自哪一版」，不表达「是不是当前版」。
 - **级联也不带它** —— 级联只需要 `WHERE task_id=? AND artifact_type='TRANSLATED' AND status='READY'`，**更简单也更健壮**（不依赖 lineage 被正确维护）。找「旧 `CLEANED`」也是 `status='READY'`（**不能**用 lineage：新 `CLEANED` 行的 `derived_from` 指向 `ORIGINAL`，不是旧 `CLEANED`）。
 
@@ -707,7 +714,7 @@ root / sanitizeName(workspace.source_key) / <用途>_file_name
 
 **所有产物与中间产物都按「临时文件 → 原子替换」产出**（`Files.move(tmp, target, ATOMIC_MOVE)`）。
 
-理由：崩在写文件中途会留下**半成品**，而「断点复用」的判据是「文件在不在」→ 半成品会被当成成品复用，**这是唯一一类不能靠重跑收敛的错误**（重跑会跳过它）。原子替换之后「文件存在」就等于「文件完整」。
+理由：崩在写文件中途会留下**半成品**。产物表那道门只能拦住「行还不是 `READY`」，拦不住「行是 `READY`、文件却是半截」——半成品与成品在盘上长得一样，靠读它的代码分辨不出来，会被当成成品复用，**这是唯一一类不能靠重跑收敛的错误**（重跑会跳过它）。原子替换之后「文件存在」就等于「文件完整」。
 
 ### 8.4 残留窗口三类全接受（C64）
 
@@ -732,7 +739,7 @@ root / sanitizeName(workspace.source_key) / <用途>_file_name
 
 ### 8.5 本次不做版本回退（C52）
 
-位置已经留好：`revision` 列已在、**文件路径是 DB 的一列**，将来加版号只改「产出时写什么路径 + 换版时别清空旧行、别删旧文件」，读路径与表结构都不用动。
+位置已经留好：`revision` 列已在（**语义是「内容第几版」**——复用命中不落版，只在真产出时递增）、**文件路径是 DB 的一列**，将来加版号只改「产出时写什么路径 + 换版时别清空旧行、别删旧文件」，读路径与表结构都不用动。
 普通失败（LLM 报错/超时）发生在**算的阶段**，那时文件根本没被碰 —— 所以「备份」唯一能多救的是**反悔**，那是产品功能，不是恢复机制。
 
 ---
