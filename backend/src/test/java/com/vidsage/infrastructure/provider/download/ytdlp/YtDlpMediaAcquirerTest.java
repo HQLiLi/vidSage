@@ -132,6 +132,22 @@ class YtDlpMediaAcquirerTest {
     }
 
     @Test
+    void scanProductsKeepsOnlyMediaWhenInfoJsonAndTransientFilesPresent() throws IOException {
+        // AC10 回归：.info.json 从共用白名单拆掉后，source.info.json 不能再被当成媒体候选
+        // （它靠本地排除 endsWith(INFO_JSON_NAME) 挡住，不再靠白名单里的 ".info.json"）
+        Files.writeString(workDir.resolve("source.info.json"), "{}");
+        Files.writeString(workDir.resolve("source.mp4.part"), "half");
+        Files.writeString(workDir.resolve("source.mp4.ytdl"), "marker");
+        Files.writeString(workDir.resolve("source.mp4.tmp"), "temp");
+        Files.write(workDir.resolve("source.mp4"), new byte[8]);
+
+        List<Path> products = YtDlpMediaAcquirer.scanProducts(workDir);
+
+        assertEquals(List.of(workDir.resolve("source.mp4")), products,
+                "候选必须恰 1 个：info json 与过渡态后缀都被挡掉");
+    }
+
+    @Test
     void throwsWhenNoProductFound() throws IOException {
         stubRun(0, "", false, infoJson("mp4", "t", 12.0), null);
         Files.writeString(workDir.resolve("source.info.json"), infoJson("mp4", "t", 12.0));
