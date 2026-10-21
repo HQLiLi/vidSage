@@ -73,8 +73,8 @@ com.vidsage
 **`application/`（五个上下文 + `exception/`）**——用例编排的家
 （`exception/` 装跨上下文的具名异常，见 `error-handling.md` 的「尚未建立的约定」）：
 
-- **用例服务**：`@Service` 编排类，**有 web 调用面**（`SubtitleTaskService`——`TaskController` 唯一注入的应用服务）或**被多处方共用的横切编排能力**（有编排内容才算；单一规则 / 单一事实的机械件归机制/协作件档，见[构件说明](#构件说明服务与管线构件)）。组装契约、委托端口，不出现适配器实现类与 SDK 类型。
-- **管线构件**：`@Component` 编排类，**没有 web 调用面**——`SubtitlePipeline`（管线的所有者：阶段顺序、进度广播、终态收口）与各阶段构件（认领进度阶段的那一步，只被上级管线按顺序调用一次）。判据、命名与「为什么不下沉 domain」见下节[构件说明](#构件说明服务与管线构件)。
+- **用例服务**：`@Service` 编排类，**有 web 调用面**（`SubtitleMainService` / `SubtitleRecleanService` / `SubtitleTranslateService`——`TaskController` 注入的三个 run 用例）或**被多处方共用的横切编排能力**（有编排内容才算；单一规则 / 单一事实的机械件归机制/协作件档，见[构件说明](#构件说明服务与管线构件)）。组装契约、委托端口，不出现适配器实现类与 SDK 类型。
+- **管线构件**：`@Component` 编排类，**没有 web 调用面**——各阶段构件（认领进度阶段的那一步，只被上级用例按顺序调用一次）。判据、命名与「为什么不下沉 domain」见下节[构件说明](#构件说明服务与管线构件)。
 - **读模型**：`TaskSnapshot` / `RunSummary` / `KeywordsSnapshot`（`application/task/query/`）——面向查询的应用层投影，**零 web 注解**（2026-10-06 读模型拆分：对外 @Schema 集中到 `web/dto/TaskResponse`，见[契约类的位置](#契约类的位置)判据 2）。
 - **应用消息 / 应用异常**：`TaskRunProgress`（应用 → web 的进度消息）、`TaskConflictException` / `TaskNotFoundException`（`application/task/exception/`）。
 - **出站端口**：本层定义的业务无关出站端口（判据见[端口归属判据](#端口归属判据)），如 `TaskConcurrencyGate`、`TaskProgressBroadcaster`（均落 `application/task/port/`）。`TaskProgressBroadcaster` 的签名不含 HTTP 类型，实现落 `web/sse/SseTaskProgressBroadcaster`（见[端口实现规则](#端口归属判据)）。
@@ -87,16 +87,17 @@ com.vidsage
 
 | 档 | 注解 | 是什么 | 现行成员 |
 |---|---|---|---|
-| **服务** | `@Service` | 有 web 调用面，或被多处方共用的横切**编排**能力 | `SubtitleTaskService`（`TaskController` 唯一注入的应用服务） |
-| **管线构件** | `@Component` | 没有 web 调用面，只被上级管线按顺序调用 | `SubtitlePipeline`（管线的所有者）、各 `XxxCoordinator`（认领阶段的一步）、`MediaAcquirerDispatcher` / `Transcriber`（不认领阶段的委托件，2026-10-08 改名落地） |
+| **服务** | `@Service` | 有 web 调用面，或被多处方共用的横切**编排**能力 | `SubtitleMainService` / `SubtitleRecleanService` / `SubtitleTranslateService`（`TaskController` 注入的三个 run 用例，各管一条流程）、`SubtitleTaskQueryService` |
+| **管线构件** | `@Component` | 没有 web 调用面，只被上级用例按顺序调用 | 各 `XxxCoordinator`（认领阶段的一步）、`MediaAcquirerDispatcher` / `Transcriber`（不认领阶段的委托件，2026-10-08 改名落地） |
 | **机制/协作件** | `@Component` | 不干编排的机械件：单一规则、单一事实、或中立机制容器。**多处共用不升「服务」**——看有没有编排内容，不看注入数 | `TaskRunSupervisor`（run 生命周期机制：插 run 抢互斥 / 推进 / 收口，落 `application/task/` 根） |
 
 两条分水岭：服务 ↔ 管线构件看**有没有 web 调用面**；服务 ↔ 机制/协作件看**有没有编排内容**。
 
 命名跟着分两条：
 
-- **服务类前缀与聚合根对齐**——聚合根是 `SubtitleTask`，故服务叫 `SubtitleTaskService`（2026-10-06 命名对齐）。**对外契约与值对象不跟这个前缀**：「任务」是对外概念（路由就是 `/api/tasks`，前端也这么叫）。故 `SubtitleTaskService` 返回 `TaskSnapshot` 是**已知且可接受**的不一致——口径是「服务与聚合根对齐，读模型与对外契约沿用对外概念」。
-- **管线不跟聚合根前缀，按产出命名**（2026-10-07）——管线的所有者叫 `SubtitlePipeline`，不叫 `SubtitleTaskPipeline`。两条理由：① 两个前缀回答的是**两问**——服务前缀答「这是谁的任务」，管线前缀答「**它产出什么**」，不该共用一个词；② 管线的产出是字幕，而它吃进的媒体不止视频（音频是一等输入、走同一条管线），拿「任务」当管线的限定语会把错误传下去。
+- **run 用例服务按「上下文 + run 类型」命名**（2026-10-21 拆分后）——三个 run 用例叫 `SubtitleMainService` / `SubtitleRecleanService` / `SubtitleTranslateService`：前缀是上下文 `Subtitle`，中段是 `TaskRunType` 的词。**这是对 2026-10-06「服务前缀与聚合根对齐」口径的一处有意偏离**——那条口径默认「一个上下文只有一个用例服务」，拆成三个之后没法再让三个类共用 `SubtitleTaskService` 一个名，只能拿 run 类型当区分词、前缀退到上下文。
+  - **对外契约与值对象仍不跟这个前缀**：「任务」是对外概念（路由就是 `/api/tasks`，前端也这么叫）。故服务返回 `TaskSnapshot` 是**已知且可接受**的不一致——口径是「服务与聚合根对齐，读模型与对外契约沿用对外概念」。
+- **管线构件不跟聚合根前缀，按产出命名**（2026-10-07）——`pipeline/` 下的阶段构件叫 `SubtitlePreparationCoordinator` / `SubtitleCleanupCoordinator` / `SubtitleTranslationCoordinator` / `SubtitleFingerprintCoordinator`，不叫 `SubtitleTaskXxx`。两条理由：① 两个前缀回答的是**两问**——任务前缀答「这是谁的任务」，管线前缀答「**它产出什么**」，不该共用一个词；② 管线的产出是字幕，而它吃进的媒体不止视频（音频是一等输入、走同一条管线），拿「任务」当管线的限定语会把错误传下去。
 - **管线构件后缀按角色取**（2026-10-07 重立）——**`XxxCoordinator` = 认领进度阶段、驱动若干协作者的那一步**。判据是「**它认不认领阶段事件**」，即在 `emit(...)` 里报出阶段名。
   - 改名已全部落地（2026-10-08，进度权重扁平化任务）：`MediaAcquisitionStage` → `MediaAcquirerDispatcher`、`TranscriptionStage` → `Transcriber`——两者**一个阶段事件都不发**（端口分派与包装），用「做事的人」的 `-er` / `-or` 名；`AudioPreparationStage` → `AudioPreparationCoordinator`（认领 acquire + extract 两个阶段，符合 `*Coordinator` 判据）。存量 `*Stage` 后缀清零。
   - 被替换的旧判据「管线的一步以 `Stage` 结尾，**一个阶段对应一个执行类**」**已作废**：后半句两头都不成立——`AudioPreparationCoordinator` / `SubtitlePreparationCoordinator` 各认领**两个**阶段，而 `MediaAcquirerDispatcher` / `Transcriber` 认领**零个**。
@@ -210,7 +211,7 @@ com.vidsage
 | 层 | 桶 | 根留什么 |
 |---|---|---|
 | `domain/<上下文>/` | `port/`（接口）、`policy/`（final class + 静态方法的无状态政策）、`model/`（record / enum / sealed 数据词汇） | 主类型（状态机/聚合，如 `SubtitleTask` / `TaskRun`） |
-| `application/<上下文>/` | `port/`（本层出站端口）、`pipeline/`（管线构件：管线的所有者与各阶段类）、`query/`（读模型）、`message/`（应用消息）、`exception/`（应用异常） | 只留服务门面与机制 / 协作件（`@Service` 如 `SubtitleTaskService` / `SubtitleTaskQueryService`；`@Component` 如 `TaskRunSupervisor` / `SubtitleTaskFinder`） |
+| `application/<上下文>/` | `port/`（本层出站端口）、`pipeline/`（管线构件：各阶段类）、`query/`（读模型）、`message/`（应用消息）、`exception/`（应用异常） | 只留服务门面与机制 / 协作件（`@Service` 如 `SubtitleMainService` / `SubtitleRecleanService` / `SubtitleTranslateService` / `SubtitleTaskQueryService`；`@Component` 如 `TaskRunSupervisor` / `SubtitleTaskFinder`） |
 
 - **`model/` 内可再按子主题分一层**——全项目唯一的二层用法（2026-10-06）：`domain/subtitle/` 的数据载体多到该再分，故有 `model/cleanup/`、`model/translation/`、`model/term/`、`model/common/`、`model/keyword/`（用户手填的关键词清单，2026-10-12）。口径是「先角色，角色内再按子主题」。
 - **不再套桶的组合**（已被别的判据定义过，或本来只有一个角色）：`infrastructure/provider/<能力域>/<实现短名>/`（该实现的适配器 + 专用 `*Properties` + 私有助手算一件）、`infrastructure/persistence/`（entity / mapper / repository 三件套）、`web/`（controller / dto / sse）、`shared/<域>/`（纯静态助手）。
@@ -297,7 +298,7 @@ MP 的持久化抽象是三档叠加，**我们只用第一档**：
 | 配置属性 | 实现方名 + `Properties` | `DashScopeProperties` |
 | 契约 | 动作名 + `Command` / `Result` | `TranscriptionCommand` / `TranscriptionResult` |
 | 契约子结构 | 语义名，不叫 `DTO` / `VO` | `TranscriptionSegment` |
-| Spring 组件 | **按包选 stereotype**：`web/controller/`→`@RestController`、`application/` **用例服务与横切服务**→`@Service`、`application/` **管线构件**（`XxxPipeline` / `XxxCoordinator` / `XxxStage`）与机制类→`@Component`、`infrastructure/`→`@Component`、`infrastructure/persistence/`→`@Repository`、`web/sse/`→`@Component` | `TaskController`、`SubtitleTaskService`、`SubtitlePipeline`、`SubtitlePreparationCoordinator`、`DashScopeAsrProvider` |
+| Spring 组件 | **按包选 stereotype**：`web/controller/`→`@RestController`、`application/` **用例服务与横切服务**→`@Service`、`application/` **管线构件**（`XxxCoordinator`）与机制类→`@Component`、`infrastructure/`→`@Component`、`infrastructure/persistence/`→`@Repository`、`web/sse/`→`@Component` | `TaskController`、`SubtitleMainService`、`SubtitlePreparationCoordinator`、`DashScopeAsrProvider` |
 | Controller | 业务名 + `Controller`，平铺在 `web/controller/` | `MediaController`、`TaskController` |
 | 组件后缀登记 | 端口/适配器之外的新角色后缀**用前先登记**（不登记的后缀会变万能）；`-Manager`（2026-10-11 登记）：角色词答「管理一组资源」，落 `infrastructure/fs/`（`WorkspaceDirectoryManager` 是端口，登记在上方「端口接口」行并附「防 Manager 变万能后缀」警告——**该警告不解除**）；`-Store`（2026-10-19 登记）：角色词答「一类持久化事实的读写门面」，住在 `application/`、是 `@Component`，成员 `SubtitleArtifactStore` / `IntermediateFileStore` / `WorkspaceFingerprintStore`；`-Notifier`（2026-10-10 曾用）随订阅机制整块退场，当前无成员 | `WorkspaceDirectoryManager`、`SubtitleArtifactStore` |
 | 方法 | **动词开头**（2026-10-12 立） | `prepare` / `clean` / `translate` / `acquire` / `saveCurrentStageAndBroadcast` |
@@ -416,7 +417,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 
 | 位置 | 原名 | 现名 | 判据 |
 |---|---|---|---|
-| `SubtitleTaskService#regenerate` | `effective` | `effectiveKeywords` | `effective` 是形容词，没说有效的是**什么**；得读后面那行 `validated != null ? validated : keywordRepository.findByTaskId(...)` 才知道是关键词 |
+| `SubtitleRecleanService#regenerate` | `effective` | `effectiveKeywords` | `effective` 是形容词，没说有效的是**什么**；得读后面那行 `validated != null ? validated : keywordRepository.findByTaskId(...)` 才知道是关键词 |
 | `SubtitleArtifactStore#settleCleanedAndSupersedeDownstream` | `old` | `previousReady` → **现为 `previous`**（2026-10-20：那个跨行的中间变量没了，只剩一行 lambda 的参数，按下面「例外」可短） | 没说旧的是哪一版（是上一版 READY 的产物） |
 | 同上 | `downstream` | `translationsToSupersede` | 没说下游的**什么**；而且和已有的私有方法 `downstreamTranslations(...)` 撞名 |
 | 同上 | `orphaned` | `translationsToReclaim` | 没说成了孤儿的是**什么**（是译文，不是产物行） |
@@ -465,7 +466,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 
 > **为何 `dto/` 作 `web/` 的子包可以、作顶层包不可以**：`web/dto/` 有明确且**唯一的**职责边界（「需展平的 HTTP 请求/响应契约」），填得满[分层归属判据](#分层归属判据)的职责表，故不是桶式包；而顶层的 `dto/` 没有归属语境，写不出「这个包不许装什么」。**判据是「能否写出它不许装什么」，不是「包名是不是分类词」。** 构件层（有职责边界、填得满职责表）不受本条限制；`config/` 是另一例，见上。
 
-参照：`domain/task/`（根 `SubtitleTask` / `TaskRun` + `model/` + `port/` 的样板）、`domain/subtitle/model/`（全项目唯一的桶内二层）、`application/task/`（根服务门面 + `query/` + `message/` + `port/` + `exception/`）、`application/subtitle/pipeline/`（编排件与被编排件同包）、`infrastructure/provider/asr/dashscope/`（适配器 + 配置）、`application/task/SubtitleTaskService.java`、`web/controller/TaskController.java`、`web/dto/`。
+参照：`domain/task/`（根 `SubtitleTask` / `TaskRun` + `model/` + `port/` 的样板）、`domain/subtitle/model/`（全项目唯一的桶内二层）、`application/task/`（根服务门面 + `query/` + `message/` + `port/` + `exception/`）、`application/subtitle/pipeline/`（管线的各阶段构件同包）、`infrastructure/provider/asr/dashscope/`（适配器 + 配置）、`application/task/SubtitleMainService.java`、`web/controller/TaskController.java`、`web/dto/`。
 
 ## shared/：共享工具层
 
@@ -488,7 +489,7 @@ grep -rhoE '(public|private|protected|static) +[A-Za-z0-9_<>,\.]+ +[a-z][A-Za-z0
 - **应用服务（`XxxService`）与管线构件（`XxxPipeline` / `XxxStage`）都放 `application/<上下文>/`**：对上屏蔽端口装配细节，组装契约后委托端口，不出现适配器实现类与 SDK 类型。两者的区别与命名判据见[构件说明](#构件说明服务与管线构件)
 - **Controller 放 `web/controller/`**：**main 源码**只依赖 application 层，不直接依赖 `infrastructure/` 或 `domain/`（跨层规则见[依赖规则](#依赖规则)；`web/` 的 **test 源码**为构造夹具允许 import `domain`）
 - **请求体与响应体契约放 `web/dto/`**——除非该类型的 JSON 形状本就可直接对外，那种情形留在所属层包并补 `@Schema`。归属判据见[契约类的位置](#契约类的位置)的判据 1。**响应体与请求体同判据**：不要因为「响应是应用层返回的」就默认它属于应用层契约
-- `SubtitleTaskService` 用 `@Service`（`application/` 的用例服务；管线构件用 `@Component`，判据见[构件说明](#构件说明服务与管线构件)），Controller 只做「接收 → 卫语句 → 委托 → 返回」，不写业务逻辑
+- 三个 run 用例（`SubtitleMainService` / `SubtitleRecleanService` / `SubtitleTranslateService`）用 `@Service`（`application/` 的用例服务；管线构件用 `@Component`，判据见[构件说明](#构件说明服务与管线构件)），Controller 只做「接收 → 卫语句 → 委托 → 返回」，不写业务逻辑
 - **模型 ↔ HTTP 契约的转换逻辑留在 `web/controller/`，不为它另开第三个子包**：这部分代码大半是 HTTP 输入校验，而「校验」本就归 Controller（见上一行）；真正「不属于 HTTP」的只有末尾构造那几行，不值得为它单独开包
 
 ## 测试包结构
