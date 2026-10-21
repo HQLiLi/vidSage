@@ -1552,3 +1552,27 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 57: SubtitlePipeline 三条 run 流程拆分
+<!-- trellis-session: v=2 fp=2d367e54644a0ae9 -->
+
+**Date**: 2026-10-21
+**Task**: SubtitlePipeline 三条 run 流程拆分
+**Branch**: `dev`
+
+### Summary
+
+把 SubtitlePipeline（298 行）与 SubtitleTaskService（356 行）里被劈成两半、分居两个类的三条 run 流程，按 run 类型重组为三个用例服务（SubtitleMainService / SubtitleRecleanService / SubtitleTranslateService），各自收齐同步守卫段（404/400/409、抢互斥、落库）与异步执行段（闸门、阶段、落定、收口）。审查轮又把有明确归属的 helper 全部归位：conflictFor → TaskRunSupervisor.buildTaskConflictException、progressListener → TaskRunSupervisor.listener、reason → TaskRunSupervisor.fail、stackOf → shared/error/ThrowableUtils、workDir 删除（直调 WorkspaceDirectoryManager）、toMediaInput → shared/media/MediaInputUtils；清洗意图从 requireContextSummary 兼职文案的布尔代理改成显式 CleanMode 枚举（落 domain/subtitle/model/cleanup）。三个服务依赖 12/7/6（合计 25，拆分前 19），跨类重复只剩 requireIntactArtifact ×2。AC1–AC7 全过：三条真链路（真 yt-dlp + 真 DashScope ASR + 真 DeepSeek）各跑一次全 SUCCEEDED、复用格走 SKIPPED、HTTP 面由 TaskControllerTest 22 条 + 控制器 diff 兜住。测试 702 / 0 / 0 / 1（基线 700：−1 搬走 +1 搬入，+2 给两个新公开方法补覆盖）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6cdc02e` | refactor(subtitle): 三条 run 流程拆成三个用例服务 |
+| `0ddd756` | docs(spec): 订正拆分后失实的目录与 stereotype 表述 |
+| `c24eb11` | chore(task): 10-21-subtitle-run-flow-split 任务工件与证据 |
+
+### Status
+
+[OK] **Completed**
