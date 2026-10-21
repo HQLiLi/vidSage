@@ -52,7 +52,7 @@ class SemaphoreTaskConcurrencyGateTest {
                 () -> new SemaphoreTaskConcurrencyGate(0, recordingExecutor(new CopyOnWriteArrayList<>(),
                         new CopyOnWriteArrayList<>())));
         assertEquals("vidsage.task.max-concurrent 必须 ≥ 1：当前为 0；请修正配置", e.getMessage(),
-                "校验文案与异常类型从 SubtitlePipeline 整段搬过来，逐字不变");
+                "并发数配置不合法要报出当前值与修法，文案逐字钉住");
     }
 
     @Test

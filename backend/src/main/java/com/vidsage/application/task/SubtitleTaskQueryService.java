@@ -19,7 +19,8 @@ import java.util.Optional;
 /**
  * 任务查询：任务视图、关键词清单，以及某条 run 的 SSE 快照。
  *
- * <p>只读不写——提交、上传、重生成、翻译在 {@link SubtitleTaskService}。
+ * <p>只读不写——提交与上传在 {@link SubtitleMainService}、重生成在 {@link SubtitleRecleanService}、
+ * 翻译在 {@link SubtitleTranslateService}。
  * 定位任务与它的媒体走 {@link SubtitleTaskFinder}。
  */
 @Service

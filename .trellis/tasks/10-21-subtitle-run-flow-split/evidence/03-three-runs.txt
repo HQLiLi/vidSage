@@ -1,0 +1,30 @@
+# AC3 — 三条 run 真链路（真 yt-dlp + 真 DashScope ASR + 真 DeepSeek），2026-10-21
+
+实例：PORT=18080，URL=https://www.bilibili.com/video/BV11QMd6WEJp，taskNo=a5a0b2ccd68a4e478736cf0ee9216b71
+工作树内 backend/data/works 起跑时为空，故 MAIN 是全链路真跑（非复用）。
+
+## MAIN（runNo=4）
+{"taskNo":"a5a0b2ccd68a4e478736cf0ee9216b71","inputType":"URL","sourceUri":"https://www.bilibili.com/video/BV11QMd6WEJp","createdAt":"2026-10-20T22:27:39","lastRun":{"runNo":4,"runType":"MAIN","targetLanguage":null,"status":"SUCCEEDED","currentStage":"clean-subtitles","errorMessage":null,"startedAt":"2026-10-21T14:30:56","finishedAt":"2026-10-21T14:31:17"}}
+
+
+## RECLEAN（runNo=5，关键词 [VidSage, AC3]）
+{"taskNo":"a5a0b2ccd68a4e478736cf0ee9216b71","inputType":"URL","sourceUri":"https://www.bilibili.com/video/BV11QMd6WEJp","createdAt":"2026-10-20T22:27:39","lastRun":{"runNo":5,"runType":"RECLEAN","targetLanguage":null,"status":"SUCCEEDED","currentStage":"clean-subtitles","errorMessage":null,"startedAt":"2026-10-21T14:31:45","finishedAt":"2026-10-21T14:31:48"}}
+
+
+## TRANSLATE（runNo=6，zh-Hans → en）
+{"taskNo":"a5a0b2ccd68a4e478736cf0ee9216b71","inputType":"URL","sourceUri":"https://www.bilibili.com/video/BV11QMd6WEJp","createdAt":"2026-10-20T22:27:39","lastRun":{"runNo":6,"runType":"TRANSLATE","targetLanguage":"en","status":"SUCCEEDED","currentStage":"translate-subtitles","errorMessage":null,"startedAt":"2026-10-21T14:32:10","finishedAt":"2026-10-21T14:32:19"}}
+
+
+## 复用格（runNo=7，重提同一 URL）
+{"taskNo":"a5a0b2ccd68a4e478736cf0ee9216b71","inputType":"URL","sourceUri":"https://www.bilibili.com/video/BV11QMd6WEJp","createdAt":"2026-10-20T22:27:39","lastRun":{"runNo":7,"runType":"MAIN","targetLanguage":null,"status":"SUCCEEDED","currentStage":"clean-subtitles","errorMessage":null,"startedAt":"2026-10-21T14:32:31","finishedAt":"2026-10-21T14:32:34"}}
+
+阶段事件证明走的是 SKIPPED 而非重跑：
+taskNo=a5a0b2ccd68a4e478736cf0ee9216b71, runNo=7, stage=probe-fingerprint, progress=0, state=RUNNING, message=开始探测内容指纹
+taskNo=a5a0b2ccd68a4e478736cf0ee9216b71, runNo=7, stage=probe-fingerprint, progress=2, state=SUCCEEDED, message=内容未变化
+taskNo=a5a0b2ccd68a4e478736cf0ee9216b71, runNo=7, stage=transcribe-audio, progress=67, state=SKIPPED, message=已有 segments 产物，跳过转写
+taskNo=a5a0b2ccd68a4e478736cf0ee9216b71, runNo=7, stage=write-subtitles, progress=70, state=SKIPPED, message=已有字幕产物，跳过写盘
+taskNo=a5a0b2ccd68a4e478736cf0ee9216b71, runNo=7, stage=clean-subtitles, progress=100, state=SKIPPED, message=已有清洗产物，跳过清洗
+
+## 失败原因互不串台
+三条 run 的 errorMessage 均为 null（全都成功）。各流程的失败文案由单测逐条钉住：
+  SubtitleMainServiceTest / SubtitleRecleanServiceTest / SubtitleTranslateServiceTest 各自的 failure 用例。

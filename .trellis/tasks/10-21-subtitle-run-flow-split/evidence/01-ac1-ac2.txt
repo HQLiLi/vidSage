@@ -1,0 +1,18 @@
+# AC1 / AC2 证据 — 2026-10-21，由主会话在步骤 3 之后实测
+
+## AC1：两个旧类在 backend/src/ 下零命中（含 import / 注释 / Javadoc）
+$ grep -rn "SubtitlePipeline\|SubtitleTaskService" backend/src/
+(零命中，grep exit=1)
+
+## AC2：三个新类无跨流程引用（逐个 grep，期望全空）
+--- SubtitleMainService 不得出现 SubtitleTranslationCoordinator ---
+(零命中)
+--- SubtitleRecleanService 不得出现 Preparation / Fingerprint / Translation / MediaIdentityResolver ---
+(零命中)
+--- SubtitleTranslateService 不得出现 Preparation / Cleanup / Fingerprint / KeywordRepository / MediaIdentityResolver ---
+(零命中)
+
+## 三个新类的 stereotype（AC1）
+SubtitleMainService.java:65:@Service
+SubtitleRecleanService.java:41:@Service
+SubtitleTranslateService.java:40:@Service

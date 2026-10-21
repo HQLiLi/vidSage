@@ -1,0 +1,8 @@
+# AC6 — 重清洗语义钉法：旧行哈希与新版完全相同，下游译文仍被作废
+
+$ mvn test -Dtest=SubtitleArtifactStoreTest#settleCleanedSupersedesDownstreamEvenWhenHashesAreIdentical
+
+[INFO] Running com.vidsage.application.subtitle.SubtitleArtifactStoreTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.732 s -- in com.vidsage.application.subtitle.SubtitleArtifactStoreTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS

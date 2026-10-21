@@ -1,0 +1,63 @@
+# 开工前测试基线 — 2026-10-21，在任何代码改动之前
+
+命令（工作树 F:/personal_project/vidSage-subtitle-run-flow-split）：
+
+```bash
+cd backend
+export JAVA_HOME=/f/java_soft/java21 && export PATH="/f/java_soft/java21/bin:$PATH"
+rm -rf target/surefire-reports          # 陈旧报告会污染计数
+mvn clean test
+```
+
+> 本文件由主会话按当时实测输出转录（测量时尚未改任何代码，`git status` 干净）。
+
+---
+
+## 首跑：被污染的数字（缺 gitignored 的本地配置）
+
+```
+[ERROR] Errors:
+[ERROR]   VidSageApplicationTests.contextLoads » IllegalState Failed to load ApplicationContext ...
+[ERROR] Tests run: 700, Failures: 0, Errors: 1, Skipped: 1
+[ERROR] BUILD FAILURE
+```
+
+根因（surefire 报告里最深一条 `Caused by`）：
+
+```
+Caused by: org.springframework.boot.jdbc.autoconfigure.DataSourceProperties$DataSourceBeanCreationException:
+    Failed to determine a suitable driver class
+```
+
+**`application-local.yml` 被 `.git/info/exclude` 排除，新工作树不会带它**——而 `VidSageApplicationTests`
+显式标了 `@ActiveProfiles("local")`（该测试类自己的 Javadoc 写了原因：不激活则数据源配置不加载，
+全量上下文必以「Failed to determine a suitable driver class」失败）。补文件后即恢复。
+
+```bash
+cp /f/personal_project/vidSage/backend/src/main/resources/application-local.yml \
+   <worktree>/backend/src/main/resources/application-local.yml
+```
+
+## 二跑：真基线
+
+```
+[INFO] Tests run: 700, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+[INFO] Total time:  34.183 s
+```
+
+**基线 = 700 / 0 / 0 / 1**，与历史口径（10-15 父任务集成评审轮）逐项相同。
+
+逐类抽样（与本次相关的）：
+
+```
+Tests run: 22, Failures: 0, Errors: 0, Skipped: 0 -- in com.vidsage.web.controller.TaskControllerTest
+Tests run:  1, Failures: 0, Errors: 0, Skipped: 0 -- in com.vidsage.VidSageApplicationTests
+```
+
+---
+
+## 用途
+
+`prd.md` AC5 要求完工后 `mvn clean test` 的 `tests run / failures / errors / skipped` 四个数与
+本基线**逐项相同**。

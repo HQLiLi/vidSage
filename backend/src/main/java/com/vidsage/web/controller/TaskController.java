@@ -1,7 +1,9 @@
 package com.vidsage.web.controller;
 
+import com.vidsage.application.task.SubtitleMainService;
+import com.vidsage.application.task.SubtitleRecleanService;
 import com.vidsage.application.task.SubtitleTaskQueryService;
-import com.vidsage.application.task.SubtitleTaskService;
+import com.vidsage.application.task.SubtitleTranslateService;
 import com.vidsage.application.task.TaskRunRef;
 import com.vidsage.web.dto.*;
 import com.vidsage.web.sse.SseTaskProgressBroadcaster;
@@ -35,15 +37,22 @@ import java.util.List;
 @RequestMapping("/api/tasks")
 public class TaskController {
 
-    private final SubtitleTaskService taskService;
+    private final SubtitleMainService mainService;
+
+    private final SubtitleRecleanService recleanService;
+
+    private final SubtitleTranslateService translateService;
 
     private final SubtitleTaskQueryService queryService;
 
     private final SseTaskProgressBroadcaster broadcaster;
 
-    public TaskController(SubtitleTaskService taskService, SubtitleTaskQueryService queryService,
+    public TaskController(SubtitleMainService mainService, SubtitleRecleanService recleanService,
+                          SubtitleTranslateService translateService, SubtitleTaskQueryService queryService,
                           SseTaskProgressBroadcaster broadcaster) {
-        this.taskService = taskService;
+        this.mainService = mainService;
+        this.recleanService = recleanService;
+        this.translateService = translateService;
         this.queryService = queryService;
         this.broadcaster = broadcaster;
     }
@@ -74,7 +83,7 @@ public class TaskController {
                     + "上传本地文件请走 POST /api/tasks/upload");
         }
         log.info("收到任务提交: sourceType=URL");
-        return TaskRunRefResponse.from(taskService.submitUrl(request.url(), request.keywords()));
+        return TaskRunRefResponse.from(mainService.submitUrl(request.url(), request.keywords()));
     }
 
     /**
@@ -103,7 +112,7 @@ public class TaskController {
         // 原始文件名是用户资源，不落日志；字节数是度量，可以记
         log.info("收到任务提交: sourceType=UPLOAD, sizeBytes={}", file.getSize());
         try (InputStream in = file.getInputStream()) {
-            return TaskRunRefResponse.from(taskService.submitUpload(in, file.getOriginalFilename(), keywords));
+            return TaskRunRefResponse.from(mainService.submitUpload(in, file.getOriginalFilename(), keywords));
         } catch (IOException e) {
             throw new IllegalStateException("读取上传文件流失败：" + e.getMessage() + "；请重试或换一个文件", e);
         }
@@ -181,7 +190,7 @@ public class TaskController {
         }
         log.info("触发字幕翻译: taskNo={}", taskNo);
         return TaskRunRefResponse.from(
-                taskService.translate(taskNo, request.sourceLanguage(), request.targetLanguage()));
+                translateService.translate(taskNo, request.sourceLanguage(), request.targetLanguage()));
     }
 
     /**
@@ -210,7 +219,7 @@ public class TaskController {
         }
         log.info("重新生成字幕: taskNo={}", taskNo);
         return TaskRunRefResponse.from(
-                taskService.regenerate(taskNo, request == null ? null : request.keywords()));
+                recleanService.regenerate(taskNo, request == null ? null : request.keywords()));
     }
 
     /**

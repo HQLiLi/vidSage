@@ -1,28 +1,32 @@
 package com.vidsage.application.task;
 
+import com.vidsage.application.media.IntermediateFileOwner;
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.application.subtitle.SubtitleArtifactStore;
-import com.vidsage.application.subtitle.pipeline.SubtitlePipeline;
+import com.vidsage.application.subtitle.pipeline.SubtitleCleanupCoordinator;
+import com.vidsage.application.subtitle.pipeline.SubtitleFingerprintCoordinator;
+import com.vidsage.application.subtitle.pipeline.SubtitlePreparationCoordinator;
 import com.vidsage.application.task.exception.TaskConflictException;
-import com.vidsage.application.task.exception.TaskNotFoundException;
+import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.ArtifactType;
+import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
+import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.domain.task.SubtitleTask;
 import com.vidsage.domain.task.TaskRun;
-import com.vidsage.domain.task.model.TaskRunType;
-import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
-import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
-import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
-import com.vidsage.domain.task.port.SubtitleTaskRepository;
-import com.vidsage.domain.task.port.TaskRunRepository;
 import com.vidsage.domain.task.model.RunRef;
+import com.vidsage.domain.task.model.TaskRunType;
+import com.vidsage.domain.task.port.SubtitleTaskRepository;
 import com.vidsage.domain.workspace.Workspace;
 import com.vidsage.domain.workspace.model.ResolvedMediaIdentity;
 import com.vidsage.domain.workspace.model.SourceKey;
 import com.vidsage.domain.workspace.model.SourceType;
 import com.vidsage.domain.workspace.port.MediaIdentityResolver;
 import com.vidsage.domain.workspace.port.WorkspaceRepository;
+import com.vidsage.shared.error.ThrowableUtils;
+import com.vidsage.shared.media.MediaInputUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -43,7 +47,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 任务往库里写得动的四个入口：URL 提交、上传、重新生成字幕、翻译。
+ * 提交媒体转字幕任务（MAIN run）的完整流程：同步段算身份键、落库、抢互斥，异步段跑
+ * 指纹探测 → 音频准备与转写 → 清洗，最后收口终态。
  *
  * <p>两条提交路线（URL / 上传）收敛到 {@link #handleSubmit}，差别只在身份键怎么算：
  * URL 路线走规范化策略（可能跟一次短链跳转），上传路线流式落盘并边写边算内容摘要。
@@ -54,15 +59,12 @@ import java.util.Optional;
  * {@link #findOrCreateWorkspace} / {@link #findOrCreateTask}）。事务由 {@link TransactionTemplate}
  * 显式圈定：身份键在事务外算完再进来，同类内直接调用，不隔 Spring 代理边界。
  *
- * <p>未知 taskNo 一律抛 {@link TaskNotFoundException} → 404；同一任务已有 run 在跑抛
- * {@link TaskConflictException} → 409（响应体带 {@code {taskNo, runNo}}）。
- * 「产物尚未就绪」是 {@link IllegalArgumentException} → 400，与 409 分得很清。
- *
- * <p>查询与 SSE 快照走 {@link SubtitleTaskQueryService}，本类不读。
+ * <p>同一任务已有 run 在跑抛 {@link TaskConflictException} → 409（响应体带
+ * {@code {taskNo, runNo}}）。本类只写不读：任务查询与 SSE 快照走 {@link SubtitleTaskQueryService}。
  */
 @Slf4j
 @Service
-public class SubtitleTaskService {
+public class SubtitleMainService {
 
     /**
      * 临时文件名前缀：上传先落根目录临时文件算内容摘要，再按身份键归位。
@@ -76,43 +78,46 @@ public class SubtitleTaskService {
 
     private final WorkspaceRepository workspaceRepository;
     private final SubtitleTaskRepository subtitleTaskRepository;
-    private final TaskRunRepository taskRunRepository;
     private final SubtitleKeywordRepository keywordRepository;
     private final MediaIdentityResolver mediaIdentityResolver;
     private final TaskRunSupervisor supervisor;
-    private final SubtitlePipeline pipeline;
-    private final WorkspaceDirectoryManager workspaceDirectoryManager;
-    private final SubtitleTaskFinder finder;
+    private final TaskConcurrencyGate concurrencyGate;
+    private final SubtitlePreparationCoordinator subtitlePreparationCoordinator;
+    private final SubtitleCleanupCoordinator cleanupStage;
     private final SubtitleArtifactStore artifactStore;
+    private final SubtitleFingerprintCoordinator fingerprintCoordinator;
+    private final WorkspaceDirectoryManager workspaceDirectoryManager;
     private final TransactionTemplate transactionTemplate;
 
-    public SubtitleTaskService(WorkspaceRepository workspaceRepository,
+    public SubtitleMainService(WorkspaceRepository workspaceRepository,
                                SubtitleTaskRepository subtitleTaskRepository,
-                               TaskRunRepository taskRunRepository,
                                SubtitleKeywordRepository keywordRepository,
                                MediaIdentityResolver mediaIdentityResolver,
                                TaskRunSupervisor supervisor,
-                               SubtitlePipeline pipeline,
-                               WorkspaceDirectoryManager workspaceDirectoryManager,
-                               SubtitleTaskFinder finder,
+                               TaskConcurrencyGate concurrencyGate,
+                               SubtitlePreparationCoordinator subtitlePreparationCoordinator,
+                               SubtitleCleanupCoordinator cleanupStage,
                                SubtitleArtifactStore artifactStore,
+                               SubtitleFingerprintCoordinator fingerprintCoordinator,
+                               WorkspaceDirectoryManager workspaceDirectoryManager,
                                PlatformTransactionManager transactionManager
     ) {
         this.workspaceRepository = workspaceRepository;
         this.subtitleTaskRepository = subtitleTaskRepository;
-        this.taskRunRepository = taskRunRepository;
         this.keywordRepository = keywordRepository;
         this.mediaIdentityResolver = mediaIdentityResolver;
         this.supervisor = supervisor;
-        this.pipeline = pipeline;
-        this.workspaceDirectoryManager = workspaceDirectoryManager;
-        this.finder = finder;
+        this.concurrencyGate = concurrencyGate;
+        this.subtitlePreparationCoordinator = subtitlePreparationCoordinator;
+        this.cleanupStage = cleanupStage;
         this.artifactStore = artifactStore;
+        this.fingerprintCoordinator = fingerprintCoordinator;
+        this.workspaceDirectoryManager = workspaceDirectoryManager;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     /**
-     * URL 提交路线：算身份键（事务外）→ 事务内落库 + 抢互斥 → 派发主管线。
+     * URL 提交路线：算身份键（事务外）→ 事务内落库 + 抢互斥 → 交给并发闸门执行主管线。
      *
      * @param url      公网媒体页面地址（B 站 / YouTube 等）；不可为空白
      * @param keywords 可选关键词清单；{@code null}（字段缺席）= 本次不带关键词、不动库里那份，
@@ -179,63 +184,8 @@ public class SubtitleTaskService {
     }
 
     /**
-     * 重新生成字幕（RECLEAN run）：按当前关键词只重跑清洗，不重跑转写、不重抽音频。
-     *
-     * @param taskNo   对外任务号；不可为空白
-     * @param keywords 请求体里的关键词：{@code null} = 不改变已有列表；{@code []} = 清空
-     * @return 本次触发的 {@code {taskNo, runNo}}
-     * @throws IllegalArgumentException taskNo 为空白、关键词超限、或原始字幕尚未就绪（400）
-     * @throws TaskNotFoundException    任务不存在（404）
-     * @throws TaskConflictException    该任务已有一次执行在跑（409）
-     */
-    public TaskRunRef regenerate(String taskNo, List<String> keywords) {
-        SubtitleKeywords validated = keywords == null ? null : new SubtitleKeywords(keywords);
-        SubtitleTask task = finder.require(taskNo);
-        Workspace workspace = finder.requireWorkspace(task);
-        SubtitleArtifact originalArtifact = requireIntactArtifact(task, workspace, ArtifactType.ORIGINAL,
-                "原始转写产物（ORIGINAL）");
-        TaskRun run = supervisor.start(task, TaskRunType.RECLEAN, null).orElseThrow(() -> conflictFor(task));
-        if (validated != null) {
-            keywordRepository.replace(task.getId(), validated);
-        }
-        SubtitleKeywords effectiveKeywords = validated != null ? validated : keywordRepository.findByTaskId(task.getId());
-        RunRef ref = RunRef.of(task.getTaskNo(), run);
-        log.info("字幕重新生成已触发: taskNo={}, runNo={}, keywordsSupplied={}",
-                ref.taskNo().value(), ref.runNo(), validated != null);
-        pipeline.regenerate(run, ref, workspace, effectiveKeywords, originalArtifact.getId());
-        return new TaskRunRef(ref.taskNo().value(), ref.runNo());
-    }
-
-    /**
-     * 翻译（TRANSLATE run）：在已有清洗产物上产出译文。
-     *
-     * @param taskNo         对外任务号；不可为空白
-     * @param sourceLanguage 源语种
-     * @param targetLanguage 目标语种
-     * @return 本次触发的 {@code {taskNo, runNo}}
-     * @throws IllegalArgumentException taskNo 为空白、语种不在白名单、或清洗字幕尚未就绪（400）
-     * @throws TaskNotFoundException    任务不存在（404）
-     * @throws TaskConflictException    该任务已有一次执行在跑（409）
-     */
-    public TaskRunRef translate(String taskNo, String sourceLanguage, String targetLanguage) {
-        SupportedLanguage source = SupportedLanguage.parse(sourceLanguage);
-        SupportedLanguage target = SupportedLanguage.parse(targetLanguage);
-        SubtitleTask task = finder.require(taskNo);
-        Workspace workspace = finder.requireWorkspace(task);
-        SubtitleArtifact cleaned = requireIntactArtifact(task, workspace, ArtifactType.CLEANED,
-                "清洗后的字幕产物（CLEANED）");
-        TaskRun run = supervisor.start(task, TaskRunType.TRANSLATE, target.getCode())
-                .orElseThrow(() -> conflictFor(task));
-        RunRef ref = RunRef.of(task.getTaskNo(), run);
-        log.info("字幕翻译已触发: taskNo={}, runNo={}, source={}, target={}",
-                ref.taskNo().value(), ref.runNo(), source.getCode(), target.getCode());
-        pipeline.translate(run, ref, workspace, source, target, cleaned.getId());
-        return new TaskRunRef(ref.taskNo().value(), ref.runNo());
-    }
-
-    /**
      * 两条提交路线收敛于此：事务内落 workspace / subtitle_task、抢 MAIN 互斥、覆盖写关键词，
-     * 事务提交后派发主管线。身份键已在事务外算好，这里只做落库。
+     * 事务提交后把执行体交给并发闸门。身份键已在事务外算好，这里只做落库。
      */
     private TaskRunRef handleSubmit(SourceType sourceType, SourceKey sourceKey, String sourceUri,
                                     String canonicalUrl, SubtitleKeywords keywords) {
@@ -243,7 +193,7 @@ public class SubtitleTaskService {
             // 数据库创建记录
             Workspace workspace = findOrCreateWorkspace(sourceType, sourceKey, sourceUri, canonicalUrl);
             SubtitleTask task = findOrCreateTask(workspace);
-            TaskRun run = supervisor.start(task, TaskRunType.MAIN, null).orElseThrow(() -> conflictFor(task));
+            TaskRun run = supervisor.start(task, TaskRunType.MAIN, null).orElseThrow(() -> supervisor.buildTaskConflictException(task));
             if (keywords != null) {
                 keywordRepository.replace(task.getId(), keywords);
             }
@@ -253,8 +203,69 @@ public class SubtitleTaskService {
         log.info("任务已创建: taskNo={}, runNo={}, sourceType={}",
                 ref.taskNo().value(), ref.runNo(), sourceType);
         // 事务已提交：这时才把异步执行体派发出去，避免执行体读不到还没提交的行
-        pipeline.run(submission.run(), ref, submission.workspace());
+        concurrencyGate.submit(() -> runPipeline(submission.run(), ref, submission.workspace()),
+                () -> {
+                    log.warn("主管线等待执行配额时被中断: taskNo={}, runNo={}",
+                            ref.taskNo().value(), ref.runNo());
+                    supervisor.finish(ref, submission.run(), "任务在等待执行配额时被中断：请重新提交");
+                });
         return new TaskRunRef(ref.taskNo().value(), ref.runNo());
+    }
+
+    /**
+     * 同步执行完整主管线：指纹探测 → 音频准备与转写 → 清洗。
+     *
+     * <p>收口是无条件的：正常走到底收 SUCCEEDED，任一阶段抛出收 FAILED（把异常消息当失败原因，
+     * 拿不到消息就退回异常类名）。
+     */
+    void runPipeline(TaskRun run, RunRef ref, Workspace workspace) {
+        try {
+            Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(workspace.getSourceKey());
+            MediaInput input = MediaInputUtils.from(workspace, workDir);
+            log.info("任务开始执行: taskNo={}, runNo={}, sourceType={}",
+                    ref.taskNo().value(), ref.runNo(), workspace.getSourceType());
+            ProgressListener listener = supervisor.listener(ref, run);
+
+            // 指纹探测在媒体获取之前：内容变了就先把旧产物作废，后面每一步都不会再拿旧文件复用
+            fingerprintCoordinator.detectContentChange(run.getTaskId(), workspace, input, workDir, listener);
+            IntermediateFileOwner owner = new IntermediateFileOwner(run.getTaskId(), run.getId());
+
+            // 阶段 1：先问能不能复用，命中就整条链不动；不复用才建占位、真跑、落定
+            Optional<SubtitleArtifact> intactOriginal = artifactStore
+                    .findIntactArtifact(run.getTaskId(), ArtifactType.ORIGINAL, "", workDir);
+            SubtitleArtifact original;
+            if (subtitlePreparationCoordinator.reuseIfAvailable(workDir, intactOriginal.isPresent(), listener).isPresent()) {
+                // 复用命中：产物表那一侧必然有这条完好行（判据要求它先成立），整条链一个字节不动
+                original = intactOriginal.orElseThrow(() -> new IllegalStateException(
+                        "产物表说没有完好的原始产物，准备阶段却报告可复用：判据不一致"));
+            } else {
+                original = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
+                        ArtifactType.ORIGINAL, "", null, null);
+                subtitlePreparationCoordinator.prepare(input, workDir, listener, owner);
+                original = artifactStore.settleArtifact(original, workDir);
+            }
+
+            // 阶段 2：清洗字幕文件（关键词按任务读，跟产物同粒度）。同样先问复用，命中就什么都不做
+            SubtitleKeywords keywords = keywordRepository.findByTaskId(run.getTaskId());
+            Optional<SubtitleArtifact> intactCleaned = artifactStore
+                    .findIntactArtifact(run.getTaskId(), ArtifactType.CLEANED, "", workDir);
+            boolean isCleanReusable = cleanupStage.reuseIfAvailable(workDir, keywords, intactCleaned.isPresent(), listener).isPresent();
+            if (!isCleanReusable) {
+                SubtitleArtifact cleaned = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),
+                        ArtifactType.CLEANED, "", original.getId(), keywords.computeFingerprint());
+                cleanupStage.clean(input, workDir, keywords, listener, intactCleaned.isPresent());
+                // 清洗是唯一有下游的产物：换版时要把基于旧清洗的译文一起作废
+                artifactStore.settleCleanedAndSupersedeDownstream(cleaned, workDir);
+            }
+
+            supervisor.finish(ref, run, null);
+            log.info("任务执行成功: taskNo={}, runNo={}", ref.taskNo().value(), ref.runNo());
+        } catch (Throwable t) {
+            // 接住之后 JVM 不再打这条异常的默认堆栈，自己补一次；只打类型与调用栈
+            log.error("任务执行失败: taskNo={}, runNo={}\n{}", ref.taskNo().value(), ref.runNo(),
+                    ThrowableUtils.stackOf(t));
+            supervisor.fail(ref, run, t);
+        }
     }
 
     /**
@@ -294,37 +305,6 @@ public class SubtitleTaskService {
                             "并发提交同一媒体时未能读回已落库的 subtitle_task：workspaceId="
                                     + workspace.getId(), e));
         }
-    }
-
-    /**
-     * 撞互斥键时的冲突：插 run 只告诉「有人正在跑」，既有 run 的序号要再取一次
-     * （取不到说明状态自相矛盾，属服务端缺陷）。
-     *
-     * <p>取既有 run 用<b>锁定读</b>：并发分支里整个提交跑在同一事务、快照已陈旧，
-     * 普通 SELECT 看不到对方刚提交的 RUNNING 行，会误判成「撞键却无既有 run」而 500。
-     */
-    private TaskConflictException conflictFor(SubtitleTask task) {
-        int runNo = taskRunRepository.findLatestForShareByTaskId(task.getId())
-                .map(TaskRun::getRunNo)
-                .orElseThrow(() -> new IllegalStateException(
-                        "互斥撞键但取不到既有 run：taskId=" + task.getId()));
-        return new TaskConflictException(task.getTaskNo().value(), runNo);
-    }
-
-    /**
-     * 前置守卫：该任务必须有一版完好的当前产物（行是 READY，而且该带的文件都在盘上），并把它交出来。
-     *
-     * <p>返回的是<b>当下</b>那一版，调用方拿它的 id 填新产物的溯源字段；那个字段只用于审计，
-     * 不参与任何读取判据。
-     *
-     * <p>读路径只把缺文件的产物当没有，<b>不做自愈重跑</b>——重新生成由用户重新触发。
-     */
-    private SubtitleArtifact requireIntactArtifact(SubtitleTask task, Workspace workspace,
-                                                     ArtifactType type, String description) {
-        Path workDir = finder.workspaceDir(workspace);
-        return artifactStore.findIntactArtifact(task.getId(), type, "", workDir)
-                .orElseThrow(() -> new IllegalArgumentException("字幕尚未就绪：该任务还没有完好的 " + description
-                        + "；请先等主管线跑完（可查 GET /api/tasks/{taskNo} 或订阅其 SSE 事件）再试"));
     }
 
     /**

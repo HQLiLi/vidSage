@@ -383,10 +383,13 @@ class SubtitleCleanupCoordinatorTest {
         SubtitleKeywords keywords = new SubtitleKeywords(List.of());
         writeCleanTrack(keywords.computeFingerprint());
         SubtitleCleanupCoordinator s = service();
+        List<StageProgress> events = new ArrayList<>();
 
-        s.regenerate(new MediaInput.RemoteUrl("https://x"), workDir, keywords, ProgressListener.noop());
+        s.regenerate(new MediaInput.RemoteUrl("https://x"), workDir, keywords, events::add);
 
         assertEquals(1, cleanserCalls.get(), "用户点了重新生成就是要一份新的，即便关键词没变");
+        assertEquals("开始重新生成字幕", events.get(0).message(),
+                "开始事件的文案由清洗意图决定，不再靠 requireContextSummary 反推");
     }
 
     @Test
