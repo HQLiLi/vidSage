@@ -1,0 +1,46 @@
+# AC5 — 完工后测试基线（最终代码，2026-10-21 收尾轮）
+
+$ rm -rf target/surefire-reports && mvn clean test
+
+[INFO] Tests run: 700, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+
+## 逐类计数（四个受本任务影响的类）
+
+## 逐类计数（四个受本任务影响的类）
+application.task.SubtitleMainServiceTest  tests="23"
+application.task.SubtitleRecleanServiceTest  tests="6"
+application.task.SubtitleTranslateServiceTest  tests="6"
+web.controller.TaskControllerTest  tests="22"
+
+## 复核（2026-10-21 审查轮：RECLEAN / TRANSLATE 的 runPipeline 收成 private 之后）
+$ rm -rf target/surefire-reports && mvn clean test
+[INFO] Tests run: 700, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+
+## 复核（2026-10-21 审查轮：CleanMode 枚举替掉布尔代理之后）
+$ rm -rf target/surefire-reports && mvn clean test
+[INFO] Tests run: 700, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+（条数不变：只在既有用例里补了断言，没新增用例）
+
+## 复核（2026-10-21 审查轮：CleanMode 抽成 domain 独立枚举之后）
+$ rm -rf target/surefire-reports && mvn clean test
+[INFO] Tests run: 700, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+
+## 复核（2026-10-21 审查轮：toMediaInput 抽到 shared/media/MediaInputs 之后）
+$ rm -rf target/surefire-reports && mvn clean test
+[INFO] Tests run: 700, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+
+## 复核（2026-10-21 审查轮：MediaInputs → MediaInputUtils 改名之后）
+$ rm -rf target/surefire-reports && mvn clean test
+[INFO] Tests run: 700, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+
+## 复核（2026-10-21 审查轮：四件 helper + conflictFor 收进归属之后）
+$ rm -rf target/surefire-reports && mvn clean test
+[INFO] Tests run: 702, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+（700 基线：−1 搬到 supervisor，+1 搬入，+2 给两个新公开方法补覆盖）

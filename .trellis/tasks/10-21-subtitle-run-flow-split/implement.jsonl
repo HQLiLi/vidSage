@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "落位/命名/stereotype 判据的正典：本任务新增三个 @Service（判据是「有 web 调用面」）、删掉 SubtitlePipeline 与 SubtitleTaskService、并按新现状订正第 76/91/213/300/491 行"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "构造注入、Javadoc 与注释密度、测试写法——本任务新建三个类与三个测试类，并把两个旧测试类的 35 个用例搬过去"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AC4 要求 HTTP 面逐字节不变：三类异常（IAE→400 / TaskNotFoundException→404 / TaskConflictException→409）与中文文案必须逐字保留"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "六条文案（三条排队中断 warn + 三条失败日志前缀）随流程搬进各自的新类，但字符串值、级别、脱敏口径一律逐字不变；失败日志不打异常 message 是红线"}
+{"file": ".trellis/spec/backend/state-machine-guidelines.md", "reason": "task_run 的状态推进点（supervisor.start / advance / finish）与三条状态变更 UPDATE 的守卫不得因搬迁而改变"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "三个新类的 Javadoc 要按现有风格重写（大白话首行），不照抄旧类那份「三条流程混着写」的说明"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "复查 application 不 import infrastructure 这条线没被破（三个新类会新增对 artifactStore / coordinator 的引用）"}
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "分支工作流硬规则：feature 分支从 dev 切出、改完即停等审查、提交/推送/合并/归档逐门批准；合并只能在站着 dev 的主目录做"}
