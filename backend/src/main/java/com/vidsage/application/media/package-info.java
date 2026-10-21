@@ -1,6 +1,5 @@
 /**
- * 媒体应用层：根留 {@code WorkspaceKeyGenerator}（媒体输入 → 内容寻址 key 的生成器，
- * {@code @Component} 机制/协作件），其余构件按角色进子包。
+ * 媒体应用层：构件按角色进子包，根只剩本文件。
  *
  * <p>子包 {@code port/} 装两个技术端口：{@code FileStateReader}（文件 stat 读数）与
  * {@code WorkspaceDirectoryManager}（工作区目录的定位与创建）。实现都在

@@ -8,7 +8,7 @@
  *
  * <p>与 {@code shared} 的分界看<b>有没有状态</b>：无状态纯函数工具进 {@code shared}；有状态、或
  * 需要容器的，即使不面向业务契约也进本层。反过来，有状态但只为某一层服务、没有复用意图的
- * （{@code web/sse/TaskSseConnectionManager} 这类）留在服务它的层，不上提到这里。
+ * （{@code web/sse/SseTaskProgressBroadcaster} 这类）留在服务它的层，不上提到这里。
  *
  * <p>依赖规则：本层依赖 {@code domain} 与 {@code shared}。对 {@code application} 只开一个
  * <b>窄口</b>——仅为实现 application 定义的出站端口而 import 端口接口；<b>禁止</b> import

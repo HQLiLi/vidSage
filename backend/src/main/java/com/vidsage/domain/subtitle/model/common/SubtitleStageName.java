@@ -13,6 +13,7 @@ import java.util.Map;
 @Getter
 public enum SubtitleStageName {
 
+    PROBE_FINGERPRINT("probe-fingerprint", 5),
     ACQUIRE_MEDIA("acquire-media", 42),
     EXTRACT_AUDIO("extract-audio", 42),
     TRANSCRIBE_AUDIO("transcribe-audio", 49),

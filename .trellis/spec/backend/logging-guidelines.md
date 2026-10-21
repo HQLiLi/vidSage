@@ -56,6 +56,9 @@
 | 完整音频 URL | 公网 URL 常带 Signature 等签名参数，整条打印等于泄露临时凭证 | `describeAddress` 只打主机名或 `oss-temporary-storage` 标记 |
 | 转写全文等用户内容 | 用户数据 | 只打 segments 条数等度量 |
 | Controller 请求体原值 | URL/路径指向用户资源 | 只打 sourceType 等「请求形态」 |
+| **文件系统异常的 `getMessage()`** | `FileSystemException` 的子类（`NoSuchFileException` / `AccessDeniedException` / `DirectoryNotEmptyException` …）**消息就是完整路径**，而工作区目录名内嵌 `source_key`（用户资源） | 只打 `e.getClass().getSimpleName()` + `path.getFileName()`；先例：`ArtifactFileUtils#sha256` |
+| 异常对象本身（`log.warn(msg, e)`） | 日志框架会打出异常的 `toString()`，其中含 `getMessage()` —— 同样会把路径带出来 | 只打异常类名；真要堆栈就另想办法（如只记本项目的调用栈帧） |
+| **工作区目录名 / 产物文件名**（只读对账场景） | 目录名内嵌 `source_key`（同第 6 行）。**但这条要分清两个边界**：只读对账的**响应体里必须带**目录名（③ 类孤儿不在表里、没有 `taskNo` 可带，2026-10-20），那是**对外响应**的边界；**日志仍然不许带** | 响应里带 `dirName`；日志只记四类条数 + 扫到的目录/文件数 + 耗时；先例：`ReconcileService` / `MaintenanceController` |
 
 ### 例外：开发期专用的校验失败详情（2026-09-28）
 
@@ -77,6 +80,7 @@
 | 字符串拼接构造日志消息 | 「写法」节 |
 | 把 record / 配置对象整体打进日志 | 脱敏红线 |
 | 打完整外部 URL 或转写文本 | 脱敏红线 |
+| 把文件系统异常的 `getMessage()` 或异常对象打进日志 | 脱敏红线（消息即路径） |
 | 异常先 log 再原样上抛 | 双重记录 |
 | 引第三方日志实现依赖 | 「选型」节 |
 | 外部锚点（taskId）打 DEBUG | 「级别分层」节 |

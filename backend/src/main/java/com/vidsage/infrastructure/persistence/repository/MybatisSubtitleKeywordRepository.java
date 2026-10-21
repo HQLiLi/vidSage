@@ -1,7 +1,6 @@
 package com.vidsage.infrastructure.persistence.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.vidsage.domain.shared.model.WorkspaceKey;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
 import com.vidsage.domain.subtitle.port.SubtitleKeywordRepository;
 import com.vidsage.infrastructure.persistence.entity.SubtitleKeywordEntity;
@@ -25,15 +24,15 @@ public class MybatisSubtitleKeywordRepository implements SubtitleKeywordReposito
     }
 
     /**
-     * 按工作区读回清单。该工作区从没存过时返回<b>空清单</b>，不返回 {@code null}——
+     * 按任务读回清单。该任务从没存过时返回<b>空清单</b>，不返回 {@code null}——
      * 调用方（清洗编排、管线）拿到的永远是合法的一份，不必判空。
      *
-     * @param workspaceKey 工作区短哈希
-     * @return 该工作区的关键词清单；未存过或存的是空串时都是空清单
+     * @param taskId 字幕任务的内部行 id
+     * @return 该任务的关键词清单；未存过或存的是空串时都是空清单
      */
-    public SubtitleKeywords findByWorkspaceKey(WorkspaceKey workspaceKey) {
+    public SubtitleKeywords findByTaskId(long taskId) {
         SubtitleKeywordEntity entity = mapper.selectOne(
-                Wrappers.<SubtitleKeywordEntity>lambdaQuery().eq(SubtitleKeywordEntity::getWorkspaceKey, workspaceKey.value()));
+                Wrappers.<SubtitleKeywordEntity>lambdaQuery().eq(SubtitleKeywordEntity::getTaskId, taskId));
         return new SubtitleKeywords(splitToValues(entity == null ? null : entity.getKeywords()));
     }
 
@@ -41,11 +40,11 @@ public class MybatisSubtitleKeywordRepository implements SubtitleKeywordReposito
      * 覆盖式写入整份清单（一行 upsert）。空清单落成空串：行还在、值是空，
      * 这样「清空」与「从没填过」在库里是同一个可查询状态，不必区分。
      *
-     * @param workspaceKey 工作区短哈希
-     * @param keywords     要落库的清单
+     * @param taskId   字幕任务的内部行 id
+     * @param keywords 要落库的清单
      */
-    public void replace(WorkspaceKey workspaceKey, SubtitleKeywords keywords) {
-        mapper.replaceByWorkspaceKey(workspaceKey.value(), joinValues(keywords), LocalDateTime.now());
+    public void replace(long taskId, SubtitleKeywords keywords) {
+        mapper.replaceByTaskId(taskId, joinValues(keywords), LocalDateTime.now());
     }
 
     /**

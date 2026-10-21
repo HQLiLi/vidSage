@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "AC1 验表结构/索引名/枚举列宽/无外键的判据出处"}
+{"file": ".trellis/spec/backend/state-machine-guidelines.md", "reason": "AC5 崩溃恢复与 AC6 内容变更要对着三张状态列的值语义判"}

@@ -9,7 +9,7 @@ import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
  * {@code List}，一旦长度不等就是<b>静默错位</b>——A 句的译文配到 B 句上，且不报错。
  *
  * <p><b>不兜底、不加 {@code @Schema}</b>：字段形状与 {@link SubtitleTrack} 的段落同源，序列化出的
- * JSON 就是落盘 {@code segments-<route>-translate-<target>.json} 里数组元素的形状；{@code null} 文本
+ * JSON 就是落盘 {@code translated-segments-<lang>.json} 里数组元素的形状；{@code null} 文本
  * 按空串渲染，契约本身不收敛。
  *
  * @param beginTimeMs    本句开始时间（毫秒），与输入段落逐条一致

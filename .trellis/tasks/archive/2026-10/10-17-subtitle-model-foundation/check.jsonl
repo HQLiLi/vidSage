@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/10-17-subtitle-model-foundation/prd.md", "reason": "AC1–AC7 逐条核：表逐字对版、旧件零改动（git diff --stat 白名单）、领域类齐、端口齐、测试、旧契约回归、规范同步"}
+{"file": ".trellis/tasks/10-17-subtitle-model-foundation/implement.md", "reason": "核 AC4「端口方法无多无少」要逐条对步骤 5 的清单；核步骤 6 的八条实现约定（生成列不映射、run_no/revision 的 MAX+1、锁定读不许用 FOR UPDATE、catch 不外抛、批量 UPDATE 不写循环）；核八条欠账是否逐条落地或如实记账"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "对版依据：§1 五张表的列/注释/索引名/约束名逐字核（含两个生成列、四列 _file_name 的 255 宽、四列 sha256）；§2 命名规则；§4 三处状态机的「每个值恰好一条路径」——实体不得出现设计外的迁移方法（如 TaskRun 不许有 interrupt()）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核落位与命名：五个 port 在 domain/*/port/、三件套在 persistence 三个子包、stereotype 按包选（persistence 用 @Repository）、方法名动词开头、工厂用 of/ofXxx、测试包镜像主包且类名 = 被测类 + Test"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核注释（枚举与常量逐个有注释、首行大白话、不写成抽象腔）、核测试命名与断言风格、核没有夹带范围外的风格改名"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核 IllegalStateException 的消息是中文、含「当前状态 → 目标状态」与合法前提，不是空话"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "反向核验步骤 8：这一节的「建表契约」改完后不得再出现 ENUM 规则、且与已落地的 schema.sql 自洽；同时确认没把 DDL 全文或 C* 编号抄进来"}

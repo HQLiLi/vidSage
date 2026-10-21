@@ -68,15 +68,28 @@ class CheckpointPolicyTest {
     }
 
     @Test
-    void summarizeDegradeDoesNotPersist() {
-        // summarizeDegradeDoesNotWriteContextFile 的域级对应：降级成空上下文绝不能落盘，
-        // 否则下次会命中这份空缓存
+    void summarizeDegradeReturnsMarkedEmptyContext() {
+        // 降级出的空上下文带降级标记：调用方可以落盘（表示这次试过了），但读回不会命中缓存
         CheckpointPolicy.ContextResolution resolution = CheckpointPolicy.resolveContext(null,
                 () -> Optional.empty());
 
-        assertEquals(SubtitleContext.empty(), resolution.context(), "降级用空上下文");
+        assertEquals(SubtitleContext.degradedEmpty(), resolution.context(), "降级用带标记的空上下文");
+        assertTrue(resolution.context().degraded(), "降级结果的标记必须是 true");
         assertEquals(CheckpointPolicy.Source.DEGRADED_EMPTY, resolution.source());
-        assertFalse(resolution.shouldPersistSummary(), "降级成空上下文绝不能落盘，否则下次会命中这份空缓存");
+        assertFalse(resolution.shouldPersistSummary(), "政策不为降级落盘背书，是否写由调用方定");
+    }
+
+    @Test
+    void degradedCacheIsTreatedAsMiss() {
+        // 上次没摘出来留下的空壳：读回时绝不能当缓存命中，否则摘要永久丢失且不报错
+        SubtitleContext degradedCache = SubtitleContext.degradedEmpty();
+        SubtitleContext fresh = new SubtitleContext("中世纪剑术", "de", List.of());
+
+        CheckpointPolicy.ContextResolution resolution = CheckpointPolicy.resolveContext(degradedCache,
+                () -> Optional.of(fresh));
+
+        assertEquals(CheckpointPolicy.Source.FRESH_SUMMARY, resolution.source(), "带降级标记的缓存当作未命中");
+        assertEquals(fresh, resolution.context(), "重新摘要出来的那份才是本次要用的");
     }
 
     // ------------------------------------------------------------------

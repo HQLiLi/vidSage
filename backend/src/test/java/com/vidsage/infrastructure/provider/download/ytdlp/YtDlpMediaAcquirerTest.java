@@ -12,10 +12,14 @@ import static org.mockito.Mockito.when;
 
 import com.vidsage.domain.media.model.AcquiredMedia;
 import com.vidsage.domain.media.model.MediaInput;
+import com.vidsage.domain.workspace.model.ContentFingerprint;
 import com.vidsage.infrastructure.process.ProcessOutcome;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -59,7 +63,7 @@ class YtDlpMediaAcquirerTest {
         acquirer().acquire(new MediaInput.RemoteUrl(URL), workDir);
 
         List<String> args = capturedCommand.get();
-        assertContainsSequence(args, "--no-playlist", "--no-progress", "--write-info-json",
+        assertContainsSequence(args, "--no-playlist", "--no-progress", "--write-info-json", "--force-overwrites",
                 "-o", "source.%(ext)s", "-P", workDir.toString());
         assertEquals(URL, args.getLast(), "URL 必须在参数最后");
         assertFalse(args.contains("--no-simulate"), () -> "不应出现未在配方里的参数：" + args);
@@ -125,6 +129,22 @@ class YtDlpMediaAcquirerTest {
         List<Path> products = YtDlpMediaAcquirer.scanProducts(workDir);
 
         assertEquals(List.of(workDir.resolve("source.mp4")), products);
+    }
+
+    @Test
+    void scanProductsKeepsOnlyMediaWhenInfoJsonAndTransientFilesPresent() throws IOException {
+        // AC10 回归：.info.json 从共用白名单拆掉后，source.info.json 不能再被当成媒体候选
+        // （它靠本地排除 endsWith(INFO_JSON_NAME) 挡住，不再靠白名单里的 ".info.json"）
+        Files.writeString(workDir.resolve("source.info.json"), "{}");
+        Files.writeString(workDir.resolve("source.mp4.part"), "half");
+        Files.writeString(workDir.resolve("source.mp4.ytdl"), "marker");
+        Files.writeString(workDir.resolve("source.mp4.tmp"), "temp");
+        Files.write(workDir.resolve("source.mp4"), new byte[8]);
+
+        List<Path> products = YtDlpMediaAcquirer.scanProducts(workDir);
+
+        assertEquals(List.of(workDir.resolve("source.mp4")), products,
+                "候选必须恰 1 个：info json 与过渡态后缀都被挡掉");
     }
 
     @Test
@@ -267,6 +287,74 @@ class YtDlpMediaAcquirerTest {
         assertTrue(YtDlpMediaAcquirer.formatAvailabilityNotices("[info] fine\n").isEmpty());
     }
 
+    // ---------- 内容指纹探测（ContentFingerprintProbe） ----------
+
+    @Test
+    void probeParsesDurationAndTimestampAsUtcFingerprintWithoutWritingFiles() {
+        stubProbe(0, "47.717|1700000000\n", false);
+
+        Optional<ContentFingerprint> fingerprint = acquirer().probe(new MediaInput.RemoteUrl(URL));
+
+        assertTrue(fingerprint.isPresent());
+        assertEquals(47_717, fingerprint.orElseThrow().durationMs());
+        assertEquals(LocalDateTime.ofInstant(Instant.ofEpochSecond(1_700_000_000L), ZoneOffset.UTC),
+                fingerprint.orElseThrow().publishedAt(), "时间戳按 UTC 转墙钟，跨时区比对才稳定");
+
+        List<String> args = capturedCommand.get();
+        assertContainsSequence(args, "--skip-download", "--quiet", "--no-warnings",
+                "--print", "%(duration)s|%(timestamp)s");
+        assertEquals(URL, args.getLast(), "URL 必须在参数最后");
+        assertFalse(Files.exists(workDir.resolve("source.info.json")),
+                "探测只读元数据，不应落 info json");
+    }
+
+    @Test
+    void probeIgnoresUnrelatedLinesAroundTheFingerprintLine() {
+        stubProbe(0, "[BiliBili] Extracting URL\n47.5|1700000000\n", false);
+
+        Optional<ContentFingerprint> fingerprint = acquirer().probe(new MediaInput.RemoteUrl(URL));
+
+        assertTrue(fingerprint.isPresent(), "应按整行匹配找出指纹行，而不是取第一行");
+        assertEquals(47_500, fingerprint.orElseThrow().durationMs());
+    }
+
+    @Test
+    void probeTreatsNaFieldsAsUnavailable() {
+        stubProbe(0, "NA|1700000000\n", false);
+        assertTrue(acquirer().probe(new MediaInput.RemoteUrl(URL)).isEmpty(),
+                "时长缺失时不能造半截指纹");
+
+        stubProbe(0, "47.7|NA\n", false);
+        assertTrue(acquirer().probe(new MediaInput.RemoteUrl(URL)).isEmpty(),
+                "发布时间缺失时不能造半截指纹");
+    }
+
+    @Test
+    void probeReturnsEmptyOnNonZeroExitOrTimeout() {
+        stubProbe(1, "47.7|1700000000\n", false);
+        assertTrue(acquirer().probe(new MediaInput.RemoteUrl(URL)).isEmpty());
+
+        stubProbe(0, "47.7|1700000000\n", true);
+        assertTrue(acquirer().probe(new MediaInput.RemoteUrl(URL)).isEmpty());
+    }
+
+    @Test
+    void probeReturnsEmptyOnUnparseableOutput() {
+        stubProbe(0, "no fingerprint here\n", false);
+        assertTrue(acquirer().probe(new MediaInput.RemoteUrl(URL)).isEmpty());
+
+        stubProbe(0, "-3|1700000000\n", false);
+        assertTrue(acquirer().probe(new MediaInput.RemoteUrl(URL)).isEmpty(),
+                "负时长是非法值，按取不到处理");
+    }
+
+    @Test
+    void probeRejectsNonRemoteInput() {
+        assertThrows(IllegalArgumentException.class,
+                () -> acquirer().probe(new MediaInput.LocalPath(workDir.resolve("a.mp4"))));
+        assertThrows(IllegalArgumentException.class, () -> acquirer().probe(null));
+    }
+
     // ---------- 卫语句与分派 ----------
 
     @Test
@@ -396,6 +484,17 @@ class YtDlpMediaAcquirerTest {
                 Files.write(dir.resolve(productName), new byte[16]);
             }
             return new ProcessOutcome(exitCode, "", stderr, List.copyOf(args), timedOut, 5);
+        });
+    }
+
+    /**
+     * 让 mock 的 yt-dlp 模拟一次探测：不写任何文件，只回传退出码 / stdout / 超时标记。
+     */
+    private void stubProbe(int exitCode, String stdout, boolean timedOut) {
+        when(ytDlp.run(anyList(), any())).thenAnswer(invocation -> {
+            List<String> args = invocation.getArgument(0);
+            capturedCommand.set(List.copyOf(args));
+            return new ProcessOutcome(exitCode, stdout, "", List.copyOf(args), timedOut, 5);
         });
     }
 

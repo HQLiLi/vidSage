@@ -1,0 +1,10 @@
+{"file": ".trellis/tasks/10-17-subtitle-content-change/prd.md", "reason": "AC1–AC10 逐条核（首次探测写两列 / 内容未变不级联 / 内容变更多事务级联 / 真重跑 / 中间产物表门禁 / artifact 门禁 / 取不到指纹降级 / 上传路线 / 事务与回收失败边界 / 全量回归）"}
+{"file": ".trellis/tasks/10-17-subtitle-content-change/implement.md", "reason": "对版依据：§0 十二条代码校准是否被遵守（不改 DDL / 端点 / DTO / 收口）、五步顺序、探测在媒体获取之前、首跑只写不级联、W5′ 的类型分流与事务后回收、旧文件清理 + force-overwrites、两处门禁先于文件检查点、回滚点与 9 条欠账是否如实记账"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "对版依据：§1.6 中间产物 DDL 与三值状态机、§4.3 状态迁移、§5 W5′ 的「3 与 4 同事务」、§7.3 主管线步骤 2/3/4 与两条级联时序差异（期间旧产物行为）、§7.8 文件不在按没有处理、§8.2 写序、§8.3 原子替换、§8.4 残留窗口三类全接受（别把窗口当 bug 修）—— 【注意】本文件超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核落位与命名：ContentFingerprint 在 domain/workspace/model、探测端口在 domain/workspace/port、dispatcher 在 application/media/pipeline、WorkspaceFingerprintStore 在 application/workspace、store 是 @Component；方法名动词开头；测试包与主包镜像 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "反向核验：没有绕过仓储直写 SQL、MP 类型没有泄到领域/应用层、markReady 与 findAll 的转换只在 Repository、有 updated_at 的 UPDATE 都同句刷、事务边界符合模板选型的三条理由"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核异常类型与降级语义：探测失败不抛、W5′ 失败抛 ISE、登记失败抛 ISE、400/404/409 语义不变、消息中文且可操作、没有把内部 id 带出境"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核注释（首行大白话、新方法逐个有注释）、测试命名与断言风格、没有夹带范围外的风格改名、switch 穷举不写 default、没有为测试造生产后门"}
+{"file": ".trellis/spec/backend/provider-pattern.md", "reason": "核适配器边界：application 不 import yt-dlp 实现类、探测命令只读元数据、外部输出解析失败降级、公共参数（cookies / ffmpeg-location / 超时）仍由 YtDlpRunner 注入"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核脱敏红线：新增日志与异常消息都不得打印 source_uri 或工作区绝对路径；探测日志不打印 URL / 标题 / stdout 全文"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "核代码注释里没有 C*/§/W*/段编号/日期/任务号 —— 这些只允许出现在任务文档里"}

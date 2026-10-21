@@ -7,13 +7,19 @@ import java.util.function.Supplier;
 /**
  * 检查点语义单源 + 跨批上下文政策（纯函数领域政策，不做文件 I/O）。
  *
- * <p><b>检查点语义</b>：只认「JSON 检查点存在且字节数 &gt; 0」，各调用方合流于此判、不各自判断。
+ * <p><b>检查点语义</b>：只认「JSON 检查点存在且字节数 &gt; 0」。
  * <b>SRT 是派生视图，不参与幂等</b>——空转写产出 0 字节 SRT，拿 SRT 当检查点会让空产物永远判
  * 「未完成」，陷入反复重跑的死循环；政策因此不接受任何路径/扩展名入参，SRT 大小进不了判定。
  * 产物在但读不动或解析失败，调用方也照未完成重跑：重跑一遍比留一份坏产物好。
  *
+ * <p><b>本类不是这条语义的唯一落点</b>：JSON 检查点那条路径走
+ * {@code ArtifactFileUtils.readJsonOrNull}，它用同义判据（{@code isNonEmpty} 即
+ * {@code sizeOrZero &gt; 0}）回答「空不空」，并把「读不动 / 解析失败」一并归到未完成。
+ * 两者数值上等价，<b>改一处要一起改另一处</b>——本类不引它（领域层不依赖 shared），只在文档里对齐。
+ *
  * <p><b>上下文政策</b>：先读缓存（命中不摘要），没有才摘要（{@link #resolveContext}）；
- * <b>摘要成功才落盘，降级出的空上下文绝不落盘</b>——否则下次会命中这份空缓存，摘要永久丢失且不报错。
+ * 摘要失败时用带降级标记的空上下文，这份标记可以落盘（表示这次试过了），但<b>读回时绝不算缓存命中</b>
+ * ——否则摘要失败一次就会被当成「以后都不用再试」，摘要永久丢失且不报错。
  *
  * <p>本类只做裁决，不做 I/O：字节数、文件内容由调用方取好再传进来。
  */
@@ -61,8 +67,10 @@ public final class CheckpointPolicy {
     public record ContextResolution(SubtitleContext context, Source source) {
 
         /**
-         * 摘要结果是否该落盘：仅「摘要成功的新上下文」为 {@code true}——
-         * 缓存命中没有新东西可写，降级的空上下文绝不能写文件（否则下次会命中这份空缓存）。
+         * 摘要结果是否该按「成功摘要」落盘：仅新摘要出来的上下文为 {@code true}。
+         *
+         * <p>缓存命中没有新东西可写；降级上下文由调用方自行决定是否落盘（写的是带降级标记的那份，
+         * 读回不会命中缓存），所以这里不为它背书。
          */
         public boolean shouldPersistSummary() {
             return source == Source.FRESH_SUMMARY;
@@ -80,26 +88,26 @@ public final class CheckpointPolicy {
         /** 缓存未命中且摘要成功：采用摘要结果，该落盘。 */
         FRESH_SUMMARY,
 
-        /** 缓存未命中且摘要失败：降级为空上下文，且绝不落盘。 */
+        /** 缓存未命中且摘要失败：降级为带标记的空上下文（调用方可以落盘，下次读回仍会重试摘要）。 */
         DEGRADED_EMPTY
     }
 
     /**
-     * 上下文政策：缓存-or-摘要 + 空摘要绝不落盘。
+     * 上下文政策：缓存-or-摘要；带降级标记的缓存当作未命中。
      *
-     * @param cached    从磁盘读出的缓存上下文；{@code null} = 缓存未命中
-     * @param summarize 摘要请求（惰性）；仅在缓存未命中时被调用至多一次
-     * @return 采用的上下文与是否该落盘摘要
+     * @param cached    从磁盘读出的缓存上下文；{@code null} = 没有缓存，带降级标记 = 上次没摘出来、重新摘要
+     * @param summarize 摘要请求（惰性）；仅在缓存可用时不被调用（必然为空时调用至多一次）
+     * @return 采用的上下文与结论来源
      */
     public static ContextResolution resolveContext(SubtitleContext cached,
                                                    Supplier<Optional<SubtitleContext>> summarize) {
-        if (cached != null) {
+        if (cached != null && !cached.degraded()) {
             return new ContextResolution(cached, Source.CACHE_HIT);
         }
         Optional<SubtitleContext> summarized = summarize.get();
         if (summarized != null && summarized.isPresent()) {
             return new ContextResolution(summarized.get(), Source.FRESH_SUMMARY);
         }
-        return new ContextResolution(SubtitleContext.empty(), Source.DEGRADED_EMPTY);
+        return new ContextResolution(SubtitleContext.degradedEmpty(), Source.DEGRADED_EMPTY);
     }
 }

@@ -10,7 +10,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.vidsage.domain.media.model.AudioArtifact;
+import com.vidsage.domain.media.model.AudioStageOutput;
 import com.vidsage.domain.media.model.AudioContainer;
 import com.vidsage.domain.media.model.AudioSpec;
 import com.vidsage.infrastructure.process.ProcessOutcome;
@@ -121,7 +121,7 @@ class FfmpegAudioExtractorTest {
         Path media = dummyMedia("in.mp4");
         Path out = tempDir.resolve("audio.wav");
 
-        AudioArtifact artifact = extractor.extract(media, out, AudioSpec.WAV_PCM_16K_MONO);
+        AudioStageOutput artifact = extractor.extract(media, out, AudioSpec.WAV_PCM_16K_MONO);
 
         assertEquals(out, artifact.audioPath());
         assertEquals(16, artifact.sizeBytes());

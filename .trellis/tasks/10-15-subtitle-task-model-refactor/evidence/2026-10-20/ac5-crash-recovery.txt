@@ -1,0 +1,86 @@
+AC5 崩溃恢复 —— 验收记录
+日期：2026-10-20（父任务集成评审轮）
+判据出处：prd.md AC5
+  「kill 进程后重启 → 残留 run 变 INTERRUPTED、残留 artifact 变 FAILED、被收掉的 task updated_at 更新」
+
+================================================================
+1. 怎么造出「确定有残留」的现场
+================================================================
+
+不靠掐时间赌窗口，而是**轮询到残留态出现再 kill**：
+
+  上传一个本地文件（走 UPLOAD 路线，sha256 做 source_key，天然是全新 workspace）
+    POST /api/tasks/upload  =>  202 {"taskNo":"ace85ee844ca4b878649435ea7840278","runNo":1}
+  轮询 SELECT COUNT(*) FROM subtitle_artifact WHERE status='CREATING'，一看到 1 就立刻 taskkill。
+
+为什么这样能稳：MAIN 管线里 `createCreatingPlaceholder(ORIGINAL)` 是在
+`subtitlePreparationCoordinator.prepare(...)`（抽音频 + ASR，十几秒）**之前**插的
+（SubtitlePipeline:215-222），所以「CREATING 存在」的窗口足够宽。
+
+================================================================
+2. kill 瞬间的残留现场（重启前）
+================================================================
+
+  task_run:
+    id=12  task_id=6  run_no=1  MAIN  status=RUNNING  current_stage=clean-subtitles  active_flag=RUNNING
+  subtitle_artifact:
+    id=11  task_id=6  CLEANED  status=CREATING  revision=1
+  subtitle_task:
+    id=6  task_no=ace85ee844ca4b878649435ea7840278  updated_at=2026-10-20 22:31:06
+
+  （kill 用 `taskkill //F //PID <pid>`；`TaskStop` 只杀 mvn 包装进程，子 JVM 会继续占端口。）
+
+================================================================
+3. 重启后的启动收口（W7）
+================================================================
+
+日志（TaskRunSupervisor 的启动收口）：
+  T.interruptRunning      : UPDATE task_run SET status='INTERRUPTED', finished_at=? WHERE status='RUNNING'
+      Parameters: 2026-10-20T22:31:51.827884800
+      <==  Updates: 1
+  S.markCreatingAsFailed  : UPDATE subtitle_artifact SET status='FAILED' WHERE status='CREATING'
+      <==  Updates: 1
+  S.touchUpdatedAt        : <==  Updates: 1
+  WARN TaskRunSupervisor  : 启动收口：上个进程有 1 个任务没跑完，残留 run 已收成 INTERRUPTED
+
+重启后：
+  task_run  id=12  status=INTERRUPTED  finished_at=2026-10-20 22:31:52     ✓
+  artifact  id=11  status=FAILED       （CREATING 已无残留）                ✓
+  task      id=6   updated_at=2026-10-20 22:31:52（原 22:31:06，被 touch）  ✓
+
+三条判据全中，且**三条 UPDATE 各恰好命中 1 行**（Updates: 1 ×3）—— 收口没有误伤别的行。
+
+对比：本实例**首次**启动（空库）时同样三条 SQL 全是 `Updates: 0`，
+日志写「上个进程有 0 个任务没跑完」—— 空库上不误伤，也一并确认。
+
+================================================================
+4. ★ 同 task 内「失败不串台」的证据（补 AC3 的缺口）
+================================================================
+
+AC3 的「失败原因互不串台」在本轮前面只拿到了**跨 task** 的证据（失败在 task 2、成功在 task 1），
+不够硬 —— 旧模型的问题恰恰是**同一行**上三种生命周期共用一个 `error_message`。
+
+补法（不需要再 kill 一次）：task 6 已经有 run 12 = INTERRUPTED，
+只要在**同一个 task** 上再跑出一条成功的 run 即可。
+重传同一个文件 → sha256 命中同一 workspace → 插新 MAIN run：
+
+  POST /api/tasks/upload（同一文件）=> 202 {"taskNo":"ace85ee844ca4b878649435ea7840278","runNo":2}
+
+结果：
+  task_run:
+    id=12  task_id=6  run_no=1  MAIN  INTERRUPTED  error_message=NULL
+    id=14  task_id=6  run_no=2  MAIN  SUCCEEDED    error_message=NULL
+  subtitle_artifact:
+    id=10  task_id=6  ORIGINAL  READY  rev1     ← run 12 在被 kill 前已完成的，被 run 14 复用
+    id=11  task_id=6  CLEANED   FAILED rev1     ← run 12 的残留占位
+    id=13  task_id=6  CLEANED   READY  rev2     ← run 14 新落定
+  workspace  WHERE source_key LIKE '9466c90f%'  =>  恰 1 行  ✓
+
+  => **同一个 task 上，一条 INTERRUPTED 与一条 SUCCEEDED 并存，各自独立的 status 与 error_message**
+     —— AC3「失败原因互不串台」在**同 task** 粒度上成立。
+  => 顺带确认两件事：
+     (a) `revision` 是「同 (task,type,lang) 递增」而与状态无关 —— rev1 是 FAILED 也不妨碍新一版取 rev2；
+     (b) C17「不续跑，重新触发即可」真的成立：被中断的 task 重提交后正常跑完，
+         且已完成的 ORIGINAL 被复用、只补做没做完的 CLEANED。
+
+结论：AC5 PASS。

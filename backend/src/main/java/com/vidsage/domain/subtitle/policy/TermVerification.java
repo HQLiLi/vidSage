@@ -4,6 +4,7 @@ import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.term.TermLookupCommand;
 import com.vidsage.domain.subtitle.model.term.TermLookupResult;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.port.TermLookupProvider;
 import java.net.URI;
 import java.util.ArrayList;
@@ -85,7 +86,7 @@ public final class TermVerification {
      * @param provider       查证端口（调用方已确认在容器里）
      * @return 查证结论：产物候选 + 各类计数 + 失败记账；是否落盘按 {@link Outcome#persistable()}
      */
-    public static Outcome verify(SubtitleContext context, String targetLanguage, TermLookupProvider provider) {
+    public static Outcome verify(SubtitleContext context, SupportedLanguage targetLanguage, TermLookupProvider provider) {
         List<VerifiedTerm> verified = new ArrayList<>(context.terms().size());
         List<Outcome.FailedLookup> failures = new ArrayList<>();
         int official = 0;
@@ -94,7 +95,7 @@ public final class TermVerification {
         for (SubtitleContext.Term term : context.terms()) {
             try {
                 TermLookupResult result =
-                        provider.lookup(new TermLookupCommand(term.fixed(), targetLanguage, context.theme()));
+                        provider.lookup(new TermLookupCommand(term.fixed(), targetLanguage.getCode(), context.theme()));
                 String name = result.officialName() == null ? "" : result.officialName().trim();
                 String note;
                 if (StringUtils.hasText(name)) {

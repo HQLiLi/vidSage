@@ -26,7 +26,7 @@ public final class TermMatcher {
     /**
      * 清洗侧的术语命中：拿术语的 {@code asr} 去匹配。
      *
-     * <p><b>输入是原始 ASR 字幕</b>（{@code segments-<route>.json}）——里面写的是模型可能记错的
+     * <p><b>输入是原始 ASR 字幕</b>（{@code original-segments.json}）——里面写的是模型可能记错的
      * {@code asr} 写法，清洗要据此把词换成 {@code fixed}，所以这里必须匹配 {@code asr}。
      *
      * @param original 本批原文（键为条号，值为字幕文本）
@@ -41,7 +41,7 @@ public final class TermMatcher {
     /**
      * 翻译侧的术语命中：拿术语的 {@code fixed} 去匹配。
      *
-     * <p><b>输入是清洗后的字幕</b>（{@code segments-<route>-clean.json}）——清洗已经把命中术语的字面
+     * <p><b>输入是清洗后的字幕</b>（{@code clean-segments.json}）——清洗已经把命中术语的字面
      * 从 {@code asr} 换成了 {@code fixed}，正文里现在出现的是 {@code fixed}，故这里必须匹配
      * {@code fixed}。拿 {@code asr} 匹配会漏掉这些已被替换的术语（它们正是要保留原文不译的专有名词）；
      * 而清洗判断读不通、故意不换的术语正文里仍是 {@code asr}，也不再被选中——清洗已就那句上下文判过

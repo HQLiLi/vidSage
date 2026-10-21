@@ -1,7 +1,6 @@
 package com.vidsage.domain.transcription.port;
 
 import com.vidsage.domain.media.model.AudioSpec;
-import com.vidsage.domain.subtitle.model.common.SubtitleRoute;
 import com.vidsage.domain.transcription.model.TranscriptionCommand;
 import com.vidsage.domain.transcription.model.TranscriptionResult;
 
@@ -25,7 +24,7 @@ public interface ASRProvider {
      * @param command 转写请求
      * @return 句级毫秒时间戳的转写结果，segments 不为 {@code null}；无语音时为合法空列表
      * @throws IllegalArgumentException 入参不合法（如音频来源为空）
-     * @throws IllegalStateException 配置缺失或外部服务未按预期返回
+     * @throws IllegalStateException    配置缺失或外部服务未按预期返回
      */
     TranscriptionResult transcribe(TranscriptionCommand command);
 
@@ -36,10 +35,4 @@ public interface ASRProvider {
      */
     AudioSpec requiredAudioSpec();
 
-    /**
-     * 本实现产出的是哪条字幕路线。
-     *
-     * @return 本实现产出的字幕来源路线
-     */
-    SubtitleRoute route();
 }

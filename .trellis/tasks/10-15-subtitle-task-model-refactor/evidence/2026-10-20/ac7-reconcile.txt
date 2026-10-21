@@ -1,0 +1,98 @@
+AC7 对账 —— 验收记录
+日期：2026-10-20（父任务集成评审轮）
+判据出处：prd.md AC7
+  「手工造出四种不一致，端点各报出来；② 只报不修；重复调用结果不变（只读幂等）」
+
+端点：POST /api/maintenance/reconcile（只读，同步返回）
+工作区现状：4 个目录 / 23 个文件
+
+================================================================
+0. 基线（正常态）
+================================================================
+
+  {"checkedAt":"…","summary":{"dirs":4,"files":23},
+   "danglingFiles":{"count":0},"reclaimPending":{"count":0},
+   "orphanFiles":{"count":0},"hashMismatch":{"count":0}}
+  => 干净态四类全 0 ✓
+
+================================================================
+1. ① 缺文件（danglingFiles）
+================================================================
+
+构造：把 task1 工作区里被 `CLEANED rev3`（READY，id=15）登记的 `clean-subtitles.srt` 移走。
+
+  danglingFiles = 1  [{"taskNo":"e0ebf3383e274062a2503cf9d5c36988","fileName":"clean-subtitles.srt"}]
+  其余三类 = 0
+
+  => PASS：带 `taskNo` + `fileName`。
+  => 把文件放回后该条消失（见 §4 的归零复核）。
+
+================================================================
+2. ④ 哈希不符（hashMismatch）
+================================================================
+
+构造：往 `context.json`（`CLEANED rev3` 登记，有 `context_sha256`）尾部追加一个空格。
+
+  hashMismatch = 1  [{"taskNo":"e0ebf3383e274062a2503cf9d5c36988","fileName":"context.json"}]
+  其余三类 = 0        ← ① 同时回到 0，说明上一步的文件确已复原
+
+  => PASS：带 `taskNo` + `fileName`。
+
+================================================================
+3. ③ 孤儿文件（orphanFiles）+ 临时后缀不误报
+================================================================
+
+构造：往 task1 工作区塞四个文件 —— `stray-orphan.bin` / `leftover.tmp` / `chunk.part` / `x.ytdl`
+（同时把 `context.json` 复原）。
+
+  summary: dirs=4, files=27（比基线多 4，正是塞进去的四个）
+  orphanFiles = 1  [{"dirName":"BV1Va7V66Ebp_1","fileName":"stray-orphan.bin"}]
+  其余三类 = 0
+
+  => PASS：
+     · 只报 `.bin` 那个；`.tmp` / `.part` / `.ytdl` **三类都不报**（临时后缀白名单生效）。
+     · 条目带的是 **`dirName` 而不是 `taskNo`** —— 与 design 明写的「孤儿不在表里、没有 taskNo 可带」
+       这个**唯一例外**一致。
+
+================================================================
+4. ② 待回收（reclaimPending）—— 两种来源都要覆盖
+================================================================
+
+构造（手工 SQL + 盘上放文件）：
+  · id=3（CLEANED rev2，`SUPERSEDED`）→ `segments_file_name='reclaim-probe.json'`，文件在盘上
+  · id=2（CLEANED rev1）→ `status='DELETED'`、`segments_file_name='reclaim-probe2.json'`，文件在盘上
+
+  reclaimPending = 2  [{"taskNo":"e0ebf3383e274062a2503cf9d5c36988","fileName":"reclaim-probe2.json"},
+                       {"taskNo":"e0ebf3383e274062a2503cf9d5c36988","fileName":"reclaim-probe.json"}]
+  orphanFiles    = 1  [{"dirName":"BV1Va7V66Ebp_1","fileName":"stray-orphan.bin"}]
+
+  => PASS：
+     · `SUPERSEDED` 与 `DELETED` 两种残留**都**被报出（S7 的 AC3 与 AC4）。
+     · **②③ 不重叠**：两个 probe 文件虽在盘上，但**表里有登记**，故只进 ②，不进 ③。
+
+================================================================
+5. ② 只报不修 + 只读幂等
+================================================================
+
+手段：连调两次端点，前后各做一次「四表逐行 dump + 全盘文件 mtime 清单」，比对。
+
+  两次报告（除 `checkedAt`）逐字相同:  True
+  四类计数: {danglingFiles: 0, reclaimPending: 2, orphanFiles: 1, hashMismatch: 0}
+  --- 表逐行 diff ---   (表零变化)
+  --- 文件 mtime diff --- (mtime 零变化)
+
+  => PASS：`subtitle_artifact` / `intermediate_file` / `subtitle_task` / `workspace` 四表**逐行不变**，
+     工作区所有文件 **mtime 不变**（C65「只读，② 只报不修」），且重复调用结果不变。
+
+================================================================
+6. 复原后归零
+================================================================
+
+删掉塞进去的 4 个文件与 2 个 probe 文件，把 id=2/3 两行的 `status` 与文件列改回原样。
+
+  summary: {dirs: 4, files: 23}      ← 与基线一致
+  四类计数: 全 0
+
+  => 复原干净，未留污染。
+
+结论：AC7 PASS（四类各报得出来、② 只报不修、只读幂等、正常态零误报、临时后缀不误报、②③ 不重叠）。

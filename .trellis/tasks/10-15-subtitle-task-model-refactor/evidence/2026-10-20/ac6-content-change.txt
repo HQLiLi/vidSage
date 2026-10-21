@@ -1,0 +1,80 @@
+AC6 内容变更 —— 验收记录
+日期：2026-10-20（父任务集成评审轮）
+判据出处：prd.md AC6
+  「改内容重提交 → 旧 artifact 与中间产物全 SUPERSEDED、指纹写入、主管线真的重跑（不再跳过转写）」
+
+对象：task 1（BV1Va7V66Ebp），改前已有 6 行 artifact + 3 行 intermediate_file 全 READY。
+
+================================================================
+1. 造内容变更
+================================================================
+
+内容指纹 = duration_ms + published_at（design §1.1）。手工把 duration_ms 顶掉：
+
+  UPDATE workspace SET duration_ms = duration_ms + 1000 WHERE id=1;
+  => duration_ms: 134095 → 135095（published_at 不动）
+
+重提交同一 URL：
+  POST /api/tasks {"url":"…/BV1Va7V66Ebp"}
+  => 202 {"taskNo":"e0ebf3383e274062a2503cf9d5c36988","runNo":7}
+
+  => 命中同一 workspace、同一 task，插新 MAIN run —— 顺带确认
+     prd 需求 3「提交一个做过的 URL 不冲突」成立。
+
+================================================================
+2. 改前 / 改后对照
+================================================================
+
+workspace 指纹：
+  改前  duration_ms=135095（我手工改的假值）
+  改后  duration_ms=134095  ← **探测阶段写回真值**  ✓
+
+task1 subtitle_artifact：
+  id | type       | lang    | 改前             | 改后
+  1  | ORIGINAL   |         | READY rev1       | SUPERSEDED rev1
+  2  | CLEANED    |         | SUPERSEDED rev1  | SUPERSEDED rev1
+  3  | CLEANED    |         | READY rev2       | SUPERSEDED rev2
+  4  | TRANSLATED | en      | READY rev1       | DELETED rev1
+  6  | TRANSLATED | zh-Hant | READY rev1       | DELETED rev1
+  12 | TRANSLATED | ja      | READY rev1       | DELETED rev1
+  14 | ORIGINAL   |         | —                | **READY rev2**（run 15 产出）
+  15 | CLEANED    |         | —                | **READY rev3**（run 15 产出）
+
+  => 旧产物**全数作废**：ORIGINAL / CLEANED 落 `SUPERSEDED`，三条下游译文落 `DELETED`。
+  => 说明：AC 字面写「全 SUPERSEDED」，实测译文是 `DELETED` —— 比字面**更进一步**（SUPERSEDED 之后
+     文件已被回收，故落 DELETED）。这与 design §4.2 的取值语义（SUPERSEDED=被新版取代 /
+     DELETED=文件已回收）以及 S8 的真库验证记录一致，不是偏差。
+
+task1 intermediate_file：
+  source.mp4 / source.info.json / audio-16k1ch48k-t0.m4a
+  改前 全 READY  →  （级联时全标 SUPERSEDED）  →  改后**全 READY**
+  => 终态是 READY 而非 SUPERSEDED，**这是对的**：中间产物没有 revision，
+     「重新产出」就是 UPDATE 那行回 READY（design §1.6）。它体现的是「作废后又被这一趟复活」。
+
+================================================================
+3. 主管线真的重跑（不再跳过转写）—— 日志逐条
+================================================================
+
+  probe-fingerprint   SUCCEEDED  「内容已变化，旧产物已作废，将重新产出」
+  MediaAcquirerDispatcher        「媒体复用检查: acquirer=YtDlpMediaAcquirer, **reused=false**」
+  acquire-media       RUNNING    「开始获取媒体」
+  extract-audio       RUNNING    「开始抽取音频」
+  transcribe-audio    RUNNING    「开始转写」          ← 关键：不是 SKIPPED
+  clean-subtitles     RUNNING    「开始清洗」
+
+盘上文件 mtime 全部刷新（改前 → 改后）：
+  source.mp4                14:11:57 → 14:36:32   （真重新下载）
+  source.info.json          14:11:54 → 14:36:30
+  audio-16k1ch48k-t0.m4a    14:11:59 → 14:36:33   （真重新抽音频）
+  original-segments.json    14:12:16 → 14:36:50   （真重新转写）
+  original-subtitles.srt    14:12:16 → 14:36:50
+  clean-segments.json       14:13:08 → 14:36:54   （真重新清洗）
+  clean-subtitles.srt       14:13:08 → 14:36:54
+
+【反面对照，同一份日志里就有】
+  task 6 的重传（内容没变）走的是复用：
+    「字幕断点复用跳过: segments=original-segments.json」
+    「已有 segments 产物，跳过转写」state=**SKIPPED**
+  => 两条路径在同一进程、同一日志里各自成立，不是「永远重跑」也不是「永远跳过」。
+
+结论：AC6 PASS。

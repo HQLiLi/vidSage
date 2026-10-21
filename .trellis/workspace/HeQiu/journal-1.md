@@ -1172,3 +1172,361 @@ domain 全层 56 文件 / 186 注释块逐块读过，46 文件收口（注释�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 44: 失败前缀常量化 + 后置生命周期守卫改名
+<!-- trellis-session: v=2 fp=ef81061f7e3c485b -->
+
+**Date**: 2026-10-13
+**Task**: 失败前缀常量化 + 后置生命周期守卫改名
+**Branch**: `dev`
+
+### Summary
+
+把 SubtitlePipeline 里两处硬编码失败前缀（「任务执行失败：」「翻译失败：」）提成 VideoTask 常量并接到真正的生产者，三个前缀与既有 REGENERATE_FAILURE_PREFIX 聚成一簇；私有守卫 requireMainSucceededForTranslation 改名为 requireMainSucceededForPostLifecycle（语义已泛化到重新生成）。纯行为等价：前缀字符串值逐字不变，5 条半角冒号日志格式串未动，测试文件一行未改，mvn clean test 570/0/0/1 与基线逐数相同。计划阶段做了事实核查，订正了 prd 里过期的行号（314/335→302/323）与断言计数，并把「旧名全仓零命中」收窄为 backend/src（归档文档里的史实引用不该动）。mvn javadoc:javadoc 仍有 1 条存量 error（SubtitleContextSummarizer.java:26 的 {@link CheckpointPolicy} 缺 import，与本次无关），新增的 6 处 {@link} 零诊断。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `04d2f5c` | chore(task): 失败前缀常量化 + 后置生命周期守卫改名 —— 计划产物 |
+| `d177a60` | refactor(task): 失败前缀常量化并接到生产者，后置生命周期守卫改名 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 45: 字幕产物命名去路线化：SubtitleWorkspaceFilePaths 落地 + 运行期验收 + 归档
+<!-- trellis-session: v=2 fp=785a1ca563a1caef -->
+
+**Date**: 2026-10-14
+**Task**: 字幕产物命名去路线化：SubtitleWorkspaceFilePaths 落地 + 运行期验收 + 归档
+**Branch**: `feature/subtitle-multilang-translate`
+
+### Summary
+
+10-14-subtitle-artifact-naming 全流程收口。批1-3：8 项产物名去路线化、SubtitleRoute 整体退场（枚举+五个 record 字段+ASRProvider.route()）。批4：落地 application/workspace/ 的 SubtitleWorkspaceFilePaths.of(Path)（扫工作区出清单，缺席一律 Optional 不抛）+ 单独成文件的 TranslationFilePaths；MediaInput/SubtitleArtifactSpec 常量归位，SubtitleArtifactSpec 新增 getLanguage 反解（{lang} 正则加捕获组）。批5：57 测试全绿，测试树红面 16→12（余下全是父任务 translate 签名债）。批6：spec 订正 12 处（登记两个新包、删已不存在的 TaskArtifactScan、订正自定义异常陈述）。批7：运行期验收 AC1/AC5/AC6/AC7 全过（素材 BV1ZNgZ6nEee 32 秒；断点复用 LLM 批次 1→1；en+ja 并存）。批8：合并回 feature/subtitle-multilang-translate 并归档，父任务 handoff 记上第三棒。AC10 原文不可达成，口径改判为『不新增失败』后达成，prd 里刻意留未勾待点头。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2216390` | 编写SubtitleWorkspaceFilePaths.of前 |
+| `e5bac58` | feat(workspace): 落地 SubtitleWorkspaceFilePaths.of 与产物名常量归位 |
+| `778567c` | chore(task): 任务文档按 as-built 同步 |
+| `594ac33` | test(workspace): 补 SubtitleWorkspaceFilePaths 与产物名的单测，同步既有测试 |
+| `20adb01` | fix(workspace): 收掉落地时留下的六条欠账 |
+| `8d18db5` | docs(spec): 登记两个新包并订正产物命名与自定义异常的相关陈述 |
+| `539250b` | chore(task): 批 7 运行期验收结果与 AC 勾选 |
+| `9c92891` | chore(task): 父任务 handoff 记上第三棒状态（前置任务已归档，B 可恢复） |
+| `5047c2b` | Merge branch 'feature/subtitle-artifact-naming' into feature/subtitle-multilang-translate |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 46: 翻译多语言选择与翻译子状态下线：收尾（批 3–5 + 测试债）
+<!-- trellis-session: v=2 fp=20733241833c547f -->
+
+**Date**: 2026-10-14
+**Task**: 翻译多语言选择与翻译子状态下线：收尾（批 3–5 + 测试债）
+**Branch**: `dev`
+
+### Summary
+
+把翻译接进工作区登记表（tryStart + 409 + 三条退登记路径，AC9/AC10 冒烟通过）、失败收口落 error_message 并广播 FAILED 终态（AC8）、清掉批 4 全部残留（AC7）、新增 GET /api/languages 四项清单（AC1）；测试树 8 个文件跟上子状态下线与签名漂移，新增 SupportedLanguageTest / LanguageControllerTest，mvn clean test = 569 全绿。另订正四份 spec 并把「提交 vs 后置会话」这条从未落文档的缺口写进 error-handling.md。E（过时判据）与 ④（清失败原因）按用户指示留待后续。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `165ec65` | feat(subtitle): 翻译接入登记表、失败收口与语种清单端点 |
+| `03dd97f` | docs(spec): 订正后置会话互斥口径、语种枚举落位与失败可见性 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 47: 字幕模型重构 S1 数据层地基：实现 + 四轮评审改名 + 注释标记清理
+<!-- trellis-session: v=2 fp=96a51d9c3c560b03 -->
+
+**Date**: 2026-10-18
+**Task**: 字幕模型重构 S1 数据层地基：实现 + 四轮评审改名 + 注释标记清理
+**Branch**: `feature/subtitle-model-foundation`
+
+### Summary
+
+建 workspace / subtitle_task / task_run / subtitle_artifact / intermediate_file 五张新表，配五个领域类（三个带状态机）、七个枚举、SourceKey 与五个仓储端口 + MyBatis 实现 + 10 个测试类，纯增量不动调用方；测试基线 569 → 649 全绿。评审四轮把命名收紧：实体迁移改目标态动词（completeCreation / supersede / confirmDeletion / revive）、私有守卫改 validateXxx、intermediate_file.kind 统一成 file_type、task 号生成收进 TaskNo.random()；并把 of 的适用判据（必须带实参）与工厂三族写进 directory-structure.md，把前置守卫命名写进 error-handling.md，把 database-guidelines.md 的建表契约一节按六表现状重写。代码注释里所有 C*/§/W*/design.md 指针、日期、任务号、阶段编号按 comment-guidelines 的内容分流表清干净；application.yml 与 schema.sql 一并清。真库验过 AC1（五张表逐列对版，含 51 个列注释逐字一致）与 AC6（旧契约回归，走断点复用）。分支 feature/subtitle-model-foundation 已推送，尚未合并回 dev。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `39dfa48` | feat(subtitle): 模型重构 S1 数据层地基（五张表 + 领域类 + 仓储端口与实现） |
+| `bf97754` | docs(spec): 订正建表契约、补工厂判据与前置守卫命名 |
+| `72004c9` | chore(config): 清理 application.yml 注释里的出处与历史 |
+| `c6ec7cb` | chore(task): S1 任务工件与父任务文档订正 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 48: 字幕模型重构 S2：换血（提交路径 + run 生命周期 + SSE + 新契约）
+<!-- trellis-session: v=2 fp=effc35bb6a9ad931 -->
+
+**Date**: 2026-10-18
+**Task**: 字幕模型重构 S2：换血（提交路径 + run 生命周期 + SSE + 新契约）
+**Branch**: `dev`
+
+### Summary
+
+S2 换血全段落地：步骤 1–9 + 三面检查修复 + 四项收尾清理；全量测试 555 绿，真库冒烟 AC1–AC11 逐条过。
+
+### Main Changes
+
+## 做了什么
+
+字幕模型重构 S2（`10-17-subtitle-model-submit-cutover`，父 10-15 的第 2/8 段）：把「旧栈还在跑」换成「新栈在跑」。
+
+- **步骤 1–4**（`ebd706d`）：身份键 `MediaIdentityResolver`（B 站：剥跟踪参数 / av 换算 / 短链只跟一次 + 进程内有界 LRU）；SSE 全套（`RunRef` / `TaskRunProgress` sealed 三变体 / `TaskProgressBroadcaster` 端口 / `SseTaskProgressBroadcaster`）；`TaskRunSupervisor`（start / advance / finish / recoverInterruptedRuns）；四个 coordinator 收 `workDir`。
+- **步骤 5–9**（`d13dd8d`）：schema 删 `task` 表、`subtitle_keyword` 换锚点到 `task_id` 并净增 `updated_at`；`SubtitleTaskService`（`TransactionTemplate` 显式圈事务 + C63 撞键锁定读）；新对外契约（身份 + `lastRun`、四个触发点统一 202/409、SSE 迁到 `/runs/{runNo}/events`、终态 204）；旧栈整块删；包结构按「任务与执行 / 内容加工」两条轴重排；启动收口；design 与两份 spec 同步。
+
+## 关键决策
+
+- **T9 撤回**：原定「`taskNo` 加进 `TaskRun`」，项目所有者改口径为「`taskNo` 的家是 `RunRef`，实体只留内部 `taskId`」—— 实体上那个家落不了库、读回要补查，而三处读调用方手里本来就有 `SubtitleTask`。
+- **事务机制**：`handleSubmit` 用 `TransactionTemplate` 而非 `@Transactional` —— 身份键计算必须留在事务外，于是事务方法只能同类内调用，而同类自调用会绕过 Spring 代理、注解静默失效。**不是禁用 `@Transactional`**，别处该用照用。
+- **步骤 4 边界收窄**：原 4.1/4.2/4.3（`WorkspaceDir` 换工厂 / `MediaInput` 瘦身 / 目录管理器换签名）移入步骤 5，因为它们与 `VideoTaskService` 互锁（它手里只有老的 `WorkspaceKey`）。
+- **`@Lazy` 换掉**：F5 的修法一度让 broadcaster 依赖应用服务、成 bean 环；改成 `open(ref, Supplier<快照>)`，环消失（起服务无 BeanCurrentlyInCreation 可证）。
+
+## 三面检查与修复
+
+规范关 / 契约关 / 逻辑关三面纯读，跑出 5 条，全部落地：
+
+- **F1（必现 bug）**：C63 并发分支一进就 500 —— 事务快照建立早于胜者提交，`workspace` / `subtitle_task` 两行重查用了 `FOR SHARE` 拿到了，但**取既有 run 那一步用的是普通读**，陈旧快照里看不到 → `IllegalStateException`。修法：`TaskRunRepository.findLatestForShareByTaskId`（照 design 自己的原则补一处）。
+  **复现要点**：三个 curl 进程测不出来（启动错开几毫秒，根本进不去 C63）；要单进程 `curl --parallel --parallel-immediate` 把到达压到亚毫秒 —— 修复前 3 轮全是 1×202 + 7×500，修复后 3 轮全是 1×202 + 7×409。
+- **web→domain 依赖违规**：`TaskController` 曾直接 import 四个 domain 类型 → 开流判定收进应用层，controller 现在零 domain import。
+- **F5 SSE 订阅 TOCTOU**：判定可订阅到建桶之间若恰好收口，连接永远收不到终态 → 改成建桶之后再取快照。
+- **F4**：`av` 号溢出时抛 400（违反「抽不到要回落」）→ 改回落。
+- 删死类 `SourceUri`（含它的测试与两处文档订正）。
+
+## 收尾清理（项目所有者逐个提问后落）
+
+- `emit` 在四个 coordinator 里重复四份 → 收成 `shared/progress/StageEvents`。
+- `catch (Throwable)` 接住之后 JVM 不再打默认堆栈 → 补 `log.error`，且**只打异常类型与调用栈帧、不打 message**（下载器会把外部命令 stderr 拼进消息，里面可能带 URL）。
+- `SubtitleTaskService` 439 行、四个变化理由 → 拆成写用例 / `SubtitleTaskQueryService`（读）/ `SubtitleTaskFinder`（共用定位）。
+
+## 验证
+
+- `clean test-compile` 通过；全量测试 **555 / 0 失败 / 0 错误 / 1 skipped**。
+- 条数账（dev 基线 649）：678（步骤 4 后）→ 550（换血后）→ 549（修复批次）→ 555（拆分后）；下降部分全部可解释（随删类 −128、重写缩水 −20、新增 +20…）。
+- 真库冒烟（项目所有者选「甲：全量跑 AC1–AC11」）：手工 `DROP TABLE subtitle_keyword / task` → 清 `backend/data/works*` → 起服务。AC1–AC11 逐条过：同一视频不同跟踪参数收敛同一身份键、并发 1×202 + 7×409、无残留 RUNNING、kill 重启后残留 run 变 INTERRUPTED 且启动日志有「收掉 N 个任务」、SSE 三态（404 / RUNNING 开流首条是 DB 快照 / 终态 204）、契约形状、关键词换锚点首插两列同值、旧件零残留、三种 run 各跑通、产物落盘。
+
+## 欠账
+
+14 条按计划记账（产物不落 `subtitle_artifact` 表 → S3；fingerprint 仍现算 → S3；RECLEAN / TRANSLATE 换版 → S4/S5；中间产物登记 → S6；对账端点 → S7；网络超时 → S8；前端点不通 → 另开任务…）。
+本轮新增两条：**F3**（非 B 站 host 也会发一次跳转 GET，修法是把跟跳转限定 `b23.tv`；项目所有者裁定暂不做）与 **`SubtitlePipeline` 一个类扛三种 run**（未排期）。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ebd706d` | feat(task): 字幕模型重构 S2 步骤 1–4（身份键 + SSE 全套 + run 机制 + coordinator 收 workDir） |
+| `d13dd8d` | feat(task): 字幕模型重构 S2 换血（提交路径 + run 生命周期 + SSE + 新契约 + 包结构重排） |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 49: 字幕模型重构 S3：产物权威
+<!-- trellis-session: v=2 fp=5338fce6296e35ae -->
+
+**Date**: 2026-10-19
+**Task**: 字幕模型重构 S3：产物权威
+**Branch**: `dev`
+
+### Summary
+
+S3 把产物事实源从文件系统换成 DB：主管线按 CREATING 占位到换版落定写入 subtitle_artifact，新增产物清单与下载端点，读路径按 C25 自愈，后置会话前置判据改认可读 READY；并给降级上下文加 degraded 标记，避免摘要失败反复卡死主管线。
+
+### Main Changes
+
+- 主管线接线：SubtitleArtifactStore.createCreatingPlaceholder / settleArtifact 包住 prepare 与 clean（ORIGINAL / CLEANED 各一版；revision 由 S1 的 MAX+1 回填，八列文件/哈希同生同灭）。
+- 读路径：新增 ArtifactController（GET /{taskNo}/artifacts 清单 + GET /{taskNo}/artifacts/{type}/{file}?lang= 下载），C25 整版自愈（缺文件只 WARN、不改状态）；TaskController 未改。
+- 前置判据：regenerate / translate 从查文件改成「有可读的 READY ORIGINAL / CLEANED」，不满足仍 400 且不插 run。
+- 收口：TaskRunSupervisor.finish 两段 try 分开——本次 run 的 CREATING 占位标 FAILED 与 run 终态落库互不阻断。
+- 摘要降级：SubtitleContext 加 degraded 组件，降级也落 context.json 但缓存政策视为未命中（下次重试）；断点复用分支补写缺失/降级的 context。
+- 命名：ArtifactFiles 改 ArtifactFileUtils；begin / settle 改 createCreatingPlaceholder / settleArtifact，并把「方法名要见名知意」立进 directory-structure.md。
+- spec：error-handling.md 按现状重写（ArtifactNotFound 到 404、409 只剩撞 uk_active_run、清掉 S2 后失实的旧类引用）；父 design.md 第 6 节补 C55 取值与 400/404 分工。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `57c4ebd` | feat(task): 字幕模型重构 S3 产物权威（artifact 表读写 + /artifacts 与下载端点 + 降级上下文标记） |
+| `8a6b691` | Merge branch 'feature/subtitle-artifact-authority' into dev |
+
+### Testing
+
+- [OK] clean test-compile 通过；全量 610 tests / 0 failures / 0 errors / 1 skipped（基线 555）。
+- [OK] 真库加起服务冒烟 AC1/AC2/AC4/AC5/AC6/AC7：两条 READY 落表无 CREATING；二次提交 rev 递增且旧行八列清空；下载逐字节 cmp 一致；400/404 矩阵；移走 context.json 整版消失且 DB 仍 READY；移走 clean-segments.json 后 translate 400 且 task_run 不增行。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- RECLEAN / TRANSLATE 不写 artifact 表（S4 / S5）；中间产物登记与复用判据改造（S6）；对账与哈希比对（S7）；网络超时（S8）；前端接接口（另开任务）。
+- 两条未裁口径：TaskRunSupervisor 的产物收口是否改走 store（现为直连端口）；SubtitleContext.degraded 是否改名。
+
+
+## Session 50: S4 重洗：RECLEAN 落 artifact 表 + W5 换版级联
+<!-- trellis-session: v=2 fp=c2904f6001e1d8f5 -->
+
+**Date**: 2026-10-19
+**Task**: S4 重洗：RECLEAN 落 artifact 表 + W5 换版级联
+**Branch**: `dev`
+
+### Summary
+
+SubtitleArtifactStore 新增 settleCleanedAndSupersedeDownstream：事务内「旧 CLEANED 降级清列 → 内容真变了才批量作废下游译文 → 新行 READY」，事务提交后按 DB 行删文件、删干净才标 DELETED；主管线与 RECLEAN 两条路共用。SubtitleCleanupCoordinator 摘掉目录扫描删文件，级联改用批量 markSupersededByTaskIdAndType。测试基线 610 → 623 全绿；手工验收 AC1–AC6 / AC9 / AC11 在真库真服务上通过。父 design.md 与 directory-structure / logging / quality 三份 spec 同步订正。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d499c9e` | feat(task): 字幕模型重构 S4 重洗（RECLEAN 落 artifact 表 + W5 换版级联 + 两种终态） |
+| `ea2eeed` | Merge branch 'feature/subtitle-reclean-run' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 51: 字幕模型重构 S5：翻译落表与复用判据
+<!-- trellis-session: v=2 fp=f20fafad3251b8d0 -->
+
+**Date**: 2026-10-19
+**Task**: 字幕模型重构 S5：翻译落表与复用判据
+**Branch**: `dev`
+
+### Summary
+
+S5 完成：TRANSLATE run 落 subtitle_artifact（成功后占位 / W4 事务化换版 / 复用判据只认 READY+应带文件位可读），TERMS 改为可选文件位并统一落定/可读/回收/清单四处，coordinator 文件断点复用整块删除。全量 633 tests 绿；真库手工验收 AC1–AC8 通过。既有缺陷记入欠账 #9：ArtifactFileUtils 写失败消息带工作区绝对路径，经 run.error_message 外露，另开小修。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f4590a7` | feat(task): 字幕模型重构 S5 翻译（TRANSLATE 落 artifact 表 + 复用判据 + W4 事务） |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 52: 字幕模型重构 S6：内容指纹与中间产物登记（含审查轮）
+<!-- trellis-session: v=2 fp=9ef6ceda969f101f -->
+
+**Date**: 2026-10-20
+**Task**: 字幕模型重构 S6：内容指纹与中间产物登记（含审查轮）
+**Branch**: `dev`
+
+### Summary
+
+S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件在」+ PROBE_FINGERPRINT 探测阶段（权重 5）+ W5′ 同事务级联作废 + 上传路线跳过。基线 633→681。审查轮又改：探测按路线分叉（远程无探测器记 WARN，不再假装是上传路线）、命名收口（applyContentChange→supersedeOnSourceMediaChange、readable→intact）、两个 readCheckpoint 合并进 ArtifactFileUtils.readJsonOrNull（加 role 参数保住日志文案）、CheckpointPolicy 口径订正为「不是唯一落点」。另立待办：跳过也落版是设计债，S7 之前先开修复任务（输入在 workspace/HeQiu/handoff-reuse-versioning.md）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `72bf12b` | feat(task): 字幕模型重构 S6 内容指纹与中间产物登记（复用判据换表 + 指纹探测 + W5′ 级联） |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 53: 字幕模型重构 6.5：复用不落版（跳过即不换版）
+<!-- trellis-session: v=2 fp=549cfc9e95d9a160 -->
+
+**Date**: 2026-10-20
+**Task**: 字幕模型重构 6.5：复用不落版（跳过即不换版）
+**Branch**: `dev`
+
+### Summary
+
+把主管线的「跳过也落一版新产物」改成「不复用才落版」。过审门先定两条口径：reuseIfAvailable 收 ProgressListener（否则命中时那几条 SKIPPED 发不出去，而 listener 是每 run 一份、阶段类拿不到）；开始事件文案挂 requireContextSummary（forceReClean 消失后的代理，不为此造新参数，等管线拆分时改挂管线身份）。实现：两个阶段类把复用判据提到公开面并收窄真跑签名、删 ensureUsableContext；runPipeline 两个占位改条件创建、命中取已有 READY 行；SubtitleArtifactStore 删 isContentChanged、下游作废改无条件。步骤 1+2 必须一次进（判据失去输入不能单独存在），五笔提交。trellis-check 三读面全 PASS 未自修，683/0/0/1 绿（基线 681，删 4 改 14 加 6）。真库端到端 AC1–AC10 全 PASS：复用那趟 2 秒跑完、subtitle_artifact 逐行 diff 无输出、文件 mtime（含 context.json）不变、只有 subtitle_task.updated_at 变；AC4 实测到 design §5 记的已知窗口（ORIGINAL 真重跑 + CLEANED 仍复用），确认不是缺陷。清单外一并做：去路线化漏扫的 15 处 <route> 占位注释改真名（9 文件）、spec 命名先例改用现存名字（3 处）。schema.sql 的 derived_from_run_id 列注释改准并 ALTER 本机库跟上。已 --no-ff 合回 dev 推送、删本地与远端特性分支、归档。欠账 #1（S7 的 prd 要补写本段是它的前置）与 #4（管线拆分时那条文案代理）需主动交接。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cad61f6` | feat(task): 字幕模型重构 6.5 复用不落版（跳过即不换版） |
+| `a461efb` | docs(comment): 去路线化补扫 —— <route> 占位改成真名 |
+| `305f3f7` | docs(task): 父设计同步「复用不落版」口径 |
+| `012accc` | docs(spec): 命名先例改用现存名字 |
+| `8e0608c` | chore(task): 10-20 复用不落版任务工件 |
+| `547de3c` | Merge branch 'feature/subtitle-reuse-versioning' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 54: S7 只读对账端点（哈希检测 + 过渡态白名单收口）
+<!-- trellis-session: v=2 fp=d0b72b913e916e8a -->
+
+**Date**: 2026-10-20
+**Task**: S7 只读对账端点（哈希检测 + 过渡态白名单收口）
+**Branch**: `dev`
+
+### Summary
+
+字幕模型重构 7/8：新增 POST /api/maintenance/reconcile 只读对账端点，四类不一致全报（条数+明细）、只报不修、不加鉴权，并成为四列 sha256 的首个读取方；yt-dlp 的过渡态后缀白名单提到 shared/fs（补 .tmp、拆 .info.json，scanProducts 保留本地排除）。真库验收发现 ② 在 C24 下会误报「文件名撞车」（旧行与新版登记同名文件，照报去删会删掉当前版本），加判据排除后 ② 由 7 条归零。测试基线 683 → 708。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `998526a` | refactor(ytdlp): 过渡态后缀白名单提到 shared/fs |
+| `464078a` | feat(maintenance): 只读对账端点 POST /api/maintenance/reconcile |
+| `4ec0fd3` | docs(spec): 新增 maintenance 上下文与对账端点的落位/脱敏口径 |
+| `e23c7d8` | chore(task): 10-17 对账端点任务工件 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 55: S8 收尾（网络超时 + 状态机规范 + 旧件清查）
+<!-- trellis-session: v=2 fp=881a08e22cbeb5a1 -->
+
+**Date**: 2026-10-20
+**Task**: S8 收尾（网络超时 + 状态机规范 + 旧件清查）
+**Branch**: `dev`
+
+### Summary
+
+字幕模型重构 8/8 收尾。给网络调用补超时（C46）：LLM / 术语查证 / ASR 结果下载走全局 spring.http.clients（连 10s / 读 120s），重试从 10 收到 3；实测钉死语义——3 次是重试数、每次调用最多 4 次尝试，单次最坏约 9 分钟（默认 10 次时约 44 分钟）。ASR 主等待才是真缺口：SDK 的 transcription.wait 循环没有出口、且吞掉 InterruptedException，配置与外部打断都治不了，改成自建带 deadline 的 fetch 轮询（15 分钟可配）。实测查出「网络调用没有超时」只对 DeepSeek 路线成立——Mimo 自带 60s、短链 2s、外部进程 300s，父设计 C46 据此订正。规范侧新增 state-machine-guidelines.md（三张状态列的值语义 / 全部写入路径 / 守卫落在哪），订正 backend/index.md 把 database-guidelines 只在「待重建」列表里出现的失实，清掉 spec 里的已删类名（口径：只写现在是什么，不写什么已经退场）。审查轮又删掉零生产调用点的领域迁移方法（supersede / confirmDeletion / revive），并给三条状态变更 UPDATE 补 status 守卫，真库跑指纹级联 + 翻译 + 重新生成验证各自命中 Updates: 1。基线 708 → 711 → 700。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `664b8bb` | feat(asr): 转写轮询改有界 + 网络调用补超时与重试收窄 |
+| `1a28fdf` | refactor(domain): 删掉零生产调用点的状态迁移方法 |
+| `97bb051` | fix(persistence): 状态变更 UPDATE 补 status 守卫 |
+| `349bd30` | docs(spec): 状态机规范落笔 + 索引订正 + 已删类名清理 |
+| `56b52fd` | chore(task): S8 任务工件 + 父文档 C46 订正 |
+| `658be66` | Merge branch 'feature/subtitle-hardening-wrapup' into dev |
+
+### Status
+
+[OK] **Completed**

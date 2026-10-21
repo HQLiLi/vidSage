@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 43
-- **Last Active**: 2026-10-13
+- **Total Sessions**: 55
+- **Last Active**: 2026-10-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1174 | Active |
+| `journal-1.md` | ~1532 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,18 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 55 | 2026-10-20 | S8 收尾（网络超时 + 状态机规范 + 旧件清查） | `664b8bb`, `1a28fdf`, `97bb051`, `349bd30`, `56b52fd`, `658be66` | `dev` |
+| 54 | 2026-10-20 | S7 只读对账端点（哈希检测 + 过渡态白名单收口） | `998526a`, `464078a`, `4ec0fd3`, `e23c7d8` | `dev` |
+| 53 | 2026-10-20 | 字幕模型重构 6.5：复用不落版（跳过即不换版） | `cad61f6`, `a461efb`, `305f3f7`, `012accc`, `8e0608c`, `547de3c` | `dev` |
+| 52 | 2026-10-20 | 字幕模型重构 S6：内容指纹与中间产物登记（含审查轮） | `72bf12b` | `dev` |
+| 51 | 2026-10-19 | 字幕模型重构 S5：翻译落表与复用判据 | `f4590a7` | `dev` |
+| 50 | 2026-10-19 | S4 重洗：RECLEAN 落 artifact 表 + W5 换版级联 | `d499c9e`, `ea2eeed` | `dev` |
+| 49 | 2026-10-19 | 字幕模型重构 S3：产物权威 | `57c4ebd`, `8a6b691` | `dev` |
+| 48 | 2026-10-18 | 字幕模型重构 S2：换血（提交路径 + run 生命周期 + SSE + 新契约） | `ebd706d`, `d13dd8d` | `dev` |
+| 47 | 2026-10-18 | 字幕模型重构 S1 数据层地基：实现 + 四轮评审改名 + 注释标记清理 | `39dfa48`, `bf97754`, `72004c9`, `c6ec7cb` | `feature/subtitle-model-foundation` |
+| 46 | 2026-10-14 | 翻译多语言选择与翻译子状态下线：收尾（批 3–5 + 测试债） | `165ec65`, `03dd97f` | `dev` |
+| 45 | 2026-10-14 | 字幕产物命名去路线化：SubtitleWorkspaceFilePaths 落地 + 运行期验收 + 归档 | `2216390`, `e5bac58`, `778567c`, `594ac33`, `20adb01`, `8d18db5`, `539250b`, `9c92891`, `5047c2b` | `feature/subtitle-multilang-translate` |
+| 44 | 2026-10-13 | 失败前缀常量化 + 后置生命周期守卫改名 | `04d2f5c`, `d177a60` | `dev` |
 | 43 | 2026-10-13 | 注释收口：三层回归扫描（domain / application / infrastructure） | `96cd921`, `0f0a173` | `dev` |
 | 42 | 2026-10-13 | 注释收口 frontend 层（子任务 6，注释任务树最后一个） | `8c5a5d0`, `9a5bc0d` | `dev` |
 | 41 | 2026-10-13 | 注释收口 backend test 层（子任务 5）+ 任务树对齐正典当前版本 | `8afb33a`, `b309a06`, `f7f4fc8` | `dev` |

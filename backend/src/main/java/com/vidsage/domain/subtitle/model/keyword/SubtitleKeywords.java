@@ -9,8 +9,7 @@ import java.util.*;
  * 用户手填的一份关键词清单：纯字符串数组，<b>没有</b>「原写法 → 正确写法」的对照关系
  * （对照关系要的是 {@code SubtitleContext.Term}，那份由摘要器产出）。
  *
- * <p>最典型的用途是视频发布者的名字——ASR 几乎必然把它转错，而用户知道正确写法。
- * 无论从哪条路径构造，拿到的都是归一化、去重、通过上限校验的一份。
+
  *
  * <p><b>为什么超限抛 {@link IllegalArgumentException} 而不是 {@code IllegalStateException}</b>：
  * 清单里的每一条都是调用方（用户）发过来的，越界是「调用方传参不合法」，既有 REST 映射接成 400；
@@ -61,11 +60,7 @@ public record SubtitleKeywords(List<String> values) {
         }
     }
 
-    /**
-     * 这份清单是不是空的：没有关键词时走的就是「按原样清洗」那条路。
-     *
-     * @return 无关键词时为 {@code true}
-     */
+
     public boolean isEmpty() {
         return values.isEmpty();
     }

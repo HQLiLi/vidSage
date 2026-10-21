@@ -14,17 +14,18 @@ import org.junit.jupiter.api.Test;
  */
 class SubtitleStageNameTest {
 
-    /** 主管线五阶段，按声明顺序。 */
+    /** 主管线六阶段，按声明顺序。 */
     private static final List<SubtitleStageName> MAIN_STAGES = List.of(
+            SubtitleStageName.PROBE_FINGERPRINT,
             SubtitleStageName.ACQUIRE_MEDIA,
             SubtitleStageName.EXTRACT_AUDIO,
             SubtitleStageName.TRANSCRIBE_AUDIO,
             SubtitleStageName.WRITE_SUBTITLES,
             SubtitleStageName.CLEAN_SUBTITLES);
 
-    /** 期望区间 [起点, 终点)，与 design §四 档 A（42/42/49/7/60）一致。 */
+    /** 期望区间 [起点, 终点)，按权重 5/42/42/49/7/60 累加。 */
     private static final int[][] EXPECTED_RANGES = {
-            {0, 21}, {21, 42}, {42, 66}, {66, 70}, {70, 100}};
+            {0, 2}, {2, 22}, {22, 43}, {43, 67}, {67, 70}, {70, 100}};
 
     @Test
     void rangesMatchDeclaredWeights() {

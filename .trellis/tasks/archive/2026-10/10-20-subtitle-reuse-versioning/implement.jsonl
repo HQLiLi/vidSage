@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/10-20-subtitle-reuse-versioning/prd.md", "reason": "本段范围、T1–T6 六条取舍、AC1–AC10、不做表（含「不为管线拆分预先造形状」）、Notes 里的硬顺序（本段是 S7 前置）—— 写代码前先对齐交付什么、什么不做"}
+{"file": ".trellis/tasks/10-20-subtitle-reuse-versioning/design.md", "reason": "本段技术落点：§2 改造前后数据流、§3 四个方法的新形状（reuseIfAvailable 收 listener、prepare/clean 收窄签名、settleCleanedAndSupersedeDownstream 无条件级联）、§4 D1–D5 取舍、§5 边界矩阵（含「已知窗口」与「摘要降级不补摘」）、§7 存量测试改造清单（过审门已补全）"}
+{"file": ".trellis/tasks/10-20-subtitle-reuse-versioning/implement.md", "reason": "段级执行计划：§0 与现状代码的十条校准、步骤 0 过审门、步骤 1（判据上移 + 占位条件创建）与步骤 2（删 isContentChanged）必须一次进、步骤 3 文档同步、步骤 4 全量验证与手工验收命令（AC1–AC8）、回滚点、9 条欠账"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "权威终态设计：§5 W5 的注与 2026-10-19 订正（本段要收敛的两处）、§7.3 主管线步骤 3/4（占位与落定）、§7.4 步骤 6 ②（下游作废判据）、§7.5 的 §615/§616 两句、§8.4 ② 对账检测（四个 sha256 列照旧写）、§8.5 revision 语义 —— 【注意】本文件 60KB 超过注入上限 32KB，注入时会被截断，实施前必须用 Read 工具读全文"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "落位与命名：阶段类在 application/subtitle/pipeline、产物门面在 application/subtitle、方法名动词开头、@Component 分档、测试包镜像主包；本段新增方法 reuseIfAvailable 的命名与位置判据 —— 【注意】本文件 67KB 超过注入上限 32KB，注入时会被截断，实施前必须用 Read 工具读全文"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "写与删的注释口径、Javadoc 要求、测试写法（Mockito 夹具、不连真库）、「行为不变」的验证方式 —— 本段要改三份存量测试、删两个用例"}

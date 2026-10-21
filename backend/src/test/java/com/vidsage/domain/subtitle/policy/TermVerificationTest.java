@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.model.term.TermLookupCommand;
 import com.vidsage.domain.subtitle.model.term.TermLookupResult;
 import com.vidsage.domain.subtitle.model.term.VerifiedTerm;
@@ -110,14 +111,14 @@ class TermVerificationTest {
     @Test
     void verifiesAllTermsAndClassifiesConclusions() {
         // 只狼=官方、弹刀=弃权（查过无据）、架势条=没配结论（调用失败）——三种结论一次钉住
-        Outcome outcome = TermVerification.verify(contextWithTerms(), "zh", stubLookup(
+        Outcome outcome = TermVerification.verify(contextWithTerms(), SupportedLanguage.SIMPLE_CHINESE, stubLookup(
                 "只狼", "official:Sekiro",
                 "弹刀", ""));
 
         // 触发是确定性的：全量逐条查证，不做「哪些值得查」的预过滤
         assertEquals(3, lookupCommands.size());
         assertEquals("只狼", lookupCommands.getFirst().term(), "查证命令按 fixed 写法发起");
-        assertEquals("zh", lookupCommands.getFirst().targetLanguage());
+        assertEquals(SupportedLanguage.SIMPLE_CHINESE.getCode(), lookupCommands.getFirst().targetLanguage());
         assertEquals("游戏动作解析", lookupCommands.getFirst().theme());
         // 结论记账：官方带等级与来源 host、弃权空串持久化、失败词不进产物
         assertEquals(2, outcome.verified().size(), "调用失败的词不进产物文件");
@@ -139,7 +140,7 @@ class TermVerificationTest {
     @Test
     void allLookupsFailYieldsNothingToPersist() {
         // 桩没给任何术语配结论 → 全部抛异常 = 全部查证失败
-        Outcome outcome = TermVerification.verify(contextWithTerms(), "zh", stubLookup());
+        Outcome outcome = TermVerification.verify(contextWithTerms(), SupportedLanguage.SIMPLE_CHINESE, stubLookup());
 
         assertFalse(outcome.persistable(),
                 "全部失败不落产物——空产物会把整批词固化成「已查证」，下次永远不会再补查");
@@ -150,7 +151,7 @@ class TermVerificationTest {
     @Test
     void commonVerdictCountsAsPersistableConclusion() {
         // 通用译名（非官方）也是可持久化结论，与官方同路记账
-        Outcome outcome = TermVerification.verify(contextWithTerms(), "zh",
+        Outcome outcome = TermVerification.verify(contextWithTerms(), SupportedLanguage.SIMPLE_CHINESE,
                 stubLookup("只狼", "posture meter"));
 
         assertEquals(1, outcome.common(), "通用译名单独计数");

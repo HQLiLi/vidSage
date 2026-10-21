@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/10-17-subtitle-reclean-run/prd.md", "reason": "AC1–AC11 逐条核（换版落表与八列清空 / 两种终态分清 / 级联作废 / 内容没变不级联 / MAIN 真重洗时级联 / 失败不破坏旧版 / 事务原子性 / 回收两阶段 / 前置与互斥回归 / 全量回归 / 删文件只有一个落点）"}
+{"file": ".trellis/tasks/10-17-subtitle-reclean-run/implement.md", "reason": "对版依据：§0 十条代码校准是否被遵守（不得改仓储/SQL/收口）、W5 三步顺序与「旧行在清列之前读」、内容判据的三条分支、回收在事务外且失败不标 DELETED、coordinator 只删代码不加代码；并核 11 条欠账是否如实记账（尤其 #6 孤儿文件不再被清理）"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "对版依据：§5 W5 的原子性判定、§7.4 步骤 5–7 的落点与两种终态、§7.5 级联不带 lineage、§8.2 写序纪律、§8.4 残留窗口三类全接受（别把窗口当 bug 修）—— 【注意】本文件超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文；本段对 §5 W5 行与 §7.4 步骤 6 ② 的两处订正以 prd 为准。"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核落位与命名：新方法落在 SubtitleArtifactStore（机制件）、TransactionTemplate 的构造方式与 SubtitleTaskService 同款、测试包与主包镜像 —— 【注意】本文件超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文。"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "反向核验：没有绕过仓储直写 SQL、没有把 MP 类型泄到领域/应用层、没有新增 Mapper 方法与 SQL"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核异常类型与状态码：参数不合法 400、落定失败抛 ISE 由收口兜、错误信息中文且含缺什么怎么补；守卫命名 require 动词开头"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核注释（首行大白话、新方法逐个有注释）、测试命名与断言风格、没有夹带范围外的风格改名、switch 穷举不写 default"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "核代码注释里没有 C*/§/W*/段编号/日期/任务号 —— 这些只允许出现在任务文档里"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核脱敏红线：新增的 WARN 与异常消息都不得打印 source_uri 或工作区绝对路径"}

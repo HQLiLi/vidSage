@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/10-20-subtitle-reuse-versioning/prd.md", "reason": "AC1–AC10 逐条核：复用命中逐行不变（含八个文件/哈希列）、下游不动、零写入（除 task_run 与 subtitle_task.updated_at）、真重跑照旧落版、两个门禁独立判断、级联判据已删、首跑与内容变更回归、全量测试与文档一致"}
+{"file": ".trellis/tasks/10-20-subtitle-reuse-versioning/design.md", "reason": "对版依据：§3 方法形状（reuseIfAvailable 必须收 listener；prepare 不再读文件检查点；clean 不再跳过；doClean 两布尔）、§4 D1–D5 是否被遵守、§5 边界矩阵逐格核（含两格「不许当 bug 修」：已知窗口、摘要降级不补摘）、§7 测试清单是否逐条落地"}
+{"file": ".trellis/tasks/10-20-subtitle-reuse-versioning/implement.md", "reason": "对版依据：§0 十条校准是否被遵守（DDL/端点/DTO/SSE 全不动）、步骤 1+2 是否一次进（不可拆）、阶段事件文案与条数是否一字不变（含「开始重新生成字幕」改判 requireContextSummary）、回滚点与 9 条欠账是否如实记账"}
+{"file": ".trellis/tasks/10-15-subtitle-task-model-refactor/design.md", "reason": "反向核验：父设计的 §7.3/§7.4/§8.4/§8.5 与本段改造后行为是否自洽；四个 sha256 列仍要写、两条级联的时序差异不变、markSupersededAndClearFiles 仍清空八个列 —— 【注意】本文件 60KB 超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核落位与命名：reuseIfAvailable 的落点（阶段类）与命名、方法名动词开头、测试包与主包镜像、没有新增跨层依赖（阶段类不注入 SubtitleArtifactStore）—— 【注意】本文件 67KB 超过注入上限 32KB，注入时会被截断，检查前必须用 Read 工具读全文"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核注释口径与测试质量：改动的 Javadoc 是否按写与删的口径、删掉的用例是否有替代钉子（AC6 的单测钉法）、新增用例是否真的钉住行为而不是复述实现"}

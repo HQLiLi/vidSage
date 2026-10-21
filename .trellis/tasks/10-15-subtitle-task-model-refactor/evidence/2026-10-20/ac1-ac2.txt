@@ -1,0 +1,108 @@
+AC1 表与口径 + AC2 旧件零残留 —— 复核记录
+日期：2026-10-20（父任务集成评审轮）
+判据出处：prd.md §跨子验收标准；N4 / N6 见 design.md §2
+
+================================================================
+AC1 表与口径
+================================================================
+
+[1] 六张表齐备  —— PASS
+SHOW TABLES =>
+  intermediate_file / subtitle_artifact / subtitle_keyword
+  subtitle_task / task_run / workspace
+
+[2] 索引 / 约束名符合 N4  —— PASS
+design §2 期望：pk_ ×6、uk_ ×9、idx_ ×1，一律带表名段。
+information_schema.STATISTICS（非 PRIMARY）实测 10 条：
+  intermediate_file  uk_intermediate_file_task_id_file_name                        UNIQUE
+  subtitle_artifact  idx_subtitle_artifact_derived_from_run_id                     INDEX
+  subtitle_artifact  uk_subtitle_artifact_task_id_artifact_type_lang_active_flag   UNIQUE
+  subtitle_artifact  uk_subtitle_artifact_task_id_artifact_type_revision_lang      UNIQUE
+  subtitle_keyword   uk_subtitle_keyword_task_id                                   UNIQUE
+  subtitle_task      uk_subtitle_task_task_no                                      UNIQUE
+  subtitle_task      uk_subtitle_task_workspace_id                                 UNIQUE
+  task_run           uk_task_run_task_id_active_flag                               UNIQUE
+  task_run           uk_task_run_task_id_run_no                                    UNIQUE
+  workspace          uk_workspace_source_type_source_key                           UNIQUE
+=> uk_ 恰 9 条、idx_ 恰 1 条，全部带表名段，无 uq_ 前缀残留。
+
+  主键与唯一约束的**源码写法**（schema.sql 原文，非 SHOW CREATE TABLE）：
+    CONSTRAINT pk_<表名> PRIMARY KEY (id)
+    CONSTRAINT uk_<表名>_<列...> UNIQUE (...)
+  符合 N4「主键具名 / 唯一约束用 CONSTRAINT ... UNIQUE，不用 UNIQUE KEY」。
+  ★ 注意：SHOW CREATE TABLE 会把两者归一显示成 `PRIMARY KEY` / `UNIQUE KEY`，
+    这是 MySQL 的规范化行为（PK 的约束名在 MySQL 里恒为 PRIMARY，写了也被忽略），
+    不是偏差。判据只能看 schema.sql 原文。
+
+[3] 枚举列一律 VARCHAR(32)（N6）  —— PASS
+information_schema.COLUMNS 实测：
+  intermediate_file.file_type / .status      varchar(32)
+  subtitle_artifact.active_flag / .artifact_type / .status   varchar(32)
+  task_run.active_flag / .run_type / .status varchar(32)
+  workspace.source_type                      varchar(32)
+  subtitle_artifact.lang                     varchar(16)   ← design §2.1 明确「不用动」
+
+[4] 无 DB 外键约束  —— PASS
+SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA='vidsage' AND CONSTRAINT_TYPE='FOREIGN KEY'  =>  0
+
+[5] schema.sql 头部写明存量迁移步骤  —— PASS
+backend/src/main/resources/schema.sql 第 1–8 行头部注释写明两条手工迁移：
+  DROP TABLE IF EXISTS subtitle_keyword;   -- 锚点列 workspace_key 改成 task_id，并净增 updated_at
+  DROP TABLE IF EXISTS task;               -- 旧任务表整块退场
+理由也写了：CREATE TABLE IF NOT EXISTS 不改已存在的表，MySQL 8 没有 DROP COLUMN IF EXISTS。
+
+================================================================
+AC2 旧件零残留（范围：backend/src，main + test）
+================================================================
+
+grep -rn "<名>" backend/src --include=*.java | wc -l  =>  全部 0：
+
+  VideoTask                       0
+  VideoTaskRepository             0
+  TaskSessionRegistry             0
+  recordRegenerateFailure         0
+  clearRegenerateFailure          0
+  recordTranslationFailure        0
+  clearTranslationFailure         0
+  *_FAILURE_PREFIX                0   （三个中文失败前缀常量）
+  requireMainSucceededForPostLifecycle  0
+  ACTIVE_STATUSES                 0
+  rejectIfActive                  0
+  latest_clean_artifact_id        0
+  latest_translate_map            0
+  latestCleanArtifactId           0
+  latestTranslateMap              0
+  latest_*（任意形式）             0
+  TaskConflictResponse.existingTask / existingTask  0
+  WorkspaceKey                    0
+  TaskStageEvent                  0
+  TaskSubscriptionRegistry        0
+  TaskProgressNotifier            0
+  TaskSseConnectionManager        0
+  temp_file                       0
+
+TaskStatus  —— PASS（符合预期）
+  仅剩 com.alibaba.dashscope.common.TaskStatus（阿里 SDK 同名枚举）：
+  DashScopeAsrProvider.java（main，7 处）+ DashScopeAsrProviderTest.java（test）
+  项目自己的枚举已叫 TaskRunStatus：
+  domain/task/model/TaskRunStatus.java、domain/task/TaskRun.java、
+  application/task/message/TaskRunProgress.java、application/task/query/RunSummary.java、
+  domain/task/package-info.java
+
+schema.sql 旧物  —— PASS
+  grep "uq_|CREATE TABLE IF NOT EXISTS task|workspace_key" => 仅 3 行命中，全是合法项：
+    第 6 行  注释：迁移说明里的「锚点列 workspace_key 改成 task_id」
+    第 29 行 列注释里的历史注「（原为 workspace_key）」—— 按仓库惯例保留
+    第 79 行 CREATE TABLE IF NOT EXISTS task_run —— 新表，非旧 task 表
+  无 uq_ 索引、无旧 task 表。
+
+余下同名命中（**非旧件**，不构成残留）：
+  TEMP_FILE_PREFIX / AUDIO_PREFIX / SOURCE_FILE_PREFIX / PRODUCT_PREFIX
+    —— 分别是上传流式写盘临时文件、音频文件名、媒体源文件名、yt-dlp 产物前缀，
+       与退场的「中文失败前缀常量」无关。
+  SubtitlePipeline.java 的 log.error("字幕重新生成失败: ...") / log.error("翻译失败: ...")
+    —— 是**日志文案**，不是写进 error_message 再解析回来的前缀常量；
+       task_run.error_message 的列注释已写明「失败原因（不用中文前缀区分来源）」。
+
+结论：AC1 PASS、AC2 PASS。

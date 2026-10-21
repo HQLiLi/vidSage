@@ -110,7 +110,7 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
      * @param context        字幕上下文（主题 / 源语种 / 术语表）
      * @param targetLanguage 目标语种（BCP-47 短码）；源语种与目标语种相同的**跳过判定不在这里**，
      *                       由调用方在更外层做（那样才不会白白读一遍字幕才决定跳过）
-     * @param officialTerms  术语官方译名查证产物（{@code terms-<route>-<target>.json} 的内容），可为空表：
+     * @param officialTerms  术语官方译名查证产物（{@code terms-<lang>.json} 的内容），可为空表：
      *                       命中术语里查到译名的按「给定的译名照翻」渲染进提示词，弃权（空串）与没查的
      *                       按「保留原样」渲染
      * @param listener       批级进度回调；不可为 {@code null}——不关心进度用四参重载

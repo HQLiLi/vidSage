@@ -1,0 +1,103 @@
+AC8 契约 —— 验收记录
+日期：2026-10-20（父任务集成评审轮）
+判据出处：prd.md AC8 + design §6（C53–C58）
+  「GET /api/tasks/{taskNo} 只有身份 + lastRun（无扁平状态五字段）；/artifacts 只有 READY；
+    三个 POST 统一 202/409 {taskNo, runNo}；SSE 一条 run 一条流、事件带 runNo/runType/targetLanguage」
+
+对象：task 1（e0ebf338…），库里该 task 有 8 行 artifact（含 SUPERSEDED / DELETED）。
+
+================================================================
+1. GET /api/tasks/{taskNo}
+================================================================
+
+顶层键：['createdAt', 'inputType', 'lastRun', 'sourceUri', 'taskNo']
+不该出现的扁平五字段 + artifacts：**一个都没有**  ✓
+lastRun 键：['currentStage','errorMessage','finishedAt','runNo','runType','startedAt','status','targetLanguage']
+
+=> PASS：只有身份 + lastRun（C53）。
+
+================================================================
+2. GET /api/tasks/{taskNo}/artifacts
+================================================================
+
+  /artifacts 返回 2 条：order = ['ORIGINAL','CLEANED']，revision = [('ORIGINAL',2),('CLEANED',3)]
+  库里同 task 实际 8 行（ORIGINAL rev1/rev2、CLEANED rev1/2/3、TRANSLATED en/ja/zh-Hant 各若干，
+  其中多数是 SUPERSEDED / DELETED）—— **只暴露 READY 的那 2 条**  ✓
+
+  加译文后（run 8/9 产出）再查，顺序变成
+    [('ORIGINAL','',2), ('CLEANED','',3), ('TRANSLATED','en',2), ('TRANSLATED','ja',2)]
+  => 顺序 ORIGINAL → CLEANED → TRANSLATED  ✓，TRANSLATED 项带 `lang`  ✓
+
+  指纹一致：
+    /keywords 的 fingerprint                = 822f027de0b7da51
+    /artifacts 里 CLEANED 的 keywordsFingerprint = 822f027de0b7da51      ✓
+
+=> PASS（C54 + C33）。
+
+================================================================
+3. 三个 POST 统一 202 / 409 + {taskNo, runNo}
+================================================================
+
+  POST /api/tasks（提交 URL）
+    202  {"taskNo":"e0ebf338…","runNo":8}          （新提交）
+    409  {"taskNo":"e0ebf338…","runNo":9}          （同 URL 正在跑）
+  POST /{taskNo}/translate
+    202  {"taskNo":"e0ebf338…","runNo":9}
+    202  {"taskNo":"a5a0b2cc…","runNo":3}          （另一个 task）
+  POST /{taskNo}/subtitles/regenerate
+    409  {"taskNo":"e0ebf338…","runNo":9}
+
+  => PASS：
+     · 三个 POST 全部 202 或 409，响应体**一律** `{taskNo, runNo}`（同形状，C56）。
+     · **无 `existingTask` 字段**（C56 已删）。
+     · 409 带的是**已存在那条 run** 的 ref，供前端订阅 SSE。
+
+================================================================
+4. 下载端点：按 type + file + ?lang= 定位
+================================================================
+
+  400 面（全中）：
+    未知 type                 BOGUS/segments.json                  -> 400
+    未知 file                 ORIGINAL/bogus.json                  -> 400
+    context.json 用在 ORIGINAL  ORIGINAL/context.json               -> 400
+    TRANSLATED 缺 lang        TRANSLATED/segments.json             -> 400
+    lang 用在非 TRANSLATED    ORIGINAL/segments.json?lang=en       -> 400
+  404 面（全中）：
+    未知 taskNo               ffff…ffff/artifacts/ORIGINAL/segments.json -> 404
+    该语种没有 READY          TRANSLATED/segments.json?lang=zh-Hant      -> 404
+  200 面：
+    ORIGINAL/segments.json           -> 200  application/json            4196B
+    CLEANED/subtitles.srt            -> 200  text/plain;charset=UTF-8    3011B
+    TRANSLATED/segments.json?lang=en -> 200  application/json            7352B
+    TRANSLATED/subtitles.srt?lang=en -> 200  text/plain;charset=UTF-8    5065B
+
+  与盘上文件**逐字节比对**：
+    cmp 下载的 segments.json  vs backend/data/works/BV1Va7V66Ebp_1/original-segments.json  -> 相同
+    cmp 下载的 subtitles.srt  vs backend/data/works/BV1Va7V66Ebp_1/clean-subtitles.srt     -> 相同
+
+=> PASS（C55）。
+
+================================================================
+5. SSE：一条 run 一条流
+================================================================
+
+  runNo 不存在（999）        -> 404
+  run 已终态（run 7 SUCCEEDED）-> 204 No Content
+  run 仍 RUNNING（run 8）    -> 开流，连接建立即推一条 DB 快照：
+      event:progress
+      data:{"taskNo":"e0ebf338…","runNo":8,"runType":"TRANSLATE","status":"RUNNING",
+            "stage":{"stage":"translate-subtitles","progress":0,"message":"任务执行中","state":"RUNNING"},
+            "targetLanguage":"en","terminal":false}
+
+      :ping
+
+      event:progress
+      data:{…,"runNo":8,…,"progress":33,"message":"第 1/3 批",…,"targetLanguage":"en","terminal":false}
+
+  MAIN run 的事件（本轮早先抓到的）**不带 targetLanguage** —— 与 design「targetLanguage 仅 Translate」
+  一致；TRANSLATE run 的带 `"targetLanguage":"en"`。  ✓
+  另有 `:ping` 心跳注释行。  ✓
+
+=> PASS（C57）。
+
+结论：AC8 PASS。

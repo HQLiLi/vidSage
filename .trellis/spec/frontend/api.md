@@ -47,7 +47,7 @@
 - 与后端 Java `record` / 枚举**逐字段镜像，字段名保持一致**（如 `beginTimeMs` 不改驼峰外的任何拼写），便于对照排查——依据 [type-safety.md](./type-safety.md)。
 - 后端**无 `{code, data}` 包装**：响应体即裸 DTO，类型直接标注在泛型上（`request.get<TaskView>`）；拦截器已统一解包，调用点直接拿到 `TaskView`，**不再手写 `.data`**。
 - 时间字段是 ISO-8601 字符串（Spring Boot 对 `LocalDateTime` 的默认序列化），前端类型写 `string`。
-- 可空字段显式写 `| null`（`translationStatus: TranslationStatus | null`），与后端 `null` 语义对齐，不用 `?` 可选属性表达。
+- 可空字段显式写 `| null`（`errorMessage: string | null`），与后端 `null` 语义对齐，不用 `?` 可选属性表达。
 
 ## 错误处理（无 envelope，状态码即语义）
 
@@ -56,9 +56,10 @@
 | 202 | 任务受理（提交 / 上传 / 触发翻译） | `TaskView` |
 | 400 | 参数缺失（url 空、文件空） | 错误说明 |
 | 404 | taskNo 不存在 | 错误说明 |
-| 409 | 同 URL / 同内容已有进行中任务 | `TaskConflictResponse`（**含既有任务视图**，直接拿 `existingTask.taskNo` 继续跟进，不视为纯错误） |
+| 409 | 同 URL / 同内容已有进行中任务；**或**同工作区已有后置会话（重新生成字幕 / 翻译）在跑 | `TaskConflictResponse`（**含既有任务视图**，直接拿 `existingTask.taskNo` 继续跟进，不视为纯错误） |
 
 - 响应错误拦截器把错误归一化为 `ApiError`（status / message / existingTask，见 request.ts），调用点 catch 后按字段分支，不再自行拆 axios 错误。
+- **后置会话（重新生成 / 翻译）的失败不一定能从 SSE 收到**：失败时任务主状态仍是 `SUCCEEDED`（旧字幕与已有译文都还在），而触发到失败可能只隔几十毫秒——「先 POST 再订阅」的连接建立时事件已经广播完了，重连快照也只渲染主状态。**判断翻译 / 重新生成失败要读 `GET /api/tasks/{taskNo}` 的 `errorMessage`**（带「翻译失败：」「重新生成失败：」前缀区分来源），不能只等 SSE 的 FAILED 事件。
 - 全局 toast / 埋点 / 401 处理将来加在 `request.ts` 拦截器，不改各调用方。
 
 ## 反模式
