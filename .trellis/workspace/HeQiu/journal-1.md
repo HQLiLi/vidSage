@@ -1530,3 +1530,25 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 56: 10-15 父任务集成评审：AC1–AC9 全 PASS + 已知问题登记与 master 同步
+<!-- trellis-session: v=2 fp=a7627f36b02ea69c -->
+
+**Date**: 2026-10-21
+**Task**: 10-15 父任务集成评审：AC1–AC9 全 PASS + 已知问题登记与 master 同步
+**Branch**: `dev`
+
+### Summary
+
+字幕模型重构父任务收尾：跑完跨子集成评审，AC1–AC9 全部 PASS。开工第一步按项目所有者裁定做全量重置（mysqldump 全库 + TRUNCATE 六张表 + works 改名备份 40MB），之后每条 AC 都在真零起点上跑，9 份证据落在任务目录 evidence/2026-10-20/。实测要点：三种 run（MAIN / RECLEAN / TRANSLATE）走真 yt-dlp + 真 DashScope ASR + 真 DeepSeek，各跑一次全 SUCCEEDED 且失败原因互不串台；3 并发打全新 URL 得 1×202 + 2×409、收敛到同一条 subtitle_task，顺带把 design §7.1 那条「duplicate-key 留 S 锁、本项目尚未实测」测掉 —— C63 的「撞键 → 锁定读重查」在 workspace 与 subtitle_task 两层都真实走到、无死锁；崩溃恢复用「轮询到 CREATING 占位出现再 taskkill」不赌时间窗，启动收口三条 UPDATE 各命中 1 行；内容变更后主管线四阶段全真跑（不是 SKIPPED），与同日志里复用命中走 SKIPPED 形成对照；对账四类各报得出、只报不修、只读幂等，正常态零误报。发现 F1（真缺陷，非本次引入）：翻译侧 LLM 全不可用时静默交付未翻译内容 —— LlmSubtitleTranslator 的「批次重试用尽整批回退原文」兜底是有意的（宁可没译不可乱译），但 untranslatedCount 的唯一消费者是一行 log.debug、TranslatedSubtitle 上那个字段全仓没有任何读取方，于是 run 记 SUCCEEDED、artifact 记 READY、产物与源文逐字节相同；新模型把产物权威搬进 DB 后这行与正常译文完全同形，比旧模型更难发现。待裁口径（降级算成功还是失败）后另开小修。另记 F2（观察项）：revision 会被 FAILED 占位行消耗，照 design §1.4 实现、非缺陷。顺带订正父 prd 的「并发提交同一个新 URL 不报 409」——该措辞与 design §7.1 第 4 步冲突，S2 已于 10-18 订正并实测，本轮独立复现。工作区收口：新建 known-bugs.md（F1/F2 + 从 5 份过期交接文档逐条回填的待办盘点），删掉 handoff-*.md 五份；盘点中发现 10-11-sse-connection-pairing 的前提已失效（它整篇讲的 TaskSseConnectionManager / TaskSubscriptionRegistry 已被 S2 退场，新实现里根本没有订阅注册表）。dev 推送 17 笔、master 同步合并（08a8605）、父任务归档。基线 700 / 0 failures / 0 errors / 1 skipped 与开工前逐项相同 —— 本轮未改生产代码。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e414675` | chore(task): 10-15 集成评审轮收尾（AC1–AC9 全 PASS）+ 工作区已知问题登记 |
+
+### Status
+
+[OK] **Completed**

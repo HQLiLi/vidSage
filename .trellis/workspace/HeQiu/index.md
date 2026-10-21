@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 55
-- **Last Active**: 2026-10-20
+- **Total Sessions**: 56
+- **Last Active**: 2026-10-21
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1532 | Active |
+| `journal-1.md` | ~1554 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 56 | 2026-10-21 | 10-15 父任务集成评审：AC1–AC9 全 PASS + 已知问题登记与 master 同步 | `e414675` | `dev` |
 | 55 | 2026-10-20 | S8 收尾（网络超时 + 状态机规范 + 旧件清查） | `664b8bb`, `1a28fdf`, `97bb051`, `349bd30`, `56b52fd`, `658be66` | `dev` |
 | 54 | 2026-10-20 | S7 只读对账端点（哈希检测 + 过渡态白名单收口） | `998526a`, `464078a`, `4ec0fd3`, `e23c7d8` | `dev` |
 | 53 | 2026-10-20 | 字幕模型重构 6.5：复用不落版（跳过即不换版） | `cad61f6`, `a461efb`, `305f3f7`, `012accc`, `8e0608c`, `547de3c` | `dev` |
