@@ -135,9 +135,9 @@ design §1.4 明写 `revision` = 「同 `(task,type,lang)` 递增（**MAX+1**）
   端口 `TaskProgressBroadcaster` + 实现 `web/sse/SseTaskProgressBroadcaster`）。
   **连带后果见 §3.1。**
 
-### 3.1 ★ `10-11-sse-connection-pairing` 这个活跃任务已经过期
+### 3.1 ★ `10-11-sse-connection-pairing`：前提已消失，2026-10-21 已删除
 
-`.trellis/tasks/10-11-sse-connection-pairing/`（状态 `planning`）整篇讲的是一件事：
+`.trellis/tasks/10-11-sse-connection-pairing/`（原状态 `planning`，从未 `start`）整篇讲的是一件事：
 
 > `TaskSseConnectionManager` 里，一条 SSE 连接与它在 `TaskSubscriptionRegistry` 里的那条订阅的
 > **配对是隐式的**，订阅句柄被关在 lambda 闭包里，于是**写失败那条路径没法退订**。
@@ -149,7 +149,13 @@ design §1.4 明写 `revision` = 「同 `(task,type,lang)` 递增（**MAX+1**）
 
 所以**该任务的前提已不成立**，它描述的缺陷在新代码里不存在。
 
-**待办**：这个任务要么关掉（前提消失），要么按新代码重写目标。**需要项目所有者裁定**（见 §4）。
+**处置（2026-10-21，项目所有者裁定）**：**直接删除**，不归档、不重写。
+
+- **不重写**：它整篇的立论对象（`TaskSseConnectionManager` / `TaskSubscriptionRegistry`）在新代码里已不存在，
+  按新实现重写等于另起一个任务，与「让旧任务退场」是两件事。
+- **不归档**：`archive/2026-10/` 下 37 个任务**全是 `completed`**，无「未开工就归档」先例；
+  塞一个 `planning` / `branch: null` 的条目进去，会把「归档 = 做过的事」这个含义搅浑。
+- 目录已 `git rm`；本节结论（前提已消失）留档，完整 PRD 留在 git 历史里。
 
 ---
 
@@ -159,7 +165,6 @@ design §1.4 明写 `revision` = 「同 `(task,type,lang)` 递增（**MAX+1**）
 |---|---|---|
 | 1 | **F1 的降级算成功还是失败？** | **算成功、但要显形** —— 保留「宁可没译，不可乱译」这个正确取舍，只把 `untranslatedCount > 0` 提升为可观测（至少 `log.warn`；最好落进 artifact 行或 run 的 `error_message`，并在 `/artifacts` 可见）。判失败会让「模型抖了一下」变成「整条任务白跑」。 |
 | 2 | **F1 什么时候修？** | 另开一个小修任务，**不卡**任何已归档的东西。成本很小（半天以内）。 |
-| 3 | **`10-11-sse-connection-pairing` 怎么处置？** | 关掉或重写。它现在是活跃任务里唯一一条**前提已消失**的。 |
 
 ---
 
