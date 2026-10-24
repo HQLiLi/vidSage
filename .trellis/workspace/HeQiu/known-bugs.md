@@ -4,6 +4,7 @@
 > 立档：2026-10-20（字幕模型重构父任务集成评审轮的收尾）。
 > 同时删掉了 5 份任务期交接文档（`handoff-*.md`）—— 它们对应的任务全部已归档，
 > 里面仍有效的待办已逐条盘点并回填在本文 §3。
+> 2026-10-24 追加 §6：工作区运行态（B2）收尾时明确留下的未完成项。
 
 ---
 
@@ -165,6 +166,7 @@ design §1.4 明写 `revision` = 「同 `(task,type,lang)` 递增（**MAX+1**）
 |---|---|---|
 | 1 | **F1 的降级算成功还是失败？** | **算成功、但要显形** —— 保留「宁可没译，不可乱译」这个正确取舍，只把 `untranslatedCount > 0` 提升为可观测（至少 `log.warn`；最好落进 artifact 行或 run 的 `error_message`，并在 `/artifacts` 可见）。判失败会让「模型抖了一下」变成「整条任务白跑」。 |
 | 2 | **F1 什么时候修？** | 另开一个小修任务，**不卡**任何已归档的东西。成本很小（半天以内）。 |
+| 3 | **媒体播放端点做不做？** | 建议单开后端任务（不在工作区前端任务树内）；前端 `MediaPane` 接 `<video>` 是几十行。契约见 §6 第 1 条。 |
 
 ---
 
@@ -173,3 +175,21 @@ design §1.4 明写 `revision` = 「同 `(task,type,lang)` 递增（**MAX+1**）
 - 字幕模型重构的**终态口径**：`.trellis/tasks/archive/2026-10/10-15-subtitle-task-model-refactor/design.md`（权威）
 - 集成评审的**逐条实测与证据**：同目录 `implement.md` §9 + `evidence/2026-10-20/`
 - 该任务树的状态与沿革：[[subtitle-model-c35-review]]
+
+---
+
+## 6. 工作区运行态（`10-22-workspace-run-page`，B2）收尾遗留
+
+> 2026-10-24 追加。任务已归档：`.trellis/tasks/archive/2026-10/10-22-workspace-run-page/`
+> （`prd.md` / `design.md` / `implement.md` §18 是原始记录）。代码已合并 `dev`
+> （`61053a6`，合并 `a08c478`）。下面四条是**明确没做**的，别当成已完成。
+
+| # | 事项 | 现状 | 要做什么 |
+|---|---|---|---|
+| 1 | **媒体区不可播放** | 后端没有媒体字节端点；`/api/media` 下只有 `/tools`（yt-dlp / ffmpeg 诊断）。前端维持 16:9 无源占位——父任务 Q4 已裁定这是后端缺口，不在前端任务树内 | 单开后端任务补 `GET` / `HEAD /api/tasks/{taskNo}/media`：支持 Range（`200` / `206`）、`Accept-Ranges`、`Content-Range`、文件缺失 `404`；前端 `MediaPane` 接 `<video>`，并定「同内容重跑替换文件」的缓存策略 |
+| 2 | **失败任务的「重新提交」没接线** | `StatusCard` 失败分支的按钮仍只 emit `back`（回首页），文案却写「重新提交」 | URL 任务用 `sourceUri` 调 `submitUrl`：返回的 `taskNo` 变了就 `router.push`，没变就 `startRun`；UPLOAD 任务浏览器拿不到原文件，只能回首页重选，文案要改成「返回首页重新提交」 |
+| 3 | **前端规范仍是旧契约** | `.trellis/spec/frontend/api.md` 还写着旧 `/events`、旧 `TaskView`、旧 409 形状；`directory-structure.md` / `state-management.md` / `component-guidelines.md` / `type-safety.md` / `quality-guidelines.md` 也有失实描述 | 按归档任务 `design.md` §11.3 的表逐行订正。本次按所有者指示只记 journal，spec 未动 |
+| 4 | **8 条接口实测未逐条留档** | 翻译 `202`、终态 run `204` → 回查快照收口、产物清单与 `files` 下载、无 `source.mp4` 死链都已实跑；提交 / 上传的 `202` 形状、`409` 同形未单独留档 | 补跑并把输出存进任务 `evidence/`，或下次触及这些端点时顺带验 |
+
+另：单条字幕行编辑仍**不持久化**（后端无端点），B1 起就是明确提示，不是本次新增遗留；
+媒体播放与单条编辑都属「前端只能降级，不能修」的两类。
