@@ -4,6 +4,7 @@
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 
+import { useWorkspaceStore } from '@/stores/workspace'
 import {
   MAX_KEYWORD_LENGTH,
   MAX_KEYWORDS,
@@ -15,12 +16,27 @@ const store = useWorkspaceKeywordsStore()
 const { keywords } = storeToRefs(store)
 const { addKeyword, removeKeyword } = store
 
+const workspace = useWorkspaceStore()
+const { isBusy } = storeToRefs(workspace)
+const { regenerate } = workspace
+
 /** 输入框里的待添加内容。 */
 const draft = ref('')
 /** 加不进去时给的一句提示。 */
 const feedback = ref('')
 
-const canAdd = computed(() => draft.value.trim().length > 0 && keywords.value.length < MAX_KEYWORDS)
+const canAdd = computed(
+  () => !isBusy.value && draft.value.trim().length > 0 && keywords.value.length < MAX_KEYWORDS,
+)
+
+/**
+ * 「重新生成」按钮的文案。
+ * 清单为空时写「清空并重新生成」——提交空数组会把关键词清空，不能让人以为什么都没发生。
+ * 运行中不改成「重新生成中」：翻译期间也在跑，那时说「重新生成中」是假话，按钮禁用就够了。
+ */
+const regenerateLabel = computed(() =>
+  keywords.value.length === 0 ? '清空并重新生成' : '重新生成',
+)
 
 /** 每种失败原因对应的提示文案。 */
 const FEEDBACK: Record<Exclude<KeywordAddResult, 'added' | 'empty'>, string> = {
@@ -50,7 +66,7 @@ function onEnter(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <section class="flex shrink-0 flex-col">
+  <section class="flex shrink-0 flex-col" :aria-busy="isBusy || undefined">
     <header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3 sm:px-6">
       <div class="flex min-w-0 items-baseline gap-2">
         <h2 class="text-sm font-semibold">关键词</h2>
@@ -58,7 +74,23 @@ function onEnter(event: KeyboardEvent): void {
           >{{ keywords.length }}/{{ MAX_KEYWORDS }}</span
         >
       </div>
-      <!-- 「重新生成」按钮的位置：提交重新生成是下一步的事，这里先留空 -->
+      <button
+        type="button"
+        :aria-label="regenerateLabel"
+        :title="isBusy ? '正在处理，完成前不能修改关键词' : regenerateLabel"
+        class="shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed"
+        :class="
+          isBusy
+            ? 'border-border bg-mist text-faint'
+            : keywords.length === 0
+              ? 'border-foreground bg-primary text-white hover:bg-primary-hover'
+              : 'border-border bg-background text-ink hover:bg-mist hover:text-foreground'
+        "
+        :disabled="isBusy"
+        @click="regenerate()"
+      >
+        {{ regenerateLabel }}
+      </button>
     </header>
 
     <div class="shrink-0 px-4 pb-2.5 sm:px-6">
@@ -67,9 +99,10 @@ function onEnter(event: KeyboardEvent): void {
           v-model="draft"
           type="text"
           :maxlength="MAX_KEYWORD_LENGTH"
+          :disabled="isBusy"
           aria-label="输入关键词"
           placeholder="输入关键词，按回车添加"
-          class="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint focus:border-foreground/40"
+          class="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-faint focus:border-foreground/40 disabled:cursor-not-allowed disabled:bg-mist disabled:text-faint"
           @keydown.enter="onEnter"
         />
         <button
@@ -120,7 +153,8 @@ function onEnter(event: KeyboardEvent): void {
           <span class="min-w-0 flex-1 wrap-break-word leading-relaxed">{{ keyword }}</span>
           <button
             type="button"
-            class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-faint transition-colors hover:bg-mist hover:text-foreground"
+            class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-faint transition-colors hover:bg-mist hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="isBusy"
             :aria-label="`删除关键词 ${keyword}`"
             @click="removeKeyword(keyword)"
           >

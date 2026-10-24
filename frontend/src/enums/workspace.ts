@@ -20,3 +20,15 @@ export const WORKSPACE_LOAD_ERROR_KIND = {
   NOT_FOUND: 'not-found',
   ERROR: 'error',
 } as const
+
+/**
+ * 进度流当前的状态。
+ * idle 是页面层的：没有要跟的 run；其余四个由 `useRunEvents` 维护，组件只读。
+ */
+export const RUN_STREAM_STATE = {
+  IDLE: 'idle',
+  CONNECTING: 'connecting',
+  LIVE: 'live',
+  RECONNECTING: 'reconnecting',
+  CLOSED: 'closed',
+} as const

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 非就绪态的引导卡：加载中 / 任务不存在 / 加载失败 / 执行中 / 执行失败。
-// 一个组件承包五种形态，页面只传 kind，具体文案与按钮在这里统一。
+// 工作区壳之外的状态卡：加载中 / 任务不存在 / 加载失败 / 执行失败。
+// 运行中已经由工作区壳 + 字幕骨架承担，不再走这里。
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 
@@ -104,38 +104,7 @@ const errorMessage = computed(() => {
     </div>
   </div>
 
-  <div
-    v-else-if="props.kind === WORKSPACE_PHASE.RUNNING"
-    class="rounded-2xl border border-border bg-background p-5"
-    role="status"
-  >
-    <h2 class="text-sm font-semibold">执行中，请稍后刷新</h2>
-    <p class="mt-2 text-sm leading-relaxed text-ink">
-      任务正在后台处理，完成后刷新本页即可看到字幕。
-    </p>
-    <div class="mt-4 flex flex-wrap gap-2">
-      <button
-        type="button"
-        class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-primary-hover"
-        @click="emit('retry')"
-      >
-        刷新
-      </button>
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:border-foreground"
-        @click="emit('back')"
-      >
-        返回上传
-      </button>
-    </div>
-  </div>
-
-  <div
-    v-else
-    class="rounded-2xl border border-border bg-background p-5"
-    role="alert"
-  >
+  <div v-else class="rounded-2xl border border-border bg-background p-5" role="alert">
     <h2 class="text-sm font-semibold">
       {{ lastRun?.status === TASK_RUN_STATUS.INTERRUPTED ? '任务已中断' : '任务处理失败' }}
     </h2>
