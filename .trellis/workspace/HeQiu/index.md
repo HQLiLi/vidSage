@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 57
-- **Last Active**: 2026-10-21
+- **Total Sessions**: 58
+- **Last Active**: 2026-10-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1578 | Active |
+| `journal-1.md` | ~1603 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 58 | 2026-10-24 | 工作区就绪页重写：契约层、分域 store 与 AC 复审 | `05021cd`, `922073d`, `d34c6f1`, `4cf2d5d` | `dev` |
 | 57 | 2026-10-21 | SubtitlePipeline 三条 run 流程拆分 | `6cdc02e`, `0ddd756`, `c24eb11` | `dev` |
 | 56 | 2026-10-21 | 10-15 父任务集成评审：AC1–AC9 全 PASS + 已知问题登记与 master 同步 | `e414675` | `dev` |
 | 55 | 2026-10-20 | S8 收尾（网络超时 + 状态机规范 + 旧件清查） | `664b8bb`, `1a28fdf`, `97bb051`, `349bd30`, `56b52fd`, `658be66` | `dev` |

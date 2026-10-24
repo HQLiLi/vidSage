@@ -1576,3 +1576,28 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 58: 工作区就绪页重写：契约层、分域 store 与 AC 复审
+<!-- trellis-session: v=2 fp=f285c8699144e6df -->
+
+**Date**: 2026-10-24
+**Task**: 工作区就绪页重写：契约层、分域 store 与 AC 复审
+**Branch**: `dev`
+
+### Summary
+
+完成 10-22-workspace-ready-page：前端契约层整体换到当前后端（types/enums/api/utils），工作区页重建为左三块 + 右字幕区，真实读取快照/产物/关键词/主题，首页提交跳真 taskNo、409 跳既有任务，旧 store/composable/媒体文件全部删除。Playwright 实跑 AC1–AC11 全过：6 条真实 GET、字幕 8/8 与 segments 一致、关键词上限与零写请求、搜索计数与空态、产物 5 链接且 SRT 下载 602 B、404/加载失败+重试/RUNNING 三态；build 并行跑时 Node 堆瞬时 OOM，单独 build-only 通过。复审后按裁定收口：store 按域拆为 workspace / workspaceSubtitles / workspaceKeywords；AC5 行内编辑因后端接口未就绪延期，删掉 localSegmentEdits 与编辑链路，只留禁用的铅笔占位；关键词草稿计数改为「已输入 N/50 字」。按用户纠正订正 type-safety.md：enums/ 是通用运行时枚举目录，判据是有比较消费而非后端契约，据此把 WORKSPACE_PHASE / WORKSPACE_LOAD_ERROR_KIND 落到 enums/workspace.ts。evidence 从 22 张 PNG/1.6MB 裁到 5 张关键图/380KB。已 --no-ff 合并 dev、删除 feature 分支、归档任务；同目录下 10-21/10-22 的兄弟任务目录仍未入库，本次未动。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `05021cd` | feat(frontend): 工作区就绪页按新契约重建 |
+| `922073d` | docs(spec): 订正工作区 store 拆分与通用枚举口径 |
+| `d34c6f1` | chore(task): 10-22-workspace-ready-page 任务工件与证据 |
+| `4cf2d5d` | Merge branch 'feature/workspace-ready-page' into dev |
+
+### Status
+
+[OK] **Completed**
