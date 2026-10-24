@@ -4,7 +4,7 @@
  * 字段名与后端 Java record 逐字对齐（TaskResponse / RunResponse / TaskRunRefResponse），
  * 方便对着源码排查。可空字段写成 `| null`，不用 `?` 可选属性。
  */
-import type { TASK_RUN_STATUS, TASK_RUN_TYPE } from '@/enums/task'
+import type { STAGE_PROGRESS_STATE, TASK_RUN_STATUS, TASK_RUN_TYPE } from '@/enums/task'
 
 /** 任务来源：链接提交 / 本站上传。 */
 export type TaskInputType = 'URL' | 'UPLOAD'
@@ -90,7 +90,7 @@ export interface RegenerateSubtitlesRequest {
 }
 
 /** 阶段进度条的状态。 */
-export type StageProgressState = 'RUNNING' | 'SUCCEEDED' | 'SKIPPED' | 'FAILED'
+export type StageProgressState = (typeof STAGE_PROGRESS_STATE)[keyof typeof STAGE_PROGRESS_STATE]
 
 /** 一个阶段当前的进度与文案。 */
 export interface StageProgress {

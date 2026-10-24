@@ -5,10 +5,14 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkspaceSubtitlesStore } from '@/stores/workspaceSubtitles'
 
 const store = useWorkspaceSubtitlesStore()
 const { context } = storeToRefs(store)
+
+const workspace = useWorkspaceStore()
+const { isBusy } = storeToRefs(workspace)
 
 /** 有没有可展示的主题：没拿到上下文、降级标记、或主题是空串，都算没有。 */
 const hasTheme = computed(() => {
@@ -17,6 +21,9 @@ const hasTheme = computed(() => {
   if (value.degraded) return false
   return value.theme.trim().length > 0
 })
+
+/** 首次生成中：还没有上下文可看，说「正在生成」；重新生成时保留旧主题，不说这句。 */
+const generating = computed(() => isBusy.value && context.value === null)
 </script>
 
 <template>
@@ -26,7 +33,15 @@ const hasTheme = computed(() => {
     </header>
 
     <div class="px-4 pb-3 sm:px-6">
-      <p v-if="hasTheme" class="text-sm leading-relaxed text-ink">
+      <div
+        v-if="generating"
+        class="animate-pulse rounded-lg border border-dashed border-border bg-background px-3 py-2.5 motion-reduce:animate-none"
+        role="status"
+      >
+        <p class="text-sm font-medium text-ink">正在生成主题…</p>
+        <p class="mt-0.5 text-xs leading-relaxed text-muted">字幕完成后即可看到本次清洗提炼的主题。</p>
+      </div>
+      <p v-else-if="hasTheme" class="text-sm leading-relaxed text-ink">
         {{ context?.theme }}
       </p>
       <div

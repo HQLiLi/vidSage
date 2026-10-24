@@ -23,13 +23,15 @@ export const useWorkspaceSubtitlesStore = defineStore('workspaceSubtitles', () =
   const cleanedTrack = ref<SubtitleTrack | null>(null)
   /** 字幕上下文（主题、源语种、术语）。 */
   const context = ref<SubtitleContext | null>(null)
-  /** 译文段落内容；本任务恒为 null（显示译文是后一个任务的事）。 */
+  /** 当前显示的译文段落；null = 没有挂译文。 */
   const translatedTrack = ref<TranslatedTrack | null>(null)
-  /** 当前译文语种；本任务恒为 null。 */
+  /** 当前显示的译文语种；null = 没有挂译文。 */
   const translatedLanguage = ref<string | null>(null)
 
-  /** 加载的代际标记：切任务时靠它把上一次还没回来的请求作废。 */
+  /** 加载原文的代际标记：切任务时靠它把上一次还没回来的请求作废。 */
   let loadToken = 0
+  /** 加载译文的代际标记，与原文分开——切语种和刷新原文可能同时发生。 */
+  let translationToken = 0
 
   /** 原文与译文配对的结果。 */
   const builtCues = computed(() => buildCues(cleanedTrack.value, translatedTrack.value))
@@ -68,9 +70,52 @@ export const useWorkspaceSubtitlesStore = defineStore('workspaceSubtitles', () =
     return null
   }
 
+  /**
+   * 拉一版译文段落挂上。
+   *
+   * 产物不存在或语种为空就清掉当前译文——宁可让双语行消失，也不能把上一版译文
+   * 挂到新的原文上（时间轴可能已经变了）。
+   */
+  async function loadTranslation(
+    artifact: ArtifactResponse | null,
+    language: string | null,
+  ): Promise<void> {
+    const token = (translationToken += 1)
+    const url =
+      artifact === null || language === null ? null : artifactFileUrl(artifact, 'segments')
+    if (url === null) {
+      translatedTrack.value = null
+      translatedLanguage.value = null
+      return
+    }
+
+    const track = await fetchArtifactJson<TranslatedTrack>(url).catch(() => null)
+    if (token !== translationToken) return
+    if (track === null) {
+      translatedTrack.value = null
+      translatedLanguage.value = null
+      return
+    }
+    translatedTrack.value = track
+    translatedLanguage.value = language
+  }
+
+  /** 先把要显示的译文语种记下，段落稍后再拉；翻译收口时用。 */
+  function setTranslatedLanguage(language: string | null): void {
+    translatedLanguage.value = language
+  }
+
+  /** 清掉当前译文（切到没翻过的语种、重生成后原译文作废时用）。 */
+  function clearTranslation(): void {
+    translationToken += 1
+    translatedTrack.value = null
+    translatedLanguage.value = null
+  }
+
   /** 所有状态回初值。换任务或离开页面时调用。 */
   function reset(): void {
     loadToken += 1
+    translationToken += 1
     cleanedTrack.value = null
     context.value = null
     translatedTrack.value = null
@@ -88,6 +133,9 @@ export const useWorkspaceSubtitlesStore = defineStore('workspaceSubtitles', () =
     translationMismatch,
     // actions
     load,
+    loadTranslation,
+    setTranslatedLanguage,
+    clearTranslation,
     reset,
   }
 })

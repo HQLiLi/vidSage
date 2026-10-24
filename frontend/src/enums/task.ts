@@ -23,3 +23,14 @@ export const TASK_RUN_STATUS = {
   FAILED: 'FAILED',
   INTERRUPTED: 'INTERRUPTED',
 } as const
+
+/**
+ * 阶段进度的状态。比执行状态多一个 SKIPPED（这一阶段跳过了）；
+ * 后端是 StageProgress.State，判断一条进度属于哪个阶段状态时用它。
+ */
+export const STAGE_PROGRESS_STATE = {
+  RUNNING: 'RUNNING',
+  SUCCEEDED: 'SUCCEEDED',
+  SKIPPED: 'SKIPPED',
+  FAILED: 'FAILED',
+} as const

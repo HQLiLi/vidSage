@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 工作区页（路由 /workspace/:taskNo）：打开一个任务，看它的字幕、关键词与主题。
 // 布局照已验证的原型——左列竖排三块（媒体位 / 关键词 / 主题），右侧字幕区。
-// 进度订阅、重新生成与翻译是下一步的事；这一页只管读。
+// 进行中的任务也走这套壳：内容区先出骨架，进度由顶栏胶囊透出。
 import { computed, nextTick, onMounted, onUnmounted, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -10,7 +10,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import { WORKSPACE_PHASE } from '@/enums/workspace'
 import { gsap } from '@/lib/gsap'
 import { useWorkspaceStore } from '@/stores/workspace'
-import type { WorkspaceStatusKind } from '@/stores/workspace'
+import type { WorkspacePhase, WorkspaceStatusKind } from '@/stores/workspace'
 import KeywordPane from '@/views/workspace/components/KeywordPane.vue'
 import MediaPane from '@/views/workspace/components/MediaPane.vue'
 import StatusCard from '@/views/workspace/components/StatusCard.vue'
@@ -29,10 +29,21 @@ const store = useWorkspaceStore()
 const { phase } = storeToRefs(store)
 const { open, refresh, reset } = store
 
-/** 引导卡要显示哪种形态（就绪态走双栏，不进这里）。 */
-const statusKind = computed<WorkspaceStatusKind>(() =>
-  phase.value === WORKSPACE_PHASE.READY ? WORKSPACE_PHASE.LOADING : phase.value,
+/** 就绪与运行中都走工作区壳：运行中没有字幕时由字幕区出骨架，不换成居中卡片。 */
+const showsWorkspace = computed(
+  () => phase.value === WORKSPACE_PHASE.READY || phase.value === WORKSPACE_PHASE.RUNNING,
 )
+
+/** 引导卡要显示哪种形态（壳负责的两种在模板里不会用到）。 */
+const statusKind = computed<WorkspaceStatusKind>(() => toStatusKind(phase.value))
+
+/** 把页面状态收成引导卡认识的那几种。 */
+function toStatusKind(value: WorkspacePhase): WorkspaceStatusKind {
+  if (value === WORKSPACE_PHASE.READY || value === WORKSPACE_PHASE.RUNNING) {
+    return WORKSPACE_PHASE.LOADING
+  }
+  return value
+}
 
 /** 回上传页（各种引导卡的按钮）。 */
 function goUpload(): void {
@@ -77,22 +88,23 @@ watch(
   },
 )
 
-// 就绪双栏挂载后播入场
+// 工作区壳挂载后播入场（只播一次，后面从 running 切到 ready 不再重放）
 watch(phase, (value) => {
-  if (value !== WORKSPACE_PHASE.READY) return
+  if (value !== WORKSPACE_PHASE.READY && value !== WORKSPACE_PHASE.RUNNING) return
   void nextTick(playEntrance)
 })
 
 onUnmounted(() => {
   entranceCtx?.revert()
+  // store 不随路由销毁，离开页面必须显式关掉进度流；reset 里带上了这一步
   reset()
 })
 </script>
 
 <template>
   <div ref="root" class="flex h-screen min-h-0 flex-col bg-background">
-    <!-- 就绪态：工作区顶栏 + 左三块右字幕的双栏 -->
-    <template v-if="phase === WORKSPACE_PHASE.READY">
+    <!-- 工作区壳：顶栏 + 左三块右字幕的双栏（就绪态与运行态共用） -->
+    <template v-if="showsWorkspace">
       <WorkspaceHeader data-animate="header" />
       <!-- overflow-clip：入场 y 位移让窗格瞬时下探出视口，h-screen 应用壳上会多出一条
            文档滚动条，动画结束再弹回；就绪态是固定视口布局，窗格溢出一律是动画残影 -->

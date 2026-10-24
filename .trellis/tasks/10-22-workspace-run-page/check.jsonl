@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/api.md", "reason": "检查这份规范是否已按当前后端契约重写：run-scoped SSE 路径、TaskResponse.lastRun、409 响应体形状、产物清单与下载地址"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查 useRunEvents 的生命周期处理与组件写法符合规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "检查 store 增补部分风格一致、消费方用 storeToRefs"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "检查新增文件落位正确、目录职责描述与实际一致"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查双 lint / type-check / build 全绿，且六处契约错位是实测而非静态判断"}
+{"file": ".trellis/tasks/10-21-workspace-fe-rewrite/handoff.md", "reason": "逐条对照运行时的坑：204、终态 run、换 runNo、短任务先结束、原文改后译文失效"}
+{"file": ".trellis/tasks/10-22-workspace-ready-page/prd.md", "reason": "检查 B2 是否在 B1 的重建之上做增量、有没有重复实现契约层或破坏 B1 的验收"}
