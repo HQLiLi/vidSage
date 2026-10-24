@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/frontend/api.md", "reason": "接口层约定：唯一 axios 实例、域文件组织不建 barrel、契约类型逐字段镜像、错误体与状态码语义；本任务要替换其中过期的 TaskView / 产物取值描述"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "两级类型策略与准入门槛、noUncheckedIndexedAccess 的判空要求、契约枚举用 as const 运行时值 + typeof 派生联合、不用 as 强转"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "src/ 目录职责、views 子包与 components 约定、路径别名 @ 两处同步；本任务要新增 types/subtitle.ts、enums/subtitle.ts、api/artifacts.ts、api/languages.ts 与 utils/ 下的纯函数文件"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "SFC 写法与顺序、button type、v-for key、composable 命名与 onScopeDispose；本任务新建的 store 与组件要照此写"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Pinia setup store 风格、storeToRefs、flat src/stores/ 约定；本任务用 stores/workspace.ts 取代 stores/task.ts"}
+{"file": ".trellis/spec/frontend/styling.md", "reason": "Tailwind 4 CSS-first 与 scoped SCSS 的分工、命名与反模式；页面按原型形态重写时要用"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "双 lint（oxlint + ESLint）、Prettier、注释政策与验证命令；AC10 的验收命令出自这里"}
+{"file": ".trellis/tasks/10-21-workspace-fe-rewrite/handoff.md", "reason": "契约事实与七个坑（204 不可区分、进度分层、产物 url 双前缀、语种码是自由文本等）的留档，本任务 design 直接引用"}
+{"file": ".trellis/tasks/10-21-workspace-prototype/design.md", "reason": "原型的布局比例与交互细节（3:2 分栏、16:9 播放器、关键词区上限、hover 编辑、译失效提示），是本任务还原目标形态的依据"}

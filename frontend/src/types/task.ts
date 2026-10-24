@@ -1,155 +1,130 @@
 /**
- * 任务域后端契约类型，与 Java record / 枚举逐字段镜像（字段名保持一致，便于对照排查）。
+ * 任务相关的后端返回形状与请求体。
  *
- * `src/types/` 只收**跨模块共享**类型，模块私有类型留模块内。
- *
- * 后端无 `{code, data}` 包装：响应体即裸 DTO，语义全在 HTTP 状态码。
- * 时间字段为 ISO-8601 字符串（Spring Boot 对 LocalDateTime 的默认序列化）；
- * 可空字段显式写 `| null`，与后端 null 语义对齐。
- *
- * 本文件保持**纯类型**（构建期整体擦除）：有比较消费的枚举，运行时值对象在
- * `@/enums/task`（enums/ 承载值），这里经 `import type` + `typeof` 派生联合。
- * 从属类型留在本文件但不导出——`export` 只给跨模块消费的类型。
+ * 字段名与后端 Java record 逐字对齐（TaskResponse / RunResponse / TaskRunRefResponse），
+ * 方便对着源码排查。可空字段写成 `| null`，不用 `?` 可选属性。
  */
-import type { TASK_STATUS, TRANSLATION_STATUS } from '@/enums/task'
+import type { TASK_RUN_STATUS, TASK_RUN_TYPE } from '@/enums/task'
 
-/** 输入类型：URL（链接提交）/ UPLOAD（本站文件上传）——镜像后端 `TaskInputType` */
+/** 任务来源：链接提交 / 本站上传。 */
 export type TaskInputType = 'URL' | 'UPLOAD'
 
-/** 任务状态：PENDING（排队中）/ RUNNING（执行中）/ SUCCEEDED（成功）/ FAILED（失败）——由 @/enums/task 的 TASK_STATUS 派生，镜像后端 `TaskStatus` */
-type TaskStatus = (typeof TASK_STATUS)[keyof typeof TASK_STATUS]
+/** 一次执行的类型。 */
+export type TaskRunType = (typeof TASK_RUN_TYPE)[keyof typeof TASK_RUN_TYPE]
 
-/** 翻译子状态——由 @/enums/task 的 TRANSLATION_STATUS 派生，镜像后端 `TranslationStatus`；`null` 表示从未触发（主任务成功后按需触发翻译） */
-type TranslationStatus = (typeof TRANSLATION_STATUS)[keyof typeof TRANSLATION_STATUS]
+/** 一次执行的状态。 */
+export type TaskRunStatus = (typeof TASK_RUN_STATUS)[keyof typeof TASK_RUN_STATUS]
 
-/** 任务产物文件清单项——镜像后端 `TaskArtifact` */
-export interface TaskArtifact {
-  /** 产物文件名（不含路径），可直接用于产物下载端点 */
-  name: string
-  /** 文件字节数 */
-  sizeBytes: number
-}
-
-/** 任务视图——镜像后端 `TaskView` */
-export interface TaskView {
-  /** 对外任务号，后续查询 / 订阅进度都凭它 */
-  taskNo: string
-  inputType: TaskInputType
-  /** 来源：URL 原文或上传文件原始名 */
-  sourceUri: string
-  status: TaskStatus
-  translationStatus: TranslationStatus | null
-  /** 最近阶段名；未开始时为 null */
+/** 一次执行的结果：序号、类型、状态、当前阶段、失败原因、起止时间。 */
+export interface RunResponse {
+  /** 任务内递增的执行序号，从 1 起。订阅进度流要带它。 */
+  runNo: number
+  /** 执行类型。 */
+  runType: TaskRunType
+  /** 目标语种；只有翻译那次有值，其余是 null。 */
+  targetLanguage: string | null
+  /** 执行状态。 */
+  status: TaskRunStatus
+  /** 当前阶段名；还没进入第一个阶段时是 null。 */
   currentStage: string | null
-  /** 终态错误信息（中文）；无错误时为 null */
+  /** 失败原因（中文，面向用户）；没失败时是 null。 */
   errorMessage: string | null
-  createdAt: string
-  startedAt: string | null
+  /** 开始执行时间。 */
+  startedAt: string
+  /** 终态时间；还在跑时是 null。 */
   finishedAt: string | null
-  /** 产物清单（*.srt 与 segments-*.json）；尚无产物时为空表 */
-  artifacts: TaskArtifact[]
-}
-
-/** 提交 URL 任务请求体——镜像后端 `SubmitUrlRequest` */
-export interface SubmitUrlRequest {
-  /** 公网媒体页面地址（如 B 站 / YouTube 链接） */
-  url: string
-}
-
-/** 同 URL / 同内容冲突（409）的响应体——镜像后端 `TaskConflictResponse` */
-export interface TaskConflictResponse {
-  /** 错误说明 */
-  error: string
-  /** 既有任务视图，可直接拿它的 taskNo 继续跟进 */
-  existingTask: TaskView
-}
-
-/** 阶段状态——镜像后端 `StageProgress.State`；SKIPPED 表示产物已存在且非空（断点复用跳过） */
-type State = 'RUNNING' | 'SUCCEEDED' | 'SKIPPED' | 'FAILED'
-
-/** 阶段进度——镜像后端 `StageProgress` */
-interface StageProgress {
-  /** 阶段名，如 acquire / extract-audio */
-  stage: string
-  /** 阶段内进度百分比，取值 0–100 */
-  progress: number
-  /** 面向用户的中文描述 */
-  message: string
-  /** 阶段状态 */
-  state: State
 }
 
 /**
- * 任务进度事件（SSE 事件名 progress 的 data）——镜像后端 `TaskProgressMessage`。
- * 终态事件的 stage 可为 null（状态本身就是信息）；主管线事件的 translationStatus 为 null，
- * 翻译事件的主状态恒为 SUCCEEDED。是否终态由后端算好经 `terminal` 送出，前端不再自己判。
+ * 任务快照。状态、阶段、失败原因、起止时间都收在 lastRun 里——
+ * 后端不再把状态平铺到顶层，本前端跟着改，不再读顶层字段。
  */
-export interface TaskProgressMessage {
-  /** 对外任务号，与订阅端点的 taskNo 一致 */
+export interface TaskResponse {
+  /** 对外任务号。 */
   taskNo: string
-  /** 事件发出时的任务主状态 */
-  taskStatus: TaskStatus
-  /** 最近阶段事件；终态广播或尚无阶段事件时为 null */
-  stage: StageProgress | null
-  /** 翻译子状态；从未触发（含全部主管线事件）时为 null，翻译事件携带当前子状态 */
-  translationStatus: TranslationStatus | null
-  /** 是否这条流的最后一条事件（后端算好送出，前端不再自己判——判据单源在后端状态机） */
-  terminal: boolean
-}
-
-/** 产物 segments-*.json 数组元素形状（原文段落）——镜像后端 `TranscriptionSegment` */
-export interface TranscriptionSegment {
-  /** 句子开始时间（毫秒） */
-  beginTimeMs: number
-  /** 句子结束时间（毫秒） */
-  endTimeMs: number
-  /** 句子识别文本 */
-  text: string
+  /** 输入类型。 */
+  inputType: TaskInputType
+  /** 来源：链接原文或上传文件名。 */
+  sourceUri: string
+  /** 创建时间。 */
+  createdAt: string
+  /** 最近一次执行；从未执行过时是 null。 */
+  lastRun: RunResponse | null
 }
 
 /**
- * 产物 segments-*-translate-*.json 数组元素形状（双语段落）——镜像后端 `TranslatedSegment`。
- * 后端按逐条下标与原文段落配对（时间戳逐条一致）；sourceText / translatedText 为 null 时渲染按空串。
+ * 触发类接口的返回值：任务号 + 本次执行的序号。
+ * 提交 / 上传 / 翻译 / 重新生成都回这个形状，409 冲突时也是这个形状。
  */
-export interface TranslatedSegment {
-  /** 本句开始时间（毫秒），与原文段落逐条一致 */
-  beginTimeMs: number
-  /** 本句结束时间（毫秒），与原文段落逐条一致 */
-  endTimeMs: number
-  /** 清洗后的原文；null 在渲染时视为空串 */
-  sourceText: string | null
-  /** 译文；等于 sourceText 表示无需翻译或整趟跳过（源语种等于目标语种） */
-  translatedText: string | null
+export interface TaskRunRef {
+  /** 对外任务号。 */
+  taskNo: string
+  /** 本次执行的序号，进度流按它订阅。 */
+  runNo: number
 }
 
-/** 字幕来源路线——镜像后端 `SubtitleRoute`；与产物文件名里的 kebab token 同源（ASR_CLOUD → asr-cloud） */
-type SubtitleRoute = 'PLATFORM_MANUAL' | 'PLATFORM_AUTO' | 'ASR_LOCAL' | 'ASR_CLOUD'
-
-/**
- * 原文产物文件信封（segments-*.json 落盘形状，raw 与 -clean 同构）——镜像后端 `SubtitleTrack`。
- * 产物文件是信封结构而非裸数组，段落取 `segments` 字段。
- */
-export interface SubtitleArtifactFile {
-  /** 字幕来源路线（与产物文件名里的 token 同源） */
-  route: SubtitleRoute
-  /** 识别出的语种；云端实测可能为 null（序列化落 null 而非空串） */
-  language: string | null
-  /** 逐句段落，时间升序；无语音时为空列表（合法产出，非错误） */
-  segments: TranscriptionSegment[]
+/** 提交链接的请求体。 */
+export interface SubmitTaskRequest {
+  /** 媒体链接。 */
+  url: string
+  /** 初始关键词；字段缺席表示不设关键词。 */
+  keywords?: string[]
 }
 
-/**
- * 译文产物文件信封（segments-*-translate-*.json 落盘形状）——镜像后端 `TranslatedTrack`。
- */
-export interface TranslatedArtifactFile {
-  /** 字幕来源路线（与产物文件名里的 token 同源） */
-  route: SubtitleRoute
-  /** 判定跳过时实际采用的源语种（BCP-47 短码）；两个来源皆空时为空串 */
+/** 翻译请求体。 */
+export interface TranslationRequest {
+  /** 源语种。 */
   sourceLanguage: string
-  /** 目标语种（BCP-47 短码），来自配置 */
+  /** 目标语种。 */
   targetLanguage: string
-  /** 是否没调用 LLM 就产出（源语种等于目标语种时为 true） */
-  skipped: boolean
-  /** 逐条双语段落，时间升序；无段落时为空列表 */
-  segments: TranslatedSegment[]
+}
+
+/**
+ * 重新生成字幕的请求体。
+ * keywords 必须是数组：空数组表示清空关键词后重跑，字段缺席（null）表示沿用现有清单。
+ * 前端总是显式给数组，不发 null。
+ */
+export interface RegenerateSubtitlesRequest {
+  /** 本次生效的完整关键词清单。 */
+  keywords: string[]
+}
+
+/** 阶段进度条的状态。 */
+export type StageProgressState = 'RUNNING' | 'SUCCEEDED' | 'SKIPPED' | 'FAILED'
+
+/** 一个阶段当前的进度与文案。 */
+export interface StageProgress {
+  /** 阶段名；后端合成终态阶段时可能是 null。 */
+  stage: string | null
+  /**
+   * 进度百分比。
+   * 主管线各阶段发的是**任务级** 0–100（后端按阶段权重算好的区间端点），
+   * 不是阶段内的 0–100；重新生成字幕那次复用了清洗阶段，原始值从 70 起。
+   */
+  progress: number
+  /** 这一步的文案。 */
+  message: string
+  /** 阶段状态。 */
+  state: StageProgressState
+}
+
+/**
+ * 进度流推来的一条事件（后端 TaskRunProgress 的形状）。
+ * terminal 由后端算好，前端直接读，不再自己拼状态组合。
+ */
+export interface TaskRunProgress {
+  /** 任务号。 */
+  taskNo: string
+  /** 本次执行的序号。 */
+  runNo: number
+  /** 执行类型。 */
+  runType: TaskRunType
+  /** 执行状态。 */
+  status: TaskRunStatus
+  /** 当前阶段；还没进入第一个阶段时是 null。 */
+  stage: StageProgress | null
+  /** 是否已经到终态。 */
+  terminal: boolean
+  /** 目标语种；只有翻译那次有这个字段。 */
+  targetLanguage?: string | null
 }

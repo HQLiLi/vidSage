@@ -51,16 +51,16 @@ import UploadPage from '../../views/upload/index.vue'
 
 | 目录 | 放什么 |
 |---|---|
-| `src/api/` | 与后端通信的非 SSE HTTP 请求：`request.ts` 唯一 axios 实例 + 一域一文件（`tasks.ts` / `media.ts`）。**不建 barrel**，导入写具体文件；SSE 走 `composables/` 不进这里（规则见 [api.md](./api.md)） |
-| `src/types/` | **全局共享类型**：只收跨模块使用的类型（后端契约镜像 + 跨模块视图模型），按域一文件（`task.ts` / `media.ts` / `transcript.ts`）。**准入门槛 = 跨模块共享**；单模块私有类型就地放（SFC 内联、推断类型跟随源模块），需要成文件时建模块内 `types/`，不上移。规则见 [type-safety.md](./type-safety.md) |
-| `src/enums/` | 契约枚举的**运行时值**（有比较消费才建）：`as const` 对象、键镜像后端枚举常量（如 `task.ts` 的 `TASK_STATUS`）；只承载值不承载类型，类型联合在 `types/` 经 `import type` + `typeof` 派生，比较处用命名常量不写裸字面量 |
-| `src/lib/` | 框架无关的单例模块。当前只有 `gsap.ts`（GSAP 全项目唯一注册入口）；"一个库全项目共用一份配置"的模块放这里，每个库一个文件 |
-| `src/utils/` | 纯函数工具（现有 `format.ts` 时长/体积格式化、`transcript.ts` 字幕稿产物选择与 Cue 构建）：只做数据加工，**不发请求**（HTTP 只进 `api/`）、**不持状态**（有状态逻辑进 `composables/`） |
-| `src/views/` | 路由页面。**每页一个子包**（kebab-case，与路由 path 同名）：子包内 `index.vue` 是页面主文件，仅本页使用的组件放 `index.vue` 旁的 `components/`（PascalCase）。**复合组件同样下沉一级**：组件拥有仅被自己使用的子组件时，提升为同名文件夹（PascalCase/`index.vue` + `components/`），子组件进其 `components/`，引用写全路径 `…/MediaPane/index.vue`（例：`workspace/components/MediaPane/`） |
+| `src/api/` | 与后端通信的非 SSE HTTP 请求：`request.ts` 唯一 axios 实例 + 一域一文件（`tasks.ts` / `artifacts.ts` / `languages.ts`）。**不建 barrel**，导入写具体文件；SSE 走 `composables/` 不进这里（规则见 [api.md](./api.md)） |
+| `src/types/` | **全局共享类型**：只收跨模块使用的类型（后端契约镜像 + 跨模块视图模型），按域一文件（`task.ts` / `subtitle.ts` / `media.ts`）。**准入门槛 = 跨模块共享**；单模块私有类型就地放（SFC 内联、推断类型跟随源模块），需要成文件时建模块内 `types/`，不上移。规则见 [type-safety.md](./type-safety.md) |
+| `src/enums/` | 契约枚举的**运行时值**（有比较消费才建）：`as const` 对象、键镜像后端枚举常量（`task.ts` 的 `TASK_RUN_TYPE` / `TASK_RUN_STATUS`，`subtitle.ts` 的 `ARTIFACT_TYPE`）；只承载值不承载类型，类型联合在 `types/` 经 `import type` + `typeof` 派生，比较处用命名常量不写裸字面量 |
+| `src/lib/` | 框架无关的单例模块。当前只有 `gsap.ts`（GSAP 全项目唯一注册入口）与 `day.ts`（dayjs 唯一入口）；"一个库全项目共用一份配置"的模块放这里，每个库一个文件 |
+| `src/utils/` | 纯函数工具（现有 `format.ts` 时长/体积格式化、`transcript.ts` 字幕行构建、`artifacts.ts` 产物挑选、`language.ts` 语种码归一、`progress.ts` 进度换算）：只做数据加工，**不发请求**（HTTP 只进 `api/`）、**不持状态**（有状态逻辑进 `composables/`） |
+| `src/views/` | 路由页面。**每页一个子包**（kebab-case，与路由 path 同名）：子包内 `index.vue` 是页面主文件，仅本页使用的组件放 `index.vue` 旁的 `components/`（PascalCase）。**复合组件同样下沉一级**：组件拥有仅被自己使用的子组件时，提升为同名文件夹（PascalCase/`index.vue` + `components/`），子组件进其 `components/`，引用写全路径。当前各页组件都是扁平文件，暂无复合组件 |
 | `src/components/` | 跨页面复用的公共组件。扁平放 PascalCase 文件，数量多了再按域分子目录；只被一个页面使用的组件留在该页面子包内，不上移。复合组件（拥有仅自用子组件）的提升规则与 views 相同：同名文件夹 `index.vue` + `components/` |
 | `src/layouts/` | 跨路由布局组件，命名 PascalCase + `Layout` 后缀（如 `DefaultLayout.vue`）。**目录属基础结构（.gitkeep 占位），布局文件等第二个真实布局出现时再建**；页面私有的排布留在页面子包，不上升为 layout |
 | `src/routes/` | vue-router。`index.ts` 聚合路由表并创建导出 router 实例；单文件，超过约 5 条路由再按域拆分 |
-| `src/stores/` | Pinia store，一域一文件，**扁平结构**（当前为空）。不建 `modules/` 子包、不建 `index.ts` barrel，导入一律写具体文件 `@/stores/xxx` |
+| `src/stores/` | Pinia store，一域一文件，**扁平结构**（当前有 `workspace.ts`、`workspaceSubtitles.ts`、`workspaceKeywords.ts`）。不建 `modules/` 子包、不建 `index.ts` barrel，导入一律写具体文件 `@/stores/xxx` |
 | `src/composables/` | 可复用的组合式逻辑，`use` 前缀、文件名与导出函数同名（规则见 [component-guidelines.md](./component-guidelines.md)）。基础结构目录，文件按需再建 |
 
 > `src/components/`、`src/layouts/` 与 `src/composables/` 属于**基础项目结构**，空目录以 `.gitkeep` 占位进版本库，内容文件按需再建。

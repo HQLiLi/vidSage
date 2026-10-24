@@ -1,7 +1,9 @@
 # 状态管理
 
 > 用 **Pinia**，且用 **Setup Store** 写法（在 `defineStore` 里写 Composition API）。
-> store 目录：`src/stores/`，**扁平结构**——不建 `modules/` 子包、不建 `index.ts` barrel（Vuex 时代遗产），一律从具体文件导入：`import { useTaskStore } from '@/stores/task'`。当前目录为空（脚手架 counter 演示已删除）。
+> store 目录：`src/stores/`，**扁平结构**——不建 `modules/` 子包、不建 `index.ts` barrel（Vuex 时代遗产），一律从具体文件导入：`import { useWorkspaceStore } from '@/stores/workspace'`。
+> 工作区页按数据域拆了三个 store：`workspace.ts`（任务快照、产物、语种与页面状态）、
+> `workspaceSubtitles.ts`（字幕、上下文与译文）、`workspaceKeywords.ts`（关键词清单与增删）。
 
 ---
 
@@ -23,7 +25,7 @@ app.mount('#app')
 
 ## 写 store：Setup Store 风格
 
-统一用这种写法（示例沿用 Pinia 官方 counter 形态）：
+统一用这种写法（下面用 Pinia 官方的 counter 形态示意；真实例子见 `src/stores/workspace.ts`）：
 
 ```ts
 import { ref, computed } from 'vue'

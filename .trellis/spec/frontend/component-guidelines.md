@@ -11,9 +11,9 @@
 
 ```vue
 <script setup lang="ts">
-import { useTaskStore } from '@/stores/task'
+import { useWorkspaceStore } from '@/stores/workspace'
 
-const task = useTaskStore()
+const workspace = useWorkspaceStore()
 </script>
 ```
 
@@ -35,19 +35,19 @@ store 在 `<script setup>` 顶层调用并赋给一个变量，模板里直接�
 
 ```vue
 <script setup lang="ts">
-import { useTaskStore } from '@/stores/task'
+import { useWorkspaceStore } from '@/stores/workspace'
 
-const task = useTaskStore()
+const workspace = useWorkspaceStore()
 </script>
 
 <template>
-  <p>状态：{{ task.status }}</p>
-  <button type="button" @click="task.start()">开始</button>
+  <p>任务：{{ workspace.taskNo }}</p>
+  <button type="button" @click="workspace.refresh()">刷新</button>
 </template>
 ```
 
 - **`useXxxStore()` 在 setup 顶层调用**，不要放进函数体或条件分支
-- 模板中调用 action 时**带括号**（`task.start()`）
+- 模板中调用 action 时**带括号**（`workspace.refresh()`）
 - 解构 store 需用 `storeToRefs`，见 [state-management.md](./state-management.md)
 
 ## 模板中的样式类
@@ -82,7 +82,7 @@ HTML 中 `<button>` 默认 `type="submit"`，放进表单会意外提交。**每
 
 ## composables（可复用逻辑）
 
-`src/composables/` 已建立（.gitkeep 占位，尚无文件）。当同一段有状态逻辑被第二个组件复用时，抽到该目录：
+`src/composables/` 已建立（当前是 .gitkeep 占位，尚无文件）。当同一段有状态逻辑被第二个组件复用时，抽到该目录：
 
 - 文件名与导出函数同名，用 **`use` 前缀**：`src/composables/useVideoTask.ts` → `export function useVideoTask()`
 - 只放**有状态逻辑**（ref/reactive/watch/生命周期），纯函数放普通 `utils`
