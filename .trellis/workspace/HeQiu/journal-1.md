@@ -1625,3 +1625,42 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 60: 工作区页改版任务树收尾：原型窄屏修复与三层归档
+<!-- trellis-session: v=2 fp=99be791d2da3e0bd -->
+
+**Date**: 2026-10-24
+**Task**: 工作区页改版任务树收尾：原型窄屏修复与三层归档
+**Branch**: `dev`
+
+### Summary
+
+核实父任务 10-21-workspace-page-revamp 的跨子 AC 后收尾：原型 A 补测窄屏时发现主题块与字幕区重叠（左列缺 shrink-0），修复并复验 800×900 / 1280×800；勾掉 A 的 S7 与 AC1–AC12、记录所有者验收。B 作为容器任务补写收尾章节（AC5 编辑延期、AC8 第 6 条媒体属后端缺口、AC12 规范订正延期）。父任务 prd 把 AC1–AC8 写实、Q4/Q5 标为已裁定。三个任务目录原先均未入库，先 git add 再归档；archive 自动提交仍报 pathspec（与既有记录一致），改为逐笔手动 git commit。前端 type-check / oxlint / eslint 复跑全绿，旧契约 grep 无命中。
+
+### Main Changes
+
+- 原型窄屏修复：WorkspaceView 左列补 shrink-0，消除 800px 下主题块与字幕区重叠
+- A / B / 父任务三层归档，归档前把 AC 口径与延期项写回 prd / handoff
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fbaacf5` | chore(task): archive 10-21-workspace-prototype |
+| `b45fcd7` | chore(task): archive 10-21-workspace-fe-rewrite |
+| `7d974b2` | chore(task): archive 10-21-workspace-page-revamp |
+
+### Testing
+
+- [OK] prototype 800×900 与 1280×800 浏览器实测：三块+字幕区可达、无重叠、1280 下左右 768/512
+- [OK] frontend: vue-tsc --build exit 0；oxlint / eslint 无告警；旧契约关键字 grep 无命中
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- known-bugs §6 四项遗留：媒体端点、失败态重新提交接线、spec 旧契约、接口实测留档
+- A 的窄屏修复只落在 prototype（不进 git），frontend 用的是左列内部滚动，无需同步
