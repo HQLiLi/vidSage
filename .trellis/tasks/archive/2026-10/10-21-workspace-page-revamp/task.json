@@ -1,0 +1,29 @@
+{
+  "id": "workspace-page-revamp",
+  "name": "workspace-page-revamp",
+  "title": "工作区页布局改版",
+  "description": "把 /workspace/:taskNo 工作区页的页面布局整体换掉（首页 / 保持不变）。后端字幕模型重构已完成、前端契约已同步，本次只动页面结构与布局，不改数据流与接口。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "HeQiu",
+  "assignee": "HeQiu",
+  "createdAt": "2026-10-21",
+  "completedAt": "2026-10-24",
+  "branch": null,
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-21-workspace-prototype",
+    "10-21-workspace-fe-rewrite"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
