@@ -1601,3 +1601,27 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 59: 工作区运行态：run-scoped SSE、重生成与翻译
+<!-- trellis-session: v=2 fp=24c32f26ea884b21 -->
+
+**Date**: 2026-10-24
+**Task**: 工作区运行态：run-scoped SSE、重生成与翻译
+**Branch**: `dev`
+
+### Summary
+
+完成 10-22-workspace-run-page（B2）：在 B1 重建的页面上补齐运行态——新建 useRunEvents 包住 EventSource（一条 run 一条流、关掉浏览器自动重连、1s/2s/4s 自管重试三次、代际与 taskNo/runNo 三重校验、卸载关流）；store 增补 runProgress/activeRunNo/streamError/translationInvalidated 与 startRun/retryStream/regenerate/translate/swapLanguages，收口统一走 finishRun（终态事件与断线快照两条路径共用）；新增 TranslationBar，字幕区支持译文行、时间轴不一致提示、译文失效提示、错误条与首次生成骨架；顶栏加进度胶囊与手动重试。解析逻辑按评审意见抽到 utils/progress.ts（parseRunProgress + hasRunProgressRegressed），StageProgressState 收进 enums 的 STAGE_PROGRESS_STATE。Playwright 真跑验证：翻译（en/ja/zh-Hant）走真 SSE 并双语显示、重生成换新 runNo 且旧译文失效提示、空关键词抓包确认发 []、断线三次重试用尽后手动重试可收口、终态 run 的 204 按快照判定、MAIN 上传 0→43→70→100 带骨架、RECLEAN 归一到 0-100。实跑中发现并修复真缺陷：收口时快照先落 SUCCEEDED、字幕后到，phase 判成 error 闪出加载失败卡（必须刷新才恢复）；按 design §4.2 改为快照最后赋值，并让收口刷新失败时只降级为错误条（有内容时）。评审后又把关键词「重新生成」在运行中的禁用态从仅降透明度改成明确灰态。已知未完成：步骤 9 的 URL「重新提交」未接线、AC12 规范订正按所有者指示本次不做（仅 journal）、步骤 11 的 8 条 curl 未逐条留档、媒体播放属 Q4 后端缺口未做。type-check / lint / build 全绿；已 --no-ff 合并 dev、推送、删除 feature/workspace-run-page、归档任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61053a6` | feat(frontend): 工作区运行态接入 run-scoped SSE、重生成与翻译 |
+| `8b58a0f` | chore(task): 10-22-workspace-run-page 任务工件与证据 |
+| `a08c478` | Merge branch 'feature/workspace-run-page' into dev |
+
+### Status
+
+[OK] **Completed**
