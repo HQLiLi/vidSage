@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios'
 import type { AxiosRequestConfig } from 'axios'
 
-import type { TaskConflictResponse, TaskView } from '@/types/task'
+import type { TaskRunRef } from '@/types/task'
 
 /**
  * 全项目唯一的 axios 请求入口（非 SSE HTTP 都走它）：
@@ -12,7 +12,7 @@ import type { TaskConflictResponse, TaskView } from '@/types/task'
  *   生产由部署层反代（零 CORS）。
  * - 成功响应在拦截器里统一解包 `response.data`：调用点直接拿业务数据，**禁止再手写
  *   `.data`**——解包后门面返回的已是业务数据 T，手写 `.data` 只会得到 undefined。
- * - 失败响应统一经拦截器归一化为 ApiError（status / message / existingTask），
+ * - 失败响应统一经拦截器归一化为 ApiError（status / message / runRef），
  *   调用点 catch 后按字段分支，不再自行拆 axios 错误对象。
  * - SSE（EventSource）与 `<a download>` 产物链接不走 axios、吃不到 baseURL，
  *   仍写全路径 `/api/...`——这是刻意保留的双拼法而非遗漏（约定见 api.md）。
@@ -26,7 +26,7 @@ const instance = axios.create({
 /**
  * 响应拦截器：成功路径统一解包 data（返回类型由下方类型化门面声明为已解包的 T）；
  * 失败路径把未知错误归一化为 ApiError 后再 reject，调用点按 status / message /
- * existingTask 分支。全局 toast、埋点或 401 跳转在本文件 instance 上追加，不改各调用方。
+ * runRef 分支。全局 toast、埋点或 401 跳转在本文件 instance 上追加，不改各调用方。
  */
 instance.interceptors.response.use(
   (response) => response.data,
@@ -34,8 +34,8 @@ instance.interceptors.response.use(
 )
 
 /**
- * 类型化门面：对外暴露的请求入口。调用点 `request.get<TaskView>(...)` 直接拿到
- * `Promise<TaskView>`，且不可能再写出「单泛型 + 运行时 `.data` 为 undefined」的错误
+ * 类型化门面：对外暴露的请求入口。调用点 `request.get<TaskResponse>(...)` 直接拿到
+ * `Promise<TaskResponse>`，且不可能再写出「单泛型 + 运行时 `.data` 为 undefined」的错误
  * 用法。需要 put / delete 等其余方法时按同款签名在此追加。
  *
  * 末尾的 `as Promise<T>` 是全仓唯一的受控断言：axios ^1.19 的方法返回值是条件类型
@@ -48,27 +48,39 @@ export const request = {
     instance.get<T, T>(url, config) as Promise<T>,
   post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> =>
     instance.post<T, T>(url, data, config) as Promise<T>,
+  /**
+   * 请求一个已经带好前缀的绝对地址（产物清单给的下载链接就是这种，形如
+   * /api/tasks/{taskNo}/artifacts/CLEANED/segments.json）。
+   *
+   * 做法是逐请求把 baseURL 置空，而不是把 /api 前缀从 url 里剥掉：仍是同一个实例，
+   * 也不猜 baseURL 的字面前缀——env 里的前缀一旦改了，剥前缀就会悄悄拼错。
+   */
+  getAbsolute: <T>(url: string, config?: AxiosRequestConfig): Promise<T> =>
+    instance.get<T, T>(url, { ...config, baseURL: '' }) as Promise<T>,
 }
 
 /**
  * 后端错误的统一形状（由响应拦截器归一化产出，调用点 catch 后只读这三个字段）。
- * message 恒为面向用户的中文文案：后端 error 字段、网络级文案或兜底文案三选一。
+ * message 恒为面向用户的中文文案。
  */
 export class ApiError extends Error {
   /** HTTP 状态码；无响应的网络级错误（超时/断网）为 null。 */
   readonly status: number | null
-  /** 409 冲突时的既有任务视图（TaskConflictResponse）；其余恒为 null。 */
-  readonly existingTask: TaskView | null
+  /**
+   * 409 冲突时指向的那次执行（后端 409 与 202 同形，只回 {taskNo, runNo}，没有错误文案）。
+   * 其余情况恒为 null。
+   */
+  readonly runRef: TaskRunRef | null
 
   /**
    * 三个字段全量显式传入（缺省即 null），保证实例一构造出来就是终态，
    * 不存在半构造的中间态可供调用点误读。
    */
-  constructor(message: string, status: number | null = null, existingTask: TaskView | null = null) {
+  constructor(message: string, status: number | null = null, runRef: TaskRunRef | null = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
-    this.existingTask = existingTask
+    this.runRef = runRef
   }
 }
 
@@ -78,19 +90,18 @@ function isErrorBody(data: unknown): data is { error: string } {
   return 'error' in data && typeof data.error === 'string'
 }
 
-/** 判定未知响应体是否为 409 冲突体 TaskConflictResponse（error + 含 taskNo 的既有任务视图）。 */
-function isTaskConflictResponse(data: unknown): data is TaskConflictResponse {
+/**
+ * 判定未知响应体是否是 409 冲突体：后端冲突时回 {taskNo, runNo}，
+ * 没有 error 字段，所以只能按这两个字段的形状认。
+ */
+function isRunRefBody(data: unknown): data is TaskRunRef {
   if (typeof data !== 'object' || data === null) return false
-  if (!('error' in data) || typeof data.error !== 'string') return false
-  if (
-    !('existingTask' in data) ||
-    typeof data.existingTask !== 'object' ||
-    data.existingTask === null
-  ) {
-    return false
-  }
-  return 'taskNo' in data.existingTask
+  if (!('taskNo' in data) || typeof data.taskNo !== 'string') return false
+  return 'runNo' in data && typeof data.runNo === 'number'
 }
+
+/** 409 冲突的固定文案：后端冲突体里没有错误说明，这里补一句人话。 */
+const CONFLICT_MESSAGE = '该任务已有一次执行正在进行'
 
 /**
  * 把未知错误归一化为 ApiError：axios 错误读响应体/状态码，超时与断网给对应文案，
@@ -102,10 +113,10 @@ function normalizeApiError(error: unknown): ApiError {
   if (error instanceof AxiosError) {
     const status = error.response?.status ?? null
     const data: unknown = error.response?.data
-    // 有响应体：读状态码与后端 error 文案；409 且形如 TaskConflictResponse 时附带既有任务
+    // 有响应体：读状态码与后端 error 文案；409 且形如 {taskNo, runNo} 时带上那个引用
     if (status !== null) {
-      if (status === 409 && isTaskConflictResponse(data)) {
-        return new ApiError(data.error, status, data.existingTask)
+      if (status === 409 && isRunRefBody(data)) {
+        return new ApiError(CONFLICT_MESSAGE, status, { taskNo: data.taskNo, runNo: data.runNo })
       }
       return new ApiError(isErrorBody(data) ? data.error : `请求失败（HTTP ${status}）`, status)
     }

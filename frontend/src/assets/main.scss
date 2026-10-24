@@ -1,1 +1,33 @@
 /* 全局 SCSS 样式（Tailwind 已由 tailwind.css 独立引入） */
+
+/*
+ * 悬浮滚动条：默认完全透明，只在指针悬停或键盘焦点进入滚动区域时显示细滑块。
+ * 轨道始终透明；WebKit 与 Firefox 各自走对应回退，不改变滚动容器本身的行为。
+ */
+.overlay-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: transparent;
+  }
+
+  &:hover,
+  &:focus-within {
+    scrollbar-color: color-mix(in srgb, var(--color-faint) 65%, transparent) transparent;
+
+    &::-webkit-scrollbar-thumb {
+      background-color: color-mix(in srgb, var(--color-faint) 65%, transparent);
+    }
+  }
+}
