@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/api.md", "reason": "检查契约层是否按规范重写：唯一实例保留、域文件不建 barrel、产物走 getAbsolute、ApiError 不再带 existingTask"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查类型放置与导出口径、noUncheckedIndexedAccess 判空、无 any / 无多余 as 强转"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "检查目录结构与新增文件落位符合约定，被替换的旧文件已删除且不留双份"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查新建组件的 SFC 结构、button type、v-for key、aria 标注符合规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "检查 stores/workspace.ts 是 setup store 风格、消费方用 storeToRefs"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查双 lint 与 type-check 全绿、注释政策到位、验证命令齐全"}
+{"file": ".trellis/tasks/10-21-workspace-fe-rewrite/handoff.md", "reason": "逐条对照七个契约坑是否在设计与实现里都被处理到"}
+{"file": ".trellis/tasks/10-21-workspace-prototype/design.md", "reason": "对照原型检查布局与交互是否还原，偏离项是否都在 implement.md 写了理由"}
