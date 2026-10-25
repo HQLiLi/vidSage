@@ -1,6 +1,6 @@
 /**
  * 共享工具：跨层复用的技术性助手——{@code fs}（产物文件定位与 JSON 读写）、
- * {@code media}（媒体身份 → 管线输入的变体选择）、{@code progress}（进度区间线性映射）、
+ * {@code media}（媒体身份 → 管线输入的变体选择、按文件头猜 MIME）、{@code progress}（进度区间线性映射）、
  * {@code subtitle}（SRT 渲染、段落切分、术语命中、文本相似度）、{@code text}（文本尾部处理）。
  *
  * <p>准入判据：纯静态方法工具，无状态、不发起网络传输或外部进程；可引用 spring-core 级工具类
