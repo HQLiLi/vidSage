@@ -12,12 +12,12 @@
   当前 3.5.17；boot3 starter 在 Boot 4 下自动装配对不上）+ `com.mysql:mysql-connector-j`（runtime，BOM 管版本）。
 - **凭据只进 `application-local.yml`**（git 不跟踪）；`application.yml` 不得出现真实凭据。
 - 建表走 `schema.sql` + `spring.sql.init.mode: always`：`CREATE TABLE IF NOT EXISTS` 幂等，不引 Flyway
-  （六张表也用不上迁移框架；多环境差异出现时再议）。
+  （七张表也用不上迁移框架；多环境差异出现时再议）。
 
 ## 建表契约
 
-> **现状是六张表**（`workspace` / `subtitle_task` / `task_run` / `subtitle_artifact` /
-> `intermediate_file` / `subtitle_keyword`）；旧的 `task` 表已随字幕模型重构退场。
+> **现状是七张表**（`workspace` / `subtitle_task` / `task_run` / `subtitle_artifact` /
+> `intermediate_file` / `subtitle_keyword` / `subtitle_correction`）；旧的 `task` 表已随字幕模型重构退场。
 > 全文见 `backend/src/main/resources/schema.sql`；
 > **逐列的权威定义与「为什么这么定」在 `.trellis/tasks/10-15-subtitle-task-model-refactor/design.md` §1–§2**
 > （归档后会挪到 `.trellis/tasks/archive/` 下同名目录）。本文件不复述 DDL，只写规则。
@@ -30,6 +30,7 @@
 | `subtitle_artifact` | 产物版本：一行 = 一个逻辑版本，文件用固定四列表达 | `CREATING` / `READY` / `SUPERSEDED` / `FAILED` / `DELETED` |
 | `intermediate_file` | 中间产物缓存（媒体源 / 元信息 / 音频），跨 run 存活 | `READY` / `SUPERSEDED` / `DELETED` |
 | `subtitle_keyword` | 用户手填的关键词，按 `task_id` 一个任务一份（覆盖写）；唯一约束 `uk_subtitle_keyword_task_id` | 无 |
+| `subtitle_correction` | 用户对某一段字幕原文 / 某个语种译文的手动改动（覆盖层，磁盘产物不改）；按 `(task_id, segment_id, field_type, lang)` 唯一，重复保存即覆盖，唯一约束 `uk_subtitle_correction_task_id_segment_id_field_type_lang` | 无 |
 
 ### 七条规则
 

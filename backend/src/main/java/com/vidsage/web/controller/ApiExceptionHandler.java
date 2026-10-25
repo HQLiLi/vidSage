@@ -2,6 +2,7 @@ package com.vidsage.web.controller;
 
 import com.vidsage.application.media.exception.MediaSourceNotFoundException;
 import com.vidsage.application.subtitle.exception.ArtifactNotFoundException;
+import com.vidsage.application.subtitle.exception.CorrectionSegmentOutdatedException;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
 import com.vidsage.domain.exception.UnsupportedLanguageException;
@@ -85,6 +86,22 @@ public class ApiExceptionHandler {
     }
 
     /**
+     * 要改的字幕条目已经不在当前字幕里（字幕重新生成过）→ 409，记 WARN。
+     *
+     * <p>也走通用 {@code {error: message}} 形状：用户要读到「刷新后重试」这句话，
+     * 所以不能复用只带 {@code {taskNo, runNo}} 的 {@link TaskConflictException} 映射。
+     *
+     * @param e 纠错的字幕条目已失效异常
+     * @return 错误体 {@code { "error": message }}
+     */
+    @ExceptionHandler(CorrectionSegmentOutdatedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> handleCorrectionSegmentOutdated(CorrectionSegmentOutdatedException e) {
+        log.warn("纠错的字幕条目已失效: {}", errorMessage(e));
+        return Map.of("error", errorMessage(e));
+    }
+
+    /**
      * 任务在、但没有可播放的媒体源（还没跑出媒体文件，或文件已被挪走）→ 404，记 WARN。
      *
      * <p>与「任务不存在」分开：错误文案说的是媒体源，不冒充任务号不命中。
@@ -100,10 +117,13 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * 冲突（错在调用方）→ 409，记 WARN。只有一种语义：该任务已有一次执行在跑。
+     * 该任务已经有一次执行在跑（错在调用方）→ 409，记 WARN。
      *
      * <p>响应体与 202 同形状 {@code {taskNo, runNo}}，<b>不含文案</b>：调用方靠状态码判冲突，
      * 拿这对去订阅那条正在跑的 run 的进度。
+     *
+     * <p><b>409 不止这一种</b>：字幕条目过期（{@link CorrectionSegmentOutdatedException}）也是 409，
+     * 但它要带一句「刷新后重试」给人看，所以走上面的通用 {@code {error}} 形状，不在本方法里。
      *
      * @param e 冲突异常
      * @return 冲突体 {@code {taskNo, runNo}}

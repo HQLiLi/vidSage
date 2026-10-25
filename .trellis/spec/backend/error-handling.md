@@ -80,7 +80,7 @@ private static void validateTaskNo(String taskNo) { ... }                       
 
 **残留风险（有意接受）**：边界卫语句若漏写，客户端错误会被构造器报成 **500**。取舍理由是**失败方向反转**——旧形态是服务端 bug **伪装成 400 / WARN 静默存活**，新形态把服务端疏漏**喊成 500 / ERROR，可见**。宁可大声暴露服务端缺陷，也不要藏进「用户错误」里。
 
-**自定义异常类按「需要跨层区分错误码时再引入」这一条件引入，现已有五个**（清单见文末「尚未建立的约定」）。
+**自定义异常类按「需要跨层区分错误码时再引入」这一条件引入，现已有六个**（清单见文末「尚未建立的约定」）。
 上表与本判据仍以**语义**表达、不绑类型：默认用 IAE（错在调用方）/ ISE（错在环境）承载含义，
 只有必须让前端区分状态码时才补一个具名类型 + 一条 `ApiExceptionHandler` 映射——**不为「以后可能用到」提前造**。
 
@@ -174,7 +174,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 | 吞异常（`catch` 后不处理或只 `printStackTrace`） | 现有代码没有一处吞异常，保持这个纪律 |
 | 返回 `null` 表示失败 | 调用方必须判空，容易漏 |
 | 抛异常但 message 无上下文 | 线上无法定位 |
-| 为"以后可能用到"预先造自定义异常体系 | 只在「需要跨层区分错误码」时加类型（现共五个，见文末清单），其余仍走 IAE / ISE 语义 |
+| 为"以后可能用到"预先造自定义异常体系 | 只在「需要跨层区分错误码」时加类型（现共六个，见文末清单），其余仍走 IAE / ISE 语义 |
 | 在 Provider 里做重试/降级逻辑 | 重试属于管线编排层，不属于 Provider（现阶段也无此实现） |
 
 ## REST 层错误映射（已建立，且已提取为全局）
@@ -182,15 +182,19 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
 模式由首个 Controller 确立（该类已于 2026-10-02 收编旧同步端点时移除）；第二个 Controller（`web/controller/MediaController.java`）落地时局部处理开始重复，**按原规范预告的条件提取成了全局处理器** `web/controller/ApiExceptionHandler`（`@RestControllerAdvice`）。后续 Controller **不必再写局部 `@ExceptionHandler`**。
 
 - **入参校验用卫语句**：Controller 层判空白/越界即抛 `IllegalArgumentException`（保证切片测试中 Service 被 mock 也能覆盖 400 路径）
-- **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）；`TaskNotFoundException` / `ArtifactNotFoundException` → **404**；`TaskConflictException` → **409**（载荷 `{taskNo, runNo}`，见 `TaskRunRefResponse`）
-- **409 只有一种语义：该任务已有一次执行在跑。** 抢互斥就是插一条 `RUNNING` 的 run —— `uk_task_run_task_id_active_flag` 只约束 `RUNNING` 行（其余行的生成列为 NULL、不参与唯一比较），撞键即 409，**不排队等锁**。提交 / 重新生成 / 翻译三条触发路径共用这一句 INSERT（`TaskRunSupervisor.start`），响应体 `{taskNo, runNo}` **与 202 同形状、不含文案**：调用方靠状态码判冲突，拿这对去订阅那条正在跑的 run。**「产物尚未就绪」是 400，不是 409。**
+- **全局映射**：`ApiExceptionHandler` 把 `IllegalArgumentException` → **400**、`IllegalStateException` → **500**，响应体统一为 `{ "error": message }`（错误信息含「缺什么、怎么补」）；`TaskNotFoundException` / `ArtifactNotFoundException` → **404**；`TaskConflictException` → **409**（载荷 `{taskNo, runNo}`，见 `TaskRunRefResponse`）；`CorrectionSegmentOutdatedException` → **409**（通用 `{error}` 形状，见下条）
+- **409 有两种语义，响应体形状不同。**
+  - **① 该任务已有一次执行在跑**：抢互斥就是插一条 `RUNNING` 的 run —— `uk_task_run_task_id_active_flag` 只约束 `RUNNING` 行（其余行的生成列为 NULL、不参与唯一比较），撞键即 409，**不排队等锁**。提交 / 重新生成 / 翻译三条触发路径共用这一句 INSERT（`TaskRunSupervisor.start`），响应体 `{taskNo, runNo}` **与 202 同形状、不含文案**：调用方靠状态码判冲突，拿这对去订阅那条正在跑的 run。
+  - **② 要改的字幕条目已过期**（`CorrectionSegmentOutdatedException`，2026-10-25）：字幕重新生成过、切分变了，这个 segment id 已不在当前 CLEANED 里。走通用 `{error}` 形状，因为用户得读到「刷新后重试」这句话，而不是一对任务号。
+
+  **「产物尚未就绪」是 400，不是 409。**
 - **日志级别按「谁之过」分**：调用方输入问题（400 / 404 / 409）记 **WARN**——不该触发 ERROR 告警；服务端或环境故障（500）记 **ERROR** 并**带上异常对象**（保留调用栈供定位）
 - **响应体形状只有一处定义**：`{ "error": message }` 由 `ApiExceptionHandler` 统一产出，接口文档也不逐接口重复声明
 
 ## 尚未建立的约定
 
 - **错误码体系**：未定义。
-- **自定义异常类**：已按「需要跨层区分错误码时再引入」的既定条件落地**五个**，每个要么自带 `ApiExceptionHandler` 映射、要么继承现成映射的类型：
+- **自定义异常类**：已按「需要跨层区分错误码时再引入」的既定条件落地**六个**，每个要么自带 `ApiExceptionHandler` 映射、要么继承现成映射的类型：
 
   | 异常 | 包 | 映射 | 场景 |
   |---|---|---|---|
@@ -199,6 +203,7 @@ if (file == null || file.transcripts() == null || file.transcripts().isEmpty()) 
   | `TaskConflictException` | `application/task/exception/` | 409（载荷 `{taskNo, runNo}`） | 该任务已有一次执行在跑（撞互斥唯一键） |
   | `UnsupportedLanguageException` | `domain/exception/` | 400（专用映射） | 目标语种不在支持列表（`SupportedLanguage.parse` 认不出） |
   | `MediaSourceNotFoundException` | `application/media/exception/` | 404（专用映射） | 任务在、但没有可播放的媒体源：没有 `READY` 的 `SOURCE_MEDIA` 行，或登记的文件已不在 / 为空（媒体源播放端点） |
+  | `CorrectionSegmentOutdatedException` | `application/subtitle/exception/` | 409（专用映射，通用 `{error}` 形状） | 要改的字幕条目已不在当前 CLEANED 字幕里（字幕重新生成过、切分变了）；**不复用** `TaskConflictException`，因为用户要读到「刷新后重试」这句文案 |
 
   **不再为别的场景提前造**：其余错误仍按 IAE / ISE 的语义表达。
 - **日志**：已落地，规范见 [logging-guidelines.md](./logging-guidelines.md)。

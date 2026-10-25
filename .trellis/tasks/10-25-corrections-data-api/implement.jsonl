@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端技术栈、构建命令与接口文档约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新类落位、端口归属、命名与持久化三层约定"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "建表契约、索引命名、MyBatis-Plus 用法与事务口径"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "校验、异常类型与错误信息写法"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "契约设计、注释与测试写法"}
+{"file": ".trellis/spec/backend/state-machine-guidelines.md", "reason": "运行中互斥与 409 的现有判据"}
