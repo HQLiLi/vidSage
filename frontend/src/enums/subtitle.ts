@@ -11,3 +11,12 @@ export const ARTIFACT_TYPE = {
   CLEANED: 'CLEANED',
   TRANSLATED: 'TRANSLATED',
 } as const
+
+/**
+ * 一条纠错改的是哪一项。取值是后端 `SubtitleCorrectionField` 的对外词形，
+ * 保存请求、列表过滤、编辑态三处都拿它比较。
+ */
+export const CORRECTION_FIELD = {
+  TEXT: 'text',
+  TRANSLATION: 'translation',
+} as const

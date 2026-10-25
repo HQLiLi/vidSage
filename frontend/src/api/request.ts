@@ -48,6 +48,11 @@ export const request = {
     instance.get<T, T>(url, config) as Promise<T>,
   post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> =>
     instance.post<T, T>(url, data, config) as Promise<T>,
+  put: <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> =>
+    instance.put<T, T>(url, data, config) as Promise<T>,
+  /** 删除类请求：204 无响应体时 T 传 void，拿到的是 undefined。 */
+  delete: <T>(url: string, config?: AxiosRequestConfig): Promise<T> =>
+    instance.delete<T, T>(url, config) as Promise<T>,
   /**
    * 请求一个已经带好前缀的绝对地址（产物清单给的下载链接就是这种，形如
    * /api/tasks/{taskNo}/artifacts/CLEANED/segments.json）。

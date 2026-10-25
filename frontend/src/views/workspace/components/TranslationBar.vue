@@ -19,8 +19,10 @@ const props = withDefaults(
     translating?: boolean
     /** 翻译进度，0–100。 */
     progress?: number
+    /** 当前语种有译文过期（原文改过），这次点下去会强制重跑。 */
+    retranslate?: boolean
   }>(),
-  { busy: false, translating: false, progress: 0 },
+  { busy: false, translating: false, progress: 0, retranslate: false },
 )
 
 const emit = defineEmits<{
@@ -43,6 +45,16 @@ const sameLanguage = computed(() => props.sourceLanguage === props.targetLanguag
 const targetLanguageLabel = computed(
   () => props.languages.find((language) => language.code === props.targetLanguage)?.label ?? props.targetLanguage,
 )
+
+/** 按钮与 title 的文案：有译文过期时说「重新翻译」，别让人以为这次会跳过。 */
+const translateLabel = computed(() => (props.retranslate ? '重新翻译' : '翻译'))
+
+/** 按钮禁用时的说明。 */
+const translateTitle = computed(() => {
+  if (sameLanguage.value) return '源语言与目标语言相同，请选择其他目标语种'
+  if (props.busy) return '正在处理，完成后再翻译'
+  return props.retranslate ? '原文有改动，将重新翻译当前语种' : '开始翻译'
+})
 
 /** 能不能点翻译：没有 run 在跑、两个语种都选了、且不相同。 */
 const canTranslate = computed(
@@ -127,16 +139,10 @@ function updateTargetLanguage(event: Event): void {
         type="button"
         class="col-span-3 h-9 shrink-0 rounded-lg bg-primary px-3 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-border disabled:text-faint sm:col-span-1"
         :disabled="!canTranslate"
-        :title="
-          sameLanguage
-            ? '源语言与目标语言相同，请选择其他目标语种'
-            : busy
-              ? '正在处理，完成后再翻译'
-              : '开始翻译'
-        "
+        :title="translateTitle"
         @click="emit('translate')"
       >
-        {{ translating ? `${progressPercent}%` : '翻译' }}
+        {{ translating ? `${progressPercent}%` : translateLabel }}
       </button>
     </div>
 

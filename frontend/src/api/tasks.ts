@@ -6,7 +6,14 @@ import type {
   TaskRunRef,
   TranslationRequest,
 } from '@/types/task'
-import type { SubtitleKeywordsResponse } from '@/types/subtitle'
+import type {
+  ClearStaleCorrectionsResponse,
+  CorrectionField,
+  SaveCorrectionRequest,
+  SubtitleCorrection,
+  SubtitleCorrectionListResponse,
+  SubtitleKeywordsResponse,
+} from '@/types/subtitle'
 
 /**
  * 提交链接任务（202 Accepted）：后端异步跑主管线，立即回本次执行的引用。
@@ -87,4 +94,54 @@ export async function regenerateSubtitles(
   data: RegenerateSubtitlesRequest,
 ): Promise<TaskRunRef> {
   return request.post<TaskRunRef>(`/tasks/${taskNo}/subtitles/regenerate`, data)
+}
+
+/**
+ * 读该任务的全部字幕纠错，每条带 matched（当前字幕里还有没有这一条）。
+ * 纠错是附属信息：拉不到不影响字幕本身，只影响失效提示与恢复入口。
+ */
+export async function listCorrections(taskNo: string): Promise<SubtitleCorrectionListResponse> {
+  return request.get<SubtitleCorrectionListResponse>(`/tasks/${taskNo}/corrections`)
+}
+
+/**
+ * 保存一条纠错：同一段同一项重复保存就是覆盖，不追加历史。
+ * 任务在跑（409）、条目已过期（409）、该语种没有可用译文（400）都由后端给中文文案。
+ */
+export async function saveCorrection(
+  taskNo: string,
+  segmentId: string,
+  data: SaveCorrectionRequest,
+): Promise<SubtitleCorrection> {
+  return request.put<SubtitleCorrection>(
+    `/tasks/${taskNo}/corrections/${encodeURIComponent(segmentId)}`,
+    data,
+  )
+}
+
+/**
+ * 删除一条纠错：删除即恢复机器文本，条目不存在的也是 204。
+ * field=text 时 lang 传空串即可，后端不读它。
+ */
+export async function deleteCorrection(
+  taskNo: string,
+  segmentId: string,
+  field: CorrectionField,
+  lang: string,
+): Promise<void> {
+  return request.delete<void>(`/tasks/${taskNo}/corrections/${encodeURIComponent(segmentId)}`, {
+    params: { field, lang },
+  })
+}
+
+/**
+ * 清理失效纠错：只删当前字幕里已经找不到的条目，返回实际删掉的条数。
+ * 必须显式带 staleOnly=true——后端不支持「清空全部」。
+ */
+export async function clearStaleCorrections(
+  taskNo: string,
+): Promise<ClearStaleCorrectionsResponse> {
+  return request.delete<ClearStaleCorrectionsResponse>(`/tasks/${taskNo}/corrections`, {
+    params: { staleOnly: true },
+  })
 }
