@@ -77,6 +77,12 @@ export interface TranslationRequest {
   sourceLanguage: string
   /** 目标语种。 */
   targetLanguage: string
+  /**
+   * 是否强制重跑该语种。
+   * 该语种已有完好译文时后端默认跳过；true 才真重翻并换版。
+   * 不带这个字段等同于 false。
+   */
+  force?: boolean
 }
 
 /**
