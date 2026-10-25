@@ -1,8 +1,10 @@
 package com.vidsage.application.task;
 
+import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.message.TaskRunProgress;
 import com.vidsage.application.task.port.TaskProgressBroadcaster;
 import com.vidsage.domain.shared.model.StageProgress;
+import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.task.SubtitleTask;
 import com.vidsage.domain.task.TaskRun;
 import com.vidsage.domain.task.model.TaskRunType;
@@ -60,6 +62,24 @@ public class TaskRunSupervisor {
     }
 
     /**
+     * 撞互斥键时的那条冲突：插 run 只告诉「有人正在跑」，既有 run 的序号要再取一次
+     * （取不到说明状态自相矛盾，属服务端缺陷）。
+     *
+     * <p>取既有 run 用<b>锁定读</b>：并发分支的调用方可能正跑在一个快照已经陈旧的事务里，
+     * 普通 SELECT 看不到对方刚提交的 RUNNING 行，会误判成「撞键却无既有 run」而 500。
+     *
+     * @param task 撞上互斥的任务
+     * @return 带既有 run 序号的那条冲突（HTTP 边界映射 409）
+     */
+    public TaskConflictException buildTaskConflictException(SubtitleTask task) {
+        int runNo = taskRunRepository.findLatestForShareByTaskId(task.getId())
+                .map(TaskRun::getRunNo)
+                .orElseThrow(() -> new IllegalStateException(
+                        "互斥撞键但取不到既有 run：taskId=" + task.getId()));
+        return new TaskConflictException(task.getTaskNo().value(), runNo);
+    }
+
+    /**
      * 推进当前阶段：先改 run、再落库、最后广播。
      *
      * @param ref   这条 run 的对外引用（taskNo 与 runNo 的来源）
@@ -70,6 +90,36 @@ public class TaskRunSupervisor {
         run.updateStage(stage.stage());
         taskRunRepository.update(run);
         broadcaster.publish(ref, TaskRunProgress.of(ref, run, stage));
+    }
+
+    /**
+     * 这条 run 的阶段回调：先打一条 debug，再交给 {@link #advance} 推进。
+     *
+     * <p>各条流程都从这里取，免得各自抄一份「记日志 + 推进」的胶水。
+     *
+     * @param ref 这条 run 的对外引用
+     * @param run 正在跑的 run
+     * @return 给各阶段用的进度监听
+     */
+    public ProgressListener listener(RunRef ref, TaskRun run) {
+        return stageProgress -> {
+            log.debug("任务阶段事件: taskNo={}, runNo={}, stage={}, progress={}, state={}, message={}",
+                    ref.taskNo().value(), ref.runNo(), stageProgress.stage(), stageProgress.progress(),
+                    stageProgress.state(), stageProgress.message());
+            advance(ref, run, stageProgress);
+        };
+    }
+
+    /**
+     * 按异常收口一条 run：失败原因取异常消息，取不到时退回异常类名
+     * （消息为 {@code null} 时不传播字面量 "null"）。
+     *
+     * @param ref   这条 run 的对外引用
+     * @param run   待收口的 run
+     * @param cause 让本次执行失败的那个异常
+     */
+    public void fail(RunRef ref, TaskRun run, Throwable cause) {
+        finish(ref, run, cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage());
     }
 
     /**

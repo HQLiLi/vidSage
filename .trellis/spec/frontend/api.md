@@ -26,7 +26,7 @@
 ## 同源相对路径（baseURL 统一前缀）
 
 - 实例 baseURL 统一前缀来自 `VITE_API_BASE_URL`（默认回退 `/api`，env 见 `frontend/.env`），request 衍生调用点写相对路径（如 `/tasks`），不带 `/api` 前缀（2026-10-03 定调引入）。
-- SSE 与 `<a download>` **不走 axios、吃不到 baseURL**，仍写全路径 `/api/...`——刻意保留的双拼法，非遗漏。
+- SSE、`<a download>` 与 `<video src>`（`mediaSourceUrl()`）**不走 axios、吃不到 baseURL**，仍写全路径 `/api/...`——刻意保留的双拼法，非遗漏。
 - dev 由 `vite.config.ts` 的 `server.proxy` 把 `/api` 转发到 `localhost:8080`；生产由部署层反代。
 
 ## 域文件组织（与 stores 同风格）
@@ -35,7 +35,7 @@
 |---|---|
 | `request.ts` | 唯一 axios 实例（内部持有，不导出）+ 类型化门面（get/post 返回已解包 data）+ 响应拦截器（成功解包 / 错误归一化 `ApiError`；全局 toast / 埋点 / 401 的扩展点，在本文件 instance 上追加） |
 | `tasks.ts` | 任务域端点（提交 / 上传 / 查询 / 触发翻译 / 产物 JSON 拉取） |
-| `media.ts` | 媒体域端点（工具诊断） |
+| `media.ts` | 媒体域端点（工具诊断、媒体源字节地址） |
 
 - **一域一文件**，新域加新文件；**不建 `index.ts` barrel**。
 - 导入写具体文件：`import { getTask } from '@/api/tasks'`。

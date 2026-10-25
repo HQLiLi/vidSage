@@ -1,10 +1,10 @@
-import { request } from './request'
-import type { ExternalToolReport } from '@/types/media'
-
 /**
- * 诊断外部工具（yt-dlp / ffmpeg / ffprobe）：返回可用性、解析到的绝对路径与版本，
- * 顺序固定；yt-dlp 版本过期时 hint 为新鲜度告警。只读、秒级。
+ * 媒体源字节地址：给 `<video src>` 用的全路径。
+ *
+ * 它不走 axios（`<video>` 只认 src），吃不到 request.ts 里实例的 baseURL，
+ * 所以按 api.md 的双拼法直接写 `/api/...` 全路径——这是刻意的，不是漏了前缀。
+ * taskNo 编码一下：任务号里有 `/` 之类的字符时不会把请求带到别的路径上。
  */
-export async function getTools(): Promise<ExternalToolReport[]> {
-  return request.get<ExternalToolReport[]>('/media/tools')
+export function mediaSourceUrl(taskNo: string): string {
+  return `/api/media/source/${encodeURIComponent(taskNo)}`
 }

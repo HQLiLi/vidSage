@@ -9,17 +9,16 @@ import HeroWave from '@/views/upload/components/HeroWave.vue'
 import { submitUpload, submitUrl } from '@/api/tasks'
 import { ApiError } from '@/api/request'
 import { gsap } from '@/lib/gsap'
-import type { TaskView } from '@/types/task'
+import type { TaskRunRef } from '@/types/task'
 
 /** 上传方式：本地文件 / 链接 */
 type InputMode = 'local' | 'link'
 
 /**
- * 提交失败的页内展示模型：409 冲突携带既有任务号（渲染「查看该任务」跳转），
- * 其余失败只带面向用户的文案。
+ * 提交失败的页内展示模型：只带面向用户的文案。
+ * 409 冲突不在这里展示——响应体里带着那个任务号，直接跳过去继续跟进。
  */
-type SubmitError =
-  { kind: 'conflict'; message: string; existingTaskNo: string } | { kind: 'message'; text: string }
+type SubmitError = { kind: 'message'; text: string }
 
 /** 上传方式候选（segmented control 的渲染顺序） */
 const INPUT_MODES: InputMode[] = ['local', 'link']
@@ -49,28 +48,22 @@ const showUploadProgress = computed(() => submitting.value && inputMode.value ==
 const urlCanSubmit = computed(() => url.value.trim() !== '')
 
 /**
- * 把提交失败的未知错误归一为页内展示模型：拦截器已归一为 ApiError——409 冲突
- * 读 existingTask（渲染「查看该任务」跳既有任务工作区），其余读统一文案；
- * 非 ApiError（不经 request 的本地异常）退回通用文案。
- */
-function toSubmitError(error: unknown): SubmitError {
-  const err = error instanceof ApiError ? error : null
-  if (err?.existingTask) {
-    return { kind: 'conflict', message: err.message, existingTaskNo: err.existingTask.taskNo }
-  }
-  return { kind: 'message', text: err?.message ?? '提交失败，请稍后重试' }
-}
-
-/**
- * 提交请求的公共收口：成功 202 后跳既有 taskNo 的工作区，失败记入页内错误模型
+ * 提交请求的公共收口：成功 202 后跳响应里那个 taskNo 的工作区；失败时
+ * 409 直接跳既有任务（响应体里带着那个任务号），其余错误记入页内错误模型
  * 内联展示。防重入由调用方先挡（进入前已置 submitting）。
  */
-async function runSubmit(submit: Promise<TaskView>): Promise<void> {
+async function runSubmit(submit: Promise<TaskRunRef>): Promise<void> {
   try {
-    const view = await submit
-    await router.push({ name: 'workspace', params: { taskNo: view.taskNo } })
+    const ref = await submit
+    await router.push({ name: 'workspace', params: { taskNo: ref.taskNo } })
   } catch (error) {
-    submitError.value = toSubmitError(error)
+    const err = error instanceof ApiError ? error : null
+    // 409：这个任务已有一次执行在跑，去那个任务的工作区继续跟进
+    if (err?.runRef) {
+      await router.push({ name: 'workspace', params: { taskNo: err.runRef.taskNo } })
+      return
+    }
+    submitError.value = { kind: 'message', text: err?.message ?? '提交失败，请稍后重试' }
   } finally {
     submitting.value = false
   }
@@ -86,7 +79,7 @@ async function submitLocalFile(file: File): Promise<void> {
   uploadPercent.value = 0
   submitError.value = null
   await runSubmit(
-    submitUpload(file, (percent) => {
+    submitUpload(file, undefined, (percent) => {
       uploadPercent.value = percent
     }),
   )
@@ -142,13 +135,6 @@ function switchMode(mode: InputMode): void {
   if (submitting.value) return
   inputMode.value = mode
   submitError.value = null
-}
-
-/** 跳转到 409 冲突既有任务的工作区。 */
-function goToConflictTask(): void {
-  const error = submitError.value
-  if (!error || error.kind !== 'conflict') return
-  void router.push({ name: 'workspace', params: { taskNo: error.existingTaskNo } })
 }
 
 /** 入场动效 context：onUnmounted 时 revert，防 tween 泄漏与幽灵动画（animation.md 硬规则）。 */
@@ -287,23 +273,13 @@ onUnmounted(() => ctx?.revert())
             </div>
           </div>
 
-          <!-- 提交错误（409 冲突 / 其余失败）：内联展示，不弹窗 -->
+          <!-- 提交错误：内联展示，不弹窗（409 冲突已直接跳到既有任务，不走这里） -->
           <div
             v-if="submitError"
             class="mt-4 rounded-lg border border-border bg-surface px-4 py-3 text-sm"
             role="alert"
           >
-            <template v-if="submitError.kind === 'conflict'">
-              <p class="text-foreground">{{ submitError.message }}</p>
-              <button
-                type="button"
-                class="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:border-foreground"
-                @click="goToConflictTask()"
-              >
-                查看该任务
-              </button>
-            </template>
-            <p v-else class="text-foreground">{{ submitError.text }}</p>
+            <p class="text-foreground">{{ submitError.text }}</p>
           </div>
         </template>
       </div>

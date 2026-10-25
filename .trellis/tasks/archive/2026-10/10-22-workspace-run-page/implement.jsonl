@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/api.md", "reason": "SSE 走 composable 不进 api/、唯一实例与 baseURL 约定、错误码语义；本任务要按当前后端契约重写这份规范（仍是旧 /events 与旧 TaskView）"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "composable 命名与 onScopeDispose 约定；SSE 订阅的关闭时机要挂在页面卸载而不是只靠 store 作用域"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Pinia setup store 风格与消费方式；run 相关 state 与 action 按此增补到 stores/workspace.ts"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "契约枚举用 as const 运行时值、联合由 typeof 派生；runType / status 的比较处不能用裸字面量"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "新增 composables/useRunEvents.ts 与 views/workspace/components/TranslationBar.vue 的落位；目录职责描述失实处要一并订正"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "验证命令（type-check / lint / build）与注释政策；AC11 的验收命令出自这里"}
+{"file": ".trellis/tasks/10-21-workspace-fe-rewrite/handoff.md", "reason": "契约事实与运行时的坑（204、终态 run、换 runNo、短任务先结束、译文失效、spec 过期）是本任务的设计输入"}
+{"file": ".trellis/tasks/10-21-workspace-prototype/design.md", "reason": "原型的进度与译失效交互形态，本任务要还原到真实后端上"}

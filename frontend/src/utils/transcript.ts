@@ -1,57 +1,69 @@
 /**
- * 字幕稿产物的选择与渲染模型构建纯函数。
+ * 字幕行的构建（纯函数，不发请求、不持状态）。
  *
- * 职责分野：这里只做产物筛选与段落合并的**数据加工**——不发请求（产物 JSON 的
- * HTTP 拉取在 @/api/tasks 的 fetchArtifactJson，与后端通信只进 api 层）、不持状态
- * （响应式状态与副作用在 @/stores/task）。
+ * 原文来自清洗后字幕的 segments，译文来自译文产物的 segments；两边按下标配对——
+ * 后端保证逐条时间戳一致，对不上就整份译文都不挂，免得用户看到错位的双语。
  */
-import type { TaskArtifact, TranscriptionSegment, TranslatedSegment } from '@/types/task'
-import type { TranscriptCue } from '@/types/transcript'
+import type { SubtitleCue, SubtitleTrack, TranslatedTrack } from '@/types/subtitle'
 
-/**
- * 原文产物选择：artifacts 中的 segments-*.json（排除译文 -translate-），
- * 有 -clean. 后缀者优先（清洗后是展示口径），无清洗产物时取第一个。
- */
-export function pickSourceArtifact(artifacts: TaskArtifact[]): TaskArtifact | null {
-  const candidates = artifacts.filter(
-    (a) => /^segments-.+\.json$/.test(a.name) && !a.name.includes('-translate-'),
-  )
-  return candidates.find((a) => a.name.includes('-clean.')) ?? candidates[0] ?? null
-}
-
-/** 译文产物选择：segments-*-translate-*.json；尚无翻译产物时为 null。 */
-export function pickTranslatedArtifact(artifacts: TaskArtifact[]): TaskArtifact | null {
-  return artifacts.find((a) => /^segments-.+-translate-.+\.json$/.test(a.name)) ?? null
+/** buildCues 的结果：字幕行，外加一个「原文与译文对不上」的标记。 */
+export interface BuildCuesResult {
+  /** 字幕行。 */
+  cues: SubtitleCue[]
+  /** 原文与译文对不上（长度不等或时间戳不一致）。 */
+  mismatch: boolean
 }
 
 /**
- * 按下标合并原文与译文段落 → 字幕稿渲染模型。防御性取 min(两边长度)：后端契约保证
- * 逐条下标配对、时间戳一致，长度不等属后端缺陷，不扩散到渲染层。
- * 译文为 null / 与原文相同（无需翻译）的条目视为未翻译，保持单行。
- * id 用「下标-时间戳」复合值：下标是后端配对键，时间戳保证可读唯一。
+ * 把原文与译文合成页面要显示的字幕行。
+ *
+ * - 没有原文时返回空数组，空字幕是合法产出（纯音乐），不算错。
+ * - 译文与原文长度不等、或任一配对的时间戳不一致时，mismatch 为 true 且整份译文不挂。
+ * - 译文为空或与原文相同（源目标语种相同时后端会这样），视为没翻译。
  */
 export function buildCues(
-  source: TranscriptionSegment[],
-  translated: TranslatedSegment[] | null,
-): TranscriptCue[] {
-  const count = translated ? Math.min(source.length, translated.length) : source.length
-  const cues: TranscriptCue[] = []
-  for (let i = 0; i < count; i++) {
-    const segment = source[i]
-    if (!segment) continue
-    // translatedText 为 null / 空串 / 与原文相同 → 视为未翻译，不排双语第二行
-    const trans = translated?.[i]
-    const translatedText =
-      trans?.translatedText && trans.translatedText !== trans.sourceText
-        ? trans.translatedText
-        : undefined
-    cues.push({
-      id: `${i}-${segment.beginTimeMs}-${segment.endTimeMs}`,
-      startMs: segment.beginTimeMs,
-      endMs: segment.endTimeMs,
-      text: segment.text,
-      translatedText,
-    })
+  cleaned: SubtitleTrack | null,
+  translated: TranslatedTrack | null,
+): BuildCuesResult {
+  const segments = cleaned?.segments ?? []
+  if (segments.length === 0) return { cues: [], mismatch: false }
+
+  const translatedSegments = translated?.segments ?? null
+  if (translatedSegments === null) {
+    return { cues: segments.map((segment, index) => toCue(segment, index, null)), mismatch: false }
   }
-  return cues
+
+  const aligned =
+    translatedSegments.length === segments.length &&
+    segments.every((segment, index) => {
+      const other = translatedSegments[index]
+      return other !== undefined && other.beginTimeMs === segment.beginTimeMs && other.endTimeMs === segment.endTimeMs
+    })
+
+  if (!aligned) {
+    return { cues: segments.map((segment, index) => toCue(segment, index, null)), mismatch: true }
+  }
+
+  const cues = segments.map((segment, index) => {
+    const other = translatedSegments[index]
+    const text = other?.translatedText
+    const translatedText = text && text !== other?.sourceText ? text : null
+    return toCue(segment, index, translatedText)
+  })
+  return { cues, mismatch: false }
+}
+
+/** 一条原文段落转成字幕行。index 是后端段落下标，也是译文配对的键。 */
+function toCue(
+  segment: { beginTimeMs: number; endTimeMs: number; text: string },
+  index: number,
+  translatedText: string | null,
+): SubtitleCue {
+  return {
+    index,
+    startMs: segment.beginTimeMs,
+    endMs: segment.endTimeMs,
+    text: segment.text,
+    translatedText,
+  }
 }

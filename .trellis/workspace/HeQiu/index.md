@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 55
-- **Last Active**: 2026-10-20
+- **Total Sessions**: 61
+- **Last Active**: 2026-10-25
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1532 | Active |
+| `journal-1.md` | ~1689 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,12 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 61 | 2026-10-25 | 媒体源播放端点与工作区媒体区接入 | `891a84e`, `9d5efff` | `dev` |
+| 60 | 2026-10-24 | 工作区页改版任务树收尾：原型窄屏修复与三层归档 | `fbaacf5`, `b45fcd7`, `7d974b2` | `dev` |
+| 59 | 2026-10-24 | 工作区运行态：run-scoped SSE、重生成与翻译 | `61053a6`, `8b58a0f`, `a08c478` | `dev` |
+| 58 | 2026-10-24 | 工作区就绪页重写：契约层、分域 store 与 AC 复审 | `05021cd`, `922073d`, `d34c6f1`, `4cf2d5d` | `dev` |
+| 57 | 2026-10-21 | SubtitlePipeline 三条 run 流程拆分 | `6cdc02e`, `0ddd756`, `c24eb11` | `dev` |
+| 56 | 2026-10-21 | 10-15 父任务集成评审：AC1–AC9 全 PASS + 已知问题登记与 master 同步 | `e414675` | `dev` |
 | 55 | 2026-10-20 | S8 收尾（网络超时 + 状态机规范 + 旧件清查） | `664b8bb`, `1a28fdf`, `97bb051`, `349bd30`, `56b52fd`, `658be66` | `dev` |
 | 54 | 2026-10-20 | S7 只读对账端点（哈希检测 + 过渡态白名单收口） | `998526a`, `464078a`, `4ec0fd3`, `e23c7d8` | `dev` |
 | 53 | 2026-10-20 | 字幕模型重构 6.5：复用不落版（跳过即不换版） | `cad61f6`, `a461efb`, `305f3f7`, `012accc`, `8e0608c`, `547de3c` | `dev` |

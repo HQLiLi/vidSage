@@ -1530,3 +1530,160 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 56: 10-15 父任务集成评审：AC1–AC9 全 PASS + 已知问题登记与 master 同步
+<!-- trellis-session: v=2 fp=a7627f36b02ea69c -->
+
+**Date**: 2026-10-21
+**Task**: 10-15 父任务集成评审：AC1–AC9 全 PASS + 已知问题登记与 master 同步
+**Branch**: `dev`
+
+### Summary
+
+字幕模型重构父任务收尾：跑完跨子集成评审，AC1–AC9 全部 PASS。开工第一步按项目所有者裁定做全量重置（mysqldump 全库 + TRUNCATE 六张表 + works 改名备份 40MB），之后每条 AC 都在真零起点上跑，9 份证据落在任务目录 evidence/2026-10-20/。实测要点：三种 run（MAIN / RECLEAN / TRANSLATE）走真 yt-dlp + 真 DashScope ASR + 真 DeepSeek，各跑一次全 SUCCEEDED 且失败原因互不串台；3 并发打全新 URL 得 1×202 + 2×409、收敛到同一条 subtitle_task，顺带把 design §7.1 那条「duplicate-key 留 S 锁、本项目尚未实测」测掉 —— C63 的「撞键 → 锁定读重查」在 workspace 与 subtitle_task 两层都真实走到、无死锁；崩溃恢复用「轮询到 CREATING 占位出现再 taskkill」不赌时间窗，启动收口三条 UPDATE 各命中 1 行；内容变更后主管线四阶段全真跑（不是 SKIPPED），与同日志里复用命中走 SKIPPED 形成对照；对账四类各报得出、只报不修、只读幂等，正常态零误报。发现 F1（真缺陷，非本次引入）：翻译侧 LLM 全不可用时静默交付未翻译内容 —— LlmSubtitleTranslator 的「批次重试用尽整批回退原文」兜底是有意的（宁可没译不可乱译），但 untranslatedCount 的唯一消费者是一行 log.debug、TranslatedSubtitle 上那个字段全仓没有任何读取方，于是 run 记 SUCCEEDED、artifact 记 READY、产物与源文逐字节相同；新模型把产物权威搬进 DB 后这行与正常译文完全同形，比旧模型更难发现。待裁口径（降级算成功还是失败）后另开小修。另记 F2（观察项）：revision 会被 FAILED 占位行消耗，照 design §1.4 实现、非缺陷。顺带订正父 prd 的「并发提交同一个新 URL 不报 409」——该措辞与 design §7.1 第 4 步冲突，S2 已于 10-18 订正并实测，本轮独立复现。工作区收口：新建 known-bugs.md（F1/F2 + 从 5 份过期交接文档逐条回填的待办盘点），删掉 handoff-*.md 五份；盘点中发现 10-11-sse-connection-pairing 的前提已失效（它整篇讲的 TaskSseConnectionManager / TaskSubscriptionRegistry 已被 S2 退场，新实现里根本没有订阅注册表）。dev 推送 17 笔、master 同步合并（08a8605）、父任务归档。基线 700 / 0 failures / 0 errors / 1 skipped 与开工前逐项相同 —— 本轮未改生产代码。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e414675` | chore(task): 10-15 集成评审轮收尾（AC1–AC9 全 PASS）+ 工作区已知问题登记 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 57: SubtitlePipeline 三条 run 流程拆分
+<!-- trellis-session: v=2 fp=2d367e54644a0ae9 -->
+
+**Date**: 2026-10-21
+**Task**: SubtitlePipeline 三条 run 流程拆分
+**Branch**: `dev`
+
+### Summary
+
+把 SubtitlePipeline（298 行）与 SubtitleTaskService（356 行）里被劈成两半、分居两个类的三条 run 流程，按 run 类型重组为三个用例服务（SubtitleMainService / SubtitleRecleanService / SubtitleTranslateService），各自收齐同步守卫段（404/400/409、抢互斥、落库）与异步执行段（闸门、阶段、落定、收口）。审查轮又把有明确归属的 helper 全部归位：conflictFor → TaskRunSupervisor.buildTaskConflictException、progressListener → TaskRunSupervisor.listener、reason → TaskRunSupervisor.fail、stackOf → shared/error/ThrowableUtils、workDir 删除（直调 WorkspaceDirectoryManager）、toMediaInput → shared/media/MediaInputUtils；清洗意图从 requireContextSummary 兼职文案的布尔代理改成显式 CleanMode 枚举（落 domain/subtitle/model/cleanup）。三个服务依赖 12/7/6（合计 25，拆分前 19），跨类重复只剩 requireIntactArtifact ×2。AC1–AC7 全过：三条真链路（真 yt-dlp + 真 DashScope ASR + 真 DeepSeek）各跑一次全 SUCCEEDED、复用格走 SKIPPED、HTTP 面由 TaskControllerTest 22 条 + 控制器 diff 兜住。测试 702 / 0 / 0 / 1（基线 700：−1 搬走 +1 搬入，+2 给两个新公开方法补覆盖）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6cdc02e` | refactor(subtitle): 三条 run 流程拆成三个用例服务 |
+| `0ddd756` | docs(spec): 订正拆分后失实的目录与 stereotype 表述 |
+| `c24eb11` | chore(task): 10-21-subtitle-run-flow-split 任务工件与证据 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 58: 工作区就绪页重写：契约层、分域 store 与 AC 复审
+<!-- trellis-session: v=2 fp=f285c8699144e6df -->
+
+**Date**: 2026-10-24
+**Task**: 工作区就绪页重写：契约层、分域 store 与 AC 复审
+**Branch**: `dev`
+
+### Summary
+
+完成 10-22-workspace-ready-page：前端契约层整体换到当前后端（types/enums/api/utils），工作区页重建为左三块 + 右字幕区，真实读取快照/产物/关键词/主题，首页提交跳真 taskNo、409 跳既有任务，旧 store/composable/媒体文件全部删除。Playwright 实跑 AC1–AC11 全过：6 条真实 GET、字幕 8/8 与 segments 一致、关键词上限与零写请求、搜索计数与空态、产物 5 链接且 SRT 下载 602 B、404/加载失败+重试/RUNNING 三态；build 并行跑时 Node 堆瞬时 OOM，单独 build-only 通过。复审后按裁定收口：store 按域拆为 workspace / workspaceSubtitles / workspaceKeywords；AC5 行内编辑因后端接口未就绪延期，删掉 localSegmentEdits 与编辑链路，只留禁用的铅笔占位；关键词草稿计数改为「已输入 N/50 字」。按用户纠正订正 type-safety.md：enums/ 是通用运行时枚举目录，判据是有比较消费而非后端契约，据此把 WORKSPACE_PHASE / WORKSPACE_LOAD_ERROR_KIND 落到 enums/workspace.ts。evidence 从 22 张 PNG/1.6MB 裁到 5 张关键图/380KB。已 --no-ff 合并 dev、删除 feature 分支、归档任务；同目录下 10-21/10-22 的兄弟任务目录仍未入库，本次未动。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `05021cd` | feat(frontend): 工作区就绪页按新契约重建 |
+| `922073d` | docs(spec): 订正工作区 store 拆分与通用枚举口径 |
+| `d34c6f1` | chore(task): 10-22-workspace-ready-page 任务工件与证据 |
+| `4cf2d5d` | Merge branch 'feature/workspace-ready-page' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 59: 工作区运行态：run-scoped SSE、重生成与翻译
+<!-- trellis-session: v=2 fp=24c32f26ea884b21 -->
+
+**Date**: 2026-10-24
+**Task**: 工作区运行态：run-scoped SSE、重生成与翻译
+**Branch**: `dev`
+
+### Summary
+
+完成 10-22-workspace-run-page（B2）：在 B1 重建的页面上补齐运行态——新建 useRunEvents 包住 EventSource（一条 run 一条流、关掉浏览器自动重连、1s/2s/4s 自管重试三次、代际与 taskNo/runNo 三重校验、卸载关流）；store 增补 runProgress/activeRunNo/streamError/translationInvalidated 与 startRun/retryStream/regenerate/translate/swapLanguages，收口统一走 finishRun（终态事件与断线快照两条路径共用）；新增 TranslationBar，字幕区支持译文行、时间轴不一致提示、译文失效提示、错误条与首次生成骨架；顶栏加进度胶囊与手动重试。解析逻辑按评审意见抽到 utils/progress.ts（parseRunProgress + hasRunProgressRegressed），StageProgressState 收进 enums 的 STAGE_PROGRESS_STATE。Playwright 真跑验证：翻译（en/ja/zh-Hant）走真 SSE 并双语显示、重生成换新 runNo 且旧译文失效提示、空关键词抓包确认发 []、断线三次重试用尽后手动重试可收口、终态 run 的 204 按快照判定、MAIN 上传 0→43→70→100 带骨架、RECLEAN 归一到 0-100。实跑中发现并修复真缺陷：收口时快照先落 SUCCEEDED、字幕后到，phase 判成 error 闪出加载失败卡（必须刷新才恢复）；按 design §4.2 改为快照最后赋值，并让收口刷新失败时只降级为错误条（有内容时）。评审后又把关键词「重新生成」在运行中的禁用态从仅降透明度改成明确灰态。已知未完成：步骤 9 的 URL「重新提交」未接线、AC12 规范订正按所有者指示本次不做（仅 journal）、步骤 11 的 8 条 curl 未逐条留档、媒体播放属 Q4 后端缺口未做。type-check / lint / build 全绿；已 --no-ff 合并 dev、推送、删除 feature/workspace-run-page、归档任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61053a6` | feat(frontend): 工作区运行态接入 run-scoped SSE、重生成与翻译 |
+| `8b58a0f` | chore(task): 10-22-workspace-run-page 任务工件与证据 |
+| `a08c478` | Merge branch 'feature/workspace-run-page' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 60: 工作区页改版任务树收尾：原型窄屏修复与三层归档
+<!-- trellis-session: v=2 fp=99be791d2da3e0bd -->
+
+**Date**: 2026-10-24
+**Task**: 工作区页改版任务树收尾：原型窄屏修复与三层归档
+**Branch**: `dev`
+
+### Summary
+
+核实父任务 10-21-workspace-page-revamp 的跨子 AC 后收尾：原型 A 补测窄屏时发现主题块与字幕区重叠（左列缺 shrink-0），修复并复验 800×900 / 1280×800；勾掉 A 的 S7 与 AC1–AC12、记录所有者验收。B 作为容器任务补写收尾章节（AC5 编辑延期、AC8 第 6 条媒体属后端缺口、AC12 规范订正延期）。父任务 prd 把 AC1–AC8 写实、Q4/Q5 标为已裁定。三个任务目录原先均未入库，先 git add 再归档；archive 自动提交仍报 pathspec（与既有记录一致），改为逐笔手动 git commit。前端 type-check / oxlint / eslint 复跑全绿，旧契约 grep 无命中。
+
+### Main Changes
+
+- 原型窄屏修复：WorkspaceView 左列补 shrink-0，消除 800px 下主题块与字幕区重叠
+- A / B / 父任务三层归档，归档前把 AC 口径与延期项写回 prd / handoff
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fbaacf5` | chore(task): archive 10-21-workspace-prototype |
+| `b45fcd7` | chore(task): archive 10-21-workspace-fe-rewrite |
+| `7d974b2` | chore(task): archive 10-21-workspace-page-revamp |
+
+### Testing
+
+- [OK] prototype 800×900 与 1280×800 浏览器实测：三块+字幕区可达、无重叠、1280 下左右 768/512
+- [OK] frontend: vue-tsc --build exit 0；oxlint / eslint 无告警；旧契约关键字 grep 无命中
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- known-bugs §6 四项遗留：媒体端点、失败态重新提交接线、spec 旧契约、接口实测留档
+- A 的窄屏修复只落在 prototype（不进 git），frontend 用的是左列内部滚动，无需同步
+
+
+## Session 61: 媒体源播放端点与工作区媒体区接入
+<!-- trellis-session: v=2 fp=f0407ee67dce5ea5 -->
+
+**Date**: 2026-10-25
+**Task**: 媒体源播放端点与工作区媒体区接入
+**Branch**: `dev`
+
+### Summary
+
+新增 GET/HEAD /api/media/source/{taskNo}：按 intermediate_file 的 READY SOURCE_MEDIA 定位媒体，支持单段 Range（200/206/416）、HEAD 忽略 Range、缺失 404；Content-Type 按文件头嗅探（上传路线一律落 source.mp4）。前端 MediaPane 接 <video>，占位按运行态区分「准备中/暂无可播放」，竖屏被 object-contain 收进 16:9 黑框。真实例 curl 矩阵 + Playwright 浏览器实测通过；后端 33 条新测试、全量 733 绿；前端 type-check/lint/build 绿。已合回 dev 并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `891a84e` | feat(media): 新增媒体源播放端点与工作区媒体区接入 |
+| `9d5efff` | chore(task): 10-24-media-source-endpoint 任务工件与证据 |
+
+### Status
+
+[OK] **Completed**

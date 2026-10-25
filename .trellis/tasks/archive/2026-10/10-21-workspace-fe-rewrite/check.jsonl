@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "确认两个子任务的产出没有偏离前端规范基线"}
+{"file": ".trellis/tasks/10-21-workspace-fe-rewrite/handoff.md", "reason": "跨子任务核对契约坑在 B1 与 B2 里各被处理到位，没有漏项"}
+{"file": ".trellis/tasks/10-21-workspace-prototype/design.md", "reason": "跨子任务核对原型形态的还原程度与偏离说明是否一致"}
+{"file": ".trellis/tasks/10-22-workspace-ready-page/prd.md", "reason": "核对 B1 的 AC1–AC11 是否都有对应验证方式"}
+{"file": ".trellis/tasks/10-22-workspace-run-page/prd.md", "reason": "核对 B2 的 AC1–AC12 是否都有对应验证方式"}

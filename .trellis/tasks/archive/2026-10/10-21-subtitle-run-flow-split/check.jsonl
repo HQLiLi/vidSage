@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "反向核验：三个新类都是 @Service（判据「有 web 调用面」）、包落 application/task/、且彼此无跨流程引用（AC1/AC2）；同时核验 spec 本身的订正没有引入新的失实表述"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "逐字符核对三类异常的抛出点与中文文案与开工前相同，落库 error_message 与 HTTP 状态码因此逐字等价；这是「纯结构搬迁」最容易被顺手改坏的地方"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "逐字符核对六条文案（三条中断 warn + 三条失败前缀）与开工前相同，级别未变、脱敏口径未变；核对失败日志仍只打异常类型与调用栈、不打 message"}
+{"file": ".trellis/spec/backend/state-machine-guidelines.md", "reason": "核对 run 的推进点与守卫未因搬迁而移位：supervisor.start 仍在原位置（MAIN 在事务内、RECLEAN/TRANSLATE 不在），finish 仍无条件收口"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核验测试只搬不丢：SubtitlePipelineTest 22 条 + SubtitleTaskServiceTest 13 条逐条对应，产出方法名对照表；核验新测试类的 mock 已按各自新依赖裁剪"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "反向核验「有意重复」没有变成「无意重复」：conflictFor ×3 / requireIntactArtifact ×2 / helper 五件套 ×3 与 design §2.3 的清单逐项一致，没有多出清单外的重复"}
+{"file": ".trellis/spec/guides/comment-guidelines.md", "reason": "核验三个新类的 Javadoc 是重写的、不是从旧类整段照抄；核验注释没有描述已经不存在的东西（如「三条执行体」这种旧结构说法）"}

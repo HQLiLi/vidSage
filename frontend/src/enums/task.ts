@@ -1,22 +1,36 @@
 /**
- * 任务域枚举常量（运行时值）：`as const` 对象，键与后端 Java 枚举常量同名（契约镜像）。
+ * 后端「一次执行」相关枚举的运行时值。
  *
- * 这里只承载**值**，不含类型——类型联合在 @/types/task 经 `import type` + `typeof` 派生
- * （types/ 保持纯类型、构建期整体擦除）。比较处用本文件的命名常量，不写裸字面量；
- * 无比较消费的枚举不在这里建对象。
+ * 为什么单独放 enums/：这些值在多处要比较（页面状态判定、进度换算、上传页跳转），
+ * 按 type-safety.md 的规矩——有比较消费的值放这里，类型联合由 types/ 用 typeof 派生，
+ * 比较处写命名常量而不写裸字面量。不用 TS 的 enum 语法，只用 as const 对象。
  */
 
-/** 任务主状态值：PENDING（排队中）/ RUNNING（执行中）/ SUCCEEDED（成功）/ FAILED（失败）——镜像后端 `TaskStatus` 枚举常量 */
-export const TASK_STATUS = {
-  PENDING: 'PENDING',
+/** 一次执行的类型：主管线 / 重新生成字幕 / 翻译。键名与后端 TaskRunType 一致。 */
+export const TASK_RUN_TYPE = {
+  MAIN: 'MAIN',
+  RECLEAN: 'RECLEAN',
+  TRANSLATE: 'TRANSLATE',
+} as const
+
+/**
+ * 一次执行的状态。后端只有这四种，没有 PENDING：
+ * 任务一创建就有一条 RUNNING 的 run，排队不是一种状态。
+ */
+export const TASK_RUN_STATUS = {
   RUNNING: 'RUNNING',
   SUCCEEDED: 'SUCCEEDED',
   FAILED: 'FAILED',
+  INTERRUPTED: 'INTERRUPTED',
 } as const
 
-/** 翻译子状态值：RUNNING（执行中）/ SUCCEEDED（成功）/ FAILED（失败）——镜像后端 `TranslationStatus` 枚举常量 */
-export const TRANSLATION_STATUS = {
+/**
+ * 阶段进度的状态。比执行状态多一个 SKIPPED（这一阶段跳过了）；
+ * 后端是 StageProgress.State，判断一条进度属于哪个阶段状态时用它。
+ */
+export const STAGE_PROGRESS_STATE = {
   RUNNING: 'RUNNING',
   SUCCEEDED: 'SUCCEEDED',
+  SKIPPED: 'SKIPPED',
   FAILED: 'FAILED',
 } as const

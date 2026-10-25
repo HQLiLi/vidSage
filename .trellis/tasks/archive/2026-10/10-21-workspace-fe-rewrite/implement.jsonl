@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范索引与命令基线；父任务不含实现，此清单指明两个子任务共同遵守的规范范围"}
+{"file": ".trellis/tasks/10-21-workspace-fe-rewrite/handoff.md", "reason": "契约事实与运行时的坑的留档，本父任务的 prd 与两个子任务的 design 都引用它"}
+{"file": ".trellis/tasks/10-21-workspace-prototype/design.md", "reason": "原型形态依据；两个子任务的还原目标都来自这里"}
+{"file": ".trellis/tasks/10-22-workspace-ready-page/prd.md", "reason": "子任务 B1 的需求与验收边界（契约层与已完成任务页面）"}
+{"file": ".trellis/tasks/10-22-workspace-run-page/prd.md", "reason": "子任务 B2 的需求与验收边界（运行态与收尾清理）"}

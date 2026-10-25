@@ -18,8 +18,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.vidsage.application.task.SubtitleMainService;
+import com.vidsage.application.task.SubtitleRecleanService;
 import com.vidsage.application.task.SubtitleTaskQueryService;
-import com.vidsage.application.task.SubtitleTaskService;
+import com.vidsage.application.task.SubtitleTranslateService;
 import com.vidsage.application.task.TaskRunRef;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
@@ -75,7 +77,13 @@ class TaskControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private SubtitleTaskService taskService;
+    private SubtitleMainService mainService;
+
+    @MockitoBean
+    private SubtitleRecleanService recleanService;
+
+    @MockitoBean
+    private SubtitleTranslateService translateService;
 
     @MockitoBean
     private SubtitleTaskQueryService queryService;
@@ -84,7 +92,7 @@ class TaskControllerTest {
 
     @Test
     void submitUrlReturnsAcceptedWithTaskRunRef() throws Exception {
-        when(taskService.submitUrl("https://example.com/watch/1", null)).thenReturn(new TaskRunRef(TASK_NO, 1));
+        when(mainService.submitUrl("https://example.com/watch/1", null)).thenReturn(new TaskRunRef(TASK_NO, 1));
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -106,13 +114,13 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.error").value("url 不能为空：请传公网媒体页面地址（如 B 站 / YouTube 链接），"
                         + "上传本地文件请走 POST /api/tasks/upload"));
 
-        verify(taskService, never()).submitUrl(anyString(), isNull());
+        verify(mainService, never()).submitUrl(anyString(), isNull());
     }
 
     @Test
     void submitUrlConflictReturns409WithSameShapeAsAccepted() throws Exception {
         // 409 与 202 同形状 {taskNo, runNo}，且不含文案——调用方靠状态码判冲突
-        when(taskService.submitUrl(anyString(), isNull())).thenThrow(new TaskConflictException(TASK_NO, 2));
+        when(mainService.submitUrl(anyString(), isNull())).thenThrow(new TaskConflictException(TASK_NO, 2));
 
         mockMvc.perform(post("/api/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -128,7 +136,7 @@ class TaskControllerTest {
 
     @Test
     void submitUploadReturnsAcceptedWithTaskRunRef() throws Exception {
-        when(taskService.submitUpload(any(), any(), isNull())).thenReturn(new TaskRunRef(TASK_NO, 1));
+        when(mainService.submitUpload(any(), any(), isNull())).thenReturn(new TaskRunRef(TASK_NO, 1));
         MockMultipartFile file = new MockMultipartFile("file", "视频.mp4", "video/mp4",
                 "fake-bytes".getBytes(StandardCharsets.UTF_8));
 
@@ -146,7 +154,7 @@ class TaskControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("上传文件不能为空：请选择本地视频 / 音频文件后再提交"));
 
-        verify(taskService, never()).submitUpload(any(), any(), isNull());
+        verify(mainService, never()).submitUpload(any(), any(), isNull());
     }
 
     // ---------- 查询 ----------
@@ -239,7 +247,7 @@ class TaskControllerTest {
 
     @Test
     void translateReturnsAcceptedWithTaskRunRef() throws Exception {
-        when(taskService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG)).thenReturn(new TaskRunRef(TASK_NO, 2));
+        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG)).thenReturn(new TaskRunRef(TASK_NO, 2));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -252,7 +260,7 @@ class TaskControllerTest {
 
     @Test
     void translateMapsMissingTaskToNotFound() throws Exception {
-        when(taskService.translate("ghost", SOURCE_LANG, TARGET_LANG)).thenThrow(new TaskNotFoundException("ghost"));
+        when(translateService.translate("ghost", SOURCE_LANG, TARGET_LANG)).thenThrow(new TaskNotFoundException("ghost"));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", "ghost")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -264,7 +272,7 @@ class TaskControllerTest {
     @Test
     void translateMapsNotReadyTaskToBadRequest() throws Exception {
         // 字幕尚未就绪：错在调用方触发太早 → IAE → 400（不是 409）
-        when(taskService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG)).thenThrow(new IllegalArgumentException(
+        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG)).thenThrow(new IllegalArgumentException(
                 "字幕尚未就绪：工作区里没有 清洗后的字幕（clean-subtitles.srt）；请先等主管线跑完再试"));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO)
@@ -276,7 +284,7 @@ class TaskControllerTest {
 
     @Test
     void translateConflictReturns409WithSameShape() throws Exception {
-        when(taskService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG))
+        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG))
                 .thenThrow(new TaskConflictException(TASK_NO, 2));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO)
@@ -295,14 +303,14 @@ class TaskControllerTest {
                         .content(TRANSLATE_BODY))
                 .andExpect(status().isBadRequest());
 
-        verify(taskService, never()).translate(anyString(), eq(SOURCE_LANG), eq(TARGET_LANG));
+        verify(translateService, never()).translate(anyString(), eq(SOURCE_LANG), eq(TARGET_LANG));
     }
 
     // ---------- 重新生成字幕（关键词） ----------
 
     @Test
     void regenerateReturnsAcceptedAndPassesKeywordsThrough() throws Exception {
-        when(taskService.regenerate(TASK_NO, List.of("影视飓风"))).thenReturn(new TaskRunRef(TASK_NO, 4));
+        when(recleanService.regenerate(TASK_NO, List.of("影视飓风"))).thenReturn(new TaskRunRef(TASK_NO, 4));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -312,12 +320,12 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.taskNo").value(TASK_NO))
                 .andExpect(jsonPath("$.runNo").value(4));
 
-        verify(taskService).regenerate(TASK_NO, List.of("影视飓风"));
+        verify(recleanService).regenerate(TASK_NO, List.of("影视飓风"));
     }
 
     @Test
     void regenerateMapsMissingTaskToNotFound() throws Exception {
-        when(taskService.regenerate("ghost", null)).thenThrow(new TaskNotFoundException("ghost"));
+        when(recleanService.regenerate("ghost", null)).thenThrow(new TaskNotFoundException("ghost"));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", "ghost")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -327,7 +335,7 @@ class TaskControllerTest {
 
     @Test
     void regenerateMapsNotReadyTaskToBadRequest() throws Exception {
-        when(taskService.regenerate(TASK_NO, null)).thenThrow(new IllegalArgumentException(
+        when(recleanService.regenerate(TASK_NO, null)).thenThrow(new IllegalArgumentException(
                 "字幕尚未就绪：工作区里没有 原始转写（original-segments.json）；请先等主管线跑完再试"));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/subtitles/regenerate", TASK_NO)
@@ -344,7 +352,7 @@ class TaskControllerTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest());
 
-        verify(taskService, never()).regenerate(anyString(), any());
+        verify(recleanService, never()).regenerate(anyString(), any());
     }
 
     // ---------- 关键词查询 ----------

@@ -1,0 +1,29 @@
+{
+  "id": "workspace-fe-rewrite",
+  "name": "workspace-fe-rewrite",
+  "title": "工作区页前端重写：按新原型接当前后端契约",
+  "description": "按子任务 A 验证通过的原型，在 frontend/ 里重写工作区页并接回当前后端契约：run-scoped SSE（/{taskNo}/runs/{runNo}/events）、TaskResponse.lastRun 嵌套形状、四个触发点统一返回 {taskNo, runNo}、产物清单与下载走 /{taskNo}/artifacts、关键词走 /{taskNo}/keywords、主题走 CLEANED 的 context.json。同时修好首页提交响应处理（不再当 TaskView 用）。旧组件与旧类型在重写后收掉，不做补丁式对齐。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "HeQiu",
+  "assignee": "HeQiu",
+  "createdAt": "2026-10-21",
+  "completedAt": "2026-10-24",
+  "branch": null,
+  "base_branch": "dev",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-22-workspace-ready-page",
+    "10-22-workspace-run-page"
+  ],
+  "parent": "10-21-workspace-page-revamp",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

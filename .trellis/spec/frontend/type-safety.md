@@ -78,19 +78,19 @@ import router from '@/routes'
 | 场景 | 位置 |
 |---|---|
 | 单组件内部使用 | 组件 `<script setup>` 内直接定义 |
-| **跨模块共享**（契约镜像、跨模块视图模型） | 全局 `src/types/`，按域一文件（`task.ts` / `media.ts` / `transcript.ts`）；**准入门槛 = 跨模块使用**，不是「类型就该集中」 |
+| **跨模块共享**（契约镜像、跨模块视图模型） | 全局 `src/types/`，按域一文件（`task.ts` / `subtitle.ts` / `media.ts`）；**准入门槛 = 跨模块使用**，不是「类型就该集中」 |
 | 仅当前文件 / 模块内共享 | 仅当前文件：就地内联，**不加 `export`**；模块内共享：模块内 `types.ts`（成规模扩为 `types/`，如 `api/types/`），加 `export`；推断/派生类型（`ReturnType` 等）跟随源模块 |
 | store 相关 | 与 store 同文件；有跨模块消费才导出 |
-| 后端接口契约 | `src/types/task.ts` / `src/types/media.ts`（字段名与 Java record / 枚举对齐；镜像规则见 [api.md](./api.md)） |
-| 契约枚举的运行时值（有比较消费） | `src/enums/`（`as const` 对象，键镜像后端枚举常量；`types/` 由此派生联合保持纯类型，规则见「类型写法」） |
+| 后端接口契约 | `src/types/task.ts`（任务与执行）/ `src/types/subtitle.ts`（产物、字幕、语种）/ `src/types/media.ts`（工具诊断）；字段名与 Java record / 枚举对齐，镜像规则见 [api.md](./api.md) |
+| 运行时枚举值（有比较消费） | `src/enums/`（`as const` 对象）。**这不限于后端契约枚举**：后端枚举镜像、前端视图状态都放这里；契约类型的联合在 `types/` 由 `typeof` 派生，页面局部状态的联合可以在消费它的模块（如 store）里派生 |
 
 > 后端契约目前是 Java `record`（如 `TranscriptionSegment(beginTimeMs, endTimeMs, text)`）。前端镜像类型时**保持字段名一致**，便于对照排查。
 
 ## 类型写法
 
 - 对象结构优先用 `interface`，联合类型/工具类型用 `type`
-- 有**比较消费**的契约枚举：运行时值放 `src/enums/`（`as const` 对象，键镜像后端枚举常量，例 `enums/task.ts` 的 `TASK_STATUS`），类型联合在 `types/` 经 `import type` + `typeof` 派生（例 `TaskStatus`）——types/ 保持纯类型、构建期可整体擦除，比较处用命名常量不用裸字面量；不用 TS `enum` 语法。无比较消费的联合保持裸 `type`
-- `export` 即对外契约承诺，无消费方的导出会虚增公共面：仅当前文件使用的类型（含只被同文件其他类型引用的从属类型，如 `TaskView` 之下的 `TaskStatus`）一律不导出；各档定义位置与导出口径以「TypeScript 类型规范」为准
+- 有**比较消费**的枚举值：运行时值放 `src/enums/`（`as const` 对象）——后端契约枚举（例 `enums/task.ts` 的 `TASK_RUN_STATUS`、`enums/subtitle.ts` 的 `ARTIFACT_TYPE`）与前端视图状态（例 `enums/workspace.ts` 的 `WORKSPACE_PHASE`）都算。契约类型的联合在 `types/` 经 `import type` + `typeof` 派生（例 `TaskRunStatus`、`ArtifactType`）；页面局部状态的联合在消费它的模块里派生（例 `stores/workspace.ts` 的 `WorkspacePhase`）。`types/` 保持纯类型、构建期可整体擦除，比较处用命名常量不用裸字面量；不用 TS `enum` 语法。无比较消费的联合保持裸 `type`
+- `export` 即对外契约承诺，无消费方的导出会虚增公共面：仅当前文件使用的类型（含只被同文件其他类型引用的从属类型，如 `RunResponse` 之外的从属联合）一律不导出；各档定义位置与导出口径以「TypeScript 类型规范」为准
 - 不要用 `any`；确实无法确定时用 `unknown` 再收窄
 - 不要用 `as` 强转绕过类型错误——先确认类型定义是否写错了。**唯一例外**（2026-10-03 定调）：`src/api/request.ts` 类型化门面对 axios 方法返回值做 1 处 `as Promise<T>` 受控断言——axios ^1.19 的返回值是条件类型 `AxiosResponseResult`，第二个泛型位传泛型 T 时条件悬置，与泛型调用点的 `Promise<T>` 标注冲突；而运行时成功拦截器已统一解包 data，门面在唯一边界处掰直返回类型。断言只许出现在该文件门面边界，调用点仍零 `as`
 - 函数返回值显式标注（尤其是导出的函数）

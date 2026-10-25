@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.message.TaskRunProgress;
 import com.vidsage.application.task.port.TaskProgressBroadcaster;
 import com.vidsage.domain.shared.model.StageProgress;
@@ -212,6 +213,52 @@ class TaskRunSupervisorTest {
     private static SubtitleTask task(long id) {
         LocalDateTime now = LocalDateTime.now();
         return SubtitleTask.restore(id, TASK_NO, 1L, now, now);
+    }
+
+    // ---------- buildTaskConflictException ----------
+
+    @Test
+    void buildTaskConflictExceptionCarriesLatestRunNo() {
+        TaskRun existing = runningRun();
+        SubtitleTask task = SubtitleTask.restore(TASK_ID, TASK_NO, 1L, LocalDateTime.now(), LocalDateTime.now());
+        when(taskRunRepository.findLatestForShareByTaskId(TASK_ID)).thenReturn(Optional.of(existing));
+
+        TaskConflictException e = supervisor.buildTaskConflictException(task);
+
+        assertEquals(TASK_NO.value(), e.getTaskNo());
+        assertEquals(3, e.getRunNo(), "409 要带既有 run 的 runNo");
+    }
+
+    // ---------- fail ----------
+
+    @Test
+    void failFallsBackToExceptionClassNameWhenMessageIsNull() {
+        TaskRun run = runningRun();
+        RunRef ref = RunRef.of(TASK_NO, run);
+
+        supervisor.fail(ref, run, new IllegalStateException());
+
+        assertEquals(TaskRunStatus.FAILED, run.getStatus());
+        assertEquals("IllegalStateException", run.getErrorMessage(),
+                "异常没有 message 时退回类名，不在 error_message 里落字面量 null");
+    }
+
+    // ---------- listener ----------
+
+    @Test
+    void listenerAdvancesRunThroughStageEvent() {
+        TaskRun run = runningRun();
+        RunRef ref = RunRef.of(TASK_NO, run);
+        StageProgress stage = new StageProgress("translate-subtitles", 50, "翻译中",
+                StageProgress.State.RUNNING);
+
+        supervisor.listener(ref, run).onProgress(stage);
+
+        assertEquals("translate-subtitles", run.getCurrentStage(), "listener 把阶段推进交给 advance");
+        verify(taskRunRepository).update(run);
+        ArgumentCaptor<TaskRunProgress> captor = ArgumentCaptor.forClass(TaskRunProgress.class);
+        verify(broadcaster).publish(eq(ref), captor.capture());
+        assertEquals(stage, captor.getValue().stage());
     }
 
     /** 造一条已落库、正在跑的 run：{@code RunRef.of} 要从它身上取 runNo。 */

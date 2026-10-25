@@ -1,190 +1,76 @@
 <script setup lang="ts">
-// 工作区顶栏（页面私有组件）：外壳用跨页公共组件 AppHeader，本组件只管页面差异内容——
-// 返回 / 任务标题 / 按需翻译入口 / 产物下载面板。
-// 翻译态机：就绪可点 → isTranslating 禁用显示「翻译中…」→ 已有译文隐藏；
-// 「产物」与翻译失败提示均为绝对定位小面板，document 点击外部收起（onScopeDispose 清监听）。
-import { computed, onMounted, onScopeDispose, ref, useTemplateRef } from 'vue'
-import { useRouter } from 'vue-router'
+// 工作区顶栏：进度胶囊、产物下拉。
+// 外壳沿用跨页的 AppHeader，和上传页是同一条顶栏；返回与任务标题在视频区上方的
+// WorkspaceTitleBar 里。
+import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import AppHeader from '@/components/AppHeader.vue'
-import { ApiError } from '@/api/request'
-import { formatBytes } from '@/utils/format'
-import { useTaskStore } from '@/stores/task'
+import { TASK_RUN_TYPE } from '@/enums/task'
+import { RUN_STREAM_STATE } from '@/enums/workspace'
+import { useWorkspaceStore } from '@/stores/workspace'
+import type { TaskRunType } from '@/types/task'
+import ArtifactMenu from '@/views/workspace/components/ArtifactMenu.vue'
 
-const props = defineProps<{
-  /** 对外任务号：产物下载链接的路径段。 */
-  taskNo: string
-}>()
+const store = useWorkspaceStore()
+const { streamState, streamError, runPercent, activeRunType, activeRunNo, isBusy } =
+  storeToRefs(store)
+const { retryStream } = store
 
-const router = useRouter()
-
-const store = useTaskStore()
-// state / getter 用 storeToRefs，action 直接解构（state-management.md）
-const { taskView, isTranslating, hasTranslation } = storeToRefs(store)
-const { translate } = store
-
-/** 「产物」面板展开态。 */
-const artifactsOpen = ref(false)
-const artifactsWrapRef = useTemplateRef<HTMLElement>('artifactsWrap')
-
-/** 翻译失败的内联提示文案；null = 无待展示错误。 */
-const translateError = ref<string | null>(null)
-const translateWrapRef = useTemplateRef<HTMLElement>('translateWrap')
-
-/** 产物清单：GET 快照的 artifacts；任务视图未就绪时为空表。 */
-const artifacts = computed(() => taskView.value?.artifacts ?? [])
-
-/** 产物下载地址：原生 <a download> 直连产物端点（同源相对路径），文件名经 URL 编码防御特殊字符。 */
-function artifactHref(name: string): string {
-  return `/api/tasks/${props.taskNo}/artifacts/${encodeURIComponent(name)}`
+/** 每种 run 在胶囊里怎么说。 */
+const RUN_LABELS: Record<TaskRunType, string> = {
+  [TASK_RUN_TYPE.MAIN]: '处理中',
+  [TASK_RUN_TYPE.RECLEAN]: '重新生成中',
+  [TASK_RUN_TYPE.TRANSLATE]: '翻译中',
 }
 
-/** 回上传页。 */
-function goUpload(): void {
-  void router.push('/')
-}
-
-/** 展开 / 收起产物面板。 */
-function toggleArtifacts(): void {
-  artifactsOpen.value = !artifactsOpen.value
-}
-
-/**
- * 触发按需翻译：进行中防重入；失败写入内联提示——拦截器已把错误归一为 ApiError，
- * 直接读统一文案，非 ApiError（理论上不出现）退回通用文案。面板内「重试」或
- * 再点「翻译」均可重发。
- */
-async function startTranslate(): Promise<void> {
-  if (isTranslating.value) return
-  translateError.value = null
-  try {
-    await translate()
-  } catch (error) {
-    translateError.value = error instanceof ApiError ? error.message : '翻译请求失败，请稍后重试'
-  }
-}
-
-/** 收起翻译失败提示（不改变翻译状态，翻译按钮始终可再次触发）。 */
-function dismissTranslateError(): void {
-  translateError.value = null
-}
-
-/** document 点击收口：点击落在面板锚点之外时，分别收起产物面板 / 清除翻译错误提示。 */
-function onDocumentClick(event: MouseEvent): void {
-  const target = event.target
-  if (!(target instanceof Node)) return
-  const artifactsWrap = artifactsWrapRef.value
-  if (artifactsOpen.value && artifactsWrap && !artifactsWrap.contains(target)) {
-    artifactsOpen.value = false
-  }
-  const translateWrap = translateWrapRef.value
-  if (translateError.value && translateWrap && !translateWrap.contains(target)) {
-    translateError.value = null
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', onDocumentClick)
+/** 胶囊文案：重连中文案换掉，其余按 run 类型。 */
+const statusLabel = computed(() => {
+  if (streamState.value === RUN_STREAM_STATE.RECONNECTING) return '连接中断，正在重连…'
+  const type = activeRunType.value
+  return type === null ? '处理中' : RUN_LABELS[type]
 })
 
-// 卸载时摘除 document 监听，不留给全局（component-guidelines 副作用清理约定）
-onScopeDispose(() => {
-  document.removeEventListener('click', onDocumentClick)
-})
+/** 只在有活干或流断了才占位；触发被拒（没有 run 可跟）留给字幕区的错误条。 */
+const showsStatus = computed(
+  () => isBusy.value || (activeRunNo.value !== null && streamError.value !== null),
+)
 </script>
 
 <template>
   <AppHeader>
-    <button
-      type="button"
-      class="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-mist hover:text-foreground"
-      @click="goUpload()"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        class="h-4 w-4"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M19 12H5m6-7-7 7 7 7" />
-      </svg>
-      返回
-    </button>
-    <span class="h-4 w-px bg-border" aria-hidden="true"></span>
-    <p class="min-w-0 flex-1 truncate text-sm font-medium">{{ taskView?.sourceUri ?? '' }}</p>
-
-    <!-- 按需翻译入口：翻译中禁用、已有译文隐藏；失败提示面板锚定在按钮下方 -->
-    <div v-if="!hasTranslation" ref="translateWrap" class="relative shrink-0">
-      <button
-        type="button"
-        class="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-background transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="isTranslating"
-        @click="startTranslate()"
-      >
-        {{ isTranslating ? '翻译中…' : '翻译' }}
-      </button>
+    <!-- 标题挪走后靠 ml-auto 顶住右侧，和顶栏 logo 之间留白 -->
+    <div class="ml-auto flex items-center gap-3">
       <div
-        v-if="translateError"
-        class="absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-border bg-background p-3 shadow-lg"
-        role="alert"
+        v-if="showsStatus"
+        class="flex shrink-0 items-center gap-2 rounded-full border border-border bg-mist/60 px-2.5 py-1"
+        role="status"
       >
-        <p class="text-sm leading-relaxed text-ink">{{ translateError }}</p>
-        <div class="mt-2.5 flex justify-end gap-2">
+        <template v-if="streamError">
+          <span class="text-xs text-muted">{{ streamError }}</span>
           <button
             type="button"
-            class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:border-foreground"
-            @click="dismissTranslateError()"
-          >
-            知道了
-          </button>
-          <button
-            type="button"
-            class="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-background transition-colors hover:bg-primary-hover"
-            @click="startTranslate()"
+            class="rounded-full px-1.5 text-xs font-medium text-primary transition-colors hover:bg-background"
+            @click="retryStream()"
           >
             重试
           </button>
-        </div>
+        </template>
+        <template v-else>
+          <span
+            class="h-1.5 w-1.5 rounded-full bg-primary"
+            :class="
+              streamState === RUN_STREAM_STATE.RECONNECTING
+                ? 'animate-pulse motion-reduce:animate-none'
+                : ''
+            "
+            aria-hidden="true"
+          ></span>
+          <span class="text-xs text-muted">{{ statusLabel }}</span>
+          <span class="text-xs tabular-nums text-ink">{{ runPercent }}%</span>
+        </template>
       </div>
-    </div>
-
-    <!-- 产物面板：artifacts 清单（文件名 + 体积），原生 <a download> 直连下载端点 -->
-    <div ref="artifactsWrap" class="relative shrink-0">
-      <button
-        type="button"
-        class="rounded-lg border border-border px-3 py-1.5 text-sm transition-colors hover:border-foreground"
-        :aria-expanded="artifactsOpen"
-        @click="toggleArtifacts()"
-      >
-        产物
-      </button>
-      <div
-        v-if="artifactsOpen"
-        id="artifacts_panel"
-        class="absolute right-0 top-full z-20 mt-2 w-72 rounded-xl border border-border bg-background p-2 shadow-lg"
-      >
-        <p class="px-2 pb-1 pt-1.5 text-xs font-medium text-muted">产物清单</p>
-        <a
-          v-for="artifact in artifacts"
-          :key="artifact.name"
-          :href="artifactHref(artifact.name)"
-          :download="artifact.name"
-          class="flex items-center justify-between gap-3 rounded-lg px-2 py-2 text-sm transition-colors hover:bg-mist"
-        >
-          <span class="min-w-0 truncate">{{ artifact.name }}</span>
-          <span class="shrink-0 text-xs tabular-nums text-muted">
-            {{ formatBytes(artifact.sizeBytes) }}
-          </span>
-        </a>
-        <p v-if="artifacts.length === 0" class="px-2 py-3 text-center text-xs text-faint">
-          暂无可下载的产物
-        </p>
-      </div>
+      <ArtifactMenu />
     </div>
   </AppHeader>
 </template>

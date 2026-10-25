@@ -4,6 +4,7 @@ import com.vidsage.config.SubtitleCleanupProperties;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.port.ProgressListener;
+import com.vidsage.domain.subtitle.model.cleanup.CleanMode;
 import com.vidsage.domain.subtitle.model.cleanup.CleanedSubtitle;
 import com.vidsage.domain.subtitle.model.cleanup.CleanseResult;
 import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
@@ -151,7 +152,7 @@ public class SubtitleCleanupCoordinator {
      */
     public CleanedSubtitle clean(MediaInput input, Path workDir, SubtitleKeywords keywords,
                                  ProgressListener listener, boolean mayUseContextCache) {
-        return doClean(input, workDir, keywords, listener, mayUseContextCache, false);
+        return doClean(input, workDir, keywords, listener, mayUseContextCache, CleanMode.FIRST_CLEAN);
     }
 
     /**
@@ -175,7 +176,7 @@ public class SubtitleCleanupCoordinator {
      * @throws IllegalStateException    原始 segments 缺失、摘要降级为空上下文、解析或写入失败
      */
     public CleanedSubtitle regenerate(MediaInput input, Path workDir, SubtitleKeywords keywords, ProgressListener listener) {
-        return doClean(input, workDir, keywords, listener, true, true);
+        return doClean(input, workDir, keywords, listener, true, CleanMode.RECLEAN);
     }
 
     /**
@@ -187,12 +188,11 @@ public class SubtitleCleanupCoordinator {
      * @param keywords              用户手填的关键词；不可为 {@code null}
      * @param listener              进度监听；不可为 {@code null}
      * @param mayUseContextCache    {@code false} = 不读盘上的 {@code -clean} 与它的上下文缓存
-     * @param requireContextSummary {@code true} = 摘要失败即整体失败（重新生成的语义）
+     * @param mode                  这次清洗的意图：决定开始事件的文案，以及摘要降级是否致命
      * @return 清洗产物
      */
     private CleanedSubtitle doClean(MediaInput input, Path workDir, SubtitleKeywords keywords,
-                                    ProgressListener listener, boolean mayUseContextCache,
-                                    boolean requireContextSummary) {
+                                    ProgressListener listener, boolean mayUseContextCache, CleanMode mode) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
@@ -223,7 +223,7 @@ public class SubtitleCleanupCoordinator {
         // 由 cleanser 经 ProgressMapper 换算后直接回调 listener
         // 开始事件先于「原始字幕缺失」卫语句发出——失败任务的用户消息里能带上所在阶段
         StageEvents.emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.start(),
-                requireContextSummary ? "开始重新生成字幕" : "开始清洗", StageProgress.State.RUNNING);
+                mode.startMessage(), StageProgress.State.RUNNING);
 
         if (!ArtifactFileUtils.isNonEmpty(originalSeg)) {
             throw new IllegalStateException("字幕尚未获取：请先调用 POST /api/subtitles 产出原始字幕，再清洗（缺 "
@@ -246,7 +246,7 @@ public class SubtitleCleanupCoordinator {
                 log.debug("字幕上下文摘要已落盘: file={}", ctxFile.getFileName());
             }
             case DEGRADED_EMPTY -> {
-                if (requireContextSummary) {
+                if (mode.requireContextSummary()) {
                     // 重新生成的语义不允许空上下文（见 regenerate 的注释）
                     throw new IllegalStateException("字幕摘要失败，无法按当前关键词重新生成："
                             + "请检查摘要所用的模型配置与网络后重试；现有字幕与译文都未改动");
