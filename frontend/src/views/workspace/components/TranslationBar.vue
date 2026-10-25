@@ -19,10 +19,8 @@ const props = withDefaults(
     translating?: boolean
     /** 翻译进度，0–100。 */
     progress?: number
-    /** 当前显示的译文语种；null = 没挂译文。 */
-    translatedLanguage?: string | null
   }>(),
-  { busy: false, translating: false, progress: 0, translatedLanguage: null },
+  { busy: false, translating: false, progress: 0 },
 )
 
 const emit = defineEmits<{
@@ -44,13 +42,6 @@ const sameLanguage = computed(() => props.sourceLanguage === props.targetLanguag
 /** 目标语种的展示名。 */
 const targetLanguageLabel = computed(
   () => props.languages.find((language) => language.code === props.targetLanguage)?.label ?? props.targetLanguage,
-)
-
-/** 当前译文语种的展示名。 */
-const translatedLanguageLabel = computed(
-  () =>
-    props.languages.find((language) => language.code === props.translatedLanguage)?.label ??
-    props.translatedLanguage,
 )
 
 /** 能不能点翻译：没有 run 在跑、两个语种都选了、且不相同。 */
@@ -164,23 +155,5 @@ function updateTargetLanguage(event: Event): void {
         :style="{ width: `${progressPercent}%` }"
       ></div>
     </div>
-
-    <p
-      class="mt-2 text-xs leading-relaxed"
-      :class="
-        sameLanguage && !translating
-          ? 'text-muted'
-          : translatedLanguage && !translating
-            ? 'text-primary'
-            : 'text-faint'
-      "
-      role="status"
-      aria-live="polite"
-    >
-      <template v-if="translating"> 正在翻译为{{ targetLanguageLabel }}，{{ progressPercent }}% </template>
-      <template v-else-if="sameLanguage"> 源语言与目标语言相同，请选择其他目标语种。 </template>
-      <template v-else-if="translatedLanguage"> 已显示{{ translatedLanguageLabel }}译文。 </template>
-      <template v-else> 译文按条与原文对齐显示。 </template>
-    </p>
   </div>
 </template>
