@@ -1687,3 +1687,26 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 62: 字幕纠错数据层与 API
+<!-- trellis-session: v=2 fp=1cda30320f7d5061 -->
+
+**Date**: 2026-10-25
+**Task**: 字幕纠错数据层与 API
+**Branch**: `dev`
+
+### Summary
+
+新增 subtitle_correction 覆盖层与四个端点：segment id 时间派生、旧 JSON 自动补 id、唯一键 upsert、校验分支 400/404/409、CLEANED 读不到时不判失效。web 层去除 domain 依赖。全量测试 735→819，G1 运行时验证 12 条全 PASS，已合回 dev 并归档 10-25-corrections-data-api。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `412f27c` | feat(subtitle): 字幕手动纠错的数据层与 API |
+| `6d671a5` | Merge branch 'feature/corrections-data-api' into dev |
+
+### Status
+
+[OK] **Completed**

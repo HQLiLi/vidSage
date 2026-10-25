@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 61
+- **Total Sessions**: 62
 - **Last Active**: 2026-10-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1689 | Active |
+| `journal-1.md` | ~1712 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 62 | 2026-10-25 | 字幕纠错数据层与 API | `412f27c`, `6d671a5` | `dev` |
 | 61 | 2026-10-25 | 媒体源播放端点与工作区媒体区接入 | `891a84e`, `9d5efff` | `dev` |
 | 60 | 2026-10-24 | 工作区页改版任务树收尾：原型窄屏修复与三层归档 | `fbaacf5`, `b45fcd7`, `7d974b2` | `dev` |
 | 59 | 2026-10-24 | 工作区运行态：run-scoped SSE、重生成与翻译 | `61053a6`, `8b58a0f`, `a08c478` | `dev` |
