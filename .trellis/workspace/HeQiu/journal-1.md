@@ -1710,3 +1710,41 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 63: 字幕纠错：读取路径接入与强制重翻
+<!-- trellis-session: v=2 fp=9f78f9b2a77316b5 -->
+
+**Date**: 2026-10-25
+**Task**: 字幕纠错：读取路径接入与强制重翻
+**Branch**: `dev`
+
+### Summary
+
+下载的 CLEANED/TRANSLATED segments 与 srt 叠纠错后重渲，?raw=1 直发磁盘，零纠错走磁盘快路径；翻译取源文本叠原文纠错；POST /translate 增加 force。全量 842 测试通过。
+
+### Main Changes
+
+- 新增 SubtitleArtifactRenderer，按 (产物类型, 文件位) 静态分流下载正文；ArtifactDownload 带可选渲染字节
+- 翻译协调器读 CLEANED 后叠原文纠错；翻译服务透传 taskId 与 force
+- TranslationRequest 增加 Boolean force（Jackson 3 缺字段绑 null，primitive 会 400）
+- spec 登记 -Renderer 后缀与字幕纠错读取口清单；新增构造器签名防回归测试
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fc8d816` | feat(subtitle): 字幕纠错接入读取路径与强制重翻 |
+
+### Testing
+
+- [OK] mvn clean test-compile 绿；mvn test 91 类 / 842 测试，0 失败 0 错误 1 跳过（新增 23）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 父任务 10-25-subtitle-manual-correction 还剩前端子任务 10-25-corrections-frontend
+- 评审门 G2 的端到端 sha256 / force 实跑尚未做
