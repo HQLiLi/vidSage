@@ -1,5 +1,6 @@
 package com.vidsage.web.controller;
 
+import com.vidsage.application.media.exception.MediaSourceNotFoundException;
 import com.vidsage.application.subtitle.exception.ArtifactNotFoundException;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
@@ -80,6 +81,21 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Map<String, String> handleArtifactNotFound(ArtifactNotFoundException e) {
         log.warn("产物不可用: {}", errorMessage(e));
+        return Map.of("error", errorMessage(e));
+    }
+
+    /**
+     * 任务在、但没有可播放的媒体源（还没跑出媒体文件，或文件已被挪走）→ 404，记 WARN。
+     *
+     * <p>与「任务不存在」分开：错误文案说的是媒体源，不冒充任务号不命中。
+     *
+     * @param e 媒体源不可用异常（媒体播放端点抛出）
+     * @return 错误体 {@code { "error": message }}
+     */
+    @ExceptionHandler(MediaSourceNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Map<String, String> handleMediaSourceNotFound(MediaSourceNotFoundException e) {
+        log.warn("媒体源不可用: {}", errorMessage(e));
         return Map.of("error", errorMessage(e));
     }
 

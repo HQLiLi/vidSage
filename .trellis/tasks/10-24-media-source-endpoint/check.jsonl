@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查契约一致性、注释是否讲清取舍、测试是否覆盖失败路径"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对 404/400/500 的归属判断与错误文案是否含「缺什么、怎么补」"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对新增日志级别与脱敏"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "核对请求路径写法是否符合双拼法、是否误用 axios 请求媒体字节"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "核对 type-check / lint / 注释与命名"}
