@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 63
+- **Total Sessions**: 64
 - **Last Active**: 2026-10-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1750 | Active |
+| `journal-1.md` | ~1791 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 64 | 2026-10-25 | 字幕纠错：前端行内编辑、过期与失效提示 | `8ac9867`, `d8b2c88` | `dev` |
 | 63 | 2026-10-25 | 字幕纠错：读取路径接入与强制重翻 | `fc8d816` | `dev` |
 | 62 | 2026-10-25 | 字幕纠错数据层与 API | `412f27c`, `6d671a5` | `dev` |
 | 61 | 2026-10-25 | 媒体源播放端点与工作区媒体区接入 | `891a84e`, `9d5efff` | `dev` |

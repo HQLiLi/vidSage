@@ -1748,3 +1748,44 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 
 - 父任务 10-25-subtitle-manual-correction 还剩前端子任务 10-25-corrections-frontend
 - 评审门 G2 的端到端 sha256 / force 实跑尚未做
+
+
+## Session 64: 字幕纠错：前端行内编辑、过期与失效提示
+<!-- trellis-session: v=2 fp=ada0d057c96c5e93 -->
+
+**Date**: 2026-10-25
+**Task**: 字幕纠错：前端行内编辑、过期与失效提示
+**Branch**: `dev`
+
+### Summary
+
+工作区字幕的原文/译文各自可编辑：失焦、保存按钮、Ctrl/⌘+Enter 即存，内容没变不发请求，失败还原并给行内错误；改原文后译文行立刻提示过期，翻译按钮切「重新翻译」并走 force；重新生成后对不上的纠错在顶部提示并可一键清除；编辑态里对已有纠错给「恢复原文/译文」。旧产物没有 id 时按时间戳兜底，保存与配对都正常。type-check / lint / build 全绿，端到端实测 AC1–AC8。
+
+### Main Changes
+
+- 新增 SubtitleCueRow.vue：原文/译文两个铅笔、编辑状态机（失焦保存、mousedown.prevent、Esc、Ctrl/⌘+Enter、幂等、失败还原、IME 保护、恢复入口）
+- 段落类型加可选 id；buildSegmentId 与后端 syntheticId 同规则；buildCues 先按 id 配对，失败退回同下标+时间戳
+- workspaceSubtitles 增纠错列表、失效计数、保存后本地补丁与删除/清理；workspace 增 reloadSubtitles / revertCorrection，translate 按 translationStale 决定 force
+- request 门面补 put/delete；tasks api 增四个纠错端点；TranslationBar 增 retranslate 文案；TranscriptPane 改用行组件并加失效提示条
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ac9867` | feat(workspace): 字幕行内编辑、译文过期提示与失效纠错清理 |
+| `d8b2c88` | Merge branch 'feature/corrections-frontend' into dev |
+
+### Testing
+
+- [OK] [OK] npm run type-check / npm run lint / npm run build 全绿
+- [OK] [OK] 手工走查任务 1c992d200c534b3696449961be742d83（旧产物无 id）：Esc 不写、点保存只发一次 PUT、失焦与 Ctrl+Enter 保存、刷新仍在、400 失败还原、force 重翻后过期标记消失、语种隔离、失效提示与清除、恢复入口
+- [OK] [--] 运行中铅笔隐藏只做了代码走查（v-if=!busy，沿用原占位按钮判据），未抓到运行中截图
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 父任务 10-25-subtitle-manual-correction 三个子任务已全部完成，待做父任务集成评审（AC1–AC8）后归档
+- dev 领先 origin/dev，未推送
