@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端技术栈与提交前检查命令"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "组件与 store 文件落位"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件写法与 composable 约定"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Pinia store 组织与 action 命名"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "axios 实例、api 包组织与错误处理"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "字幕类型改动与严格模式约束"}
+{"file": ".trellis/spec/frontend/styling.md", "reason": "行内编辑态的样式分工"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "双 linter、注释与命名要求"}

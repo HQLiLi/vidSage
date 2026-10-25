@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "双 linter、注释与命名要求"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "核对 store 改动与派生状态"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "核对类型改动与严格模式"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "核对请求封装与错误处理"}
