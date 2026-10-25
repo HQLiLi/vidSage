@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端构建命令与接口约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "读取口改造的落位与依赖规则"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "识别哪些读取属于机器产物、不得套用纠错"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "冲突与校验错误的写法"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试写法与依赖原则"}

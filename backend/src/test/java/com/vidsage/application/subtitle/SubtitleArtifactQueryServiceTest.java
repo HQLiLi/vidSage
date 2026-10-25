@@ -1,9 +1,14 @@
 package com.vidsage.application.subtitle;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.application.subtitle.exception.ArtifactNotFoundException;
@@ -29,6 +34,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,10 +51,16 @@ class SubtitleArtifactQueryServiceTest {
 
     private final SubtitleTaskFinder finder = Mockito.mock(SubtitleTaskFinder.class);
     private final SubtitleArtifactStore artifactStore = Mockito.mock(SubtitleArtifactStore.class);
-    private final SubtitleArtifactQueryService service = new SubtitleArtifactQueryService(finder, artifactStore);
+    private final SubtitleArtifactRenderer renderer = Mockito.mock(SubtitleArtifactRenderer.class);
+    private final SubtitleArtifactQueryService service = new SubtitleArtifactQueryService(finder, artifactStore, renderer);
 
     private static final long TASK_ID = 7L;
     private static final String TASK_NO = "3f2a9c1e3f2a9c1e3f2a9c1e3f2a9c1e";
+
+    @BeforeEach
+    void stubRendererWithoutCorrections() {
+        when(renderer.render(anyLong(), any(), any(), any(), any())).thenReturn(Optional.empty());
+    }
 
     // ---------- 清单 ----------
 
@@ -118,19 +130,19 @@ class SubtitleArtifactQueryServiceTest {
     @Test
     void openRejectsUnknownType() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.openArtifact(TASK_NO, "NOPE", "segments.json", null));
+                () -> service.openArtifact(TASK_NO, "NOPE", "segments.json", null, false));
     }
 
     @Test
     void openRejectsUnknownFileToken() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.openArtifact(TASK_NO, "ORIGINAL", "original-segments.json", null));
+                () -> service.openArtifact(TASK_NO, "ORIGINAL", "original-segments.json", null, false));
     }
 
     @Test
     void openRejectsFileKindTheTypeDoesNotCarry() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.openArtifact(TASK_NO, "ORIGINAL", "context.json", null));
+                () -> service.openArtifact(TASK_NO, "ORIGINAL", "context.json", null, false));
 
         assertTrue(e.getMessage().contains("context.json"));
     }
@@ -138,19 +150,19 @@ class SubtitleArtifactQueryServiceTest {
     @Test
     void openRejectsTranslatedWithoutLang() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.openArtifact(TASK_NO, "TRANSLATED", "segments.json", null));
+                () -> service.openArtifact(TASK_NO, "TRANSLATED", "segments.json", null, false));
     }
 
     @Test
     void openRejectsLangOnTypeWithoutLanguageDimension() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.openArtifact(TASK_NO, "CLEANED", "segments.json", "zh-Hans"));
+                () -> service.openArtifact(TASK_NO, "CLEANED", "segments.json", "zh-Hans", false));
     }
 
     @Test
     void openRejectsUnsupportedLang() {
         assertThrows(UnsupportedLanguageException.class,
-                () -> service.openArtifact(TASK_NO, "TRANSLATED", "segments.json", "fr"));
+                () -> service.openArtifact(TASK_NO, "TRANSLATED", "segments.json", "fr", false));
     }
 
     @Test
@@ -160,7 +172,7 @@ class SubtitleArtifactQueryServiceTest {
         when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.ORIGINAL, "", workDir))
                 .thenReturn(Optional.of(ready(1L, ArtifactType.ORIGINAL, "")));
 
-        ArtifactDownload download = service.openArtifact(TASK_NO, "original", "segments.json", null);
+        ArtifactDownload download = service.openArtifact(TASK_NO, "original", "segments.json", null, false);
 
         assertEquals(workDir.resolve("original-segments.json"), download.path());
         assertEquals(ArtifactFileKind.SEGMENTS, download.kind());
@@ -175,7 +187,7 @@ class SubtitleArtifactQueryServiceTest {
                 .thenReturn(Optional.empty());
 
         ArtifactNotFoundException e = assertThrows(ArtifactNotFoundException.class,
-                () -> service.openArtifact(TASK_NO, "CLEANED", "subtitles.srt", null));
+                () -> service.openArtifact(TASK_NO, "CLEANED", "subtitles.srt", null, false));
 
         assertTrue(e.getMessage().contains("taskNo=" + TASK_NO));
     }
@@ -190,7 +202,7 @@ class SubtitleArtifactQueryServiceTest {
                 .thenReturn(Optional.of(broken));
 
         assertThrows(ArtifactNotFoundException.class,
-                () -> service.openArtifact(TASK_NO, "CLEANED", "subtitles.srt", null));
+                () -> service.openArtifact(TASK_NO, "CLEANED", "subtitles.srt", null, false));
     }
 
     @Test
@@ -198,7 +210,7 @@ class SubtitleArtifactQueryServiceTest {
         when(finder.require(TASK_NO)).thenThrow(new TaskNotFoundException(TASK_NO));
 
         assertThrows(TaskNotFoundException.class,
-                () -> service.openArtifact(TASK_NO, "ORIGINAL", "segments.json", null));
+                () -> service.openArtifact(TASK_NO, "ORIGINAL", "segments.json", null, false));
     }
 
     // ---------- 下载：语种归一 ----------
@@ -210,7 +222,7 @@ class SubtitleArtifactQueryServiceTest {
         when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.TRANSLATED, "zh-Hans", workDir))
                 .thenReturn(Optional.of(ready(3L, ArtifactType.TRANSLATED, "zh-Hans")));
 
-        ArtifactDownload download = service.openArtifact(TASK_NO, "TRANSLATED", "segments.json", "zh");
+        ArtifactDownload download = service.openArtifact(TASK_NO, "TRANSLATED", "segments.json", "zh", false);
 
         assertEquals(workDir.resolve("translated-segments-zh-hans.json"), download.path(),
                 "入参 zh 与 zh-Hans 等价，查库用规范码，落盘用小写名字");
@@ -239,7 +251,63 @@ class SubtitleArtifactQueryServiceTest {
                 .thenReturn(Optional.of(translatedWithoutTerms(3L, "zh-Hans")));
 
         assertThrows(ArtifactNotFoundException.class,
-                () -> service.openArtifact(TASK_NO, "TRANSLATED", "terms.json", "zh-Hans"));
+                () -> service.openArtifact(TASK_NO, "TRANSLATED", "terms.json", "zh-Hans", false));
+    }
+
+    // ---------- 下载：纠错叠加 ----------
+
+    @Test
+    void openReplacesBodyWhenRendererHasCorrections() throws IOException {
+        writeAll();
+        stubFinder();
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.CLEANED, "", workDir))
+                .thenReturn(Optional.of(ready(2L, ArtifactType.CLEANED, "")));
+        byte[] rendered = "改过的字幕".getBytes(StandardCharsets.UTF_8);
+        when(renderer.render(TASK_ID, ArtifactType.CLEANED, "", ArtifactFileKind.SEGMENTS, workDir))
+                .thenReturn(Optional.of(rendered));
+
+        ArtifactDownload download = service.openArtifact(TASK_NO, "CLEANED", "segments.json", null, false);
+
+        assertArrayEquals(rendered, download.content(), "有纠错时发渲染好的字节");
+        assertEquals(workDir.resolve("clean-segments.json"), download.path(), "文件名仍取磁盘那份");
+    }
+
+    @Test
+    void openSendsFileWhenRendererHasNothingToChange() throws IOException {
+        writeAll();
+        stubFinder();
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.CLEANED, "", workDir))
+                .thenReturn(Optional.of(ready(2L, ArtifactType.CLEANED, "")));
+
+        ArtifactDownload download = service.openArtifact(TASK_NO, "CLEANED", "subtitles.srt", null, false);
+
+        assertNull(download.content(), "零纠错走磁盘快路径，正文必须与原文件一个字节都不差");
+    }
+
+    @Test
+    void openRawBypassesRendererEvenWithCorrections() throws IOException {
+        writeAll();
+        stubFinder();
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.CLEANED, "", workDir))
+                .thenReturn(Optional.of(ready(2L, ArtifactType.CLEANED, "")));
+
+        ArtifactDownload download = service.openArtifact(TASK_NO, "CLEANED", "segments.json", null, true);
+
+        assertNull(download.content(), "?raw=1 永远发磁盘原文件");
+        verify(renderer, never()).render(anyLong(), any(), any(), any(), any());
+    }
+
+    @Test
+    void openPassesNormalizedLangAndFileKindToRenderer() throws IOException {
+        writeAll();
+        stubFinder();
+        when(artifactStore.findIntactArtifact(TASK_ID, ArtifactType.TRANSLATED, "zh-Hans", workDir))
+                .thenReturn(Optional.of(ready(3L, ArtifactType.TRANSLATED, "zh-Hans")));
+
+        service.openArtifact(TASK_NO, "TRANSLATED", "subtitles.srt", "zh", false);
+
+        verify(renderer).render(TASK_ID, ArtifactType.TRANSLATED, "zh-Hans",
+                ArtifactFileKind.SUBTITLES, workDir);
     }
 
     // ---------- 夹具 ----------

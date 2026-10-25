@@ -33,8 +33,8 @@ import java.util.Optional;
  * 守卫过了才把执行体交给并发闸门排队；排队期间被打断时收口置 FAILED。
  *
  * <p>目标语种已经有完好的当前译文时，这一趟什么都不做：不调翻译模型、不落新版本、
- * 文件一个字节不动，只广播一条 SKIPPED 事件就收口 SUCCEEDED。占位落在翻译成功之后——
- * LLM 失败时库里不留垃圾行。
+ * 文件一个字节不动，只广播一条 SKIPPED 事件就收口 SUCCEEDED。<b>强制重跑（{@code force=true}）
+ * 例外</b>：跳过判定整段不生效，真翻译并换版。占位落在翻译成功之后——LLM 失败时库里不留垃圾行。
  */
 @Slf4j
 @Service
@@ -73,12 +73,14 @@ public class SubtitleTranslateService {
      * @param taskNo         对外任务号；不可为空白
      * @param sourceLanguage 源语种
      * @param targetLanguage 目标语种
+     * @param force          是否强制重跑：{@code true} 时即使该语种已有完好译文也重新翻译；
+     *                       {@code false} 保持「已有译文就跳过」的老行为
      * @return 本次触发的 {@code {taskNo, runNo}}
      * @throws IllegalArgumentException taskNo 为空白、语种不在白名单、或清洗字幕尚未就绪（400）
      * @throws TaskNotFoundException    任务不存在（404）
      * @throws TaskConflictException    该任务已有一次执行在跑（409）
      */
-    public TaskRunRef translate(String taskNo, String sourceLanguage, String targetLanguage) {
+    public TaskRunRef translate(String taskNo, String sourceLanguage, String targetLanguage, boolean force) {
         SupportedLanguage source = SupportedLanguage.parse(sourceLanguage);
         SupportedLanguage target = SupportedLanguage.parse(targetLanguage);
         SubtitleTask task = finder.require(taskNo);
@@ -90,7 +92,7 @@ public class SubtitleTranslateService {
         RunRef ref = RunRef.of(task.getTaskNo(), run);
         log.info("字幕翻译已触发: taskNo={}, runNo={}, source={}, target={}",
                 ref.taskNo().value(), ref.runNo(), source.getCode(), target.getCode());
-        concurrencyGate.submit(() -> runPipeline(run, ref, workspace, source, target, cleaned),
+        concurrencyGate.submit(() -> runPipeline(run, ref, workspace, source, target, cleaned, force),
                 () -> {
                     log.warn("翻译等待执行配额时被中断: taskNo={}, runNo={}",
                             ref.taskNo().value(), ref.runNo());
@@ -100,17 +102,22 @@ public class SubtitleTranslateService {
     }
 
     /**
-     * 翻译的执行体：当前语种已有完好译文就直接收口，否则真翻译，成功之后才落占位；收口是无条件的。
+     * 翻译的执行体：当前语种已有完好译文且没要求强制重跑就直接收口，否则真翻译，成功之后才落占位；
+     * 收口是无条件的。
      */
     private void runPipeline(TaskRun run, RunRef ref, Workspace workspace,
-                             SupportedLanguage source, SupportedLanguage target, SubtitleArtifact cleaned) {
+                             SupportedLanguage source, SupportedLanguage target, SubtitleArtifact cleaned,
+                             boolean force) {
         try {
             Path workDir = workspaceDirectoryManager.ensureWorkspaceDirectory(workspace.getSourceKey());
             ProgressListener listener = supervisor.listener(ref, run);
 
-            // 当前语种已经有完好的 READY 译文：不调 LLM、不落新版本，文件一个字节不动
-            Optional<SubtitleArtifact> current = artifactStore.findIntactArtifact(
-                    run.getTaskId(), ArtifactType.TRANSLATED, target.getCode(), workDir);
+            // 当前语种已经有完好的 READY 译文：不调 LLM、不落新版本，文件一个字节不动。
+            // force=true 时跳过这段判定，真重跑该语种（用户改了原文或想换一版译文）
+            Optional<SubtitleArtifact> current = force
+                    ? Optional.empty()
+                    : artifactStore.findIntactArtifact(
+                            run.getTaskId(), ArtifactType.TRANSLATED, target.getCode(), workDir);
             if (current.isPresent()) {
                 StageEvents.emit(listener, SubtitleStageName.TRANSLATE_SUBTITLES.getStageName(), STAGE_DONE,
                         "已有当前译文，跳过翻译", StageProgress.State.SKIPPED);
@@ -120,7 +127,8 @@ public class SubtitleTranslateService {
                 return;
             }
 
-            translationStage.translate(MediaInputUtils.from(workspace, workDir), workDir, source, target, listener);
+            translationStage.translate(run.getTaskId(), MediaInputUtils.from(workspace, workDir),
+                    workDir, source, target, listener);
 
             // 翻译成功之后才落占位：LLM 失败时库里不留垃圾行
             SubtitleArtifact translated = artifactStore.createCreatingPlaceholder(run.getTaskId(), run.getId(),

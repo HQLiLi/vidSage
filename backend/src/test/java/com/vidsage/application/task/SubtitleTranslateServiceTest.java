@@ -109,10 +109,10 @@ class SubtitleTranslateServiceTest {
         RunRef ref = ref(run);
         stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
 
-        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
         InOrder order = inOrder(translationStage, artifactStore);
-        order.verify(translationStage).translate(eq(new MediaInput.RemoteUrl(URL)),
+        order.verify(translationStage).translate(eq(TASK_ID), eq(new MediaInput.RemoteUrl(URL)),
                 any(Path.class), eq(SOURCE_LANG), eq(TARGET_LANG), any(ProgressListener.class));
         order.verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID),
                 eq(ArtifactType.TRANSLATED), eq(TARGET_LANG.getCode()), eq(CLEANED_ARTIFACT_ID), isNull());
@@ -129,9 +129,9 @@ class SubtitleTranslateServiceTest {
                 eq(TARGET_LANG.getCode()), any(Path.class)))
                 .thenReturn(Optional.of(Mockito.mock(SubtitleArtifact.class)));
 
-        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
-        verify(translationStage, never()).translate(any(), any(), any(), any(), any());
+        verify(translationStage, never()).translate(anyLong(), any(), any(), any(), any(), any());
         verify(artifactStore, never()).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
         verify(artifactStore, never()).settleArtifact(any(), any());
         verify(supervisor).finish(ref, run, null);
@@ -142,15 +142,35 @@ class SubtitleTranslateServiceTest {
     }
 
     @Test
+    void forceTranslationRerunsEvenWhenIntactTranslationExists() {
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        RunRef ref = ref(run);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        // 即使库里有完好译文，force=true 也不该走复用分支
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.TRANSLATED),
+                eq(TARGET_LANG.getCode()), any(Path.class)))
+                .thenReturn(Optional.of(Mockito.mock(SubtitleArtifact.class)));
+
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), true);
+
+        verify(translationStage).translate(eq(TASK_ID), eq(new MediaInput.RemoteUrl(URL)),
+                any(Path.class), eq(SOURCE_LANG), eq(TARGET_LANG), any(ProgressListener.class));
+        verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID),
+                eq(ArtifactType.TRANSLATED), eq(TARGET_LANG.getCode()), eq(CLEANED_ARTIFACT_ID), isNull());
+        verify(artifactStore).settleArtifact(any(SubtitleArtifact.class), any(Path.class));
+        verify(supervisor).finish(ref, run, null);
+    }
+
+    @Test
     void translateFailureFinishesRunWithoutPlaceholder() {
         TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
         RunRef ref = ref(run);
         stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
         IllegalStateException boom = new IllegalStateException("翻译失败");
         doThrow(boom)
-                .when(translationStage).translate(any(), any(), any(), any(), any());
+                .when(translationStage).translate(anyLong(), any(), any(), any(), any(), any());
 
-        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
         verify(supervisor).fail(eq(ref), eq(run), same(boom));
         verify(artifactStore, never()).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
@@ -163,10 +183,10 @@ class SubtitleTranslateServiceTest {
         RunRef ref = ref(run);
         stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
 
-        service(interruptOnQueueGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        service(interruptOnQueueGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
         verify(supervisor).finish(ref, run, "翻译在等待执行配额时被中断：请重新触发翻译");
-        verify(translationStage, never()).translate(any(), any(), any(), any(), any());
+        verify(translationStage, never()).translate(anyLong(), any(), any(), any(), any(), any());
     }
 
     // ---------- 守卫段 ----------
@@ -179,7 +199,7 @@ class SubtitleTranslateServiceTest {
                 .thenReturn(Optional.empty());
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service().translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode()),
+                () -> service().translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false),
                 "没有完好的清洗产物 → 400，不是 409");
 
         assertTrue(e.getMessage().contains("清洗后的字幕产物"));
@@ -192,11 +212,11 @@ class SubtitleTranslateServiceTest {
         stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
 
         // 同步跑的假闸门：派发出去的执行体当场跑完，好在它的副作用上验「流进去的是哪条 run、哪个 workspace」
-        TaskRunRef ref = service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        TaskRunRef ref = service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
         assertEquals(3, ref.runNo());
         // 执行体拿到的正是这条 run（经收口观测）与这个 workspace（经媒体输入还原观测）
-        verify(translationStage).translate(eq(new MediaInput.RemoteUrl(URL)), any(Path.class),
+        verify(translationStage).translate(eq(TASK_ID), eq(new MediaInput.RemoteUrl(URL)), any(Path.class),
                 eq(SOURCE_LANG), eq(TARGET_LANG), any(ProgressListener.class));
         verify(supervisor).finish(ref(run), run, null);
     }
