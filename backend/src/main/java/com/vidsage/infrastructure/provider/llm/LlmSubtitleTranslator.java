@@ -179,9 +179,9 @@ public class LlmSubtitleTranslator implements SubtitleTranslator {
                     translated = safe(seg.text());
                     untranslated++;
                 }
-                // 时间戳是切分阶段定的，翻译不动它们
+                // 时间戳是切分阶段定的，翻译不动它们；id 也从源段落继承，纠错才能认出同一条
                 out.add(new TranslatedSegment(seg.beginTimeMs(), seg.endTimeMs(),
-                        seg.text(), translated));
+                        seg.text(), translated, seg.id()));
             }
 
             // 批完成才发进度：进度值 = 批序号 / 总批数 × 100，最后一批恰好 100，单调不回退
