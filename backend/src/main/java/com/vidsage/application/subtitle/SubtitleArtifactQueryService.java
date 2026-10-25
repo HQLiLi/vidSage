@@ -38,10 +38,13 @@ public class SubtitleArtifactQueryService {
 
     private final SubtitleTaskFinder finder;
     private final SubtitleArtifactStore artifactStore;
+    private final SubtitleArtifactRenderer artifactRenderer;
 
-    public SubtitleArtifactQueryService(SubtitleTaskFinder finder, SubtitleArtifactStore artifactStore) {
+    public SubtitleArtifactQueryService(SubtitleTaskFinder finder, SubtitleArtifactStore artifactStore,
+                                        SubtitleArtifactRenderer artifactRenderer) {
         this.finder = finder;
         this.artifactStore = artifactStore;
+        this.artifactRenderer = artifactRenderer;
     }
 
     /**
@@ -64,17 +67,22 @@ public class SubtitleArtifactQueryService {
     }
 
     /**
-     * 解析一次下载：参数合法性在入口判，产物可用性交给完好判定。
+     * 解析一次下载：参数合法性在入口判，产物可用性交给完好判定，正文要不要叠纠错交给渲染器。
+     *
+     * <p>{@code raw=true} 在任何判定之前短路：永远发磁盘上的机器原文件，
+     * 供用户核对「机器产出的原样」。
      *
      * @param taskNo    对外任务号
      * @param typeToken 产物类型（不区分大小写）
      * @param fileToken 文件名段，如 {@code subtitles.srt}
      * @param langToken 目标语种；只有翻译产物要带
-     * @return 要读的文件路径与文件位
+     * @param raw       是否直发磁盘机器原文件
+     * @return 要读的文件路径、文件位，以及（需要时）叠加纠错后的正文
      * @throws IllegalArgumentException 类型 / 文件名段 / 语种参数不合法
      * @throws ArtifactNotFoundException 该版产物不可用（含文件已被挪走）
      */
-    public ArtifactDownload openArtifact(String taskNo, String typeToken, String fileToken, String langToken) {
+    public ArtifactDownload openArtifact(String taskNo, String typeToken, String fileToken, String langToken,
+                                         boolean raw) {
         ArtifactType type = parseType(typeToken);
         ArtifactFileKind kind = parseFileKind(fileToken);
         if (!kind.belongsTo(type)) {
@@ -93,7 +101,13 @@ public class SubtitleArtifactQueryService {
             // 完好判定本应已挡住，这里只是防御：文件列空 = 这版其实不可用
             throw new ArtifactNotFoundException(taskNo, type.name(), fileToken);
         }
-        return new ArtifactDownload(workDir.resolve(fileName), kind);
+        Path path = workDir.resolve(fileName);
+        if (raw) {
+            return ArtifactDownload.ofFile(path, kind);
+        }
+        return artifactRenderer.render(task.getId(), type, lang, kind, workDir)
+                .map(content -> ArtifactDownload.ofContent(path, kind, content))
+                .orElseGet(() -> ArtifactDownload.ofFile(path, kind));
     }
 
     /**
