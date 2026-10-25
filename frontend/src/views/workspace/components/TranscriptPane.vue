@@ -11,7 +11,7 @@ import { formatTime } from '@/utils/format'
 import TranslationBar from '@/views/workspace/components/TranslationBar.vue'
 
 const subtitles = useWorkspaceSubtitlesStore()
-const { cues, cleanedTrack, translationMismatch, translatedLanguage } = storeToRefs(subtitles)
+const { cues, cleanedTrack, translationMismatch } = storeToRefs(subtitles)
 
 const workspace = useWorkspaceStore()
 const {
@@ -152,7 +152,6 @@ function onTranslate(): void {
         :busy="isBusy"
         :translating="translating"
         :progress="runPercent"
-        :translated-language="translatedLanguage"
         @update:source-language="onSourceLanguage"
         @update:target-language="onTargetLanguage"
         @swap="onSwapLanguages"
