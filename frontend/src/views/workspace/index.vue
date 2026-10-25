@@ -17,6 +17,7 @@ import StatusCard from '@/views/workspace/components/StatusCard.vue'
 import ThemePane from '@/views/workspace/components/ThemePane.vue'
 import TranscriptPane from '@/views/workspace/components/TranscriptPane.vue'
 import WorkspaceHeader from '@/views/workspace/components/WorkspaceHeader.vue'
+import WorkspaceTitleBar from '@/views/workspace/components/WorkspaceTitleBar.vue'
 
 const props = defineProps<{
   /** 路由参数：对外任务号 taskNo，由路由配置的 props: true 注入。 */
@@ -112,6 +113,8 @@ onUnmounted(() => {
         <div
           class="overlay-scrollbar flex min-h-180 min-w-0 flex-col overflow-y-auto border-b border-border lg:min-h-0 lg:basis-[60%] lg:flex-none lg:overscroll-contain lg:border-b-0"
         >
+          <!-- 返回与标题贴着视频，顶栏只留进度与产物；视频仍是 16:9，高度不受这行影响 -->
+          <WorkspaceTitleBar data-animate="title" />
           <MediaPane data-animate="media" />
           <KeywordPane data-animate="keywords" />
           <ThemePane data-animate="theme" />
