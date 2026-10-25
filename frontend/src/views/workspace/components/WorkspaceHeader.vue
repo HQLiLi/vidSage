@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 工作区顶栏：进度胶囊、产物下拉。
+// 工作区顶栏：进度胶囊、产物抽屉入口。
 // 外壳沿用跨页的 AppHeader，和上传页是同一条顶栏；返回与任务标题在视频区上方的
 // WorkspaceTitleBar 里。
 import { computed } from 'vue'
@@ -10,7 +10,7 @@ import { TASK_RUN_TYPE } from '@/enums/task'
 import { RUN_STREAM_STATE } from '@/enums/workspace'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { TaskRunType } from '@/types/task'
-import ArtifactMenu from '@/views/workspace/components/ArtifactMenu.vue'
+import ArtifactDrawer from '@/views/workspace/components/ArtifactDrawer.vue'
 
 const store = useWorkspaceStore()
 const { streamState, streamError, runPercent, activeRunType, activeRunNo, isBusy } =
@@ -70,7 +70,7 @@ const showsStatus = computed(
           <span class="text-xs tabular-nums text-ink">{{ runPercent }}%</span>
         </template>
       </div>
-      <ArtifactMenu />
+      <ArtifactDrawer />
     </div>
   </AppHeader>
 </template>
