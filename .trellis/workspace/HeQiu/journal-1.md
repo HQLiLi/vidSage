@@ -1664,3 +1664,26 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 
 - known-bugs §6 四项遗留：媒体端点、失败态重新提交接线、spec 旧契约、接口实测留档
 - A 的窄屏修复只落在 prototype（不进 git），frontend 用的是左列内部滚动，无需同步
+
+
+## Session 61: 媒体源播放端点与工作区媒体区接入
+<!-- trellis-session: v=2 fp=f0407ee67dce5ea5 -->
+
+**Date**: 2026-10-25
+**Task**: 媒体源播放端点与工作区媒体区接入
+**Branch**: `dev`
+
+### Summary
+
+新增 GET/HEAD /api/media/source/{taskNo}：按 intermediate_file 的 READY SOURCE_MEDIA 定位媒体，支持单段 Range（200/206/416）、HEAD 忽略 Range、缺失 404；Content-Type 按文件头嗅探（上传路线一律落 source.mp4）。前端 MediaPane 接 <video>，占位按运行态区分「准备中/暂无可播放」，竖屏被 object-contain 收进 16:9 黑框。真实例 curl 矩阵 + Playwright 浏览器实测通过；后端 33 条新测试、全量 733 绿；前端 type-check/lint/build 绿。已合回 dev 并归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `891a84e` | feat(media): 新增媒体源播放端点与工作区媒体区接入 |
+| `9d5efff` | chore(task): 10-24-media-source-endpoint 任务工件与证据 |
+
+### Status
+
+[OK] **Completed**
