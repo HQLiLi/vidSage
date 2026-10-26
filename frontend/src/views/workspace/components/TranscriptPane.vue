@@ -25,6 +25,7 @@ const {
   isBusy,
   languages,
   selectedSourceLanguage,
+  sourceLanguageLocked,
   selectedTargetLanguage,
   activeRunType,
   runPercent,
@@ -33,7 +34,7 @@ const {
   translationInvalidated,
   lastRun,
 } = storeToRefs(workspace)
-const { selectSourceLanguage, selectTargetLanguage, swapLanguages, translate } = workspace
+const { selectSourceLanguage, selectTargetLanguage, translate } = workspace
 
 /** 搜索词。 */
 const query = ref('')
@@ -124,11 +125,6 @@ function onTargetLanguage(code: string): void {
   void selectTargetLanguage(code)
 }
 
-/** 互换源 / 目标语种。 */
-function onSwapLanguages(): void {
-  void swapLanguages()
-}
-
 /** 触发翻译。 */
 function onTranslate(): void {
   void translate()
@@ -171,6 +167,7 @@ function onTranslate(): void {
         class="mt-2.5"
         :languages="languages"
         :source-language="selectedSourceLanguage"
+        :source-locked="sourceLanguageLocked"
         :target-language="selectedTargetLanguage"
         :busy="isBusy"
         :translating="translating"
@@ -178,7 +175,6 @@ function onTranslate(): void {
         :retranslate="retranslate"
         @update:source-language="onSourceLanguage"
         @update:target-language="onTargetLanguage"
-        @swap="onSwapLanguages"
         @translate="onTranslate"
       />
 

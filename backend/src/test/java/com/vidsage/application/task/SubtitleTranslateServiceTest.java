@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.application.subtitle.SubtitleArtifactStore;
+import com.vidsage.application.subtitle.SubtitleTrackReader;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.config.WorkspaceProperties;
@@ -24,6 +25,7 @@ import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.ArtifactType;
 import com.vidsage.domain.subtitle.model.SubtitleArtifactStatus;
+import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.task.SubtitleTask;
 import com.vidsage.domain.task.TaskRun;
@@ -39,6 +41,7 @@ import com.vidsage.domain.workspace.port.WorkspaceRepository;
 import com.vidsage.infrastructure.fs.NioWorkspaceDirectoryManager;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
@@ -67,6 +70,7 @@ class SubtitleTranslateServiceTest {
     private final SubtitleTranslationCoordinator translationStage =
             Mockito.mock(SubtitleTranslationCoordinator.class);
     private final SubtitleArtifactStore artifactStore = Mockito.mock(SubtitleArtifactStore.class);
+    private final SubtitleTrackReader trackReader = Mockito.mock(SubtitleTrackReader.class);
     private final ProgressListener listener = Mockito.mock(ProgressListener.class);
 
     private static final SupportedLanguage SOURCE_LANG = SupportedLanguage.JAPANESE;
@@ -94,7 +98,7 @@ class SubtitleTranslateServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         return new SubtitleTranslateService(
                 new SubtitleTaskFinder(subtitleTaskRepository, workspaceRepository, directoryManager()),
-                supervisor, gate, translationStage, artifactStore, directoryManager());
+                supervisor, gate, translationStage, artifactStore, trackReader, directoryManager());
     }
 
     private NioWorkspaceDirectoryManager directoryManager() {
@@ -221,6 +225,73 @@ class SubtitleTranslateServiceTest {
         verify(supervisor).finish(ref(run), run, null);
     }
 
+    // ---------- 源语种校验 ----------
+
+    @Test
+    void translateRejectsWhenRequestedSourceDiffersFromDetected() {
+        // 字幕实际是简体中文，请求却说是日语：照旧翻下去译文会整段跑偏
+        stubGuard(runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3), cleanedReady(CLEANED_ARTIFACT_ID));
+        stubDetectedLanguage("zh-Hans");
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service().translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false),
+                "源语种与字幕实际语种不一致 → 400");
+
+        assertTrue(e.getMessage().contains("zh-Hans"), "错误信息要说出实际识别的语种");
+        verify(supervisor, never()).start(any(), any(), any());
+    }
+
+    @Test
+    void translateAcceptsAliasSourceLanguage() {
+        // 产物写的是 zh-Hans，请求传裸 zh：别名要认，不能拦
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, SupportedLanguage.ENGLISH.getCode(), 3);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        when(supervisor.start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE),
+                eq(SupportedLanguage.ENGLISH.getCode()))).thenReturn(Optional.of(run));
+        stubDetectedLanguage("zh-Hans");
+
+        service(inlineGate()).translate(TASK_NO, "zh", SupportedLanguage.ENGLISH.getCode(), false);
+
+        verify(supervisor).start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE),
+                eq(SupportedLanguage.ENGLISH.getCode()));
+    }
+
+    @Test
+    void translateAcceptsWhenDetectedLanguageMissing() {
+        // ASR 没给语种：没得比，放行
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        stubDetectedLanguage(null);
+
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
+
+        verify(supervisor).start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE), eq(TARGET_LANG.getCode()));
+    }
+
+    @Test
+    void translateAcceptsWhenDetectedLanguageUnsupported() {
+        // 识别出韩语这类白名单外的语种：归不到枚举，也没得比，放行
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        stubDetectedLanguage("ko");
+
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
+
+        verify(supervisor).start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE), eq(TARGET_LANG.getCode()));
+    }
+
+    @Test
+    void translateAcceptsWhenCleanTrackUnreadable() {
+        // 读不出产物（行不完整 / 文件没了 / JSON 坏）：上面的守卫已确认产物完好，这里不再拦
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        when(trackReader.readCleanTrack(eq(TASK_ID), any(Path.class))).thenReturn(Optional.empty());
+
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
+
+        verify(supervisor).start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE), eq(TARGET_LANG.getCode()));
+    }
+
     // ---------- 假闸门 ----------
 
     /** 假闸门①：立刻同步跑 body（只看拿到许可之后跑成什么样）。 */
@@ -243,6 +314,12 @@ class SubtitleTranslateServiceTest {
                 .thenReturn(Optional.of(cleaned));
         when(supervisor.start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE), eq(TARGET_LANG.getCode())))
                 .thenReturn(Optional.of(run));
+    }
+
+    /** 摆好「清洗产物里 ASR 识别的语种」；传 null 表示 ASR 没给。 */
+    private void stubDetectedLanguage(String language) {
+        when(trackReader.readCleanTrack(eq(TASK_ID), any(Path.class)))
+                .thenReturn(Optional.of(new SubtitleTrack(language, List.of(), null)));
     }
 
     private static Workspace urlWorkspace() {

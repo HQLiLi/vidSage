@@ -12,7 +12,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "翻译请求体")
 public record TranslationRequest(
-        @Schema(description = "源语种", requiredMode = Schema.RequiredMode.REQUIRED) String sourceLanguage,
+        @Schema(description = "源语种；必须与字幕实际识别的语种一致"
+                + "（取清洗产物 segments.json 的 language），不一致返回 400",
+                requiredMode = Schema.RequiredMode.REQUIRED) String sourceLanguage,
         @Schema(description = "目标语种", requiredMode = Schema.RequiredMode.REQUIRED) String targetLanguage,
         @Schema(description = "是否强制重跑：该语种已有完好译文时默认跳过，true 则重新翻译并换版；"
                 + "请求体不带这个字段等同于 false",

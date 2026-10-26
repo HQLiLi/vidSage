@@ -12,6 +12,7 @@ import com.vidsage.domain.subtitle.model.common.SubtitleArtifactSpec;
 import com.vidsage.domain.subtitle.model.common.SubtitleContext;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.model.keyword.SubtitleKeywords;
+import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.subtitle.policy.CheckpointPolicy;
 import com.vidsage.domain.subtitle.port.SubtitleCleanser;
 import com.vidsage.domain.subtitle.port.SubtitleContextSummarizer;
@@ -23,6 +24,7 @@ import com.vidsage.shared.subtitle.SrtRenderer;
 import com.vidsage.shared.subtitle.SubtitleSegmentSplitter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -264,7 +266,8 @@ public class SubtitleCleanupCoordinator {
         CleanseResult result = subtitleCleanser.clean(split, subtitleContext, keywords,
                 ProgressMapper.remap(listener, SubtitleStageName.CLEAN_SUBTITLES.start(), SubtitleStageName.CLEAN_SUBTITLES.end()));
 
-        SubtitleTrack cleaned = new SubtitleTrack(original.language(), result.segments(), fingerprint);
+        SubtitleTrack cleaned = new SubtitleTrack(
+                resolveLanguage(original.language(), subtitleContext), result.segments(), fingerprint);
         writeArtifacts(cleanSeg, cleanSrt, cleaned);   // 先 JSON（检查点）再 SRT（派生），都原子替换
         StageEvents.emit(listener, cleanSubtitlesStageName, SubtitleStageName.CLEAN_SUBTITLES.end(), "清洗完成", StageProgress.State.SUCCEEDED);
         log.info("字幕清洗完成: segments={}, corrected={}, retry={}, termHits={}, termApplied={}",
@@ -272,6 +275,32 @@ public class SubtitleCleanupCoordinator {
                 result.termHits(), result.termApplied());
         return toCleaned(cleaned, cleanSeg, cleanSrt, result.correctedCount(), result.retrySteps(),
                 result.termHits(), result.termApplied());
+    }
+
+    /**
+     * 定这份字幕的语种：ASR 给了就用 ASR 的，没给就用上下文摘要里那个。
+     *
+     * <p>云端 ASR 实测不返回语种（qwen-audio-3.1-asr-flash-filetrans 的结果 JSON 里根本没有
+     * language 字段），光看它这一份永远是 null；而摘要那步本来就通读了整篇字幕文本、语种判断是它
+     * 顺带得出的，拿它兜底比空着强——下游（前端锁源语种、后端校验）都只认这一份 {@code language}。
+     *
+     * <p>兜底值只收能对到支持白名单的写法（zh / zh-CN / ja …）。模型偶尔会写「中文」这种自由文本，
+     * 原样塞进 {@code language} 只会让下游解析不动，不如留 null 表示「没认出来」。
+     *
+     * @param asrLanguage ASR 给的语种，可能为空
+     * @param context     本次清洗用的上下文，理论非空
+     * @return 可以落进 {@code SubtitleTrack#language} 的值；两条路都没有就返回 {@code null}
+     */
+    private static String resolveLanguage(String asrLanguage, SubtitleContext context) {
+        if (StringUtils.hasText(asrLanguage)) {
+            return asrLanguage;
+        }
+        if (context == null) {
+            return null;
+        }
+        return SupportedLanguage.getFirstMatchLang(context.sourceLanguage())
+                .map(SupportedLanguage::getCode)
+                .orElse(null);
     }
 
     /**

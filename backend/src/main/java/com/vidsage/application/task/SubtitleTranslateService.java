@@ -2,6 +2,7 @@ package com.vidsage.application.task;
 
 import com.vidsage.application.media.port.WorkspaceDirectoryManager;
 import com.vidsage.application.subtitle.SubtitleArtifactStore;
+import com.vidsage.application.subtitle.SubtitleTrackReader;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.exception.TaskConflictException;
 import com.vidsage.application.task.exception.TaskNotFoundException;
@@ -10,6 +11,7 @@ import com.vidsage.domain.shared.model.StageProgress;
 import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.ArtifactType;
+import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.common.SubtitleStageName;
 import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.task.SubtitleTask;
@@ -22,6 +24,7 @@ import com.vidsage.shared.media.MediaInputUtils;
 import com.vidsage.shared.progress.StageEvents;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.nio.file.Path;
 import java.util.Optional;
@@ -29,8 +32,8 @@ import java.util.Optional;
 /**
  * 翻译用例（TRANSLATE run）：在已有的清洗产物上产出一版译文。
  *
- * <p>入口先把守卫做齐（语种在白名单内、任务与工作区存在、清洗产物完好、抢到互斥），
- * 守卫过了才把执行体交给并发闸门排队；排队期间被打断时收口置 FAILED。
+ * <p>入口先把守卫做齐（语种在白名单内、任务与工作区存在、清洗产物完好、请求的源语种与字幕
+ * 实际识别的语种一致、抢到互斥），守卫过了才把执行体交给并发闸门排队；排队期间被打断时收口置 FAILED。
  *
  * <p>目标语种已经有完好的当前译文时，这一趟什么都不做：不调翻译模型、不落新版本、
  * 文件一个字节不动，只广播一条 SKIPPED 事件就收口 SUCCEEDED。<b>强制重跑（{@code force=true}）
@@ -50,6 +53,7 @@ public class SubtitleTranslateService {
     private final TaskConcurrencyGate concurrencyGate;
     private final SubtitleTranslationCoordinator translationStage;
     private final SubtitleArtifactStore artifactStore;
+    private final SubtitleTrackReader trackReader;
     private final WorkspaceDirectoryManager workspaceDirectoryManager;
 
     public SubtitleTranslateService(SubtitleTaskFinder finder,
@@ -57,6 +61,7 @@ public class SubtitleTranslateService {
                                     TaskConcurrencyGate concurrencyGate,
                                     SubtitleTranslationCoordinator translationStage,
                                     SubtitleArtifactStore artifactStore,
+                                    SubtitleTrackReader trackReader,
                                     WorkspaceDirectoryManager workspaceDirectoryManager
     ) {
         this.finder = finder;
@@ -64,6 +69,7 @@ public class SubtitleTranslateService {
         this.concurrencyGate = concurrencyGate;
         this.translationStage = translationStage;
         this.artifactStore = artifactStore;
+        this.trackReader = trackReader;
         this.workspaceDirectoryManager = workspaceDirectoryManager;
     }
 
@@ -76,7 +82,8 @@ public class SubtitleTranslateService {
      * @param force          是否强制重跑：{@code true} 时即使该语种已有完好译文也重新翻译；
      *                       {@code false} 保持「已有译文就跳过」的老行为
      * @return 本次触发的 {@code {taskNo, runNo}}
-     * @throws IllegalArgumentException taskNo 为空白、语种不在白名单、或清洗字幕尚未就绪（400）
+     * @throws IllegalArgumentException taskNo 为空白、语种不在白名单、清洗字幕尚未就绪、
+     *                                  或源语种与字幕实际识别的语种不一致（400）
      * @throws TaskNotFoundException    任务不存在（404）
      * @throws TaskConflictException    该任务已有一次执行在跑（409）
      */
@@ -85,8 +92,10 @@ public class SubtitleTranslateService {
         SupportedLanguage target = SupportedLanguage.parse(targetLanguage);
         SubtitleTask task = finder.require(taskNo);
         Workspace workspace = finder.requireWorkspace(task);
-        SubtitleArtifact cleaned = requireIntactArtifact(task, workspace, ArtifactType.CLEANED,
+        Path workDir = finder.workspaceDir(workspace);
+        SubtitleArtifact cleaned = requireIntactArtifact(task.getId(), workDir, ArtifactType.CLEANED,
                 "清洗后的字幕产物（CLEANED）");
+        validateSourceLanguage(task.getId(), workDir, source);
         TaskRun run = supervisor.start(task, TaskRunType.TRANSLATE, target.getCode())
                 .orElseThrow(() -> supervisor.buildTaskConflictException(task));
         RunRef ref = RunRef.of(task.getTaskNo(), run);
@@ -153,12 +162,41 @@ public class SubtitleTranslateService {
      *
      * <p>读路径只把缺文件的产物当没有，<b>不做自愈重跑</b>——重新生成由用户重新触发。
      */
-    private SubtitleArtifact requireIntactArtifact(SubtitleTask task, Workspace workspace,
+    private SubtitleArtifact requireIntactArtifact(long taskId, Path workDir,
                                                    ArtifactType type, String description) {
-        Path workDir = finder.workspaceDir(workspace);
-        return artifactStore.findIntactArtifact(task.getId(), type, "", workDir)
+        return artifactStore.findIntactArtifact(taskId, type, "", workDir)
                 .orElseThrow(() -> new IllegalArgumentException("字幕尚未就绪：该任务还没有完好的 " + description
                         + "；请先等主管线跑完（可查 GET /api/tasks/{taskNo} 或订阅其 SSE 事件）再试"));
+    }
+
+    /**
+     * 守卫：请求里的源语种得和字幕实际识别的语种对上。
+     *
+     * <p>源语种只说给翻译模型听，传错了模型就按错的语种去翻——中文原文传成 en，译文会整段跑偏。
+     * 所以这里不信调用方，拿清洗产物里 ASR 实测的 {@code language} 对一遍。
+     *
+     * <p><b>对不上就 400，不自动改成实际语种</b>：自动纠正会把调用方的错藏起来，正常前端已经锁死
+     * 源语种、不会走到这条分支，这条守卫就是给旧客户端和手写调用用的。
+     *
+     * <p>三种情况放行，因为没得比：产物里没有字幕、语种为空（ASR 没给）、语种不在支持白名单里。
+     *
+     * @param taskId   字幕任务的内部行 id
+     * @param workDir  这条输入的工作区目录
+     * @param requested 请求解析出来的源语种
+     * @throws IllegalArgumentException 实际语种可解析且与请求不同（400）
+     */
+    private void validateSourceLanguage(long taskId, Path workDir, SupportedLanguage requested) {
+        Optional<SubtitleTrack> track = trackReader.readCleanTrack(taskId, workDir);
+        if (track.isEmpty() || !StringUtils.hasText(track.get().language())) {
+            return;
+        }
+        Optional<SupportedLanguage> actual = SupportedLanguage.getFirstMatchLang(track.get().language());
+        if (actual.isEmpty() || actual.get().isSameLanguage(requested)) {
+            return;
+        }
+        throw new IllegalArgumentException("源语种与字幕实际语种不一致：请求 " + requested.getCode()
+                + "，字幕实际是 " + actual.get().getCode() + "（" + actual.get().getLabel() + "）"
+                + "；请把 sourceLanguage 传成清洗产物 segments.json 里的 language");
     }
 
 }
