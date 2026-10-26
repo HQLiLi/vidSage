@@ -74,7 +74,16 @@ class SubtitleCleanupCoordinatorTest {
     }
 
     private void writeRawTrack() throws Exception {
-        SubtitleTrack raw = new SubtitleTrack("zh", List.of(
+        writeRawTrack("zh");
+    }
+
+    /**
+     * 预置原始 segments，可指定语种。
+     *
+     * @param language 原始字幕的语种；{@code null} 模拟云端 ASR 不回语种的真实情况
+     */
+    private void writeRawTrack(String language) throws Exception {
+        SubtitleTrack raw = new SubtitleTrack(language, List.of(
                 new TranscriptionSegment(0, 5000, "我防关这边露出"),
                 new TranscriptionSegment(5000, 10000, "今天天气不错")), null);
         JSON.writeValue(workDir.resolve(SubtitleArtifactSpec.ORIGINAL_SEGMENTS.getFileName(null)).toFile(), raw);
@@ -114,6 +123,48 @@ class SubtitleCleanupCoordinatorTest {
         assertEquals(2, cleaned.segmentCount());
         // 整份清单一次交给 cleanser——内部分几批是它自己的事，service 不该管
         assertEquals(1, cleanserCalls.get(), "整份清单应只交给 cleanser 一次");
+    }
+
+    @Test
+    void cleanBackfillsLanguageFromContextWhenAsrGivesNone() throws Exception {
+        // 云端 ASR 实测不回语种：原始那份是 null，清洗要拿摘要里的语种补上，下游才有得用
+        writeRawTrack(null);
+        when(contextSummarizer.summarize(any(), any()))
+                .thenReturn(Optional.of(new SubtitleContext("主题", "zh", List.of())));
+
+        CleanedSubtitle cleaned = service().clean(new MediaInput.RemoteUrl("https://x"), workDir,
+                new SubtitleKeywords(List.of()), true);
+
+        assertEquals("zh-Hans", cleaned.language(), "兜底值要归一到白名单短码，别把裸 zh 原样写进去");
+        SubtitleTrack onDisk = JSON.readValue(
+                workDir.resolve(SubtitleArtifactSpec.CLEAN_SEGMENTS.getFileName(null)).toFile(),
+                SubtitleTrack.class);
+        assertEquals("zh-Hans", onDisk.language(), "落盘的 clean-segments 也要带上语种");
+    }
+
+    @Test
+    void cleanKeepsAsrLanguageOverContext() throws Exception {
+        writeRawTrack("ja");
+        when(contextSummarizer.summarize(any(), any()))
+                .thenReturn(Optional.of(new SubtitleContext("主题", "zh", List.of())));
+
+        CleanedSubtitle cleaned = service().clean(new MediaInput.RemoteUrl("https://x"), workDir,
+                new SubtitleKeywords(List.of()), true);
+
+        assertEquals("ja", cleaned.language(), "ASR 给了语种就以 ASR 为准");
+    }
+
+    @Test
+    void cleanLeavesLanguageNullWhenContextValueUnrecognized() throws Exception {
+        // 模型写「中文」这种自由文本：对不到白名单，宁留 null 表示没认出来，也别写进去让下游解析不动
+        writeRawTrack(null);
+        when(contextSummarizer.summarize(any(), any()))
+                .thenReturn(Optional.of(new SubtitleContext("主题", "中文", List.of())));
+
+        CleanedSubtitle cleaned = service().clean(new MediaInput.RemoteUrl("https://x"), workDir,
+                new SubtitleKeywords(List.of()), true);
+
+        assertEquals(null, cleaned.language());
     }
 
     @Test

@@ -173,13 +173,17 @@ public class TaskController {
      * 用户点「翻译」才触发——不看翻译的人不花 LLM 钱。
      *
      * @param taskNo  提交响应返回的任务号
-     * @param request 源语种与目标语种（两个都过白名单，白名单外 400），以及是否强制重跑
+     * @param request 源语种与目标语种（两个都过白名单，白名单外 400），以及是否强制重跑；
+     *                源语种还必须与字幕实际识别的语种一致
      * @return 202 与本次触发的 {@code {taskNo, runNo}}
-     * @throws IllegalArgumentException                                     taskNo 为空（400）、语种不在白名单（400）或字幕尚未就绪（400）
+     * @throws IllegalArgumentException                                     taskNo 为空（400）、语种不在白名单（400）、
+     *                                                                    字幕尚未就绪（400）或源语种与字幕实际语种不一致（400）
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      * @throws com.vidsage.application.task.exception.TaskConflictException 该任务已有一次执行在跑（409）
      */
     @Operation(summary = "触发字幕翻译（按需）", description = "清洗产物就绪后可触发；body 带源语种与目标语种（都过白名单，白名单外 400）；202 返回 {taskNo, runNo}。"
+            + "sourceLanguage 必须与字幕实际识别的语种一致（取清洗产物 segments.json 的 language），"
+            + "不一致返回 400。"
             + "force=true 时即使该语种已有完好译文也重新翻译，缺省 false 则跳过不重跑。"
             + "该任务已有一次执行在跑返回 409（同形状）；清洗字幕尚未就绪返回 400")
     @PostMapping("/{taskNo}/translate")

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 字幕区头部的翻译控件：源 / 目标语种、互换、翻译按钮与翻译进度。
+// 字幕区头部的翻译控件：源 / 目标语种、翻译按钮与翻译进度。
 // 纯展示组件：语种、进度与完成态都由父组件算好传进来，这里只抛事件。
 import { computed } from 'vue'
 
@@ -13,6 +13,8 @@ const props = withDefaults(
     sourceLanguage: string
     /** 当前目标语种。 */
     targetLanguage: string
+    /** 源语种是否锁死：原文语种是从字幕里识别出来的，不能改。 */
+    sourceLocked?: boolean
     /** 是否有一次执行在跑（任何类型）；跑着时控件全禁用。 */
     busy?: boolean
     /** 正在翻译。 */
@@ -22,13 +24,12 @@ const props = withDefaults(
     /** 当前语种有译文过期（原文改过），这次点下去会强制重跑。 */
     retranslate?: boolean
   }>(),
-  { busy: false, translating: false, progress: 0, retranslate: false },
+  { sourceLocked: false, busy: false, translating: false, progress: 0, retranslate: false },
 )
 
 const emit = defineEmits<{
   'update:sourceLanguage': [value: string]
   'update:targetLanguage': [value: string]
-  swap: []
   translate: []
 }>()
 
@@ -40,6 +41,11 @@ const progressPercent = computed(() => {
 
 /** 源目标相同：翻不出东西，按钮禁用并说明。 */
 const sameLanguage = computed(() => props.sourceLanguage === props.targetLanguage)
+
+/** 源语种的展示名；锁死后以纯文本显示它。 */
+const sourceLanguageLabel = computed(
+  () => props.languages.find((language) => language.code === props.sourceLanguage)?.label ?? props.sourceLanguage,
+)
 
 /** 目标语种的展示名。 */
 const targetLanguageLabel = computed(
@@ -83,7 +89,16 @@ function updateTargetLanguage(event: Event): void {
     <div
       class="grid min-w-0 grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)_auto]"
     >
-      <label class="min-w-0">
+      <div v-if="sourceLocked" class="min-w-0">
+        <span class="sr-only">源语言</span>
+        <span
+          :title="`原文语种由字幕识别得出（${sourceLanguageLabel}），不可修改`"
+          class="flex h-9 w-full min-w-0 items-center rounded-lg bg-mist px-2.5 text-sm text-ink"
+        >
+          <span class="truncate">{{ sourceLanguageLabel }}</span>
+        </span>
+      </div>
+      <label v-else class="min-w-0">
         <span class="sr-only">源语言</span>
         <select
           :value="sourceLanguage"
@@ -98,27 +113,7 @@ function updateTargetLanguage(event: Event): void {
         </select>
       </label>
 
-      <button
-        type="button"
-        title="互换源语言与目标语言"
-        aria-label="互换源语言与目标语言"
-        class="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-muted transition-colors hover:bg-mist hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="busy"
-        @click="emit('swap')"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          class="h-4 w-4"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M7 7h11m-3-3 3 3-3 3M17 17H6m3-3-3 3 3 3" />
-        </svg>
-      </button>
+      <span class="text-center text-xs text-faint" aria-hidden="true">to</span>
 
       <label class="min-w-0">
         <span class="sr-only">目标语言</span>

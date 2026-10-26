@@ -64,10 +64,32 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const artifacts = ref<ArtifactResponse[]>([])
   /** 可选语种清单。 */
   const languages = ref<LanguageOption[]>([])
-  /** 选中的源语种（规范码）；空串 = 没认出来。 */
-  const selectedSourceLanguage = ref('')
+  /** 手动选的源语种（规范码）：只在识别不出原文语种时才轮到它；空串 = 没选。 */
+  const manualSourceLanguage = ref('')
   /** 选中的目标语种（规范码）。 */
   const selectedTargetLanguage = ref('en')
+
+  /**
+   * 字幕实际用的源语种：优先 ASR 识别结果，其次 LLM 写的上下文。
+   *
+   * 顺序不能反：`cleanedTrack.language` 是识别器给的实测值，`context.sourceLanguage` 是模型
+   * 顺手写下的自由文本（可能空串、可能写「中文」）。认不出就是 null，交给调用方退回手动选择。
+   */
+  const detectedSourceLanguage = computed<string | null>(() => {
+    if (languages.value.length === 0) return null
+    return (
+      normalizeLanguageCode(subtitles.cleanedTrack?.language ?? '', languages.value) ??
+      normalizeLanguageCode(subtitles.context?.sourceLanguage ?? '', languages.value)
+    )
+  })
+
+  /** 源语种能不能改：识别出来了就不许改，原文是什么语种就按什么语种翻。 */
+  const sourceLanguageLocked = computed(() => detectedSourceLanguage.value !== null)
+
+  /** 实际参与翻译请求的源语种（规范码）；空串 = 既没识别出来、用户也没选。 */
+  const selectedSourceLanguage = computed(
+    () => detectedSourceLanguage.value ?? manualSourceLanguage.value,
+  )
 
   /** 当前跟的 run 序号；null = 没有要跟的 run。 */
   const activeRunNo = ref<number | null>(null)
@@ -185,7 +207,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loadError.value = null
     artifacts.value = []
     languages.value = []
-    selectedSourceLanguage.value = ''
+    manualSourceLanguage.value = ''
     selectedTargetLanguage.value = 'en'
     subtitles.reset()
     keywordStore.reset()
@@ -258,16 +280,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     )
   }
 
-  /** 换源语种。 */
+  /**
+   * 换源语种。
+   *
+   * 识别出原文语种时源语种是锁死的（见 `sourceLanguageLocked`），这里的写入会被忽略——
+   * 从下拉里挑一个跟原文不符的语种，只会让译文跟着错。
+   */
   function selectSourceLanguage(code: string): void {
-    selectedSourceLanguage.value = code
-  }
-
-  /** 源 / 目标语种互换；换完的目标语种如果有现成译文，直接挂上。 */
-  async function swapLanguages(): Promise<void> {
-    const previousSource = selectedSourceLanguage.value
-    selectedSourceLanguage.value = selectedTargetLanguage.value
-    await selectTargetLanguage(previousSource)
+    if (sourceLanguageLocked.value) return
+    manualSourceLanguage.value = code
   }
 
   /**
@@ -462,15 +483,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return pickArtifact(artifacts.value, ARTIFACT_TYPE.TRANSLATED, target) === null ? null : target
   }
 
-  /** 关键词拉回后，按 context 与段落里的语种补齐源 / 目标语种的初值；用户已经选过的合法值不覆盖。 */
+  /**
+   * 语种清单拉回后给目标语种补个初值；用户已经选过的合法值不覆盖。
+   *
+   * 源语种不用在这里补——它由 `detectedSourceLanguage` 从字幕产物推导，见那边的注释。
+   */
   function applyLanguages(): void {
     const options = languages.value
-    const fromContext = normalizeLanguageCode(subtitles.context?.sourceLanguage ?? '', options)
-    const fromTrack = normalizeLanguageCode(subtitles.cleanedTrack?.language ?? '', options)
 
-    if (!options.some((option) => option.code === selectedSourceLanguage.value)) {
-      selectedSourceLanguage.value = fromContext ?? fromTrack ?? ''
-    }
     if (!options.some((option) => option.code === selectedTargetLanguage.value)) {
       selectedTargetLanguage.value = options.some((option) => option.code === 'en')
         ? 'en'
@@ -592,6 +612,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     artifacts,
     languages,
     selectedSourceLanguage,
+    sourceLanguageLocked,
     selectedTargetLanguage,
     activeRunNo,
     runProgress,
@@ -616,7 +637,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     translate,
     selectSourceLanguage,
     selectTargetLanguage,
-    swapLanguages,
     reloadSubtitles,
     revertCorrection,
   }
