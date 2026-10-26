@@ -15,10 +15,12 @@ import java.time.LocalDateTime;
  * @param segmentId     字幕段 id，形如 {@code seg-0-3520}
  * @param field         改的是原文还是译文，取值 {@code text} / {@code translation}
  * @param lang          目标语种短码；原文纠错为空串
- * @param sourceText    保存这条纠错时机器给出的源文本
+ * @param sourceText    保存这条纠错时用户看到的源文本：原文纠错是改前的机器原文，
+ *                      译文纠错是当时叠过原文纠错的原文
  * @param value         用户改后的文本
  * @param matched       当前 CLEANED 字幕里还有没有这个 segment id（{@code false} = 这条纠错已失效）
- * @param sourceChanged 机器源文本是否已经与保存时不同（{@code true} = 这条纠错需要复核）
+ * @param sourceChanged 依据的源文本是否已经与当前文本不同（{@code true} = 这条纠错需要复核）：
+ *                      原文纠错比机器文本，译文纠错比生效原文
  * @param updatedAt     最近一次保存时间
  */
 public record CorrectionView(Long id, String segmentId, String field, String lang,

@@ -65,7 +65,9 @@ public class SubtitleCorrectionService {
      * 保存一条纠错（同一段同一项重复保存就是覆盖）。
      *
      * <p>{@code sourceText} 记的是「这条纠错所依据的源文本」：原文纠错记改前的机器原文，
-     * 译文纠错记 CLEANED 里该段的原文。两边都取<b>未经覆盖</b>的机器文本，事后才能判断改动还对不对得上。
+     * 译文纠错记<b>用户当时看到的原文</b>（叠过原文纠错的那一份）。两者比的对象不同，事后才能
+     * 各自判断改动还对不对得上：原文纠错看机器产物有没有被重新生成，译文纠错看用户当初照着
+     * 写译文的那句话有没有变。
      *
      * @param taskNo    对外任务号
      * @param segmentId 字幕段 id
@@ -106,8 +108,12 @@ public class SubtitleCorrectionService {
             }
         }
 
+        // 原文纠错记机器原文；译文纠错记用户当时看到的原文，否则「原文后来改过」永远判不出来
+        String basedOnText = resolvedField == SubtitleCorrectionField.TEXT
+                ? segment.text()
+                : effectiveTextOf(task.getId(), cleanTrack, segment);
         SubtitleCorrection saved = repository.upsert(new SubtitleCorrection(null, task.getId(), segmentId,
-                resolvedField, resolvedLang, segment.text(), trimmedValue, null, null));
+                resolvedField, resolvedLang, basedOnText, trimmedValue, null, null));
         log.info("字幕纠错已保存: taskNo={}, segmentId={}, field={}, lang={}",
                 taskNo, segmentId, resolvedField, resolvedLang);
         return new CorrectionView(saved.id(), saved.segmentId(), saved.field().token(), saved.lang(),
@@ -191,6 +197,18 @@ public class SubtitleCorrectionService {
     /** 定位工作目录：任务 → 媒体身份 → 工作区根下的目录名。 */
     private Path workDirOf(SubtitleTask task) {
         return finder.workspaceDir(finder.requireWorkspace(task));
+    }
+
+    /**
+     * 译文纠错的依据文本：用户当时看到的原文，即叠过原文纠错的那一份。
+     *
+     * <p>不能拿机器原文：用户先改原文、再写译文时机器文件一个字节没变，用它做依据，
+     * 「原文后来改过」就永远判不出来（判定见 {@link SubtitleCorrectionOverlay#matchCorrections}）。
+     */
+    private String effectiveTextOf(long taskId, SubtitleTrack machineTrack, TranscriptionSegment segment) {
+        return findSegment(overlay.applyToCleanTrack(taskId, machineTrack), segment.id())
+                .map(TranscriptionSegment::text)
+                .orElse(segment.text());
     }
 
     /** 当前字幕里按 id 找那一段；同一 id 出现多次时取第一条（它们是同一句）。 */

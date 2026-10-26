@@ -36,7 +36,7 @@ public class SubtitleCorrectionEntity {
     /** 译文纠错的目标语种短码；原文纠错为空串（列上 NOT NULL DEFAULT ''）。 */
     private String lang;
 
-    /** 保存这条纠错时机器给出的源文本。 */
+    /** 保存时依据的源文本：原文纠错是改前的机器原文，译文纠错是当时叠过原文纠错的原文。 */
     private String sourceText;
 
     /** 用户改后的文本。 */
