@@ -193,3 +193,70 @@ design §1.4 明写 `revision` = 「同 `(task,type,lang)` 递增（**MAX+1**）
 
 另：单条字幕行编辑仍**不持久化**（后端无端点），B1 起就是明确提示，不是本次新增遗留；
 媒体播放与单条编辑都属「前端只能降级，不能修」的两类。
+
+---
+
+## 7. ASR 不返回语种，`SubtitleTrack.language` 源头是空的
+
+> 2026-10-26 追加（`10-26-source-language-authority` 取证时发现）。
+
+**状态**：已确认，**未修**（该任务只做了「有话种就用、没有就用上下文摘要补」的兜底）。
+
+### 现象
+
+云端 ASR（`qwen-audio-3.1-asr-flash-filetrans`）的转写结果 JSON 里**没有** `language` 字段：
+
+- `transcripts[0]` 的键只有 `channel_id` / `content_duration_in_milliseconds` / `text` / `sentences`
+- `properties` 里也没有；原始 JSON 全文 `language` 出现 **0 次**
+- 加 `parameters.language_hints = ["auto"]` 再跑一次，返回结构完全一样
+
+所以 `DashScopeAsrProvider.toResult()` 拿到的 `transcript.language()` 恒为 `null`，
+`original-segments.json` 就是 `"language": null`。库里 4 个任务（2026-10-24 ~ 10-26）无一例外。
+
+### 现在的兜底
+
+清洗阶段（`SubtitleCleanupCoordinator.resolveLanguage`）在 ASR 没给语种时，用
+`context.sourceLanguage`（DeepSeek 通读字幕文本后写的短码）归一后写进 `clean-segments.json` 的
+`language`。**这不是语种检测，是让下游有一个能用的值。**
+
+### 要做什么
+
+想拿真实检测结果，得确认哪个模型会返回 `language`（Paraformer 系列的结果 JSON 文档里有该字段），
+再评估换模型的代价：转写质量、价格、`language_hints` 语义、以及要不要并存两套。
+属于独立的 ASR 选型任务，不在字幕前端范围内。
+
+---
+
+## 8. yt-dlp 的 300 秒默认超时对长视频不够
+
+> 2026-10-26 追加（`10-26-source-language-authority` 真机验收时撞上）。
+
+**状态**：观察，**未修**。属取舍，不是明确缺陷。
+
+### 现象
+
+提交 `https://www.bilibili.com/video/BV1J3nE6gEQZ/` 后，首个 MAIN run 直接 `FAILED`：
+
+```
+外部命令执行超时（300 秒）：yt-dlp；可用 vidsage.tools.default-timeout-seconds 调整
+```
+
+用 `--vidsage.tools.default-timeout-seconds=1800` 重启后端后再提交，**30 秒内就跑完**——
+说明那次超时里视频其实已经下到工作区，重跑直接复用，真正的瓶颈只在首次下载那一段。
+
+### 为什么是 300
+
+`vidsage.tools.default-timeout-seconds` 是**所有外部命令的统一默认值**
+（`ExternalToolProperties`，默认 300），yt-dlp / ffmpeg / ffprobe 共用。它对 ffmpeg 抽音频这类
+几秒级操作合适，对「下载整段视频」这种随时可能是几百 MB 的操作偏紧。
+
+### 要做什么
+
+二选一，都是改一行配置语义的事，但要先定口径：
+
+1. **按工具分开配**：给 yt-dlp 单独一个更长的超时（例如 30 分钟），其余维持 300；
+2. **整体抬到 1800**：简单，但把 ffmpeg / ffprobe 的失败也拖成半小时才暴露。
+
+倾向 1。另外超时文案已经指明了配置项，这一点是好的，别改。
+
+---
