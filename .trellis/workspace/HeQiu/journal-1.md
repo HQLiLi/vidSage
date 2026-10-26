@@ -1789,3 +1789,26 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 
 - 父任务 10-25-subtitle-manual-correction 三个子任务已全部完成，待做父任务集成评审（AC1–AC8）后归档
 - dev 领先 origin/dev，未推送
+
+
+## Session 65: 译文纠错待复核标记（父任务集成评审收尾）
+<!-- trellis-session: v=2 fp=98b87e0e78aac5b6 -->
+
+**Date**: 2026-10-26
+**Task**: 译文纠错待复核标记（父任务集成评审收尾）
+**Branch**: `dev`
+
+### Summary
+
+父任务集成评审发现 R5 的「译文待复核」没有实现且 AC 未覆盖：译文纠错的 source_text 存的是机器原文，用户改原文后 sourceChanged 不会翻转，页面也没有标记。改为：译文纠错存保存时用户看到的生效原文（叠过原文纠错），sourceChanged 分字段比（原文纠错比机器文本、译文纠错比生效原文），前端在重翻后对手改译文显示「译文待复核」，与「译文待更新」互斥；问题 2 裁定为译文产物原文列不叠原文纠错并写进设计。后端 845 tests 全绿（+3），前端 type-check/lint 绿，接口实测两种保存顺序；Playwright MCP 超时，UI 标记未做浏览器走查。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0afc119` | feat(subtitle): 译文纠错依据文本与「译文待复核」标记 |
+| `aff100e` | Merge branch 'feature/corrections-translation-review' into dev |
+
+### Status
+
+[OK] **Completed**
