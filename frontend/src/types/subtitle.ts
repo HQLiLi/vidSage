@@ -163,13 +163,13 @@ export interface SubtitleCorrection {
   field: CorrectionField
   /** 译文纠错的目标语种短码；原文纠错是空串。 */
   lang: string
-  /** 保存这条纠错时机器给出的源文本。 */
+  /** 保存这条纠错时用户看到的源文本：原文纠错是改前的机器原文，译文纠错是当时叠过原文纠错的原文。 */
   sourceText: string
   /** 用户改后的文本。 */
   value: string
   /** 当前字幕里还有没有这一条；false = 字幕重新生成后已失效。 */
   matched: boolean
-  /** 机器源文本是否已与保存时不同。 */
+  /** 保存时依据的源文本是否已与当前文本不同；译文纠错用它提示「译文待复核」。 */
   sourceChanged: boolean
   /** 最近一次保存时间（ISO-8601 字符串）。 */
   updatedAt: string

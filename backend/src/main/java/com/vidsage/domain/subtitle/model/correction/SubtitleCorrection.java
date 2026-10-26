@@ -6,8 +6,8 @@ import java.time.LocalDateTime;
  * 用户对某一条字幕（原文，或某个语种的译文）的手动改动。
  *
  * <p><b>它是一层「覆盖」，不是新一版产物</b>：磁盘上的字幕文件永远保持机器输出，读取时才把纠错
- * 叠上去。所以这里记着 {@code sourceText}——保存那一刻机器给出的文本长什么样；
- * 事后拿它跟当前产物比，就知道这条改动还对不对得上（前端据此提示「已失效」）。
+ * 叠上去。所以这里记着 {@code sourceText}——保存那一刻用户看到的那句源文本长什么样；
+ * 事后拿它跟当前文本比，就知道这条改动还对不对得上（前端据此提示「已失效」或「译文待复核」）。
  *
  * <p><b>lang 一律收敛成空串</b>：原文纠错没有语种维度，而唯一键里有 {@code lang}，
  * MySQL 的唯一约束又不比较 {@code NULL}——放 {@code null} 进去，同一段就能插两条原文纠错。
@@ -17,7 +17,8 @@ import java.time.LocalDateTime;
  * @param segmentId      字幕段 id，形如 {@code seg-0-3520}
  * @param field          改的是原文还是译文
  * @param lang           译文纠错的目标语种短码；原文纠错固定空串
- * @param sourceText     保存这条纠错时机器给出的源文本；{@code null} 收敛成空串（列上是 NOT NULL）
+ * @param sourceText     保存这条纠错时用户看到的源文本：原文纠错是改前的机器原文，
+ *                       译文纠错是当时叠过原文纠错的原文；{@code null} 收敛成空串（列上是 NOT NULL）
  * @param correctedValue 用户改后的文本
  * @param createdAt      首次保存时间
  * @param updatedAt      最近一次保存时间

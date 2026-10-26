@@ -114,6 +114,33 @@ class SubtitleCorrectionOverlayTest {
     }
 
     @Test
+    void reportsTranslationSourceChangedWhenOriginalWasEditedAfterwards() {
+        // 先存译文纠错（依据是机器原文），后改原文：这条手改译文需要复核
+        SubtitleCorrection editedOriginal = textCorrection(1L, "seg-0-1000", "用户改的原文");
+        SubtitleCorrection editedTranslation = new SubtitleCorrection(2L, TASK_ID, "seg-0-1000",
+                SubtitleCorrectionField.TRANSLATION, "zh-Hans", "机器原文 A", "改后的译文", null, null);
+        when(repository.findByTaskId(TASK_ID)).thenReturn(List.of(editedOriginal, editedTranslation));
+
+        List<CorrectionView> views = overlay.matchCorrections(TASK_ID, cleanTrack());
+
+        assertFalse(views.get(0).sourceChanged(), "原文纠错比的是机器文本，没被重生成就不算变");
+        assertTrue(views.get(1).sourceChanged(), "译文纠错的依据文本仍是机器原文，而生效原文已经改了");
+    }
+
+    @Test
+    void keepsTranslationWhenSavedAgainstCurrentEffectiveText() {
+        // 先改原文，再照着改后的句子写译文：依据就是当前生效原文，不需要复核
+        SubtitleCorrection editedOriginal = textCorrection(1L, "seg-0-1000", "用户改的原文");
+        SubtitleCorrection editedTranslation = new SubtitleCorrection(2L, TASK_ID, "seg-0-1000",
+                SubtitleCorrectionField.TRANSLATION, "zh-Hans", "用户改的原文", "改后的译文", null, null);
+        when(repository.findByTaskId(TASK_ID)).thenReturn(List.of(editedOriginal, editedTranslation));
+
+        CorrectionView view = overlay.matchCorrections(TASK_ID, cleanTrack()).get(1);
+
+        assertFalse(view.sourceChanged(), "译文纠错的依据就是当前生效原文");
+    }
+
+    @Test
     void reportsUnmatchedWhenSegmentDisappeared() {
         when(repository.findByTaskId(TASK_ID)).thenReturn(List.of(
                 textCorrection(1L, "seg-9-9999", "旧条目的改动")));

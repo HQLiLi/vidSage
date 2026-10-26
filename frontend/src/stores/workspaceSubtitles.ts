@@ -84,6 +84,23 @@ export const useWorkspaceSubtitlesStore = defineStore('workspaceSubtitles', () =
   )
 
   /**
+   * 需要复核的译文纠错索引：依据的原文在保存这条译文之后改过。
+   *
+   * 只收译文纠错——原文纠错的 `sourceChanged` 说的是「机器产物被重新生成」，跟这里的提示无关。
+   */
+  const reviewCorrectionKeys = computed(
+    () =>
+      new Set(
+        corrections.value
+          .filter(
+            (correction) =>
+              correction.field === CORRECTION_FIELD.TRANSLATION && correction.sourceChanged,
+          )
+          .map((correction) => correctionKey(correction.field, correction.lang, correction.segmentId)),
+      ),
+  )
+
+  /**
    * 拉一版清洗后字幕的段落与上下文。
    *
    * 返回 null 表示成功或被后来的加载作废；返回字符串表示硬错误文案——
@@ -169,6 +186,11 @@ export const useWorkspaceSubtitlesStore = defineStore('workspaceSubtitles', () =
   /** 这一条（段 + 项 + 语种）有没有存过纠错——决定编辑态要不要给「恢复」入口。 */
   function hasCorrection(segmentId: string, field: CorrectionField, lang: string): boolean {
     return correctionKeys.value.has(correctionKey(field, lang, segmentId))
+  }
+
+  /** 这一条的译文纠错是否需要复核：当初照着写译文的原文后来改过。 */
+  function translationNeedsReview(segmentId: string, lang: string): boolean {
+    return reviewCorrectionKeys.value.has(correctionKey(CORRECTION_FIELD.TRANSLATION, lang, segmentId))
   }
 
   /**
@@ -290,6 +312,7 @@ export const useWorkspaceSubtitlesStore = defineStore('workspaceSubtitles', () =
     clearTranslation,
     loadCorrections,
     hasCorrection,
+    translationNeedsReview,
     saveCorrection,
     deleteCorrection,
     clearStaleCorrections,

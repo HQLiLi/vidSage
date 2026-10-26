@@ -50,6 +50,13 @@ const hasTranslationCorrection = computed(
     subtitles.hasCorrection(props.cue.id, CORRECTION_FIELD.TRANSLATION, props.language),
 )
 
+/** 这条译文纠错要不要复核：当初照着写译文的原文后来改过（此时机器译文已经是新的）。 */
+const needsReview = computed(
+  () =>
+    props.language !== null &&
+    subtitles.translationNeedsReview(props.cue.id, props.language),
+)
+
 /** 编辑态里要不要给恢复入口。 */
 const canRevert = computed(() => {
   if (editing.value === CORRECTION_FIELD.TEXT) return hasTextCorrection.value
@@ -340,9 +347,15 @@ watch(
           </button>
         </div>
 
-        <!-- 译文拿的是旧原文翻的：原文改过、还没重翻 -->
+        <!--
+          两种提示互斥：还没重翻时是「待更新」；重翻之后机器译文已经跟上，
+          但手改译文当初照着的是旧原文，改叫「待复核」。
+        -->
         <p v-if="cue.translationStale" class="mt-1 text-[11px] leading-relaxed text-faint">
           原文已改，译文待更新
+        </p>
+        <p v-else-if="needsReview" class="mt-1 text-[11px] leading-relaxed text-faint">
+          译文待复核：原文改过，请核对这条手改译文
         </p>
       </template>
 

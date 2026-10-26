@@ -21,7 +21,8 @@
   "children": [
     "10-25-corrections-data-api",
     "10-25-corrections-read-paths",
-    "10-25-corrections-frontend"
+    "10-25-corrections-frontend",
+    "10-26-corrections-translation-review"
   ],
   "parent": null,
   "relatedFiles": [],

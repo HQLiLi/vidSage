@@ -91,9 +91,14 @@ public class SubtitleCorrectionOverlay {
     /**
      * 给该任务每条纠错算 {@code matched} 与 {@code sourceChanged}。
      *
-     * <p>两条判据都以<b>当前干净字幕的机器文本</b>为准：{@code matched} 看这个 segment id 还在不在，
-     * {@code sourceChanged} 看保存时记下的 {@code sourceText} 与当前机器文本是否不同。没命中的条目
-     * 谈不上「源文本变了」，{@code sourceChanged} 一律 {@code false}。
+     * <p>{@code matched} 看这个 segment id 还在不在当前 CLEANED 里。{@code sourceChanged} 按字段分派，
+     * 因为两类纠错「依据的源文本」不是同一份：
+     * <ul>
+     *   <li>原文纠错比<b>机器文本</b>——它要识别的是机器产物被重新生成（重新转写 / 重新切分）；</li>
+     *   <li>译文纠错比<b>生效原文</b>（叠过原文纠错）——它要识别的是用户当初照着写译文的那句话
+     *       后来被改过，也就是父 PRD 里「译文待复核」的判据。</li>
+     * </ul>
+     * 没命中的条目谈不上「源文本变了」，{@code sourceChanged} 一律 {@code false}。
      *
      * @param taskId     字幕任务的内部行 id
      * @param cleanTrack 当前 CLEANED 字幕（机器输出）；没有清洗产物时传空 track，结果全是未命中
@@ -105,16 +110,26 @@ public class SubtitleCorrectionOverlay {
             return List.of();
         }
         warnDuplicateIds(taskId, cleanTrack.segments().stream().map(TranscriptionSegment::id).toList());
-        Map<String, TranscriptionSegment> byId = new HashMap<>();
+        Map<String, String> machineTextById = new HashMap<>();
         for (TranscriptionSegment segment : cleanTrack.segments()) {
-            byId.put(segment.id(), segment);
+            machineTextById.put(segment.id(), textOf(segment.text()));
+        }
+        // 原文纠错本身就是「生效原文」的来源：译文纠错的依据文本要跟它比
+        Map<String, String> textOverridesById = new HashMap<>();
+        for (SubtitleCorrection correction : corrections) {
+            if (correction.field() == SubtitleCorrectionField.TEXT) {
+                textOverridesById.put(correction.segmentId(), correction.correctedValue());
+            }
         }
         return corrections.stream()
                 .map(correction -> {
-                    TranscriptionSegment segment = byId.get(correction.segmentId());
-                    boolean matched = segment != null;
+                    String machineText = machineTextById.get(correction.segmentId());
+                    boolean matched = machineText != null;
+                    String currentText = correction.field() == SubtitleCorrectionField.TEXT
+                            ? machineText
+                            : textOverridesById.getOrDefault(correction.segmentId(), machineText);
                     boolean sourceChanged = matched
-                            && !textOf(correction.sourceText()).equals(textOf(segment.text()));
+                            && !textOf(correction.sourceText()).equals(textOf(currentText));
                     return new CorrectionView(correction.id(), correction.segmentId(),
                             correction.field().token(), correction.lang(), correction.sourceText(),
                             correction.correctedValue(), matched, sourceChanged, correction.updatedAt());

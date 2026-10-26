@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS subtitle_correction (
     segment_id      VARCHAR(64)  NOT NULL COMMENT 'seg-<beginTimeMs>-<endTimeMs>',
     field_type      VARCHAR(32)  NOT NULL COMMENT 'text / translation',
     lang            VARCHAR(32)  NOT NULL DEFAULT '' COMMENT 'field_type=translation 时为目标语种短码；text 时为空串',
-    source_text     TEXT         NOT NULL COMMENT '这条纠错依据的源文本：text 行为改前的机器原文；translation 行为当时的原文',
+    source_text     TEXT         NOT NULL COMMENT '这条纠错依据的源文本：text 行为改前的机器原文；translation 行为保存时用户看到的原文',
     corrected_value TEXT         NOT NULL COMMENT '用户改后的文本',
     created_at      DATETIME     NOT NULL,
     updated_at      DATETIME     NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS subtitle_correction (
 
 - `applyToCleanTrack(long taskId, SubtitleTrack track)`：按 `segmentId + field=TEXT` 覆盖 `text`。
 - `applyToTranslatedTrack(long taskId, String lang, TranslatedTrack track)`：按 `segmentId + field=TRANSLATION + lang` 覆盖 `translatedText`。
-- `matchCorrections(long taskId, SubtitleTrack cleanTrack)`：给每条纠错算 `matched`（当前 CLEANED 里是否有该 id）与 `sourceChanged`（`source_text` 与当前源文本是否不同）。
+- `matchCorrections(long taskId, SubtitleTrack cleanTrack)`：给每条纠错算 `matched`（当前 CLEANED 里是否有该 id）与 `sourceChanged`（`source_text` 与当前文本是否不同：text 行比机器文本，translation 行比生效原文，见 §4.2）。
 
 **调用点（必须全部走它）**：
 
@@ -110,7 +110,14 @@ CREATE TABLE IF NOT EXISTS subtitle_correction (
 | `value` trim 后为空 | 400，提示改用删除恢复机器文本 |
 | `value` 超过单条上限（2000 字符） | 400 |
 
-保存时 `source_text` 取"这条纠错所依据的源文本"（原文纠错取 CLEANED 中改前的 text；译文纠错取当时的原文），用于差异展示与译文待复核判定。
+保存时 `source_text` 取"这条纠错所依据的源文本"，两类纠错取的**不是同一份**（2026-10-26 订正）：
+
+- 原文纠错取 CLEANED 中改前的**机器** text——它要识别的是机器产物被重新生成；
+- 译文纠错取当时**用户看到的**原文（叠过原文纠错），`sourceChanged` 也就按这个口径比
+  （判定实现见 `SubtitleCorrectionOverlay#matchCorrections`）。
+
+这样 `sourceChanged` 才能承担「译文待复核」：用户照着旧原文写的手改译文，在原文后来改过之后会翻成 `true`。
+取机器原文的话，用户改原文不会让任何字节变化，判据永远不翻转。
 
 ### 4.3 HTTP 契约
 
@@ -152,6 +159,10 @@ DTO 落 `web/dto/`：`SaveCorrectionRequest`、`SubtitleCorrectionResponse`、`S
 - 渲染 SRT 复用现有 `SrtRenderer`（译文 SRT 用与翻译阶段相同的渲染方法，实施时对齐）。
 - JSON 序列化复用产物读写已有的 Jackson 配置，避免形状漂移。
 - 产物清单里的 `sizeBytes` 仍报磁盘文件大小；不改列表接口。
+- **译文产物的原文列不叠原文纠错**（2026-10-26 裁定）：页面判「译文待更新」靠的就是「译文自带的
+  `sourceText` ≠ 当前原文」。译文列一旦也把 `sourceText` 换成纠错后的文本，两边相等，过期提示直接失效。
+  这类不一致只出现在「改了原文还没重翻」的窗口，此时该行本来就标着「原文已改，译文待更新」，
+  重翻一次即消失；单条重翻不在范围内。
 
 ## 6. 前端
 
@@ -170,9 +181,12 @@ DTO 落 `web/dto/`：`SaveCorrectionRequest`、`SubtitleCorrectionResponse`、`S
 - 保存幂等：值未变则不发请求；请求进行中标记 `saving`，避免重复提交。
 - 失败：还原编辑前文本 + 行内错误提示。
 
-### 6.3 译文过期与失效纠错
+### 6.3 译文过期、待复核与失效纠错
 
 - 改原文保存成功后，该行译文立即显示"原文已改，译文待更新"（由 `translationStale` 计算得出）。
+- 重翻之后 `translationStale` 变回 `false`，但手改译文仍盖在新机器译文上；若这条译文纠错的
+  `sourceChanged=true`（当初照着写译文的原文后来改过），改显"译文待复核"（2026-10-26 补，与"待更新"互斥）。
+  用户改动这条译文再保存（或删掉重存）即清掉——保存是幂等的，原样点保存不会发请求，标记清不掉。
 - 翻译栏的"重新翻译"在存在过期条目时调用 `translateTask(taskNo, { force: true })`。
 - 字幕区顶部：`listCorrections` 里有 `matched=false` 的条目时显示"N 条纠错已失效" + 清除按钮（调 `DELETE /corrections?staleOnly=true`）。
 

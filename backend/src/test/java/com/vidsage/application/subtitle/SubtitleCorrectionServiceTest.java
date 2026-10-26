@@ -46,7 +46,7 @@ import org.mockito.ArgumentCaptor;
  *
  * <p>按校验表逐行钉住：任务不存在 404、运行中 409、条目过期 409、译文落后于原文 409、
  * 未知 field 词形 / 译文语种缺失或无效 / 空值与超长 400，
- * 以及「源文本记的是机器原文」「清理只删未命中」。
+ * 以及「源文本记的是保存时用户看到的原文」「清理只删未命中」。
  */
 class SubtitleCorrectionServiceTest {
 
@@ -112,7 +112,7 @@ class SubtitleCorrectionServiceTest {
     }
 
     @Test
-    void saveNormalizesTranslationLanguageAndStoresCleanSourceText() {
+    void saveNormalizesTranslationLanguageAndStoresEffectiveSourceText() {
         stubUpsertEcho();
         when(trackReader.readTranslatedTrack(TASK_ID, "zh-Hans", WORK_DIR))
                 .thenReturn(Optional.of(translatedTrack("zh-Hans", "seg-0-1000")));
@@ -123,8 +123,27 @@ class SubtitleCorrectionServiceTest {
         verify(trackReader).readTranslatedTrack(TASK_ID, "zh-Hans", WORK_DIR);
         verify(repository).upsert(captor.capture());
         assertEquals("zh-Hans", captor.getValue().lang(), "语种别名要归一到规范短码");
-        assertEquals("机器原文 A", captor.getValue().sourceText(), "译文纠错记当时的原文");
+        assertEquals("机器原文 A", captor.getValue().sourceText(),
+                "没有原文纠错时，用户看到的原文就是机器原文");
         assertEquals(SubtitleCorrectionField.TRANSLATION, captor.getValue().field());
+    }
+
+    @Test
+    void saveTranslationStoresCorrectedOriginalAsItsBasis() {
+        // 用户先改过原文：译文纠错的依据文本必须是改后的那一句，否则「原文后来改过」判不出来
+        when(repository.findByTaskId(TASK_ID)).thenReturn(List.of(
+                new SubtitleCorrection(1L, TASK_ID, "seg-0-1000", SubtitleCorrectionField.TEXT, "",
+                        "机器原文 A", "用户改的原文", NOW, NOW)));
+        stubUpsertEcho();
+        when(trackReader.readTranslatedTrack(TASK_ID, "zh-Hans", WORK_DIR))
+                .thenReturn(Optional.of(translatedTrack("zh-Hans", "seg-0-1000")));
+        ArgumentCaptor<SubtitleCorrection> captor = ArgumentCaptor.forClass(SubtitleCorrection.class);
+
+        service.save(TASK_NO, "seg-0-1000", "translation", "zh-Hans", "改后的译文");
+
+        verify(repository).upsert(captor.capture());
+        assertEquals("用户改的原文", captor.getValue().sourceText(),
+                "译文纠错记的是用户当时看到的原文（叠过原文纠错）");
     }
 
     // ---------- 保存：任务与状态（404 / 409） ----------

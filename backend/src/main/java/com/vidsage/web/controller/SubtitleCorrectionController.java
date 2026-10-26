@@ -52,7 +52,7 @@ public class SubtitleCorrectionController {
      * @throws com.vidsage.application.task.exception.TaskNotFoundException 任务不存在（404）
      */
     @Operation(summary = "查询字幕纠错", description = "返回该任务全部纠错；每条带 matched（当前字幕里还有没有这个条目）"
-            + "与 sourceChanged（机器源文本是否已变，需要复核）；任务不存在返回 404")
+            + "与 sourceChanged（保存时依据的源文本是否已变，需要复核）；任务不存在返回 404")
     @GetMapping("/{taskNo}/corrections")
     public SubtitleCorrectionListResponse list(@PathVariable String taskNo) {
         validateTaskNo(taskNo);

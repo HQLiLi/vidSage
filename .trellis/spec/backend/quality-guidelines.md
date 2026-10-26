@@ -164,12 +164,16 @@ double best = Math.max(
 | 翻译取源文本（`SubtitleTranslationCoordinator` 读到 CLEANED 后叠） | 产物哈希 / `sizeBytes` / 只读对账 |
 | | ORIGINAL 全部、`context.json`、`terms.json`、`?raw=1` 下载 |
 
-三条硬规则：
+四条硬规则：
 
 - **合并逻辑只有一处**：需要「用户看到的字幕」就调覆盖层，别在调用点再拼一遍按 id 覆盖。
 - **「有没有纠错」不另查库**：覆盖层承诺「没有可叠的纠错就原样返回入参」，下载侧据此判快路径
   （`SubtitleArtifactRenderer` 用实例同一性判）；另加 `hasCorrections` 只会让判据出现两份。
 - **零纠错必须逐字节一致**：走快路径直发磁盘文件，不要读出来再序列化一遍——形状漂移会被当成内容变化。
+- **`source_text` 分两类口径**（2026-10-26）：原文纠错记「改前的机器原文」、跟机器文本比；译文纠错记
+  「保存时用户看到的原文」（叠过原文纠错）、跟生效原文比。写入在 `SubtitleCorrectionService#save`，
+  判定在 `SubtitleCorrectionOverlay#matchCorrections`，改一处必须同时改另一处。译文纠错若取机器原文，
+  用户改原文不会让任何字节变化，`sourceChanged` 永远翻不了「译文待复核」。
 
 防回归：`CorrectionReadPathBoundaryTest` 用构造器签名钉住清洗 / 指纹 / 主链路的编排件不得依赖
 `SubtitleCorrectionOverlay` 或 `SubtitleTrackReader`。把覆盖层接进看机器产物的路径，会让用户一改字幕
