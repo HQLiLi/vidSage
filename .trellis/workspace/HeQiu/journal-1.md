@@ -1812,3 +1812,26 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 66: 源语种收口：前端锁定 + 后端校验，附带 ASR 语种取证
+<!-- trellis-session: v=2 fp=27dc0fb5fb6b0455 -->
+
+**Date**: 2026-10-26
+**Task**: 源语种收口：前端锁定 + 后端校验，附带 ASR 语种取证
+**Branch**: `dev`
+
+### Summary
+
+先取证：直连 DashScope 原始 API 跑 3 秒样例，下载结果 JSON 确认 qwen-audio-3.1-asr-flash-filetrans 根本不返回 language 字段（全文 0 次命中，加 language_hints=auto 也不返回），所以原计划「拿 ASR 实测语种当唯一依据」不成立，改为清洗阶段用上下文摘要的语种兜底写进 clean-segments.language。前端源语种改由 cleanedTrack.language 推导、context 兜底并锁定为只读文本，互换按钮下线换成 to；后端在开跑前核对 sourceLanguage 与 CLEANED 语种，不一致 400 且不建 run。真机全链路验收（BV1J3nE6gEQZ）：ORIGINAL 为 null、CLEANED 补成 zh-Hans；传 en 得 400、传 zh（别名）得 202 并产出 zh-Hans→ja 译文；浏览器确认 AC1–AC3。测试 850 → 853，前端 lint/type-check 通过。顺带记录两条已知问题（known-bugs §7 ASR 不返回语种、§8 yt-dlp 300 秒超时），并按所有者要求清空旧任务数据（21 任务 / 79 产物 / 65 run / 21 工作区目录，对账 0 异常）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `32fd594` | feat(subtitle): 源语种以字幕产物为准（前端锁定 + 后端校验） - 清洗写 -clean 时补语种：ASR 给了用 ASR，没给用上下文摘要的语种（归一到白名单 短码），两条路都没有就留 null——实测云端 ASR 的转写结果 JSON 里根本没有 language 字段，加 language_hints=auto 也不返回 - 前端源语种改由 cleanedTrack.language 推导、context 兜底（顺序与原来相反）， 识别出来即锁定为只读文本；认不出才退回可编辑下拉；互换按钮下线，位置换成 to - POST /translate 开跑前核对 sourceLanguage 与 CLEANED 语种（认 zh 这类别名）， 不一致 400 且不建 run；产物语种为空或白名单外放行 - 测试 850 → 853 |
+| `0e63a66` | chore(task): 记录源语种收口的计划文档与两条已知问题 |
+
+### Status
+
+[OK] **Completed**
