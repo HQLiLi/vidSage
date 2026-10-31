@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量检查的判据与测试要求"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对建表契约、索引命名与仓储转换"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对校验分支与错误信息"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核对类落位与依赖方向"}

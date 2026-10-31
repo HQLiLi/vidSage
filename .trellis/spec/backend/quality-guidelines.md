@@ -152,6 +152,33 @@ double best = Math.max(
 - 术语表**未命中**的其他专有名词一律不动；`密度号` 这类「同一个词的另一种音译变体」不靠模糊匹配兜底，靠模型自己按上下文推断（2026-09-28 决策）
 - 术语替换统计走 `CleanseResult.termHits / termApplied`，口径是**保守近似**（变体形算未替换，宁可多报）：`asr == fixed` 的条目从分子分母都排除；跨批次累计；未替换清单进 DEBUG 日志，汇总数进服务层日志与 HTTP 响应
 
+### 字幕纠错的读取口清单（2026-10-25）
+
+用户手动纠错是**覆盖层**，磁盘上的 `original-*` / `clean-*` / `translated-*` 永远是机器输出。
+判断一个读取口该不该套纠错，只看一件事：**这份内容是不是「用户看到的样子」**。
+
+| 必须套用（经 `SubtitleCorrectionOverlay`） | 禁止套用（按机器产物原样读） |
+|---|---|
+| 下载 CLEANED 的 `segments.json` / `subtitles.srt`（原文纠错） | 清洗复用判定（检查点、`keywordsFingerprint`、`context.json`） |
+| 下载 TRANSLATED 的 `segments.json` / `subtitles.srt`（只叠该语种） | 内容指纹探测与级联作废 |
+| 翻译取源文本（`SubtitleTranslationCoordinator` 读到 CLEANED 后叠） | 产物哈希 / `sizeBytes` / 只读对账 |
+| | ORIGINAL 全部、`context.json`、`terms.json`、`?raw=1` 下载 |
+
+四条硬规则：
+
+- **合并逻辑只有一处**：需要「用户看到的字幕」就调覆盖层，别在调用点再拼一遍按 id 覆盖。
+- **「有没有纠错」不另查库**：覆盖层承诺「没有可叠的纠错就原样返回入参」，下载侧据此判快路径
+  （`SubtitleArtifactRenderer` 用实例同一性判）；另加 `hasCorrections` 只会让判据出现两份。
+- **零纠错必须逐字节一致**：走快路径直发磁盘文件，不要读出来再序列化一遍——形状漂移会被当成内容变化。
+- **`source_text` 分两类口径**（2026-10-26）：原文纠错记「改前的机器原文」、跟机器文本比；译文纠错记
+  「保存时用户看到的原文」（叠过原文纠错）、跟生效原文比。写入在 `SubtitleCorrectionService#save`，
+  判定在 `SubtitleCorrectionOverlay#matchCorrections`，改一处必须同时改另一处。译文纠错若取机器原文，
+  用户改原文不会让任何字节变化，`sourceChanged` 永远翻不了「译文待复核」。
+
+防回归：`CorrectionReadPathBoundaryTest` 用构造器签名钉住清洗 / 指纹 / 主链路的编排件不得依赖
+`SubtitleCorrectionOverlay` 或 `SubtitleTrackReader`。把覆盖层接进看机器产物的路径，会让用户一改字幕
+就触发重跑与作废，且功能用例通常不显形。
+
 ### 不预先抽接口
 
 **上层需要不依赖某个具体实现类时，就为它抽端口**——多实现是抽端口的常见理由，不是必要条件。端口落在哪一层、叫什么名字，判据见 [directory-structure.md](./directory-structure.md) 的[依赖规则](./directory-structure.md#依赖规则)与[端口归属判据](./directory-structure.md#端口归属判据)。

@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -247,7 +248,7 @@ class TaskControllerTest {
 
     @Test
     void translateReturnsAcceptedWithTaskRunRef() throws Exception {
-        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG)).thenReturn(new TaskRunRef(TASK_NO, 2));
+        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG, false)).thenReturn(new TaskRunRef(TASK_NO, 2));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -259,8 +260,35 @@ class TaskControllerTest {
     }
 
     @Test
+    void translatePassesForceThrough() throws Exception {
+        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG, true))
+                .thenReturn(new TaskRunRef(TASK_NO, 5));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sourceLanguage\":\"zh-Hans\",\"targetLanguage\":\"zh-Hant\",\"force\":true}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.runNo").value(5));
+
+        verify(translateService).translate(TASK_NO, SOURCE_LANG, TARGET_LANG, true);
+    }
+
+    @Test
+    void forceTranslateConflictStillReturns409() throws Exception {
+        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG, true))
+                .thenThrow(new TaskConflictException(TASK_NO, 2));
+
+        mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sourceLanguage\":\"zh-Hans\",\"targetLanguage\":\"zh-Hant\",\"force\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.taskNo").value(TASK_NO))
+                .andExpect(jsonPath("$.runNo").value(2));
+    }
+
+    @Test
     void translateMapsMissingTaskToNotFound() throws Exception {
-        when(translateService.translate("ghost", SOURCE_LANG, TARGET_LANG)).thenThrow(new TaskNotFoundException("ghost"));
+        when(translateService.translate("ghost", SOURCE_LANG, TARGET_LANG, false)).thenThrow(new TaskNotFoundException("ghost"));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", "ghost")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -272,7 +300,7 @@ class TaskControllerTest {
     @Test
     void translateMapsNotReadyTaskToBadRequest() throws Exception {
         // 字幕尚未就绪：错在调用方触发太早 → IAE → 400（不是 409）
-        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG)).thenThrow(new IllegalArgumentException(
+        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG, false)).thenThrow(new IllegalArgumentException(
                 "字幕尚未就绪：工作区里没有 清洗后的字幕（clean-subtitles.srt）；请先等主管线跑完再试"));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO)
@@ -284,7 +312,7 @@ class TaskControllerTest {
 
     @Test
     void translateConflictReturns409WithSameShape() throws Exception {
-        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG))
+        when(translateService.translate(TASK_NO, SOURCE_LANG, TARGET_LANG, false))
                 .thenThrow(new TaskConflictException(TASK_NO, 2));
 
         mockMvc.perform(post("/api/tasks/{taskNo}/translate", TASK_NO)
@@ -303,7 +331,7 @@ class TaskControllerTest {
                         .content(TRANSLATE_BODY))
                 .andExpect(status().isBadRequest());
 
-        verify(translateService, never()).translate(anyString(), eq(SOURCE_LANG), eq(TARGET_LANG));
+        verify(translateService, never()).translate(anyString(), eq(SOURCE_LANG), eq(TARGET_LANG), anyBoolean());
     }
 
     // ---------- 重新生成字幕（关键词） ----------

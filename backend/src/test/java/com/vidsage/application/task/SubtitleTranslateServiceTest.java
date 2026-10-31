@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vidsage.application.subtitle.SubtitleArtifactStore;
+import com.vidsage.application.subtitle.SubtitleTrackReader;
 import com.vidsage.application.subtitle.pipeline.SubtitleTranslationCoordinator;
 import com.vidsage.application.task.port.TaskConcurrencyGate;
 import com.vidsage.config.WorkspaceProperties;
@@ -24,6 +25,7 @@ import com.vidsage.domain.shared.port.ProgressListener;
 import com.vidsage.domain.subtitle.SubtitleArtifact;
 import com.vidsage.domain.subtitle.model.ArtifactType;
 import com.vidsage.domain.subtitle.model.SubtitleArtifactStatus;
+import com.vidsage.domain.subtitle.model.cleanup.SubtitleTrack;
 import com.vidsage.domain.subtitle.model.translation.SupportedLanguage;
 import com.vidsage.domain.task.SubtitleTask;
 import com.vidsage.domain.task.TaskRun;
@@ -39,6 +41,7 @@ import com.vidsage.domain.workspace.port.WorkspaceRepository;
 import com.vidsage.infrastructure.fs.NioWorkspaceDirectoryManager;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
@@ -67,6 +70,7 @@ class SubtitleTranslateServiceTest {
     private final SubtitleTranslationCoordinator translationStage =
             Mockito.mock(SubtitleTranslationCoordinator.class);
     private final SubtitleArtifactStore artifactStore = Mockito.mock(SubtitleArtifactStore.class);
+    private final SubtitleTrackReader trackReader = Mockito.mock(SubtitleTrackReader.class);
     private final ProgressListener listener = Mockito.mock(ProgressListener.class);
 
     private static final SupportedLanguage SOURCE_LANG = SupportedLanguage.JAPANESE;
@@ -94,7 +98,7 @@ class SubtitleTranslateServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         return new SubtitleTranslateService(
                 new SubtitleTaskFinder(subtitleTaskRepository, workspaceRepository, directoryManager()),
-                supervisor, gate, translationStage, artifactStore, directoryManager());
+                supervisor, gate, translationStage, artifactStore, trackReader, directoryManager());
     }
 
     private NioWorkspaceDirectoryManager directoryManager() {
@@ -109,10 +113,10 @@ class SubtitleTranslateServiceTest {
         RunRef ref = ref(run);
         stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
 
-        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
         InOrder order = inOrder(translationStage, artifactStore);
-        order.verify(translationStage).translate(eq(new MediaInput.RemoteUrl(URL)),
+        order.verify(translationStage).translate(eq(TASK_ID), eq(new MediaInput.RemoteUrl(URL)),
                 any(Path.class), eq(SOURCE_LANG), eq(TARGET_LANG), any(ProgressListener.class));
         order.verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID),
                 eq(ArtifactType.TRANSLATED), eq(TARGET_LANG.getCode()), eq(CLEANED_ARTIFACT_ID), isNull());
@@ -129,9 +133,9 @@ class SubtitleTranslateServiceTest {
                 eq(TARGET_LANG.getCode()), any(Path.class)))
                 .thenReturn(Optional.of(Mockito.mock(SubtitleArtifact.class)));
 
-        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
-        verify(translationStage, never()).translate(any(), any(), any(), any(), any());
+        verify(translationStage, never()).translate(anyLong(), any(), any(), any(), any(), any());
         verify(artifactStore, never()).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
         verify(artifactStore, never()).settleArtifact(any(), any());
         verify(supervisor).finish(ref, run, null);
@@ -142,15 +146,35 @@ class SubtitleTranslateServiceTest {
     }
 
     @Test
+    void forceTranslationRerunsEvenWhenIntactTranslationExists() {
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        RunRef ref = ref(run);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        // 即使库里有完好译文，force=true 也不该走复用分支
+        when(artifactStore.findIntactArtifact(eq(TASK_ID), eq(ArtifactType.TRANSLATED),
+                eq(TARGET_LANG.getCode()), any(Path.class)))
+                .thenReturn(Optional.of(Mockito.mock(SubtitleArtifact.class)));
+
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), true);
+
+        verify(translationStage).translate(eq(TASK_ID), eq(new MediaInput.RemoteUrl(URL)),
+                any(Path.class), eq(SOURCE_LANG), eq(TARGET_LANG), any(ProgressListener.class));
+        verify(artifactStore).createCreatingPlaceholder(eq(TASK_ID), eq(RUN_ID),
+                eq(ArtifactType.TRANSLATED), eq(TARGET_LANG.getCode()), eq(CLEANED_ARTIFACT_ID), isNull());
+        verify(artifactStore).settleArtifact(any(SubtitleArtifact.class), any(Path.class));
+        verify(supervisor).finish(ref, run, null);
+    }
+
+    @Test
     void translateFailureFinishesRunWithoutPlaceholder() {
         TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
         RunRef ref = ref(run);
         stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
         IllegalStateException boom = new IllegalStateException("翻译失败");
         doThrow(boom)
-                .when(translationStage).translate(any(), any(), any(), any(), any());
+                .when(translationStage).translate(anyLong(), any(), any(), any(), any(), any());
 
-        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
         verify(supervisor).fail(eq(ref), eq(run), same(boom));
         verify(artifactStore, never()).createCreatingPlaceholder(anyLong(), anyLong(), any(), any(), any(), any());
@@ -163,10 +187,10 @@ class SubtitleTranslateServiceTest {
         RunRef ref = ref(run);
         stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
 
-        service(interruptOnQueueGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        service(interruptOnQueueGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
         verify(supervisor).finish(ref, run, "翻译在等待执行配额时被中断：请重新触发翻译");
-        verify(translationStage, never()).translate(any(), any(), any(), any(), any());
+        verify(translationStage, never()).translate(anyLong(), any(), any(), any(), any(), any());
     }
 
     // ---------- 守卫段 ----------
@@ -179,7 +203,7 @@ class SubtitleTranslateServiceTest {
                 .thenReturn(Optional.empty());
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service().translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode()),
+                () -> service().translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false),
                 "没有完好的清洗产物 → 400，不是 409");
 
         assertTrue(e.getMessage().contains("清洗后的字幕产物"));
@@ -192,13 +216,80 @@ class SubtitleTranslateServiceTest {
         stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
 
         // 同步跑的假闸门：派发出去的执行体当场跑完，好在它的副作用上验「流进去的是哪条 run、哪个 workspace」
-        TaskRunRef ref = service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode());
+        TaskRunRef ref = service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
 
         assertEquals(3, ref.runNo());
         // 执行体拿到的正是这条 run（经收口观测）与这个 workspace（经媒体输入还原观测）
-        verify(translationStage).translate(eq(new MediaInput.RemoteUrl(URL)), any(Path.class),
+        verify(translationStage).translate(eq(TASK_ID), eq(new MediaInput.RemoteUrl(URL)), any(Path.class),
                 eq(SOURCE_LANG), eq(TARGET_LANG), any(ProgressListener.class));
         verify(supervisor).finish(ref(run), run, null);
+    }
+
+    // ---------- 源语种校验 ----------
+
+    @Test
+    void translateRejectsWhenRequestedSourceDiffersFromDetected() {
+        // 字幕实际是简体中文，请求却说是日语：照旧翻下去译文会整段跑偏
+        stubGuard(runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3), cleanedReady(CLEANED_ARTIFACT_ID));
+        stubDetectedLanguage("zh-Hans");
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service().translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false),
+                "源语种与字幕实际语种不一致 → 400");
+
+        assertTrue(e.getMessage().contains("zh-Hans"), "错误信息要说出实际识别的语种");
+        verify(supervisor, never()).start(any(), any(), any());
+    }
+
+    @Test
+    void translateAcceptsAliasSourceLanguage() {
+        // 产物写的是 zh-Hans，请求传裸 zh：别名要认，不能拦
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, SupportedLanguage.ENGLISH.getCode(), 3);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        when(supervisor.start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE),
+                eq(SupportedLanguage.ENGLISH.getCode()))).thenReturn(Optional.of(run));
+        stubDetectedLanguage("zh-Hans");
+
+        service(inlineGate()).translate(TASK_NO, "zh", SupportedLanguage.ENGLISH.getCode(), false);
+
+        verify(supervisor).start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE),
+                eq(SupportedLanguage.ENGLISH.getCode()));
+    }
+
+    @Test
+    void translateAcceptsWhenDetectedLanguageMissing() {
+        // ASR 没给语种：没得比，放行
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        stubDetectedLanguage(null);
+
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
+
+        verify(supervisor).start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE), eq(TARGET_LANG.getCode()));
+    }
+
+    @Test
+    void translateAcceptsWhenDetectedLanguageUnsupported() {
+        // 识别出韩语这类白名单外的语种：归不到枚举，也没得比，放行
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        stubDetectedLanguage("ko");
+
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
+
+        verify(supervisor).start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE), eq(TARGET_LANG.getCode()));
+    }
+
+    @Test
+    void translateAcceptsWhenCleanTrackUnreadable() {
+        // 读不出产物（行不完整 / 文件没了 / JSON 坏）：上面的守卫已确认产物完好，这里不再拦
+        TaskRun run = runningRun(TaskRunType.TRANSLATE, TARGET_LANG.getCode(), 3);
+        stubGuard(run, cleanedReady(CLEANED_ARTIFACT_ID));
+        when(trackReader.readCleanTrack(eq(TASK_ID), any(Path.class))).thenReturn(Optional.empty());
+
+        service(inlineGate()).translate(TASK_NO, SOURCE_LANG.getCode(), TARGET_LANG.getCode(), false);
+
+        verify(supervisor).start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE), eq(TARGET_LANG.getCode()));
     }
 
     // ---------- 假闸门 ----------
@@ -223,6 +314,12 @@ class SubtitleTranslateServiceTest {
                 .thenReturn(Optional.of(cleaned));
         when(supervisor.start(any(SubtitleTask.class), eq(TaskRunType.TRANSLATE), eq(TARGET_LANG.getCode())))
                 .thenReturn(Optional.of(run));
+    }
+
+    /** 摆好「清洗产物里 ASR 识别的语种」；传 null 表示 ASR 没给。 */
+    private void stubDetectedLanguage(String language) {
+        when(trackReader.readCleanTrack(eq(TASK_ID), any(Path.class)))
+                .thenReturn(Optional.of(new SubtitleTrack(language, List.of(), null)));
     }
 
     private static Workspace urlWorkspace() {

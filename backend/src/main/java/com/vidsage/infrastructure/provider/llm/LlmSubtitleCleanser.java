@@ -182,8 +182,8 @@ public class LlmSubtitleCleanser implements SubtitleCleanser {
                 if (!newText.equals(safe(seg.text()))) {
                     corrected++;
                 }
-                // 时间戳是切分阶段定的，纠错不动它们
-                cleanedList.add(new TranscriptionSegment(seg.beginTimeMs(), seg.endTimeMs(), newText));
+                // 时间戳是切分阶段定的，纠错不动它们；id 是同一条字幕的标识，同样原样带过
+                cleanedList.add(new TranscriptionSegment(seg.beginTimeMs(), seg.endTimeMs(), newText, seg.id()));
             }
 
             // 批完成才发进度：进度值 = 批序号 / 总批数 × 100，最后一批恰好 100，单调不回退

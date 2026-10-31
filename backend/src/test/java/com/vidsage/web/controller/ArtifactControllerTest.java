@@ -146,8 +146,8 @@ class ArtifactControllerTest {
     void downloadSrtReturnsBytesWithTextContentType() throws Exception {
         String srt = "1\n00:00:00,000 --> 00:00:01,000\n你好\n";
         Path file = Files.writeString(tempDir.resolve("clean-subtitles.srt"), srt, StandardCharsets.UTF_8);
-        when(artifactQueryService.openArtifact(TASK_NO, "CLEANED", "subtitles.srt", null))
-                .thenReturn(new ArtifactDownload(file, ArtifactFileKind.SUBTITLES));
+        when(artifactQueryService.openArtifact(TASK_NO, "CLEANED", "subtitles.srt", null, false))
+                .thenReturn(ArtifactDownload.ofFile(file, ArtifactFileKind.SUBTITLES));
 
         mockMvc.perform(get(DOWNLOAD_URL, TASK_NO, "CLEANED", "subtitles.srt"))
                 .andExpect(status().isOk())
@@ -163,8 +163,8 @@ class ArtifactControllerTest {
     void downloadJsonReturnsBytesWithJsonContentType() throws Exception {
         String json = "{\"segments\":[]}";
         Path file = Files.writeString(tempDir.resolve("clean-segments.json"), json, StandardCharsets.UTF_8);
-        when(artifactQueryService.openArtifact(TASK_NO, "CLEANED", "segments.json", null))
-                .thenReturn(new ArtifactDownload(file, ArtifactFileKind.SEGMENTS));
+        when(artifactQueryService.openArtifact(TASK_NO, "CLEANED", "segments.json", null, false))
+                .thenReturn(ArtifactDownload.ofFile(file, ArtifactFileKind.SEGMENTS));
 
         mockMvc.perform(get(DOWNLOAD_URL, TASK_NO, "CLEANED", "segments.json"))
                 .andExpect(status().isOk())
@@ -178,18 +178,46 @@ class ArtifactControllerTest {
     void downloadPassesLangThroughToTheService() throws Exception {
         Path file = Files.writeString(tempDir.resolve("translated-segments-zh-hans.json"), "{}",
                 StandardCharsets.UTF_8);
-        when(artifactQueryService.openArtifact(TASK_NO, "TRANSLATED", "segments.json", "zh-Hans"))
-                .thenReturn(new ArtifactDownload(file, ArtifactFileKind.SEGMENTS));
+        when(artifactQueryService.openArtifact(TASK_NO, "TRANSLATED", "segments.json", "zh-Hans", false))
+                .thenReturn(ArtifactDownload.ofFile(file, ArtifactFileKind.SEGMENTS));
 
         mockMvc.perform(get(DOWNLOAD_URL, TASK_NO, "TRANSLATED", "segments.json").param("lang", "zh-Hans"))
                 .andExpect(status().isOk());
 
-        verify(artifactQueryService).openArtifact(TASK_NO, "TRANSLATED", "segments.json", "zh-Hans");
+        verify(artifactQueryService).openArtifact(TASK_NO, "TRANSLATED", "segments.json", "zh-Hans", false);
+    }
+
+    @Test
+    void downloadPassesRawFlagToTheService() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("clean-segments.json"), "{}", StandardCharsets.UTF_8);
+        when(artifactQueryService.openArtifact(TASK_NO, "CLEANED", "segments.json", null, true))
+                .thenReturn(ArtifactDownload.ofFile(file, ArtifactFileKind.SEGMENTS));
+
+        mockMvc.perform(get(DOWNLOAD_URL, TASK_NO, "CLEANED", "segments.json").param("raw", "1"))
+                .andExpect(status().isOk());
+
+        verify(artifactQueryService).openArtifact(TASK_NO, "CLEANED", "segments.json", null, true);
+    }
+
+    @Test
+    void downloadSendsRenderedBytesWhenCorrectionsApply() throws Exception {
+        Path file = Files.writeString(tempDir.resolve("clean-segments.json"), "{\"segments\":[]}",
+                StandardCharsets.UTF_8);
+        byte[] rendered = "{\"segments\":[{\"text\":\"改过的\"}]}".getBytes(StandardCharsets.UTF_8);
+        when(artifactQueryService.openArtifact(TASK_NO, "CLEANED", "segments.json", null, false))
+                .thenReturn(ArtifactDownload.ofContent(file, ArtifactFileKind.SEGMENTS, rendered));
+
+        mockMvc.perform(get(DOWNLOAD_URL, TASK_NO, "CLEANED", "segments.json"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().bytes(rendered))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        containsString("clean-segments.json")));
     }
 
     @Test
     void downloadMapsUnavailableArtifactTo404() throws Exception {
-        when(artifactQueryService.openArtifact(TASK_NO, "CLEANED", "segments.json", null))
+        when(artifactQueryService.openArtifact(TASK_NO, "CLEANED", "segments.json", null, false))
                 .thenThrow(new ArtifactNotFoundException(TASK_NO, "CLEANED", "segments.json"));
 
         mockMvc.perform(get(DOWNLOAD_URL, TASK_NO, "CLEANED", "segments.json"))
@@ -199,7 +227,7 @@ class ArtifactControllerTest {
 
     @Test
     void downloadMapsUnknownTaskTo404() throws Exception {
-        when(artifactQueryService.openArtifact(TASK_NO, "ORIGINAL", "segments.json", null))
+        when(artifactQueryService.openArtifact(TASK_NO, "ORIGINAL", "segments.json", null, false))
                 .thenThrow(new TaskNotFoundException(TASK_NO));
 
         mockMvc.perform(get(DOWNLOAD_URL, TASK_NO, "ORIGINAL", "segments.json"))
@@ -209,7 +237,7 @@ class ArtifactControllerTest {
 
     @Test
     void downloadMapsInvalidParametersTo400() throws Exception {
-        when(artifactQueryService.openArtifact(TASK_NO, "NOPE", "segments.json", null))
+        when(artifactQueryService.openArtifact(TASK_NO, "NOPE", "segments.json", null, false))
                 .thenThrow(new IllegalArgumentException("未知的产物类型：NOPE；可选值 ORIGINAL / CLEANED / TRANSLATED"));
 
         mockMvc.perform(get(DOWNLOAD_URL, TASK_NO, "NOPE", "segments.json"))

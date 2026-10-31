@@ -1,5 +1,6 @@
 package com.vidsage.application.subtitle.pipeline;
 
+import com.vidsage.application.subtitle.SubtitleCorrectionOverlay;
 import com.vidsage.config.SubtitleTranslateProperties;
 import com.vidsage.domain.media.model.MediaInput;
 import com.vidsage.domain.shared.model.StageProgress;
@@ -64,6 +65,8 @@ public class SubtitleTranslationCoordinator {
 
     private final SubtitleTranslator subtitleTranslator;
 
+    private final SubtitleCorrectionOverlay correctionOverlay;
+
     /**
      * @param objectMapper      Jackson 3 序列化器（Boot 4 只有 tools.jackson 这份有 bean）
      * @param contextSummarizer 内容总结器（摘要出主题 / 源语种 / 术语，供跨批上下文与跳过判定）
@@ -71,20 +74,24 @@ public class SubtitleTranslationCoordinator {
      *                          查证是增益不是前提，配置里删掉 {@code vidsage.term-lookup.provider}
      *                          应当让应用照常起、只关查证，而不是缺 bean 起不来
      * @param subtitleTranslator 字幕翻译器（持有翻译专用的 ChatClient）
+     * @param correctionOverlay  字幕纠错覆盖层：翻译读到的原文要是用户改过的那一份
      */
     public SubtitleTranslationCoordinator(ObjectMapper objectMapper,
                                           SubtitleContextSummarizer contextSummarizer,
                                           ObjectProvider<TermLookupProvider> lookupProvider,
-                                          SubtitleTranslator subtitleTranslator) {
+                                          SubtitleTranslator subtitleTranslator,
+                                          SubtitleCorrectionOverlay correctionOverlay) {
         this.objectMapper = objectMapper;
         this.contextSummarizer = contextSummarizer;
         this.lookupProvider = lookupProvider;
         this.subtitleTranslator = subtitleTranslator;
+        this.correctionOverlay = correctionOverlay;
     }
 
     /**
      * 翻译一份已清洗的字幕（不报告进度）。
      *
+     * @param taskId         字幕任务的内部行 id（纠错按它归属）
      * @param input          媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
      * @param workDir        这条输入的工作区目录（调用方已定位好）
      * @param sourceLanguage 源语种
@@ -93,13 +100,18 @@ public class SubtitleTranslationCoordinator {
      * @throws IllegalArgumentException input 为空
      * @throws IllegalStateException    -clean 字幕缺失（先跑清洗）、解析或写入失败；目标语种为空
      */
-    public TranslatedSubtitle translate(MediaInput input, Path workDir, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage) {
-        return translate(input, workDir, sourceLanguage, targetLanguage, ProgressListener.noop());
+    public TranslatedSubtitle translate(long taskId, MediaInput input, Path workDir,
+                                        SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage) {
+        return translate(taskId, input, workDir, sourceLanguage, targetLanguage, ProgressListener.noop());
     }
 
     /**
      * 翻译一份已清洗的字幕，产出双语 SRT 与翻译检查点。
      *
+     * <p>取源文本时叠过用户纠错：改了原文再重翻，译文必须基于改后的句子，否则翻译跟着旧文本走、
+     * 用户看到的两边对不上。目录摘要同样用改后的文本。
+     *
+     * @param taskId         字幕任务的内部行 id（纠错按它归属）
      * @param input          媒体输入（与产字幕、清洗同源，用于定位工作目录）；不可为空
      * @param workDir        这条输入的工作区目录（调用方已定位好）
      * @param sourceLanguage 源语种
@@ -109,7 +121,9 @@ public class SubtitleTranslationCoordinator {
      * @throws IllegalArgumentException input 或 listener 为空
      * @throws IllegalStateException    -clean 字幕缺失（先跑清洗）、解析或写入失败；目标语种为空
      */
-    public TranslatedSubtitle translate(MediaInput input, Path workDir, SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage, ProgressListener listener) {
+    public TranslatedSubtitle translate(long taskId, MediaInput input, Path workDir,
+                                        SupportedLanguage sourceLanguage, SupportedLanguage targetLanguage,
+                                        ProgressListener listener) {
         if (input == null) {
             throw new IllegalArgumentException(
                     "媒体输入不能为空：请传 MediaInput.RemoteUrl（远程 URL）或 MediaInput.LocalPath（本地文件）");
@@ -133,7 +147,9 @@ public class SubtitleTranslationCoordinator {
                     + cleanSeg.getFileName() + "）");
         }
 
-        List<TranscriptionSegment> segments = readClean(cleanSeg).segments();
+        // 翻译的输入是「用户看到的原文」：磁盘上那份是机器输出，用户手改的叠在上面
+        SubtitleTrack cleanTrack = correctionOverlay.applyToCleanTrack(taskId, readClean(cleanSeg));
+        List<TranscriptionSegment> segments = cleanTrack.segments();
         SubtitleContext context = resolveContext(ctxFile, segments);
 
         // 术语官方译名查证（触发条件与失败分流见 verifyTermsIfNeeded）

@@ -1687,3 +1687,174 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 62: 字幕纠错数据层与 API
+<!-- trellis-session: v=2 fp=1cda30320f7d5061 -->
+
+**Date**: 2026-10-25
+**Task**: 字幕纠错数据层与 API
+**Branch**: `dev`
+
+### Summary
+
+新增 subtitle_correction 覆盖层与四个端点：segment id 时间派生、旧 JSON 自动补 id、唯一键 upsert、校验分支 400/404/409、CLEANED 读不到时不判失效。web 层去除 domain 依赖。全量测试 735→819，G1 运行时验证 12 条全 PASS，已合回 dev 并归档 10-25-corrections-data-api。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `412f27c` | feat(subtitle): 字幕手动纠错的数据层与 API |
+| `6d671a5` | Merge branch 'feature/corrections-data-api' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 63: 字幕纠错：读取路径接入与强制重翻
+<!-- trellis-session: v=2 fp=9f78f9b2a77316b5 -->
+
+**Date**: 2026-10-25
+**Task**: 字幕纠错：读取路径接入与强制重翻
+**Branch**: `dev`
+
+### Summary
+
+下载的 CLEANED/TRANSLATED segments 与 srt 叠纠错后重渲，?raw=1 直发磁盘，零纠错走磁盘快路径；翻译取源文本叠原文纠错；POST /translate 增加 force。全量 842 测试通过。
+
+### Main Changes
+
+- 新增 SubtitleArtifactRenderer，按 (产物类型, 文件位) 静态分流下载正文；ArtifactDownload 带可选渲染字节
+- 翻译协调器读 CLEANED 后叠原文纠错；翻译服务透传 taskId 与 force
+- TranslationRequest 增加 Boolean force（Jackson 3 缺字段绑 null，primitive 会 400）
+- spec 登记 -Renderer 后缀与字幕纠错读取口清单；新增构造器签名防回归测试
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fc8d816` | feat(subtitle): 字幕纠错接入读取路径与强制重翻 |
+
+### Testing
+
+- [OK] mvn clean test-compile 绿；mvn test 91 类 / 842 测试，0 失败 0 错误 1 跳过（新增 23）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 父任务 10-25-subtitle-manual-correction 还剩前端子任务 10-25-corrections-frontend
+- 评审门 G2 的端到端 sha256 / force 实跑尚未做
+
+
+## Session 64: 字幕纠错：前端行内编辑、过期与失效提示
+<!-- trellis-session: v=2 fp=ada0d057c96c5e93 -->
+
+**Date**: 2026-10-25
+**Task**: 字幕纠错：前端行内编辑、过期与失效提示
+**Branch**: `dev`
+
+### Summary
+
+工作区字幕的原文/译文各自可编辑：失焦、保存按钮、Ctrl/⌘+Enter 即存，内容没变不发请求，失败还原并给行内错误；改原文后译文行立刻提示过期，翻译按钮切「重新翻译」并走 force；重新生成后对不上的纠错在顶部提示并可一键清除；编辑态里对已有纠错给「恢复原文/译文」。旧产物没有 id 时按时间戳兜底，保存与配对都正常。type-check / lint / build 全绿，端到端实测 AC1–AC8。
+
+### Main Changes
+
+- 新增 SubtitleCueRow.vue：原文/译文两个铅笔、编辑状态机（失焦保存、mousedown.prevent、Esc、Ctrl/⌘+Enter、幂等、失败还原、IME 保护、恢复入口）
+- 段落类型加可选 id；buildSegmentId 与后端 syntheticId 同规则；buildCues 先按 id 配对，失败退回同下标+时间戳
+- workspaceSubtitles 增纠错列表、失效计数、保存后本地补丁与删除/清理；workspace 增 reloadSubtitles / revertCorrection，translate 按 translationStale 决定 force
+- request 门面补 put/delete；tasks api 增四个纠错端点；TranslationBar 增 retranslate 文案；TranscriptPane 改用行组件并加失效提示条
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ac9867` | feat(workspace): 字幕行内编辑、译文过期提示与失效纠错清理 |
+| `d8b2c88` | Merge branch 'feature/corrections-frontend' into dev |
+
+### Testing
+
+- [OK] [OK] npm run type-check / npm run lint / npm run build 全绿
+- [OK] [OK] 手工走查任务 1c992d200c534b3696449961be742d83（旧产物无 id）：Esc 不写、点保存只发一次 PUT、失焦与 Ctrl+Enter 保存、刷新仍在、400 失败还原、force 重翻后过期标记消失、语种隔离、失效提示与清除、恢复入口
+- [OK] [--] 运行中铅笔隐藏只做了代码走查（v-if=!busy，沿用原占位按钮判据），未抓到运行中截图
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 父任务 10-25-subtitle-manual-correction 三个子任务已全部完成，待做父任务集成评审（AC1–AC8）后归档
+- dev 领先 origin/dev，未推送
+
+
+## Session 65: 译文纠错待复核标记（父任务集成评审收尾）
+<!-- trellis-session: v=2 fp=98b87e0e78aac5b6 -->
+
+**Date**: 2026-10-26
+**Task**: 译文纠错待复核标记（父任务集成评审收尾）
+**Branch**: `dev`
+
+### Summary
+
+父任务集成评审发现 R5 的「译文待复核」没有实现且 AC 未覆盖：译文纠错的 source_text 存的是机器原文，用户改原文后 sourceChanged 不会翻转，页面也没有标记。改为：译文纠错存保存时用户看到的生效原文（叠过原文纠错），sourceChanged 分字段比（原文纠错比机器文本、译文纠错比生效原文），前端在重翻后对手改译文显示「译文待复核」，与「译文待更新」互斥；问题 2 裁定为译文产物原文列不叠原文纠错并写进设计。后端 845 tests 全绿（+3），前端 type-check/lint 绿，接口实测两种保存顺序；Playwright MCP 超时，UI 标记未做浏览器走查。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0afc119` | feat(subtitle): 译文纠错依据文本与「译文待复核」标记 |
+| `aff100e` | Merge branch 'feature/corrections-translation-review' into dev |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 66: 源语种收口：前端锁定 + 后端校验，附带 ASR 语种取证
+<!-- trellis-session: v=2 fp=27dc0fb5fb6b0455 -->
+
+**Date**: 2026-10-26
+**Task**: 源语种收口：前端锁定 + 后端校验，附带 ASR 语种取证
+**Branch**: `dev`
+
+### Summary
+
+先取证：直连 DashScope 原始 API 跑 3 秒样例，下载结果 JSON 确认 qwen-audio-3.1-asr-flash-filetrans 根本不返回 language 字段（全文 0 次命中，加 language_hints=auto 也不返回），所以原计划「拿 ASR 实测语种当唯一依据」不成立，改为清洗阶段用上下文摘要的语种兜底写进 clean-segments.language。前端源语种改由 cleanedTrack.language 推导、context 兜底并锁定为只读文本，互换按钮下线换成 to；后端在开跑前核对 sourceLanguage 与 CLEANED 语种，不一致 400 且不建 run。真机全链路验收（BV1J3nE6gEQZ）：ORIGINAL 为 null、CLEANED 补成 zh-Hans；传 en 得 400、传 zh（别名）得 202 并产出 zh-Hans→ja 译文；浏览器确认 AC1–AC3。测试 850 → 853，前端 lint/type-check 通过。顺带记录两条已知问题（known-bugs §7 ASR 不返回语种、§8 yt-dlp 300 秒超时），并按所有者要求清空旧任务数据（21 任务 / 79 产物 / 65 run / 21 工作区目录，对账 0 异常）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `32fd594` | feat(subtitle): 源语种以字幕产物为准（前端锁定 + 后端校验） - 清洗写 -clean 时补语种：ASR 给了用 ASR，没给用上下文摘要的语种（归一到白名单 短码），两条路都没有就留 null——实测云端 ASR 的转写结果 JSON 里根本没有 language 字段，加 language_hints=auto 也不返回 - 前端源语种改由 cleanedTrack.language 推导、context 兜底（顺序与原来相反）， 识别出来即锁定为只读文本；认不出才退回可编辑下拉；互换按钮下线，位置换成 to - POST /translate 开跑前核对 sourceLanguage 与 CLEANED 语种（认 zh 这类别名）， 不一致 400 且不建 run；产物语种为空或白名单外放行 - 测试 850 → 853 |
+| `0e63a66` | chore(task): 记录源语种收口的计划文档与两条已知问题 |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 67: 中文 README 与页面截图
+<!-- trellis-session: v=2 fp=049f9ab312067caa -->
+
+**Date**: 2026-10-31
+**Task**: 中文 README 与页面截图
+**Branch**: `dev`
+
+### Summary
+
+为 vidSage 新增根目录中文 README（作品展示向）与三张 1440×900 现场截图（上传页、双语工作区、产物面板），并按用户要求补版权说明；同时修正两处与仓库现状不符的描述（yt-dlp 未入库、本地 FunASR 仅有方案）。实测启动后端 8080 与前端 5173 完成截图，图片路径与密钥/本机路径扫描通过；合并回 dev 并推送 4f9732d。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ed87e16` | docs(readme): 新增中文 README 与三张界面截图 |
+| `4f9732d` | Merge branch 'feature/readme-chinese-screenshots' into dev |
+
+### Status
+
+[OK] **Completed**

@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
@@ -69,12 +70,13 @@ public class ArtifactController {
     }
 
     /**
-     * 下载一版产物里的一个文件：正文就是文件字节本身。
+     * 下载一版产物里的一个文件：正文默认是「用户看到的样子」（叠过字幕纠错），{@code raw=1} 时是磁盘原文件。
      *
      * @param taskNo 提交响应返回的任务号
      * @param type   产物类型：{@code ORIGINAL} / {@code CLEANED} / {@code TRANSLATED}（不区分大小写）
      * @param file   文件名段：{@code segments.json} / {@code subtitles.srt} / {@code context.json} / {@code terms.json}
      * @param lang   目标语种；只有翻译产物必填
+     * @param raw    是否直发磁盘原文件（{@code ?raw=1} 时）——用于核对机器产出的原样
      * @return 200 与文件字节（SRT 是文本、JSON 是 application/json）
      * @throws IllegalArgumentException                                     taskNo 为空、类型 / 文件名段 /
      *                                                                      文件位与类型不匹配 / 语种缺失或多余（400）
@@ -84,26 +86,33 @@ public class ArtifactController {
     @Operation(summary = "下载一个产物文件",
             description = "按类型 + 文件名段 + 可选语种定位：segments.json / subtitles.srt / context.json / terms.json。"
                     + "TRANSLATED 必须带 ?lang=（zh 与 zh-Hans 等价），其余类型不能带。"
+                    + "默认返回叠过用户纠错的正文（无纠错时与磁盘文件一个字节都不差）；?raw=1 永远返回磁盘机器原文件。"
                     + "参数不合法返回 400；任务不存在、没有这一版或文件已不在返回 404。"
-                    + "返回文件字节本身，SRT 为 text/plain;charset=UTF-8")
+                    + "SRT 为 text/plain;charset=UTF-8")
     @GetMapping("/{taskNo}/artifacts/{type}/{file}")
     public ResponseEntity<Resource> download(@PathVariable String taskNo,
                                              @PathVariable String type,
                                              @PathVariable String file,
-                                             @RequestParam(value = "lang", required = false) String lang) {
+                                             @RequestParam(value = "lang", required = false) String lang,
+                                             @RequestParam(value = "raw", required = false, defaultValue = "false")
+                                             boolean raw) {
         if (!StringUtils.hasText(taskNo)) {
             throw new IllegalArgumentException("taskNo 不能为空：请传提交任务时响应里的 taskNo");
         }
-        ArtifactDownload download = artifactQueryService.openArtifact(taskNo, type, file, lang);
-        log.info("下载产物: taskNo={}, type={}, file={}", taskNo, type, file);
+        ArtifactDownload download = artifactQueryService.openArtifact(taskNo, type, file, lang, raw);
+        log.info("下载产物: taskNo={}, type={}, file={}, raw={}", taskNo, type, file, raw);
         // 只按文件位名字判类型：web 层不引领域类型（与其它响应 DTO 同一写法）
         MediaType mediaType = "SUBTITLES".equals(download.kind().name())
                 ? SRT_MEDIA_TYPE : MediaType.APPLICATION_JSON;
         String fileName = download.path().getFileName().toString();
+        // 正文两种来源：套了纠错就发渲染好的字节，否则直发磁盘文件（零纠错时不重新序列化）
+        Resource body = download.content() == null
+                ? new FileSystemResource(download.path())
+                : new ByteArrayResource(download.content());
         return ResponseEntity.ok()
                 .contentType(mediaType)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.inline().filename(fileName).build().toString())
-                .body(new FileSystemResource(download.path()));
+                .body(body);
     }
 }

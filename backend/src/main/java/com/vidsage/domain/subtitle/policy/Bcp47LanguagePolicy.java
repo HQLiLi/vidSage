@@ -36,14 +36,14 @@ public final class Bcp47LanguagePolicy {
 
 
     /**
-     * 跳过翻译时的逐条产物：译文照抄原文，时间戳原样带过。
+     * 跳过翻译时的逐条产物：译文照抄原文，时间戳与 id 原样带过。
      *
      * @param segments 源段落
      * @return 逐条「译文 = 原文」的双语段落（双语渲染器会把相同的两行并成一行）
      */
     public static List<TranslatedSegment> skipAll(List<TranscriptionSegment> segments) {
         return segments.stream()
-                .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), s.text()))
+                .map(s -> new TranslatedSegment(s.beginTimeMs(), s.endTimeMs(), s.text(), s.text(), s.id()))
                 .toList();
     }
 }

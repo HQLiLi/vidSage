@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 61
-- **Last Active**: 2026-10-25
+- **Total Sessions**: 67
+- **Last Active**: 2026-10-31
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1689 | Active |
+| `journal-1.md` | ~1860 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,12 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 67 | 2026-10-31 | 中文 README 与页面截图 | `ed87e16`, `4f9732d` | `dev` |
+| 66 | 2026-10-26 | 源语种收口：前端锁定 + 后端校验，附带 ASR 语种取证 | `32fd594`, `0e63a66` | `dev` |
+| 65 | 2026-10-26 | 译文纠错待复核标记（父任务集成评审收尾） | `0afc119`, `aff100e` | `dev` |
+| 64 | 2026-10-25 | 字幕纠错：前端行内编辑、过期与失效提示 | `8ac9867`, `d8b2c88` | `dev` |
+| 63 | 2026-10-25 | 字幕纠错：读取路径接入与强制重翻 | `fc8d816` | `dev` |
+| 62 | 2026-10-25 | 字幕纠错数据层与 API | `412f27c`, `6d671a5` | `dev` |
 | 61 | 2026-10-25 | 媒体源播放端点与工作区媒体区接入 | `891a84e`, `9d5efff` | `dev` |
 | 60 | 2026-10-24 | 工作区页改版任务树收尾：原型窄屏修复与三层归档 | `fbaacf5`, `b45fcd7`, `7d974b2` | `dev` |
 | 59 | 2026-10-24 | 工作区运行态：run-scoped SSE、重生成与翻译 | `61053a6`, `8b58a0f`, `a08c478` | `dev` |

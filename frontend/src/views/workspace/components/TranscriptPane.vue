@@ -1,23 +1,31 @@
 <script setup lang="ts">
 // 右列：字幕区。搜索、计数、选中、双语行，以及运行中的进度与提示。
-// 行尾的铅笔是编辑入口的占位：后端还没有「改单条字幕」的接口，先禁用展示。
+// 单行的编辑态与保存都在 SubtitleCueRow 里，这里只管列表与顶部提示。
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import { TASK_RUN_STATUS, TASK_RUN_TYPE } from '@/enums/task'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkspaceSubtitlesStore } from '@/stores/workspaceSubtitles'
-import { formatTime } from '@/utils/format'
+import SubtitleCueRow from '@/views/workspace/components/SubtitleCueRow.vue'
 import TranslationBar from '@/views/workspace/components/TranslationBar.vue'
 
 const subtitles = useWorkspaceSubtitlesStore()
-const { cues, cleanedTrack, translationMismatch, translatedLanguage } = storeToRefs(subtitles)
+const {
+  cues,
+  cleanedTrack,
+  translationMismatch,
+  translatedLanguage,
+  staleCorrectionCount,
+} = storeToRefs(subtitles)
+const { clearStaleCorrections } = subtitles
 
 const workspace = useWorkspaceStore()
 const {
   isBusy,
   languages,
   selectedSourceLanguage,
+  sourceLanguageLocked,
   selectedTargetLanguage,
   activeRunType,
   runPercent,
@@ -26,7 +34,7 @@ const {
   translationInvalidated,
   lastRun,
 } = storeToRefs(workspace)
-const { selectSourceLanguage, selectTargetLanguage, swapLanguages, translate } = workspace
+const { selectSourceLanguage, selectTargetLanguage, translate } = workspace
 
 /** 搜索词。 */
 const query = ref('')
@@ -78,6 +86,22 @@ watch(translationInvalidated, (value) => {
 })
 const showInvalidated = computed(() => translationInvalidated.value && !invalidatedClosed.value)
 
+/** 清除失效纠错失败时留在条子里的提示。 */
+const staleError = ref<string | null>(null)
+/** 正在清失效纠错；挡住连点。 */
+const clearingStale = ref(false)
+
+/** 清掉已经对不上当前字幕的纠错。 */
+async function onClearStale(): Promise<void> {
+  if (clearingStale.value) return
+  clearingStale.value = true
+  staleError.value = await clearStaleCorrections(workspace.taskNo)
+  clearingStale.value = false
+}
+
+/** 当前语种有没有译文因为原文改动而过期——有的话翻译按钮改走强制重翻。 */
+const retranslate = computed(() => cues.value.some((cue) => cue.translationStale))
+
 /** 字幕条数变了就清掉选中：下标可能已经指到别的句子。 */
 watch(
   () => cues.value.length,
@@ -99,11 +123,6 @@ function onSourceLanguage(code: string): void {
 /** 换目标语种：有现成译文直接显示。 */
 function onTargetLanguage(code: string): void {
   void selectTargetLanguage(code)
-}
-
-/** 互换源 / 目标语种。 */
-function onSwapLanguages(): void {
-  void swapLanguages()
 }
 
 /** 触发翻译。 */
@@ -148,14 +167,14 @@ function onTranslate(): void {
         class="mt-2.5"
         :languages="languages"
         :source-language="selectedSourceLanguage"
+        :source-locked="sourceLanguageLocked"
         :target-language="selectedTargetLanguage"
         :busy="isBusy"
         :translating="translating"
         :progress="runPercent"
-        :translated-language="translatedLanguage"
+        :retranslate="retranslate"
         @update:source-language="onSourceLanguage"
         @update:target-language="onTargetLanguage"
-        @swap="onSwapLanguages"
         @translate="onTranslate"
       />
 
@@ -201,9 +220,9 @@ function onTranslate(): void {
       </div>
     </div>
 
-    <!-- 顶部提示条：时间轴不一致 / 译文失效 / 执行或连接错误 -->
+    <!-- 顶部提示条：时间轴不一致 / 译文失效 / 失效纠错 / 执行或连接错误 -->
     <div
-      v-if="translationMismatch || showInvalidated || showError"
+      v-if="translationMismatch || showInvalidated || showError || staleCorrectionCount > 0"
       class="shrink-0 space-y-2 px-4 pt-2"
     >
       <p
@@ -212,6 +231,25 @@ function onTranslate(): void {
       >
         译文与原文时间轴不一致，已隐藏译文。
       </p>
+
+      <div
+        v-if="staleCorrectionCount > 0"
+        class="flex items-start justify-between gap-3 rounded-lg border border-border bg-mist/60 px-3 py-2"
+        role="status"
+      >
+        <p class="text-xs leading-relaxed text-muted">
+          {{ staleCorrectionCount }} 条纠错已失效：字幕重新生成后对不上原来的句子。
+          <span v-if="staleError !== null" class="block text-faint">{{ staleError }}</span>
+        </p>
+        <button
+          type="button"
+          class="shrink-0 text-xs text-faint transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="clearingStale"
+          @click="onClearStale"
+        >
+          {{ clearingStale ? '清除中…' : '清除' }}
+        </button>
+      </div>
 
       <div
         v-if="showInvalidated"
@@ -269,69 +307,16 @@ function onTranslate(): void {
         没有匹配「{{ query }}」的字幕
       </p>
 
-      <!--
-        字幕行不是控件：点一下只是选中高亮，没有别的动作，所以不给 role="button"
-        （那会让内嵌的修改按钮变成非法嵌套）。真正可键盘操作的是行尾的修改按钮。
-      -->
       <ul v-if="!generating && filtered.length > 0" class="flex flex-col">
-        <li
+        <SubtitleCueRow
           v-for="cue in filtered"
           :key="cue.index"
-          :aria-current="selectedIndex === cue.index ? 'true' : undefined"
-          class="group relative flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2 pr-10 text-left transition-colors"
-          :class="selectedIndex === cue.index ? 'bg-mist' : 'hover:bg-mist/60'"
-          @click="toggleSelect(cue.index)"
-        >
-          <span
-            v-if="selectedIndex === cue.index"
-            class="absolute bottom-2.5 left-0 top-2.5 w-0.5 rounded-full bg-primary"
-            aria-hidden="true"
-          ></span>
-          <span
-            class="w-11 shrink-0 pt-0.75 text-[13px] tabular-nums"
-            :class="selectedIndex === cue.index ? 'font-medium text-foreground' : 'text-muted'"
-          >
-            {{ formatTime(cue.startMs / 1000) }}
-          </span>
-
-          <div class="min-w-0 flex-1">
-            <p
-              class="text-[15px] leading-relaxed"
-              :class="selectedIndex === cue.index ? 'font-medium text-foreground' : 'text-ink'"
-            >
-              {{ cue.text }}
-            </p>
-            <!-- 译文比原文小一号、浅一档，两条挨着读仍然分得清主次 -->
-            <p v-if="cue.translatedText" class="mt-1 text-[13px] leading-relaxed text-muted">
-              {{ cue.translatedText }}
-            </p>
-          </div>
-
-          <!-- 编辑入口占位：后端还没有改单条字幕的接口，先禁用；运行中直接收起 -->
-          <button
-            v-if="!isBusy"
-            type="button"
-            title="编辑功能暂未开放"
-            :aria-label="`修改第 ${cue.index + 1} 条字幕原文（编辑功能暂未开放）`"
-            class="absolute right-2 top-2 flex h-7 w-7 cursor-not-allowed items-center justify-center text-muted opacity-0 transition-[color,opacity] group-hover:opacity-100"
-            disabled
-            @click.stop
-            @keydown.stop
-          >
-            <svg
-              viewBox="0 0 24 24"
-              class="h-3.5 w-3.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m15.5 5.5 3 3M4 20l4.5-1 10-10a2.12 2.12 0 0 0-3-3l-10 10L4 20Z" />
-            </svg>
-          </button>
-        </li>
+          :cue="cue"
+          :selected="selectedIndex === cue.index"
+          :busy="isBusy"
+          :language="translatedLanguage"
+          @select="toggleSelect"
+        />
       </ul>
     </div>
   </aside>

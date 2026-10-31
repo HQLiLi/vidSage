@@ -4,7 +4,7 @@
  * 字段名与后端 Java record 逐字对齐：
  * ArtifactResponse / SubtitleTrack / SubtitleContext / TranslatedTrack / LanguageOption。
  */
-import type { ARTIFACT_TYPE } from '@/enums/subtitle'
+import type { ARTIFACT_TYPE, CORRECTION_FIELD } from '@/enums/subtitle'
 
 /** 产物类型。 */
 export type ArtifactType = (typeof ARTIFACT_TYPE)[keyof typeof ARTIFACT_TYPE]
@@ -42,6 +42,12 @@ export interface TranscriptionSegment {
   endTimeMs: number
   /** 字幕文本。 */
   text: string
+  /**
+   * 这句字幕的稳定标识，形如 seg-0-3520。
+   * 新产物落盘就带；旧产物磁盘上没有这个字段，而「零纠错」时后端直发原文件，
+   * 所以这里写成可缺省，取值一律走 `buildSegmentId`。
+   */
+  id?: string
 }
 
 /** 一份字幕段落文件的内容。是个信封，不是裸数组。 */
@@ -86,6 +92,8 @@ export interface TranslatedSegment {
   sourceText: string | null
   /** 译文；可能是 null。源目标语种相同时与原文相同。 */
   translatedText: string | null
+  /** 与原文同一套规则算出的稳定标识；旧产物里没有这个字段。 */
+  id?: string
 }
 
 /** 一份译文段落文件的内容。 */
@@ -119,18 +127,72 @@ export interface SubtitleKeywordsResponse {
 /**
  * 页面上一行字幕的视图模型。
  *
- * index 是后端段落下标——它是原文与译文的配对键，也是本地改写覆盖表的键，
- * 不是 v-for 的渲染位置。
+ * index 是后端段落下标——搜索过滤后它仍是这一句的稳定位置。id 是保存纠错时用的锚点。
  */
 export interface SubtitleCue {
+  /** 这句字幕的稳定标识，形如 seg-0-3520。 */
+  id: string
   /** 后端段落下标。 */
   index: number
   /** 起始时间（毫秒）。 */
   startMs: number
   /** 结束时间（毫秒）。 */
   endMs: number
-  /** 原文。 */
+  /** 原文（若改过，这里是纠错后的文本）。 */
   text: string
   /** 译文；没有译文时是 null。 */
   translatedText: string | null
+  /** 当前语种译文自带的源文本；没挂译文时是 null。 */
+  sourceText: string | null
+  /** 译文拿的是旧原文翻的：原文改过而译文还没更新。 */
+  translationStale: boolean
+}
+
+/** 一条纠错改的是哪一项。 */
+export type CorrectionField = (typeof CORRECTION_FIELD)[keyof typeof CORRECTION_FIELD]
+
+/**
+ * 一条字幕纠错。字段名与后端 SubtitleCorrectionResponse 逐字对齐。
+ *
+ * 它只用来数失效条数和判断某条有没有存过纠错；页面上的文本以后端套过纠错的产物为准。
+ */
+export interface SubtitleCorrection {
+  /** 字幕段 id，形如 seg-0-3520。 */
+  segmentId: string
+  /** 改的是原文还是译文。 */
+  field: CorrectionField
+  /** 译文纠错的目标语种短码；原文纠错是空串。 */
+  lang: string
+  /** 保存这条纠错时用户看到的源文本：原文纠错是改前的机器原文，译文纠错是当时叠过原文纠错的原文。 */
+  sourceText: string
+  /** 用户改后的文本。 */
+  value: string
+  /** 当前字幕里还有没有这一条；false = 字幕重新生成后已失效。 */
+  matched: boolean
+  /** 保存时依据的源文本是否已与当前文本不同；译文纠错用它提示「译文待复核」。 */
+  sourceChanged: boolean
+  /** 最近一次保存时间（ISO-8601 字符串）。 */
+  updatedAt: string
+}
+
+/** 纠错列表响应：外面包一层 items，空列表时是空数组。 */
+export interface SubtitleCorrectionListResponse {
+  /** 该任务的全部纠错，按首次保存顺序。 */
+  items: SubtitleCorrection[]
+}
+
+/** 保存一条纠错的请求体。 */
+export interface SaveCorrectionRequest {
+  /** 改的是原文还是译文。 */
+  field: CorrectionField
+  /** 译文纠错的目标语种短码；原文纠错不带或传空串。 */
+  lang?: string
+  /** 用户改后的文本；调用方已去掉首尾空白。 */
+  value: string
+}
+
+/** 清理失效纠错的结果。 */
+export interface ClearStaleCorrectionsResponse {
+  /** 实际删掉的条数。 */
+  removed: number
 }

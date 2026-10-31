@@ -143,3 +143,34 @@ CREATE TABLE IF NOT EXISTS intermediate_file
     CONSTRAINT pk_intermediate_file PRIMARY KEY (id),
     CONSTRAINT uk_intermediate_file_task_id_file_name UNIQUE (task_id, file_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT ='中间产物（task 级缓存）';
+
+-- 用户对字幕原文 / 译文的手动纠错：一层「覆盖」，不是新一版产物。
+-- 磁盘上的 original-* / clean-* / translated-* 永远保持机器输出，读取时才把这张表叠上去，
+-- 于是「页面改了、导出没改」不会发生。
+--
+-- uk(task_id, segment_id, field_type, lang) 决定一条字幕的一项改动只有一行，重复保存就是覆盖
+-- （upsert 一条语句，与 subtitle_keyword 同款）。lang 在原文纠错时是空串而不是 NULL：
+-- MySQL 的唯一约束不比较 NULL，存 NULL 会让同一段插进两条原文纠错。
+--
+-- source_text 记「这条纠错依据的源文本」——原文纠错记改前的机器原文，译文纠错记保存时用户看到的
+-- 原文（叠过原文纠错），这样手改译文才能在原文后来改过时被标成「译文待复核」。
+-- 事后拿它跟当前文本比，就知道这条纠错还对不对得上（前端据此提示「已失效」或「译文待复核」）。
+--
+-- updated_at 的写入点就是 upsert 的 ON DUPLICATE KEY UPDATE 分支，首次插入时与 created_at 同值。
+-- 不写 DB 外键：任务删除时的清理由应用层负责（当前没有删除任务的入口，先不做级联）。
+CREATE TABLE IF NOT EXISTS subtitle_correction
+(
+    id              BIGINT      NOT NULL AUTO_INCREMENT COMMENT '内部自增行 id，不对外',
+    task_id         BIGINT      NOT NULL COMMENT '逻辑外键 → subtitle_task.id',
+    segment_id      VARCHAR(64) NOT NULL COMMENT 'seg-<beginTimeMs>-<endTimeMs>',
+    field_type      VARCHAR(32) NOT NULL COMMENT 'TEXT / TRANSLATION（对外 JSON 用 text / translation）',
+    lang            VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'TRANSLATION 时为目标语种短码；TEXT 时为空串',
+    source_text     TEXT        NOT NULL COMMENT '这条纠错依据的源文本：原文纠错为改前的机器原文，译文纠错为保存时用户看到的原文',
+    corrected_value TEXT        NOT NULL COMMENT '用户改后的文本',
+    created_at      DATETIME    NOT NULL COMMENT '创建时间',
+    updated_at      DATETIME    NOT NULL COMMENT '最近一次保存的时刻',
+    CONSTRAINT pk_subtitle_correction PRIMARY KEY (id),
+    CONSTRAINT uk_subtitle_correction_task_id_segment_id_field_type_lang
+        UNIQUE (task_id, segment_id, field_type, lang),
+    INDEX idx_subtitle_correction_task_id (task_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT ='用户对字幕原文/译文的手动纠错（覆盖层）';
