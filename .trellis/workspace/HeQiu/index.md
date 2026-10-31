@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 66
-- **Last Active**: 2026-10-26
+- **Total Sessions**: 67
+- **Last Active**: 2026-10-31
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1837 | Active |
+| `journal-1.md` | ~1860 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 67 | 2026-10-31 | 中文 README 与页面截图 | `ed87e16`, `4f9732d` | `dev` |
 | 66 | 2026-10-26 | 源语种收口：前端锁定 + 后端校验，附带 ASR 语种取证 | `32fd594`, `0e63a66` | `dev` |
 | 65 | 2026-10-26 | 译文纠错待复核标记（父任务集成评审收尾） | `0afc119`, `aff100e` | `dev` |
 | 64 | 2026-10-25 | 字幕纠错：前端行内编辑、过期与失效提示 | `8ac9867`, `d8b2c88` | `dev` |

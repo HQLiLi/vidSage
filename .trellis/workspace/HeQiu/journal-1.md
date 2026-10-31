@@ -1835,3 +1835,26 @@ S6 落地：intermediate_file 登记 + 复用判据换成「表 READY 且文件�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 67: 中文 README 与页面截图
+<!-- trellis-session: v=2 fp=049f9ab312067caa -->
+
+**Date**: 2026-10-31
+**Task**: 中文 README 与页面截图
+**Branch**: `dev`
+
+### Summary
+
+为 vidSage 新增根目录中文 README（作品展示向）与三张 1440×900 现场截图（上传页、双语工作区、产物面板），并按用户要求补版权说明；同时修正两处与仓库现状不符的描述（yt-dlp 未入库、本地 FunASR 仅有方案）。实测启动后端 8080 与前端 5173 完成截图，图片路径与密钥/本机路径扫描通过；合并回 dev 并推送 4f9732d。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ed87e16` | docs(readme): 新增中文 README 与三张界面截图 |
+| `4f9732d` | Merge branch 'feature/readme-chinese-screenshots' into dev |
+
+### Status
+
+[OK] **Completed**
