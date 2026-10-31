@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "README + 截图不适用纯文档例外，须从 dev 开特性分支；改完即停，提交 / 合并 / 推送逐门等批准"}
+{"file": ".trellis/spec/backend/index.md", "reason": "技术栈基线以 pom.xml 为准，用来核对 README 技术栈表与版本号，避免凭记忆写错"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "dev 由 Vite 把 /api 反代到 localhost:8080、VITE_API_BASE_URL 语义与生产反代约定，用于快速开始章节"}
+{"file": ".trellis/workspace/HeQiu/known-bugs.md", "reason": "已确认但未修的口径（如翻译静默兜底）决定 README「已知限制」怎么写才不夸大"}
