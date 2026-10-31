@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/guides/git-workflow.md", "reason": "核对是否只在特性分支改、是否改完即停、有没有越门提交或推送"}
+{"file": ".trellis/spec/backend/index.md", "reason": "核对 README 技术栈与架构描述是否与 Java 21 / Spring Boot 4.1.1 基线一致"}
+{"file": ".trellis/spec/frontend/api.md", "reason": "核对快速开始里的 8080 / 5173 / /api 代理描述与仓库实际一致"}
