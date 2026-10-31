@@ -23,3 +23,13 @@ asr-service/
 .playwright-mcp/
 .zcode/tmp/
 .zcode/plans/
+
+# 本地密钥配置：application-local.yml 里是真 Key。别只靠 .git/info/exclude——
+# 那个文件不随仓库走，换台机器克隆后 `git add -A` 就把 Key 提上去了
+application-local.yml
+
+# Eclipse 产物（Maven 项目用 IDEA 时也不该进仓库）
+.classpath
+.project
+.factorypath
+.settings/
